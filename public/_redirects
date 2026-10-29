@@ -1,0 +1,2 @@
+# Single-page app: every route serves index.html (the service worker does the same offline).
+/*    /index.html   200

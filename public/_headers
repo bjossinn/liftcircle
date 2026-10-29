@@ -1,0 +1,24 @@
+# The service worker and manifest must always be revalidated so updates are noticed.
+/sw.js
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+  Content-Type: application/manifest+json
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+# Security headers for every response (Netlify merges these with the rules above).
+# Content-Security-Policy notes (see docs/DEVICE_CHECKS.md "Security headers"):
+# - script-src: bundled scripts plus the SHA-256 of the inline theme script in index.html. If that script
+#   changes, the build fails with the new hash (vite.config.ts → cspInlineScriptCheck) — update it here.
+# - connect-src/img-src: the Supabase project (REST/RPC, auth, Edge Functions incl. the AI coach, storage
+#   signed URLs for photos). blob:/data: are local photo previews. No realtime websocket is used today; add
+#   wss://haryomdlsgrgrnsbdxui.supabase.co to connect-src if realtime channels are introduced.
+# - worker-src 'self' covers the Workbox service worker; frame-ancestors 'none' forbids embedding.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=(), geolocation=(self)
+  X-Frame-Options: DENY
+  Strict-Transport-Security: max-age=31536000
+  Cross-Origin-Opener-Policy: same-origin
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-TJKc1pw0azYlcuoOrPNaOUJ960jLj9wd0eSPVZmvnzg='; style-src 'self'; img-src 'self' blob: data: https://haryomdlsgrgrnsbdxui.supabase.co; connect-src 'self' https://haryomdlsgrgrnsbdxui.supabase.co; font-src 'self'; media-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'

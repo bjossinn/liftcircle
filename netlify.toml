@@ -1,0 +1,9 @@
+# Netlify deployment (HTTPS by default). See docs/SETUP.md §5.
+# Redirects and headers live in public/_redirects and public/_headers so they also apply to
+# drag-and-drop (Netlify Drop) deploys of the dist/ folder, which don't read this file.
+[build]
+  command = "npm ci && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
