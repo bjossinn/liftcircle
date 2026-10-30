@@ -28,6 +28,7 @@ import { beep, holdWakeLock, primeAudio, vibrate } from './feedback';
 import { maybeAutoShare } from '@/social/autoShare';
 import { cheerForSet, restOverCheer } from '@/domain/coachCheers';
 import type { ToastOptions } from '@/components/toast';
+import { cancelRestPush, useRestPush } from '@/pwa/pushScheduler';
 
 /** Persist a change; resolves true when saved, false when the device couldn't store it. */
 type Mut = (fn: (s: WorkoutSession) => WorkoutSession) => Promise<boolean>;
@@ -150,6 +151,7 @@ export default function SessionPage() {
   const { session, update, saveError } = useSessionEditor(id);
   const { byId, get, list } = useExercises();
   useRestOverCheer({ session, enabled: cheers, style: coachStyle, byId, unit: settings.units.weight, show: toast.show, lastLine: lastCheer });
+  useRestPush(session, byId, settings.units.weight);
   const constraints = useSubstitutionConstraints();
   const registry = useMemo(() => new DraftRegistry(), []);
   const history = useLiveQuery(async () => alive(await db.sessions.where('status').equals('completed').toArray()).sort((a, b) => b.startedAt - a.startedAt), [db]);
@@ -265,6 +267,7 @@ export default function SessionPage() {
     }
     setFinishOpen(false);
     clearSessionDrafts(finished.id);
+    cancelRestPush(finished.id);
     void maybeAutoShare({ session: finished }, { db, settings, byId }).then((shared) => {
       if (shared) toast.show('Queued to share with your chosen audience', { tone: 'success' });
     });
@@ -412,6 +415,7 @@ export default function SessionPage() {
         onConfirm={async () => {
           await deleteRecord('sessions', session.id, db);
           clearSessionDrafts(session.id);
+          cancelRestPush(session.id);
           setDiscardOpen(false);
           nav('/train', { replace: true });
         }}

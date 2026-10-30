@@ -386,6 +386,48 @@ For local development, `supabase start` applies the migrations and `seed.sql` au
 **Adding functions later.** If you add a migration that creates `private` functions, re-run the statements of
 `…07_lockdown.sql` (or add a new lockdown migration). Postgres grants EXECUTE to PUBLIC on every new function.
 
+## 9. Push notifications (v0.5.0)
+
+Migration `20261101000001_push_notifications.sql`, Edge Function `push-send`, client `src/pwa/push.ts`,
+`src/pwa/pushScheduler.ts`, `src/domain/pushSchedule.ts`, service-worker handlers `public/push-sw.js`.
+
+**Tables** (RLS on; `SELECT` for the owner only via `user_id = auth.uid()`; no client write grants; no anon access):
+
+| Table | Purpose |
+|---|---|
+| `push_subscriptions` | One row per device: `endpoint` (unique, https), `p256dh`, `auth`, `user_agent`, `last_used_at`, `failed_count`. |
+| `push_prefs` | `kinds` (default all but `social`), `fixed_reminder_time`, `time_zone`, `quiet_start` 22:00, `quiet_end` 07:00. |
+| `push_jobs` | `kind`, `fire_at`, `payload` {title, body, url, tag}, `dedupe_key` (unique per user), `sent_at`, `cancelled_at`, `attempts`, `claimed_at`. Partial index on `fire_at` for unsent, uncancelled jobs. |
+
+**Client RPCs** (authenticated; caller = `auth.uid()`): `save_push_subscription(p)` (a device used by another account
+moves to the caller), `delete_push_subscription(endpoint)`, `get_push_prefs()`, `set_push_prefs(p)` (switching a kind
+off cancels its pending pushes), `replace_scheduled_jobs(kind, jobs)` — only `workout_reminder`, `missed_nudge`,
+`rest_over`; ≤ 60 jobs; idempotent by dedupe key; replaces the caller's future unsent jobs of that kind; never touches
+sent ones; payload url must be an in-app path — `cancel_push_job(dedupe_key)`, `send_test_push()`. Rate-limited (PT429).
+
+**Coaching and social pushes** come from an `AFTER INSERT OR UPDATE OF created_at` trigger on `public.notifications`,
+so the in-app preferences (`private.notify` / `private.coach_notify`) already apply; the push also needs that kind on
+and a device. Text never includes content ("Your coach sent you a message", "Anna liked your post"). Bursts coalesce: an
+unsent job of the kind is updated with the newer text, otherwise the next one fires ≥ 2 minutes after the last sent one.
+
+**push-send** (`verify_jwt = false`, `x-push-secret: PUSH_CRON_SECRET`; logic in `_shared/push/send.ts`):
+`push_claim_due` (service role) claims ≤ 50 due jobs with `FOR UPDATE SKIP LOCKED` and sets `claimed_at`, so overlapping
+runs never double-send (a claim older than 2 min is re-claimable after a crash). Quiet hours in the user's time zone
+defer jobs to `quiet_end` — except `rest_over` and `test`. Messages are encrypted per RFC 8291 (aes128gcm) and signed
+with VAPID (RFC 8292) using WebCrypto only (`_shared/push/webpush.ts`, checked against the RFC 8291 test vector).
+404/410 delete the subscription; other errors increment `failed_count` and retry (cancelled after 5 attempts).
+`push_finish` records results; `push_cleanup` deletes sent/cancelled jobs older than 7 days. Batches of 50, ≤ 10
+batches or 20 s per run, 10 s per request. Logs contain counts only.
+
+**Scheduling**: `private.push_schedule_cron()` (pg_cron + pg_net, URL and secret from Vault `push_send_url` /
+`push_cron_secret`) — every 15 s on pg_cron ≥ 1.5, else every minute; a no-op with a NOTICE until the extensions and
+secrets exist. Owner steps: docs/SETUP.md §9.
+
+**Tests**: `npm run test:push-db` (RLS/grants, RPC validation, idempotency, trigger + coalescing, service-only RPCs,
+410, cleanup, SKIP LOCKED across two connections; also in CI); `tests/unit/pushSend.test.ts` (RFC vector, VAPID,
+mocked push service, quiet hours, secret); `pushSchedule`, `pushSw`, `pushSettingsUi` unit tests; `pwa.spec.ts`.
+The Deno entry point (`push-send/index.ts`) only wires env, the service-role client and fetch and was not executed here.
+
 ## 8. Coaching
 
 Human coaches, the coach directory, coach/client tools and coaching messages. Migrations

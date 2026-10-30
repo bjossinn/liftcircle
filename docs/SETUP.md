@@ -186,6 +186,41 @@ are grandfathered.
   `node tests/live/schema-fingerprint.mjs` locally (identical rows = deployed schema matches the repo). Optional live
   journeys: `tests/live/README.md`.
 
+## 9. Push notifications (v0.5.0, owner setup)
+
+Merging deploys the migration `20261101000001_push_notifications.sql` and the `push-send` Edge Function. Until the
+steps below are done, everything is inert: the settings section stays hidden (no public key in the build) and the cron
+job isn't scheduled (the migration prints a NOTICE instead of failing).
+
+1. **Generate a VAPID key pair** on your Mac (never commit or share the private key):
+   ```sh
+   npx web-push generate-vapid-keys
+   ```
+2. **Edge Function secrets** (Dashboard → Edge Functions → Secrets, or CLI):
+   ```sh
+   supabase secrets set VAPID_PUBLIC_KEY=<public key> VAPID_PRIVATE_KEY=<private key> \
+     VAPID_SUBJECT=mailto:<your address> PUSH_CRON_SECRET=$(openssl rand -hex 32)
+   ```
+3. **Enable `pg_cron` and `pg_net`** (Database → Extensions), then store the function URL and the same
+   `PUSH_CRON_SECRET` in **Vault** and schedule the job (SQL editor):
+   ```sql
+   select vault.create_secret('https://<project-ref>.supabase.co/functions/v1/push-send', 'push_send_url');
+   select vault.create_secret('<same value as PUSH_CRON_SECRET>', 'push_cron_secret');
+   select private.push_schedule_cron();   -- prints which schedule it used
+   select jobname, schedule from cron.job where jobname = 'liftcircle-push-send';
+   ```
+   With pg_cron 1.5+ it runs every **15 seconds**; older versions run every **minute**, so a rest-over push can then
+   arrive up to ~60 s after the timer ends (the in-app alert is unaffected). To change a secret later:
+   `select vault.update_secret((select id from vault.secrets where name = 'push_cron_secret'), '<new>');`
+4. **Public key in the site build**: put the *public* key in `netlify.toml` → `[build.environment]` as
+   `VITE_VAPID_PUBLIC_KEY = "<public key>"` (replace the commented placeholder) and redeploy. It is a public value.
+5. Check: Settings → Notifications → **Turn on notifications** → **Send a test notification** (arrives within the cron
+   interval). On iPhone/iPad, first add LiftCircle to the Home Screen and open it from there.
+
+Limits to know: reminders and missed-session nudges are computed on the device and uploaded for the next 14 days, so
+a nudge can't be sent for plan changes made on another device that hasn't opened LiftCircle since; a workout logged
+offline late at night can leave an already-scheduled nudge in place until the app is back online.
+
 ## Troubleshooting
 
 - **"Accounts aren't enabled in this version"** — `.env.local` (or Netlify env vars) missing, or the app was built before

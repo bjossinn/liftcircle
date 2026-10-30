@@ -590,6 +590,8 @@ export interface NextSet {
   /** 1-based number among the exercise's working sets. */
   number: number;
   label: string;
+  /** "60 kg × 8" / "8 reps" / "30 s", or '' when nothing is known yet. */
+  detail: string;
   discomfort: boolean;
 }
 
@@ -609,7 +611,7 @@ export function nextSet(session: WorkoutSession, byId: Map<ID, Exercise>, unit: 
     const reps = s.reps ?? (rx && !rx.durationSec ? rx.repMin === rx.repMax ? rx.repMin : null : null);
     const dur = s.durationSec ?? rx?.durationSec ?? null;
     const what = load && reps ? `${load} × ${reps}` : load ? load : reps ? `${reps} reps` : dur ? `${dur} s` : '';
-    return { seId: se.id, exerciseName: name, number: n + 1, label: `${name} set ${n + 1}${what ? `: ${what}` : ''}`, discomfort: !!se.discomfort };
+    return { seId: se.id, exerciseName: name, number: n + 1, label: `${name} set ${n + 1}${what ? `: ${what}` : ''}`, detail: what, discomfort: !!se.discomfort };
   }
   return null;
 }
