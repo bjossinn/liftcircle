@@ -9,7 +9,7 @@
  * enabled & not paused (409) → idempotent replay of a stored exchange → daily limit (429) → context →
  * provider (≤ 3 rounds, tools) → proposal validation → atomic record.
  */
-import type { AiDb, ApiMessage, ContentBlock, FetchLike, ProposalJson, StoredMessage } from './types.ts';
+import type { AiAction, AiDb, ApiMessage, ContentBlock, FetchLike, ProposalJson, StoredMessage } from './types.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { buildContext } from './context.ts';
 // @ts-ignore see above
@@ -18,6 +18,8 @@ import { addUsage, AiUnavailableError, createMessage, estimateCostUsd, PROVIDER_
 import { MAX_TOOL_ROUNDS, runTool, TOOL_DEFS, type ToolState } from './tools.ts';
 // @ts-ignore see above
 import { splitWhy, tidyReply, wordCount } from './reply.ts';
+// @ts-ignore see above
+import { validateOpenLinks } from './appGuide.ts';
 
 export interface CoachDeps {
   db: AiDb;
@@ -151,7 +153,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   const ctx = await buildContext({ db: deps.db, uid, settings, text, mode, now });
   const model = prov.model;
   const maxTokens = intEnv(deps, 'AI_MAX_OUTPUT_TOKENS', 1200, 64, 8192);
-  const state: ToolState = { proposal: null, proposalAttempts: 0, weekPlan: null, weekAttempts: 0 };
+  const state: ToolState = { proposal: null, proposalAttempts: 0, weekPlan: null, weekAttempts: 0, mealPlan: null, mealPlanAttempts: 0, recipes: null };
   const conversation: ApiMessage[] = [...ctx.messages];
   let usage = { inputTokens: 0, outputTokens: 0 };
   let reply = '';
@@ -196,6 +198,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
       for (const tu of toolUses.slice(0, 4)) {
         const out = await runTool(tu.name, tu.input, {
           db: deps.db, facts: ctx.facts, catalog: ctx.catalog, state, week: ctx.week, trainingShared: ctx.trainingShared, messageId: id,
+          today: ctx.today, nutrition: ctx.nutrition,
         });
         results.push({ type: 'tool_result', tool_use_id: tu.id, content: out.content, ...(out.isError ? { is_error: true } : {}) });
       }
@@ -214,20 +217,31 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   const split = splitWhy(reply);
   const why = split.why ? tidyReply(split.why) || null : null;
   reply = tidyReply(split.answer);
+  // In-app links: keep ≤ 2 whose path is in the app guide (param routes only with ids we know); strip the rest.
+  const known = { ...ctx.known };
+  if (/\[\[\s*open\s*:\s*\/nutrition\/recipes\//i.test(reply)) known.recipe = new Set((await deps.db.getRecipes()).map((r) => r.id));
+  const links = validateOpenLinks(reply, known);
+  reply = links.text;
+  // One structured action per reply: a this-week schedule change, else a meal plan, else recipe cards.
   const weekPlan = state.weekPlan ?? null;
+  const action: AiAction | null = weekPlan ?? state.mealPlan ?? state.recipes ?? null;
   if (!reply) {
     reply = weekPlan
       ? 'Here’s a plan for this week — you can apply it below.'
-      : state.proposal
-        ? 'I drafted a plan suggestion for you — see the proposal below.'
-        : 'Sorry — I couldn’t put together a reply. Please try asking again.';
+      : state.mealPlan
+        ? 'Here’s a meal plan — check the totals below and add it if it looks good.'
+        : state.proposal
+          ? 'I drafted a plan suggestion for you — see the proposal below.'
+          : state.recipes
+            ? 'Here are a few recipes that fit.'
+            : 'Sorry — I couldn’t put together a reply. Please try asking again.';
   }
   reply = reply.slice(0, MAX_REPLY_CHARS);
   const cost = estimateCostUsd(usage, deps.env('AI_PRICE_INPUT_PER_MTOK'), deps.env('AI_PRICE_OUTPUT_PER_MTOK'));
   const p = state.proposal;
   const recorded = await deps.db.recordExchange(uid, {
     message: { id, content: text, mode },
-    reply: { content: reply, grounding: ctx.grounding, model: usedModel, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, why, action: weekPlan },
+    reply: { content: reply, grounding: ctx.grounding, model: usedModel, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, why, action },
     proposal: p
       ? {
           baseProgramId: p.baseProgramId,
@@ -252,11 +266,14 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
     words: wordCount(reply),
     why: Boolean(why),
     week_plan: Boolean(weekPlan),
+    action: action?.kind ?? null,
+    links: links.kept.length,
+    links_removed: links.removed,
   });
   // Before the 2026-10-30 migration the database doesn't store why/action; still return them for this reply.
   const storedReply = { ...(recorded.reply as StoredMessage) };
   if (!recorded.duplicate && !('why' in storedReply)) storedReply.why = why;
-  if (!recorded.duplicate && !('action' in storedReply)) storedReply.action = weekPlan;
+  if (!recorded.duplicate && !('action' in storedReply)) storedReply.action = action;
   return {
     status: 200,
     body: { reply: storedReply, proposal: (recorded.proposal ?? null) as ProposalJson | null, duplicate: Boolean(recorded.duplicate) },

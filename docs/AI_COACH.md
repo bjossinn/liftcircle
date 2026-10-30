@@ -39,7 +39,9 @@ The Anthropic variables below apply only when Anthropic is the provider.
    before `…04_coaching_lockdown.sql`) and `20261030000002_ai_coach_v2.sql` (adds `ai_messages.why` / `.action`;
    apply it **before** redeploying the function — until then replies still work, but "Why this?" and
    "Apply to this week" are not stored, so they disappear after a reload), and `20261031000001_ai_coach_style.sql`
-   (adds `ai_settings.coach_style`; until it is applied, saving a coach style fails and everyone gets Balanced):
+   (adds `ai_settings.coach_style`; until it is applied, saving a coach style fails and everyone gets Balanced), and
+   `20261102000001_ai_coach_actions.sql` (stores meal-plan and recipe-card actions; until it is applied those cards show
+   for the reply but are dropped after a reload — week plans keep working):
    `supabase db push`, or paste them into the SQL editor in order. Merging to main does this automatically through
    the Deploy Supabase workflow.
 3. **Set the secrets** (Dashboard → Edge Functions → Secrets, or CLI):
@@ -81,7 +83,7 @@ select day, count(distinct user_id) users, sum(requests) requests,
 ```
 
 The estimate is `input/1e6 × AI_PRICE_INPUT_PER_MTOK + output/1e6 × AI_PRICE_OUTPUT_PER_MTOK`; the
-Console's usage/billing pages are the authority. Each chat message costs 1–3 provider calls (tool loop) and
+Console's usage/billing pages are the authority. Each chat message costs 1–4 provider calls (tool loop) and
 roughly 3–8k input tokens (system rules + bounded context + up to 20 history turns).
 
 ## 2. Data flow
@@ -91,7 +93,7 @@ app ── RPC (user JWT) ──────────────► get/save
                                       list_ai_proposals, respond_ai_proposal       (RLS: own rows)
 app ── functions.invoke('ai-coach') ─► verify JWT → settings (enabled, not paused) → stored reply? (idempotent)
                                       → ai_check_and_count_usage (service) → build context from THIS user's rows
-                                      → OpenAI Chat Completions or Anthropic Messages API (≤ 3 rounds, tools) → validate proposal
+                                      → OpenAI Chat Completions or Anthropic Messages API (≤ 4 rounds, tools) → validate proposal/actions
                                       → ai_record_exchange (service, atomic) → {reply, proposal}
 ```
 
@@ -139,10 +141,10 @@ and does not claim to.
 - **Rules in the system prompt:** no diagnoses or clinical certainty, no invented workouts/achievements,
   facts vs suggestions, acknowledge missing data, use the computed numbers, programs only via the tool with
   catalog ids, coach-managed plans → `for_coach_review`.
-- **Tools (≤ 3 provider rounds, last round `tool_choice: none`):** `find_recipes` (allergen/diet/dislike-
+- **Tools (≤ 4 provider rounds, last round `tool_choice: none`; 0.6.0 raised it from 3 so find_recipes → propose_meal_plan → reply fits):** `find_recipes` (allergen/diet/dislike-
   filtered catalog search with macros computed from ingredient data), `exercise_alternatives` (equipment- and
   exclusion-filtered), `propose_program_change` (structured draft), `propose_week_adjustment` (this-week-only
-  schedule change validated against the real plan and this week's workouts; see §4).
+  schedule change validated against the real plan and this week's workouts; see §4), `propose_meal_plan` (0.6.0, §4a).
 - **Proposal validation (server):** mirrors `validateProposedProgram` in `src/domain/program/proposals.ts`
   plus equipment ⊆ the user's equipment (from the active plan's onboarding inputs, when known), excluded
   exercises, and base plan/version = the current active plan. Invalid → stored as `status 'invalid'` with
@@ -247,6 +249,63 @@ schedule-only — the same kind of change as skipping/moving a missed session on
 on a coach's plan; the card says "your coach's sessions stay as they are". Any content change still goes through
 `propose_program_change` with `target: 'for_coach_review'` (unchanged).
 
+## 4a. v4 in 0.6.0 — formatted, shorter answers, app guide, in-app actions
+
+**Formatting.** AI replies and "Why this?" render as a safe Markdown subset (`src/features/coaching/ai/markdown.tsx`, a
+small custom parser in the lazy AI chat chunk — no new dependency, no CSP change): paragraphs/line breaks, **bold**,
+*italic*, ~~strike~~, `inline code`, bulleted/numbered lists (one nesting level), blockquotes, headings shown as a bold
+line, and https:// links only (new tab, `rel="noopener noreferrer"`). Raw HTML, images (alt text), tables, code blocks
+(their content) and any non-https link (javascript:, data:, http:, relative) are plain text. It builds React elements
+and text nodes only (no innerHTML). User messages, human-coach chat, the welcome, chips and push/cheer texts stay plain;
+messages are stored unchanged.
+
+**Length.** `SYSTEM_RULES` replaces "~60–120 words" with: default 40–90 words, main answer first, ≤ 2–3 short
+bullets or 2 short paragraphs, texting-a-client voice (no preambles, no repeating the question, no caveat lists), detail
+after `[[why]]` or an offer ("Want the full breakdown?"); longer only on request or for a full program/meal plan (bold
+day/session names, short lists). Formatting the app supports is spelled out (bold for key numbers and names, short
+lists, italic rarely, no headings/tables/code blocks, emoji rarely). `tidyReply` leaves Markdown markers untouched.
+
+**App guide.** `supabase/functions/_shared/ai/appGuide.ts` (shared with the app) has one line per main screen (path,
+what you do there, how to reach it from the tab bar). It goes into the system prompt; "how do I…" questions are in
+scope and answered in 1–3 steps with a link. `tests/unit/aiAppGuide.test.ts` fails when a route in
+`src/app/routes.tsx` is neither in `APP_GUIDE` nor in `GUIDE_IGNORED` (admin/auth/internal screens and pages that
+need ids the coach can't know) — **update the guide whenever routes change**.
+
+**In-app links.** The model may write `[[open:/path|Button label]]`. Before storing, `validateOpenLinks` keeps at most 2
+whose path matches a guide route — `:id` routes only with ids the server knows (catalog exercises, catalog recipes,
+the user's recent completed workouts) — and strips the rest (no queries, fragments, external or protocol-relative
+paths). The app re-checks with `extractOpenLinks`, removes the markers from the text and renders small buttons under the
+message that navigate in-app. Logs record only counts (`links`, `links_removed`).
+
+**Missing data.** `dataStatus.ts` adds "Data status" lines to the prompt, computed by the server: for each category,
+*not shared* → "I can't see your … yet. You can share it under AI coach settings." + the AI coach settings link;
+*shared but not set up* → the fix and link (Nutrition features off → Settings with the toggle name; no protein target
+→ Set your targets; no program → onboarding; nothing logged → food log / Progress). Both → sharing first, then setup.
+Protein-only targets → still help (e.g. a protein-only meal plan) and say so. For a category that isn't shared only
+its setup **status** is used (on/off, set/not set), never values. Check-ins and human-coach messages are never visible.
+
+**Actions** (`ai_messages.action`, one per reply: week plan › meal plan › recipe cards). All are suggestions shown as
+cards; nothing changes until the user taps. Migration `20261102000001_ai_coach_actions.sql` widens the kinds stored by
+`ai_record_exchange` to `week_adjustment`, `meal_plan`, `recipe_suggestions` (same signature, security definer,
+`search_path = ''`, service-role only; unknown kinds dropped).
+- **Programs:** `propose_program_change` already creates a brand-new program (`base_program_id: null`); the prompt now
+  asks the model to offer it whenever it describes one, and the chat card says **Add to my program — review** (existing
+  preview/apply flow, versioning, stale checks; coach-managed plans keep `for_coach_review` / switch confirmation).
+- **Meal plans:** `propose_meal_plan` (`tools.ts validateMealPlan`) needs Nutrition shared, Nutrition features on and a
+  protein target (otherwise the missing-data message). It refuses unknown recipe/ingredient ids, anything with the
+  user's allergens, diet restrictions or disliked ingredients (recipes and protein sides), servings outside 0.5–3,
+  sides outside 10–300 g, dates outside this/next week, past days and duplicate days; long cook times are warnings.
+  The app (`src/domain/nutrition/aiActions.ts`, `ai/MealPlanCard.tsx`) balances each day with `balanceDay` and shows
+  `planStatus` totals vs the current targets — exactly what gets saved. **Add to my meal plan** (replace these days /
+  only empty days), **Customize first** (applies, then opens `/nutrition/plan?week=…`; there's no draft mode in the
+  meal plan screen). Local-first (`saveRecord`), idempotent (item ids `ai:<messageId>:…`), Undo restores the touched
+  days from a snapshot kept on the device (elsewhere it removes just the AI items). An expired week can't be applied.
+- **Recipes:** `find_recipes` results become recipe cards (`ai/RecipeCards.tsx`): Open, Save to favourites (toggle),
+  Add to plan… (day this week + meal; Undo toast), Log this meal (meal + servings → today's food log; Undo toast).
+  Macros per serving come from the server's ingredient math.
+- **Custom recipes: not implemented.** LiftCircle has no user-created recipes (only the catalog and custom *foods*), so
+  "Save to my recipes" from AI-built recipes was skipped.
+
 ## 5. Testing status
 
 | What | How | Status |
@@ -262,4 +321,10 @@ on a coach's plan; the card says "your coach's sessions stay as they are". Any c
 | Welcome v3 (time of day, first name, training/rest day, missed session per style, PR) and quick-reply chips (**MOCKED** aiApi) | `npx vitest run tests/unit/aiWelcome.test.ts tests/unit/aiUi.test.ts` | passing (10 + 19) |
 | Coach cheers: picker (situations × styles, discomfort, no repeats, warm-ups, ≤ 12 words, no food/weight words) and logger UI (popup on ✓, none on undo, rest-over names the next set once, background return, toggle off) | `npx vitest run tests/unit/coachCheers.test.ts tests/unit/coachCheersUi.test.ts`, `npx playwright test tests/e2e/coach-cheers.spec.ts` | passing (15 + 8 + 1 e2e) |
 | DB v3: coach_style default, save/refuse, own row only, no direct write | `node tests/rls/ai-run.mjs` (now also in CI) | see PR CI |
+| v4 server, **MOCKED** provider: length/format rules for every style, tidyReply keeps Markdown, missing-data rules (not shared, no targets, Settings toggle off, both, protein-only partial help, training/no program), app guide in prompt, links validated (known ids, invented paths stripped, max 2), propose_meal_plan (valid, unknown id, allergen, disliked, conflicting side, ranges, past/other week, duplicates, no sharing/targets), find_recipes → recipe cards, meal plan wins over recipe cards, new program via propose_program_change, excluded/equipment/stale refused, coach-managed → for_coach_review | `npx vitest run tests/unit/aiActions.test.ts` | passing (21) |
+| Markdown renderer (bold/italic/strike/code, lists + nesting, headings → bold, blockquote, https links, XSS inert, tables/code blocks plain, long URLs wrap) | `npx vitest run tests/unit/aiMarkdown.test.ts` | passing (9) |
+| App guide: route coverage vs routes.tsx, required screens, link validation and extraction | `npx vitest run tests/unit/aiAppGuide.test.ts` | passing (8) |
+| Meal plan actions on the device: parse, preview = balanceDay/planStatus, replace vs empty days, idempotent replay, Undo | `npx vitest run tests/unit/aiMealPlanApply.test.ts` | passing (8) |
+| Chat UI v4, **MOCKED** aiApi: Markdown in AI messages, user messages literal, link buttons navigate, meal plan card apply/Undo, recipe cards (open, favourite, log) | `npx vitest run tests/unit/aiUi.test.ts` | passing (23 incl. earlier) |
+| DB v4: meal_plan and recipe_suggestions actions stored, replayed and returned to their owner only; unknown kinds dropped; client can't write | `node tests/rls/ai-run.mjs` (CI) | see PR CI |
 | Live OpenAI / Anthropic API | `OPENAI_API_KEY=… node tests/live/ai-live.mjs` (or `ANTHROPIC_API_KEY=…`; prints the two-sessions reply, Why, week plan and soft checks, then the off-topic Python check — no code and a mention of training, which fails the run; without a key prints BLOCKED) | **not verified here** (no key; sandbox egress to api.openai.com refused). The script was run against a local OpenAI-format stub only. After deploying: run it with the real key, then send one chat message from the app and check `ai_usage`. |

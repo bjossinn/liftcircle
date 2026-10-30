@@ -373,6 +373,31 @@ async function main() {
     fails(await as('alice', `update public.ai_messages set action = '{"kind":"week_adjustment"}'::jsonb where id = $1`, [r.reply.id]), 'client cannot write action', /permission denied/);
   });
 
+  /* ------------------------------------------------------------ v4: meal plan + recipe card actions (20261102000001) */
+  await test('exchange-v4', 'stores meal_plan and recipe_suggestions actions; replay and history return them to the owner only; unknown kinds still dropped', async () => {
+    const MP = randomUUID();
+    const RS = randomUUID();
+    const mealPlan = { kind: 'meal_plan', id: MP, weekStart: '2026-10-26', weekEnd: '2026-11-01', targets: { proteinG: 150, kcal: null }, summary: 'Friday lunch', warnings: [],
+      days: [{ date: '2026-10-30', items: [{ slot: 'lunch', recipeId: 'chicken-rice-bowl', name: 'Chicken rice bowl', servings: 1.5 }] }] };
+    const recipes = { kind: 'recipe_suggestions', id: RS, recipes: [{ id: 'greek-yogurt-bowl', name: 'Greek yogurt bowl', meal: 'breakfast', totalMinutes: 5, perServing: { kcal: 350, protein_g: 30, carbs_g: 40, fat_g: 8 } }] };
+    const rec = async (id, action) => ok(await rpc('service', 'ai_record_exchange', withUser(U.alice, { ...exchange(id, `q ${id}`), p_reply: J({ content: 'Here you go.', action, grounding: [], model: 'm', inputTokens: 1, outputTokens: 1 }) })), `record ${action.kind}`);
+    const r1 = await rec(MP, mealPlan);
+    const r2 = await rec(RS, recipes);
+    eq([r1.reply.action?.kind, r1.reply.action?.days?.[0]?.items?.[0]?.servings], ['meal_plan', 1.5], 'meal plan returned');
+    eq([r2.reply.action?.kind, r2.reply.action?.recipes?.[0]?.id], ['recipe_suggestions', 'greek-yogurt-bowl'], 'recipes returned');
+    const again = ok(await rpc('service', 'ai_record_exchange', withUser(U.alice, { ...exchange(MP, `q ${MP}`), p_reply: J({ content: 'changed', action: recipes }) })), 'replay');
+    eq([again.duplicate, again.reply.action?.kind], [true, 'meal_plan'], 'idempotent replay keeps the stored action');
+    const mine = ok(await rpc('alice', 'list_ai_messages', { p_limit: 200 }), 'alice history');
+    eq(['meal_plan', 'recipe_suggestions'].map((k) => mine.some((m) => m.action?.kind === k)), [true, true], 'owner sees both kinds');
+    const bobs = ok(await rpc('bob', 'list_ai_messages', { p_limit: 200 }), 'bob history');
+    assert(!JSON.stringify(bobs).includes(MP) && !bobs.some((m) => m.action?.kind === 'meal_plan' || m.action?.kind === 'recipe_suggestions'), 'bob sees none of them');
+    assert((await visible('bob', `select id from public.ai_messages where reply_to = any($1::uuid[])`, [[MP, RS]])) <= 0, 'bob cannot read the rows directly');
+    assert((await visible('anon', `select id from public.ai_messages where reply_to = any($1::uuid[])`, [[MP, RS]])) <= 0, 'anon cannot read the rows');
+    const r3 = await rec(randomUUID(), { kind: 'custom_recipe', name: 'x' });
+    eq(r3.reply.action, null, 'unknown kinds are not stored');
+    fails(await as('alice', `update public.ai_messages set action = '{"kind":"meal_plan"}'::jsonb where id = $1`, [r1.reply.id]), 'client cannot write action', /permission denied/);
+  });
+
   /* ------------------------------------------------------------ export (portability) */
   await test('export', 'export_my_data includes the caller\'s AI settings, messages, usage and AI proposals — and nobody else\'s', async () => {
     const e = ok(await rpc('alice', 'export_my_data'), 'alice export');

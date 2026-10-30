@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { CheckCircle2, ChevronLeft, ChevronRight, Minus, Pencil, Plus, RefreshCw, Scale, Settings2, ShoppingCart, Shuffle, Trash2 } from 'lucide-react';
 import {
   Button, Card, ChipGroup, ConfirmDialog, EmptyState, IconButton, Notice, NumberInput, Page, SectionTitle, Segmented, Select, Sheet, Spinner,
@@ -28,7 +28,12 @@ export default function MealPlanPage() {
   const toast = useToast();
   const today = todayISO(account.settings.timeZone);
   const thisWeek = startOfWeek(today, account.settings.weekStart);
-  const [weekStart, setWeekStart] = useState(thisWeek);
+  // ?week=YYYY-MM-DD (e.g. from the AI coach's "Customize first") opens that week.
+  const [params] = useSearchParams();
+  const [weekStart, setWeekStart] = useState(() => {
+    const w = params.get('week');
+    return w && /^d{4}-d{2}-d{2}$/.test(w) ? startOfWeek(w, account.settings.weekStart) : thisWeek;
+  });
   const plan = useWeekPlan(weekStart);
   const [busy, setBusy] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);

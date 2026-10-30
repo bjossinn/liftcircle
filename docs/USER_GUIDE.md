@@ -137,6 +137,24 @@ logging and manual targets only, no automatic prescriptions.
   one-off change, such as "I can only train twice this week": it picks which of your planned sessions to do, counts
   what you've already done, and offers **Apply to this week**. That only moves or skips sessions for this week (Undo is
   available); your normal schedule comes back next week.
+  **Shorter, formatted answers (0.6.0):** replies read like a text from your trainer — the main answer first, a few short
+  bullets at most, with **bold** for key numbers and exercise or recipe names. Ask for detail ("Want the full
+  breakdown?") when you want more. Links in AI messages open in a new tab; your own messages are shown exactly as typed.
+  **Where do I…?** Ask how to do something in the app ("where do I turn on push notifications?") and the coach answers
+  in a few steps with a button that opens the right screen. When it can't see something, it tells you why and how to
+  fix it — e.g. "I can't see your nutrition yet" with a **Change what the coach can see** button (AI coach settings),
+  or **Set your targets** when no protein target is set — and still helps with what it can see.
+  **It can put things in the app — only when you tap:**
+  - **Programs:** when it describes a program it offers to add it; you get **Add to my program — review**, preview
+    every session, then add it as a new plan or a new version of your current one. If your human coach manages your
+    plan, it stays a suggestion for them.
+  - **Meal plans** (Nutrition shared with the AI and a protein target set): a card shows each day's meals and its
+    totals against your targets. **Add to my meal plan** adds it to that week (if those days already have meals, choose
+    **Replace these days** or **Only empty days**); **Customize first** adds it and opens the meal plan screen so you
+    can swap or adjust. **Undo** puts the days back as they were.
+  - **Recipes:** recipe ideas come as cards with **Open**, **Save to favourites**, **Add to plan…** (pick a day this
+    week and a meal) and **Log this meal** (adds it to today's food log; Undo in the message that pops up).
+  Everything it suggests respects your allergies, diet, disliked foods, equipment and excluded exercises.
 - **Without an account** you can read what human and AI coaching involve and browse approved coaches' public listings;
   requesting, messaging and the AI coach need an account. Unsent messages to your coach are kept as a draft on your
   device.

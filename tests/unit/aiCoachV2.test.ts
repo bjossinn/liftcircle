@@ -17,7 +17,7 @@ import { splitWhy, tidyReply, wordCount } from '../../supabase/functions/_shared
 import { runTool, TOOL_DEFS, type ToolState } from '../../supabase/functions/_shared/ai/tools';
 import { computeWeekState, weekBounds } from '../../supabase/functions/_shared/ai/week';
 import type {
-  AccountStatePayload, ActiveProgramRow, AiDb, AiSettingsRow, FetchLike, RecordExchangeInput, RefExercise, SessionPayload, StoredExchange, StoredMessage,
+  AccountStatePayload, ActiveProgramRow, AiDb, AiSettingsRow, FetchLike, RecordExchangeInput, RefExercise, SessionPayload, StoredExchange, StoredMessage, WeekAdjustmentAction,
 } from '../../supabase/functions/_shared/ai/types';
 
 /* ================================================================== fixtures */
@@ -178,12 +178,13 @@ const ctxFor = (d: Data, text = 'I can only train twice this week') => buildCont
 
 /* ================================================================== tests */
 describe('MOCKED ai-coach v2: response style instructions', () => {
-  it('system rules: warm trainer personality, ~60–120 words with warmth first, at most one closing check-in question, and temporary requests stay temporary', () => {
+  it('system rules: warm trainer personality, short texting-style answers (40–90 words), at most one closing check-in question, and temporary requests stay temporary', () => {
     expect(SYSTEM_RULES).toMatch(/warm, conversational personal trainer/);
     expect(SYSTEM_RULES).toMatch(/first name when they have told you it/);
     expect(SYSTEM_RULES).toMatch(/React to what they actually said/);
     expect(SYSTEM_RULES).toMatch(/Celebrate completed workouts, streaks and new records by name/);
-    expect(SYSTEM_RULES).toMatch(/about 60–120 words — warmth first .*then the concrete recommendation/);
+    expect(SYSTEM_RULES).toMatch(/Default 40–90 words. The main answer comes first/);
+    expect(SYSTEM_RULES).not.toMatch(/60–120 words/);
     expect(SYSTEM_RULES).toMatch(/Don't repeat setup\/onboarding questions/);
     expect(SYSTEM_RULES).toMatch(/don't hand the decision back/);
     expect(SYSTEM_RULES).toMatch(/Ending with one friendly check-in question is fine .* at most one question per message/);
@@ -360,7 +361,7 @@ describe('MOCKED ai-coach v2: "I can only train twice this week" (saved 3-sessio
       sessions: [{ templateId: 'fb-b', name: 'Full body B', date: '2026-10-29', plannedDate: '2026-10-28' }],
       skipped: [{ templateId: 'fb-c', name: 'Full body C', plannedDate: '2026-10-30' }],
     });
-    expect(m.recorded[0].reply.action?.sessions).toHaveLength(1);
+    expect((m.recorded[0].reply.action as WeekAdjustmentAction | undefined)?.sessions).toHaveLength(1);
   });
 
   it('picks from the REAL plan: a different saved plan yields different sessions and dates', async () => {
@@ -368,7 +369,7 @@ describe('MOCKED ai-coach v2: "I can only train twice this week" (saved 3-sessio
     const m = makeDb(d2);
     const { fetch } = provider([plannerFromPrompt(2), textReply('Do Lower today; that makes two with Tuesday’s Upper. Back to three sessions next week.')]);
     const res = await handleAiCoach(deps(m.db, fetch), U, send('I can only train twice this week'));
-    const action = (res.body.reply as StoredMessage).action!;
+    const action = (res.body.reply as StoredMessage).action as WeekAdjustmentAction;
     expect(action.baseProgramId).toBe(P2);
     // The stand-in planner takes the first free date (today, Wed) for the plan's next remaining session (Thu's Lower).
     expect(action.sessions).toEqual([{ templateId: 'ul-lo', name: 'Lower', date: '2026-10-28', plannedDate: '2026-10-29' }]);
@@ -376,7 +377,7 @@ describe('MOCKED ai-coach v2: "I can only train twice this week" (saved 3-sessio
 
     const m1 = makeDb(data());
     const r1 = await handleAiCoach(deps(m1.db, provider([plannerFromPrompt(2), textReply('ok')]).fetch), U, send('I can only train twice this week'));
-    expect((r1.body.reply as StoredMessage).action!.sessions.map((x) => x.templateId)).toEqual(['fb-b']);
+    expect(((r1.body.reply as StoredMessage).action as WeekAdjustmentAction).sessions.map((x) => x.templateId)).toEqual(['fb-b']);
   });
 
   it('no completed session yet: two actual sessions in order; already-trained days and invented sessions are refused', async () => {
@@ -419,7 +420,7 @@ describe('MOCKED ai-coach v2: "I can only train twice this week" (saved 3-sessio
     const res = await handleAiCoach(deps(m.db, fetch), U, send('I can only train twice this week'));
     expect(requests[0].system).toMatch(/managed by a human coach, still give a direct recommendation/);
     expect(requests[0].system).toContain('managed by: coach');
-    const action = (res.body.reply as StoredMessage).action!;
+    const action = (res.body.reply as StoredMessage).action as WeekAdjustmentAction;
     expect(action.managedBy).toBe('coach');
     expect(action.sessions.map((s) => s.templateId)).toEqual(['fb-b']);
     // A content change would still be forced to coach review (unchanged rule).

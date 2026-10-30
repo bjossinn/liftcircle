@@ -614,3 +614,123 @@ describe('AI chat v2 (MOCKED aiApi): greeting, Why this?, Apply to this week', (
     expect(screen.queryByRole('button', { name: 'Apply to this week' })).toBeNull();
   });
 });
+
+describe('AI chat v4 (MOCKED aiApi): Markdown, in-app links, meal plan and recipe cards', () => {
+  it('AI messages render the Markdown subset; user messages stay literal text', async () => {
+    api.history.mockResolvedValue([
+      { id: 'u1', role: 'user', content: '**not bold** <b>raw</b> [x](javascript:alert(1))', createdAt: '2026-10-27T09:00:00Z' },
+      { id: 'a1', role: 'assistant', content: 'Do **3 × 8** today.\n\n- Squat\n- Bench\n\n<img src=x onerror="alert(1)">', createdAt: '2026-10-27T09:00:05Z' },
+    ]);
+    renderAt('/coaching/ai', createElement(AiChatPage));
+    const body = await waitFor(() => {
+      const el = document.querySelector('[data-testid="ai-message-body"]');
+      if (!el) throw new Error('no AI message yet');
+      return el as HTMLElement;
+    });
+    expect(body.querySelector('strong')?.textContent).toBe('3 × 8');
+    expect([...body.querySelectorAll('li')].map((l) => l.textContent)).toEqual(['Squat', 'Bench']);
+    expect(body.querySelector('img')).toBeNull();
+    expect(body.textContent).toContain('<img src=x onerror="alert(1)">');
+    const user = screen.getByText('**not bold** <b>raw</b> [x](javascript:alert(1))');
+    expect(user.querySelector('strong, b, a')).toBeNull();
+  });
+
+  it('valid [[open:…]] markers become buttons that navigate in-app; invalid ones are dropped and never shown', async () => {
+    api.history.mockResolvedValue([
+      { id: 'u1', role: 'user', content: 'Where do I set my protein?', createdAt: '2026-10-27T09:00:00Z' },
+      { id: 'a1', role: 'assistant', content: 'I can’t see your nutrition yet.\n[[open:/nutrition/targets|Set your targets]]\n[[open:/evil|Evil]]', createdAt: '2026-10-27T09:00:05Z' },
+    ]);
+    render(
+      createElement(
+        ToastProvider,
+        null,
+        createElement(
+          MemoryRouter,
+          { initialEntries: ['/coaching/ai'] },
+          createElement(
+            Routes,
+            null,
+            createElement(Route, { path: '/coaching/ai', element: createElement(AiChatPage) }),
+            createElement(Route, { path: '/nutrition/targets', element: createElement('h1', null, 'Targets screen') }),
+          ),
+        ),
+      ),
+    );
+    const btn = await screen.findByRole('button', { name: 'Set your targets' });
+    expect(screen.queryByRole('button', { name: 'Evil' })).toBeNull();
+    expect(document.body.textContent).not.toContain('[[open:');
+    fireEvent.click(btn);
+    expect(await screen.findByText('Targets screen')).toBeTruthy();
+  });
+
+  it('meal plan card: totals match planStatus, "Add to my meal plan" saves locally, replay is a no-op, Undo restores', async () => {
+    const db = h.db as LiftDb;
+    const acc = defaultAccountState();
+    acc.settings.nutritionEnabled = true;
+    acc.nutrition = { ...acc.nutrition, mode: 'protein_only', proteinG: 140 };
+    h.account = acc;
+    const { todayISO, startOfWeek, addDays } = await import('@/lib/dates');
+    const { RECIPES } = await import('@/data/recipes');
+    const { toMealPlanSuggestion, previewMealPlan, applyMealPlanSuggestion } = await import('@/domain/nutrition/aiActions');
+    const { prefsFromAccount } = await import('@/features/nutrition/shared');
+    const today = todayISO(acc.settings.timeZone);
+    const ws = startOfWeek(today, acc.settings.weekStart);
+    const lunch = RECIPES.find((r) => r.meal === 'lunch')!;
+    const plan = toMealPlanSuggestion({
+      kind: 'meal_plan', id: 'u-mp', weekStart: ws, weekEnd: addDays(ws, 6), targets: { proteinG: 140, kcal: null }, summary: 'Lunch today', warnings: [],
+      days: [{ date: today, items: [{ slot: 'lunch', recipeId: lunch.id, name: lunch.name, servings: 1 }] }],
+    })!;
+    api.history.mockResolvedValue([
+      { id: 'u-mp', role: 'user', content: 'Plan lunch', createdAt: '2026-10-27T09:00:00Z' },
+      { id: 'a-mp', role: 'assistant', content: 'Here you go.', createdAt: '2026-10-27T09:00:05Z', mealPlan: plan },
+    ]);
+    renderAt('/coaching/ai', createElement(AiChatPage));
+    const card = (await screen.findByRole('button', { name: 'Add to my meal plan' })).closest('section') as HTMLElement;
+    const expected = previewMealPlan(plan, prefsFromAccount(acc)).status.days[0];
+    const totals = card.querySelector('[data-testid="ai-mealplan-totals"]')!;
+    expect(totals.textContent).toContain(`${Math.round(expected.totals.protein)} g protein / 140 g`);
+    fireEvent.click(screen.getByRole('button', { name: 'Add to my meal plan' }));
+    const saved = await waitFor(async () => {
+      const rows = await db.mealPlans.where('weekStart').equals(ws).toArray();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].days.find((d) => d.date === today)!.items.map((i) => i.id)).toEqual([`ai:u-mp:${today}:0`]);
+      return rows[0];
+    });
+    expect(await screen.findByRole('button', { name: 'Undo' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Add to my meal plan' })).toBeNull();
+    expect(applyMealPlanSuggestion(saved, plan, 'replace', prefsFromAccount(acc))!.alreadyApplied).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(async () => {
+      const rows = await db.mealPlans.where('weekStart').equals(ws).toArray();
+      expect(rows[0].days.find((d) => d.date === today)!.items).toEqual([]);
+    });
+    expect(await screen.findByRole('button', { name: 'Add to my meal plan' })).toBeTruthy();
+  });
+
+  it('recipe cards: Open links to the recipe, Save to favourites updates the account, Log this meal adds a food log entry', async () => {
+    const db = h.db as LiftDb;
+    const { RECIPES } = await import('@/data/recipes');
+    const { toRecipeSuggestions } = await import('@/domain/nutrition/aiActions');
+    const r = RECIPES[0];
+    api.history.mockResolvedValue([
+      { id: 'u-r', role: 'user', content: 'Ideas?', createdAt: '2026-10-27T09:00:00Z' },
+      {
+        id: 'a-r', role: 'assistant', content: 'Try this.', createdAt: '2026-10-27T09:00:05Z',
+        recipes: toRecipeSuggestions({ kind: 'recipe_suggestions', id: 'u-r', recipes: [{ id: r.id, totalMinutes: 15, perServing: { kcal: 500, protein_g: 40, carbs_g: 50, fat_g: 12 } }] }),
+      },
+    ]);
+    renderAt('/coaching/ai', createElement(AiChatPage));
+    const card = (await screen.findByRole('article', { name: r.name })) as HTMLElement;
+    expect(within(card).getByRole('link', { name: 'Open' }).getAttribute('href')).toBe(`/nutrition/recipes/${r.id}`);
+    expect(within(card).getByText(/40 g protein/)).toBeTruthy();
+    fireEvent.click(within(card).getByRole('button', { name: 'Save to favourites' }));
+    await waitFor(() => expect(h.updateAccount).toHaveBeenCalledTimes(1));
+    fireEvent.click(within(card).getByRole('button', { name: 'Log this meal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Log for today' }));
+    await waitFor(async () => {
+      const logs = await db.foodLogs.toArray();
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatchObject({ name: r.name, source: { kind: 'recipe', refId: r.id }, servings: 1 });
+    });
+  });
+});
