@@ -707,7 +707,7 @@ describe('AI chat v4 (MOCKED aiApi): Markdown, in-app links, meal plan and recip
     expect(await screen.findByRole('button', { name: 'Add to my meal plan' })).toBeTruthy();
   });
 
-  it('recipe cards: Open links to the recipe, Save to favourites updates the account, Log this meal adds a food log entry', async () => {
+  it('recipe cards: name, time and protein; Open links to the recipe, Save updates favourites, Add to plan… adds it to this week', async () => {
     const db = h.db as LiftDb;
     const { RECIPES } = await import('@/data/recipes');
     const { toRecipeSuggestions } = await import('@/domain/nutrition/aiActions');
@@ -723,14 +723,87 @@ describe('AI chat v4 (MOCKED aiApi): Markdown, in-app links, meal plan and recip
     const card = (await screen.findByRole('article', { name: r.name })) as HTMLElement;
     expect(within(card).getByRole('link', { name: 'Open' }).getAttribute('href')).toBe(`/nutrition/recipes/${r.id}`);
     expect(within(card).getByText(/40 g protein/)).toBeTruthy();
-    fireEvent.click(within(card).getByRole('button', { name: 'Save to favourites' }));
+    expect(card.textContent).toContain('15 min');
+    expect(card.textContent).not.toMatch(/kcal|carbs/);
+    expect(within(card).queryByRole('button', { name: 'Log this meal' })).toBeNull();
+    fireEvent.click(within(card).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(h.updateAccount).toHaveBeenCalledTimes(1));
-    fireEvent.click(within(card).getByRole('button', { name: 'Log this meal' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Log for today' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Add to plan…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to plan' }));
     await waitFor(async () => {
-      const logs = await db.foodLogs.toArray();
-      expect(logs).toHaveLength(1);
-      expect(logs[0]).toMatchObject({ name: r.name, source: { kind: 'recipe', refId: r.id }, servings: 1 });
+      const plans = await db.mealPlans.toArray();
+      expect(plans).toHaveLength(1);
+      expect(plans[0].days.flatMap((d) => d.items).map((i) => i.recipeId)).toEqual([r.id]);
     });
+  });
+
+  it('a recipe link in the text is a button that opens the recipe page; no dangling lead-in line', async () => {
+    const { RECIPES } = await import('@/data/recipes');
+    const r = RECIPES[1];
+    api.history.mockResolvedValue([
+      { id: 'u1', role: 'user', content: 'Breakfast idea?', createdAt: '2026-10-27T09:00:00Z' },
+      { id: 'a1', role: 'assistant', content: `**${r.name}** — 30 g protein, 10 min.\n\nOpen it here:\n[[open:/nutrition/recipes/${r.id}|Open recipe]]`, createdAt: '2026-10-27T09:00:05Z' },
+    ]);
+    render(
+      createElement(
+        ToastProvider,
+        null,
+        createElement(
+          MemoryRouter,
+          { initialEntries: ['/coaching/ai'] },
+          createElement(
+            Routes,
+            null,
+            createElement(Route, { path: '/coaching/ai', element: createElement(AiChatPage) }),
+            createElement(Route, { path: '/nutrition/recipes/:id', element: createElement('h1', null, 'Recipe page') }),
+          ),
+        ),
+      ),
+    );
+    const btn = await screen.findByRole('button', { name: 'Open recipe' });
+    const body = document.querySelector('[data-testid="ai-message-body"]')!;
+    expect(body.textContent).not.toMatch(/Open it here/);
+    fireEvent.click(btn);
+    expect(await screen.findByText('Recipe page')).toBeTruthy();
+  });
+
+  it('ISO dates in AI text are shown as human dates; "Why this?" only appears with text; old "1 recent workouts" chips read singular', async () => {
+    const { todayISO, addDays } = await import('@/lib/dates');
+    const today = todayISO((h.account as { settings: { timeZone: string } }).settings.timeZone);
+    api.history.mockResolvedValue([
+      { id: 'u1', role: 'user', content: 'When?', createdAt: '2026-10-27T09:00:00Z' },
+      { id: 'a1', role: 'assistant', content: `Train ${today} and rest ${addDays(today, 1)}. Long one on ${addDays(today, 20)}.`, why: '   ', grounding: ['1 recent workouts'], createdAt: '2026-10-27T09:00:05Z' },
+    ]);
+    renderAt('/coaching/ai', createElement(AiChatPage));
+    const body = await waitFor(() => {
+      const el = document.querySelector('[data-testid="ai-message-body"]');
+      if (!el) throw new Error('no AI message yet');
+      return el as HTMLElement;
+    });
+    expect(body.textContent).toMatch(/^Train today and rest tomorrow\. Long one on (Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{1,2} [A-Z][a-z]{2}\.$/);
+    expect(body.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(screen.queryByText('Why this?')).toBeNull();
+    expect(screen.getByText('1 recent workout')).toBeTruthy();
+  });
+
+  it('week plan card warnings show human dates', async () => {
+    const db = h.db as LiftDb;
+    const p = await saveRecord('programs', threeDayPlan(), db);
+    const { toWeekPlan } = await vi.importActual<typeof import('@/backend/ai')>('@/backend/ai');
+    api.history.mockResolvedValue([
+      { id: 'u-week', role: 'user', content: 'twice this week', createdAt: '2026-10-28T09:00:00Z' },
+      {
+        id: 'a-week', role: 'assistant', content: 'Here’s this week.', createdAt: '2026-10-28T09:00:05Z',
+        weekPlan: toWeekPlan({
+          kind: 'week_adjustment', id: 'u-week', baseProgramId: p.id, baseVersion: p.currentVersion, managedBy: 'self', weekStart: '2026-10-26', weekEnd: '2026-11-01', targetSessions: 2,
+          completed: [], sessions: [{ templateId: 'B', name: 'Full body B', date: '2026-10-30', plannedDate: '2026-10-28' }], skipped: [],
+          adjustments: ['Add rows on 2026-10-30'], warnings: ['Sessions on back-to-back days (2026-10-30 and 2026-10-31) — older wording'], summary: '',
+        }),
+      },
+    ]);
+    renderAt('/coaching/ai', createElement(AiChatPage));
+    const card = (await screen.findByText('This week only')).closest('section') as HTMLElement;
+    expect(card.textContent).toContain('Fri 30 Oct');
+    expect(card.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 });

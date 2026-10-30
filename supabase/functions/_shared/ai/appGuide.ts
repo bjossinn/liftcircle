@@ -5,7 +5,8 @@
  *    put into the system prompt so "where do I turn that on?" gets a correct answer with a link. Keep it in sync with
  *    src/app/routes.tsx — tests/unit/aiAppGuide.test.ts fails when a route is neither here nor in GUIDE_IGNORED.
  *  - In-app links: the model may write [[open:/path|Button label]]. validateOpenLinks keeps at most MAX_OPEN_LINKS
- *    whose path is a guide route — param routes only with ids the server actually knows — and strips the rest.
+ *    screen links and MAX_RECIPE_LINKS recipe links whose path is a guide route — param routes only with ids the server
+ *    actually knows (an unknown recipe id is stripped) — strips the rest and cleans the lines they leave dangling.
  *    The app renders the kept links as small buttons under the message (extractOpenLinks) and navigates in-app.
  */
 
@@ -75,6 +76,8 @@ export const GUIDE_IGNORED: string[] = [
 ];
 
 export const MAX_OPEN_LINKS = 2;
+/** Recipe links ([[open:/nutrition/recipes/<id>|Open recipe]]) are counted separately: up to 3 recipes per message. */
+export const MAX_RECIPE_LINKS = 3;
 
 /** Compact guide text for the system prompt. */
 export function appGuideText(): string {
@@ -118,37 +121,76 @@ function decodeURIComponentSafe(s: string): string | null {
 }
 
 const cleanLabel = (l: string | undefined) => (l ?? '').replace(/[[\]|<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40) || 'Open';
+const isRecipePath = (p: string) => p.startsWith('/nutrition/recipes/');
 
 /**
- * Server side: keep at most MAX_OPEN_LINKS valid links (rewritten in a canonical form), remove invalid or extra ones,
- * and tidy the whitespace a removed marker leaves behind.
+ * Removes [[open:…]] markers (\u0001 placeholders) and the lines they leave dangling: a line that held only a link,
+ * a lead-in line ending with ":" right before it ("Open the meal plan:"), inline lead-ins ending with ":", and
+ * trailing lines that end with ":" with nothing after them.
+ */
+function cleanAfterMarkers(withPlaceholders: string): string {
+  const out: string[] = [];
+  for (const line of withPlaceholders.split('\n')) {
+    if (!line.includes('\u0001')) {
+      out.push(line);
+      continue;
+    }
+    const rest = line.replace(/\u0001/g, '').replace(/[ \t]{2,}/g, ' ').trim();
+    // an inline lead-in ("… Open the meal plan: [[open:…]]") loses its last clause; earlier sentences stay
+    const kept = /:\s*$/.test(rest) ? rest.replace(/(^|[.!?]\s+)[^.!?]*:\s*$/, '$1').trim() : rest;
+    if (kept && kept !== rest) {
+      out.push(kept);
+      continue;
+    }
+    if (!rest || /:\s*$/.test(rest)) {
+      // drop it, and a lead-in line just above that ends with ":"
+      while (out.length && !out[out.length - 1].trim()) out.pop();
+      if (out.length && /:\s*$/.test(out[out.length - 1]) && !/^\s*([-*•]|\d+[.)])\s/.test(out[out.length - 1])) out.pop();
+      out.push('');
+      continue;
+    }
+    out.push(line.replace(/\s*\u0001\s*/g, ' ').replace(/[ \t]{2,}/g, ' ').trimEnd());
+  }
+  while (out.length && (!out[out.length - 1].trim() || /:\s*$/.test(out[out.length - 1]))) out.pop();
+  return out.join('\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * Server side: keep at most MAX_OPEN_LINKS valid screen links and MAX_RECIPE_LINKS valid recipe links (canonical form),
+ * remove invalid or extra ones, clean the lines they leave behind, and put the kept links at the end of the message.
  */
 export function validateOpenLinks(text: string, known: KnownIds): { text: string; kept: { path: string; label: string }[]; removed: number } {
   const kept: { path: string; label: string }[] = [];
   let removed = 0;
-  const out = String(text ?? '').replace(OPEN_RE, (_m, rawPath: string, rawLabel?: string) => {
+  let any = false;
+  const marked = String(text ?? '').replace(OPEN_RE, (_m, rawPath: string, rawLabel?: string) => {
+    any = true;
     const path = rawPath.trim();
-    if (kept.length < MAX_OPEN_LINKS && matchGuidePath(path, known) && !kept.some((k) => k.path === path)) {
-      const label = cleanLabel(rawLabel);
-      kept.push({ path, label });
-      return `[[open:${path}|${label}]]`;
-    }
-    removed++;
-    return '';
+    const recipe = isRecipePath(path);
+    const room = kept.filter((k) => isRecipePath(k.path) === recipe).length < (recipe ? MAX_RECIPE_LINKS : MAX_OPEN_LINKS);
+    if (room && matchGuidePath(path, known) && !kept.some((k) => k.path === path)) kept.push({ path, label: cleanLabel(rawLabel) });
+    else removed++;
+    return '\u0001';
   });
-  return { text: removed ? out.replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim() : out, kept, removed };
+  if (!any) return { text: marked, kept, removed };
+  const body = cleanAfterMarkers(marked);
+  return { text: [body, ...kept.map((k) => `[[open:${k.path}|${k.label}]]`)].filter(Boolean).join('\n'), kept, removed };
 }
 
 /**
  * App side: split a stored reply into the text to render and the link buttons (re-checked against the guide's
- * patterns; at most MAX_OPEN_LINKS). Markers are always removed from the displayed text.
+ * patterns; screen and recipe limits as above). Markers and the lines they leave dangling are removed from the text.
  */
 export function extractOpenLinks(text: string): { text: string; links: { path: string; label: string }[] } {
   const links: { path: string; label: string }[] = [];
-  const out = String(text ?? '').replace(OPEN_RE, (_m, rawPath: string, rawLabel?: string) => {
+  let any = false;
+  const marked = String(text ?? '').replace(OPEN_RE, (_m, rawPath: string, rawLabel?: string) => {
+    any = true;
     const path = rawPath.trim();
-    if (links.length < MAX_OPEN_LINKS && matchGuidePath(path) && !links.some((l) => l.path === path)) links.push({ path, label: cleanLabel(rawLabel) });
-    return '';
+    const recipe = isRecipePath(path);
+    const room = links.filter((k) => isRecipePath(k.path) === recipe).length < (recipe ? MAX_RECIPE_LINKS : MAX_OPEN_LINKS);
+    if (room && matchGuidePath(path) && !links.some((l) => l.path === path)) links.push({ path, label: cleanLabel(rawLabel) });
+    return '\u0001';
   });
-  return { text: out.replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim(), links };
+  return { text: any ? cleanAfterMarkers(marked) : marked.trim(), links };
 }

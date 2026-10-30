@@ -3,7 +3,7 @@
 A mobile-first fitness PWA with three parts in one app:
 
 1. **Tracker** — fast weightlifting logger (one-tap sets, rest timer, supersets, warm-ups, history, records) and manual logging for runs, walks, rides, swims, classes, yoga and more.
-2. **Plan** — an onboarding wizard that generates an editable, explainable training program, double-progression suggestions, and optional protein / calorie targets with 24 recipes, meal plans and a shopping list.
+2. **Plan** — an onboarding wizard that generates an editable, explainable training program, double-progression suggestions, and optional protein / calorie targets with 84 recipes, meal plans and a shopping list.
 3. **Social** — mutual friends, a chronological feed of shared workouts and photos, likes, comments, notifications, reporting and blocking.
 4. **Coaching** — a directory of approved human coaches (with admin review), consent-based coaching with messaging and program proposals, and an optional AI coach backed by the OpenAI or Anthropic API on the server.
 
@@ -58,7 +58,7 @@ npm run test:live   # optional: live two-account test against YOUR Supabase proj
 ```
 src/
   domain/      pure logic: types, units, program generator, schedule, progression, stats, nutrition, session ops
-  data/        bundled read-only catalogs: 105 exercises, 74 ingredients, 24 recipes
+  data/        bundled read-only catalogs: 105 exercises, 102 ingredients, 84 recipes
   db/          Dexie (IndexedDB) – one database per account ("guest", "demo", or the user id)
   sync/        outbox sync engine (server versions, compare-and-swap, conflicts, tombstones)
   backend/     Supabase client, SocialApi + SyncRemote implementations, API contract

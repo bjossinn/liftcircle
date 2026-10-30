@@ -20,6 +20,14 @@ import { MAX_TOOL_ROUNDS, runTool, TOOL_DEFS, type ToolState } from './tools.ts'
 import { splitWhy, tidyReply, wordCount } from './reply.ts';
 // @ts-ignore see above
 import { validateOpenLinks } from './appGuide.ts';
+// @ts-ignore see above
+import { humanizeDates } from './humanDates.ts';
+// @ts-ignore see above
+import { asksForMealPlan, buildMealPlanAction } from './meals.ts';
+// @ts-ignore see above
+import { mealPlanBlocker } from './dataStatus.ts';
+// @ts-ignore see above
+import { looksLikeFullRecipe, mealPlanConflict, proposalConflict, summarizeMealPlan, summarizeProposal, summarizeRecipes, summarizeWeekPlan, weekPlanConflict } from './postcheck.ts';
 
 export interface CoachDeps {
   db: AiDb;
@@ -198,7 +206,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
       for (const tu of toolUses.slice(0, 4)) {
         const out = await runTool(tu.name, tu.input, {
           db: deps.db, facts: ctx.facts, catalog: ctx.catalog, state, week: ctx.week, trainingShared: ctx.trainingShared, messageId: id,
-          today: ctx.today, nutrition: ctx.nutrition,
+          today: ctx.today, nutrition: ctx.nutrition, account: ctx.account,
         });
         results.push({ type: 'tool_result', tool_use_id: tu.id, content: out.content, ...(out.isError ? { is_error: true } : {}) });
       }
@@ -215,30 +223,79 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
 
   // Reasoning goes to a separate, collapsed "Why this?" field; boilerplate the style rules forbid is trimmed.
   const split = splitWhy(reply);
-  const why = split.why ? tidyReply(split.why) || null : null;
+  let why = split.why ? tidyReply(split.why) || null : null;
   reply = tidyReply(split.answer);
-  // In-app links: keep ≤ 2 whose path is in the app guide (param routes only with ids we know); strip the rest.
+  // Users never see ISO dates.
+  reply = humanizeDates(reply, ctx.today, ctx.facts.weekStart);
+  if (why) why = humanizeDates(why, ctx.today, ctx.facts.weekStart);
+  // Full recipes belong on the recipe screen, not in chat (rule in the prompt; logged when the model ignores it).
+  const fullRecipe = looksLikeFullRecipe(reply);
+  if (fullRecipe) deps.log?.('ai_full_recipe_warning', { words: wordCount(reply) });
+
+  // "Make a meal plan and add it" (or "ok, try now" after one was blocked) must end in a real plan, never invented meals:
+  // if the model didn't call propose_meal_plan, the server builds it from the same intent-free defaults.
+  let replaced: string | null = null;
+  const wantsPlan = asksForMealPlan(text) || (ctx.followUp && ctx.openRequest?.intent === 'meal_plan');
+  if (wantsPlan && !state.mealPlan && !state.weekPlan && !mealPlanBlocker(ctx.nutrition)) {
+    const [recipes, ingredients] = await Promise.all([deps.db.getRecipes(), deps.db.getIngredients()]);
+    const built = buildMealPlanAction({}, { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id, recipes, ingredients });
+    if (built.action) {
+      state.mealPlan = built.action;
+      replaced = 'meal_plan_fallback';
+    }
+  }
+
+  // One structured action per reply: a this-week schedule change, else a meal plan, else recipe cards.
+  const weekPlan = state.weekPlan ?? null;
+  const action: AiAction | null = weekPlan ?? state.mealPlan ?? state.recipes ?? null;
+  const p = state.proposal;
+
+  // The card is the single source of truth: replace text that contradicts (or restates) it with a one-line summary.
+  const proposalInfo = p
+    ? {
+        name: p.program.name,
+        sessionsPerWeek: p.program.schedule.length,
+        target: p.target,
+        invalid: p.validationErrors.length > 0,
+        schedule: p.program.schedule.map((s) => ({ weekday: s.weekday, name: p.program.templates.find((t) => t.id === s.templateId)?.name ?? s.templateId })),
+      }
+    : null;
+  if (!replaced) {
+    if (weekPlan && weekPlanConflict(reply, weekPlan, ctx.today)) replaced = 'week_plan_conflict';
+    else if (state.mealPlan && action === state.mealPlan) {
+      const names = (await deps.db.getRecipes()).map((r) => r.name);
+      if (mealPlanConflict(reply, state.mealPlan, names)) replaced = 'meal_plan_conflict';
+    } else if (proposalInfo && !proposalInfo.invalid && proposalConflict(reply, proposalInfo, ctx.today)) replaced = 'proposal_conflict';
+  }
+  if (replaced) {
+    reply =
+      weekPlan ? summarizeWeekPlan(weekPlan, ctx.today, ctx.facts.weekStart)
+        : state.mealPlan ? summarizeMealPlan(state.mealPlan, ctx.today, ctx.facts.weekStart)
+          : summarizeProposal(proposalInfo!);
+    // Keep the acknowledgement the prompt asked for when sharing just changed.
+    if (ctx.sharingAdded.length) reply = `Thanks — I can see your ${ctx.sharingAdded.join(' and ')} now. ${reply}`;
+    deps.log?.('ai_reply_replaced', { reason: replaced });
+  }
+
+  // In-app links: ≤ 2 screen links and ≤ 3 recipe links whose path is in the app guide (param routes only with ids we
+  // know); the rest are stripped, lead-in lines removed, and the kept links moved to the end.
   const known = { ...ctx.known };
   if (/\[\[\s*open\s*:\s*\/nutrition\/recipes\//i.test(reply)) known.recipe = new Set((await deps.db.getRecipes()).map((r) => r.id));
   const links = validateOpenLinks(reply, known);
   reply = links.text;
-  // One structured action per reply: a this-week schedule change, else a meal plan, else recipe cards.
-  const weekPlan = state.weekPlan ?? null;
-  const action: AiAction | null = weekPlan ?? state.mealPlan ?? state.recipes ?? null;
   if (!reply) {
     reply = weekPlan
-      ? 'Here’s a plan for this week — you can apply it below.'
+      ? summarizeWeekPlan(weekPlan, ctx.today, ctx.facts.weekStart)
       : state.mealPlan
-        ? 'Here’s a meal plan — check the totals below and add it if it looks good.'
-        : state.proposal
-          ? 'I drafted a plan suggestion for you — see the proposal below.'
+        ? summarizeMealPlan(state.mealPlan, ctx.today, ctx.facts.weekStart)
+        : proposalInfo
+          ? summarizeProposal(proposalInfo)
           : state.recipes
-            ? 'Here are a few recipes that fit.'
+            ? summarizeRecipes(state.recipes)
             : 'Sorry — I couldn’t put together a reply. Please try asking again.';
   }
   reply = reply.slice(0, MAX_REPLY_CHARS);
   const cost = estimateCostUsd(usage, deps.env('AI_PRICE_INPUT_PER_MTOK'), deps.env('AI_PRICE_OUTPUT_PER_MTOK'));
-  const p = state.proposal;
   const recorded = await deps.db.recordExchange(uid, {
     message: { id, content: text, mode },
     reply: { content: reply, grounding: ctx.grounding, model: usedModel, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, why, action },
@@ -269,6 +326,9 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
     action: action?.kind ?? null,
     links: links.kept.length,
     links_removed: links.removed,
+    replaced,
+    full_recipe: fullRecipe,
+    open_request: ctx.openRequest?.intent ?? null,
   });
   // Before the 2026-10-30 migration the database doesn't store why/action; still return them for this reply.
   const storedReply = { ...(recorded.reply as StoredMessage) };

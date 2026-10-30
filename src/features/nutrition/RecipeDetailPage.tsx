@@ -1,6 +1,12 @@
-import { useMemo, useState, type ReactNode } from 'react';
+/**
+ * Recipe screen (/nutrition/recipes/:id), laid out for cooking from a phone. In order: time; servings; macros per
+ * serving; ingredients with tick-off boxes; numbered "How to make it" steps with tick-off; substitutions; notes; then
+ * "Add to meal plan…", "Log this meal" and "Save to favourites". Ticks live in component state only (they reset when
+ * you leave). The screen is kept awake while open where the browser supports the Screen Wake Lock API.
+ */
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { ChevronLeft, Clock, Minus, Plus, Repeat2, Star, Users } from 'lucide-react';
+import { CalendarPlus, Check, ChevronLeft, Clock, Minus, NotebookPen, Plus, Repeat2, Star } from 'lucide-react';
 import { Badge, Button, Card, EmptyState, IconButton, Notice, NumberInput, Page, SectionTitle, Select, Sheet, Stat, cx } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { useApp } from '@/state/app';
@@ -10,11 +16,13 @@ import type { ID, MealSlot } from '@/domain/types';
 import { INGREDIENTS_BY_ID } from '@/data/ingredients';
 import { RECIPES_BY_ID } from '@/data/recipes';
 import {
-  ALLERGEN_LABELS, DIET_TAG_LABELS, MEAL_LABELS, MEAL_ORDER, displayMacro, formatGrams, recipeAllergens, recipeDietTags, recipeNutrition,
-  scaleRecipe, substitutesFor, type Swap,
+  ALLERGEN_LABELS, DIET_TAG_LABELS, MEAL_LABELS, MEAL_ORDER, displayMacro, formatGrams, recipeAllergens, recipeDietTags, recipeMinutes,
+  recipeNutrition, scaleRecipe, substitutesFor, type Swap,
 } from '@/domain/nutrition/recipes';
 import { entryFromRecipe } from '@/domain/nutrition/log';
+import { holdWakeLock } from '@/features/train/feedback';
 import { AllergenNote, macroLine } from './shared';
+import { AddToPlanSheet } from './AddToPlanSheet';
 
 export default function RecipeDetailPage() {
   const { id = '' } = useParams();
@@ -42,6 +50,28 @@ export default function RecipeDetailPage() {
   return <RecipeView key={recipe.id} recipeId={recipe.id} back={back} />;
 }
 
+/** A tick-off row: a real checkbox with a large tap target; ticked rows are struck through. */
+function TickRow({ checked, onChange, label, children, action }: { checked: boolean; onChange: (v: boolean) => void; label: string; children: ReactNode; action?: ReactNode }) {
+  return (
+    <li className="flex items-start gap-2 py-2.5">
+      <label className="flex flex-1 min-w-0 items-start gap-3 cursor-pointer">
+        <input type="checkbox" className="peer sr-only" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={label} />
+        <span
+          aria-hidden
+          className={cx(
+            'mt-0.5 shrink-0 size-6 rounded-md border-2 flex items-center justify-center peer-focus-visible:ring-2 peer-focus-visible:ring-accent',
+            checked ? 'bg-accent border-accent text-white' : 'border-line',
+          )}
+        >
+          {checked && <Check className="size-4" />}
+        </span>
+        <span className={cx('min-w-0 flex-1', checked && 'line-through text-muted')}>{children}</span>
+      </label>
+      {action}
+    </li>
+  );
+}
+
 function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
   const recipe = RECIPES_BY_ID.get(recipeId)!;
   const { account, updateAccount } = useApp();
@@ -50,7 +80,14 @@ function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
   const [swaps, setSwaps] = useState<Swap[]>([]);
   const [swapFor, setSwapFor] = useState<ID | null>(null);
   const [logOpen, setLogOpen] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [haveIngredients, setHaveIngredients] = useState<ID[]>([]);
+  const [doneSteps, setDoneSteps] = useState<number[]>([]);
   const fav = account.favorites.recipes.includes(recipe.id);
+
+  // Keep the screen on while cooking. The helper re-acquires the lock when the page becomes visible again
+  // (browsers drop it when hidden) and releases it on unmount.
+  useEffect(() => holdWakeLock(), []);
 
   const nutrition = useMemo(() => recipeNutrition(recipe, { servings, swaps }), [recipe, servings, swaps]);
   const scaled = useMemo(() => scaleRecipe(recipe, servings, swaps), [recipe, servings, swaps]);
@@ -58,35 +95,35 @@ function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
   const tags = recipeDietTags(recipe, swaps);
   const clash = allergens.filter((a) => account.profile.diet.allergens.includes(a));
   const ps = nutrition.perServing;
+  const ingName = (id: ID) => INGREDIENTS_BY_ID.get(id)?.name.toLowerCase() ?? id;
 
   async function toggleFav() {
-    await updateAccount((a) => {
-      const cur = a.favorites.recipes;
-      return { ...a, favorites: { ...a.favorites, recipes: cur.includes(recipe.id) ? cur.filter((x) => x !== recipe.id) : [...cur, recipe.id] } };
-    });
-    toast.show(fav ? 'Removed from favourites' : 'Added to favourites');
+    try {
+      await updateAccount((a) => {
+        const cur = a.favorites.recipes;
+        return { ...a, favorites: { ...a.favorites, recipes: cur.includes(recipe.id) ? cur.filter((x) => x !== recipe.id) : [...cur, recipe.id] } };
+      });
+      toast.show(fav ? 'Removed from favourites' : 'Saved to favourites', { tone: 'success' });
+    } catch {
+      toast.show('Could not update favourites.', { tone: 'error' });
+    }
   }
   const setSwap = (from: ID, to: ID | null) => setSwaps((s) => [...s.filter((x) => x.from !== from), ...(to && to !== from ? [{ from, to }] : [])]);
+  const toggle = <T,>(list: T[], v: T, on: boolean) => (on ? [...list.filter((x) => x !== v), v] : list.filter((x) => x !== v));
 
   return (
     <Page
       back={back}
       actions={
-        <IconButton label={fav ? 'Remove from favourites' : 'Add to favourites'} aria-pressed={fav} onClick={toggleFav}>
+        <IconButton label={fav ? 'Remove from favourites' : 'Add to favourites'} aria-pressed={fav} onClick={() => void toggleFav()}>
           <Star className={cx('size-5', fav ? 'fill-current text-accent' : '')} />
         </IconButton>
       }
     >
       <h1 className="text-2xl font-bold tracking-tight">{recipe.name}</h1>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted mt-1">
-        <span>{MEAL_LABELS[recipe.meal]}</span>
-        <span className="inline-flex items-center gap-1">
-          <Clock className="size-4" aria-hidden /> {recipe.prepMinutes} min prep{recipe.cookMinutes ? ` · ${recipe.cookMinutes} min cook` : ''}
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <Users className="size-4" aria-hidden /> makes {recipe.servings}
-        </span>
-      </div>
+      <p className="text-sm text-muted mt-1">
+        {MEAL_LABELS[recipe.meal]} · makes {recipe.servings} serving{recipe.servings === 1 ? '' : 's'}
+      </p>
       <div className="flex flex-wrap gap-1.5 mt-3">
         {tags.map((t) => (
           <Badge key={t} tone="accent">
@@ -105,88 +142,167 @@ function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
         </Notice>
       )}
 
-      <Card className="p-4 mt-4">
-        <div className="grid grid-cols-4 gap-2">
-          <Stat label="kcal" value={displayMacro(ps.kcal, 'kcal')} />
-          <Stat label="Protein" value={`${displayMacro(ps.protein, 'protein')} g`} />
-          <Stat label="Carbs" value={`${displayMacro(ps.carbs, 'carbs')} g`} />
-          <Stat label="Fat" value={`${displayMacro(ps.fat, 'fat')} g`} />
-        </div>
-        <p className="text-xs text-muted mt-2">Per serving, estimated from generic ingredient data{swaps.length ? ' with your swaps' : ''}. Fibre about {displayMacro(ps.fiber ?? 0, 'fiber')} g.</p>
-      </Card>
-
-      <SectionTitle>Ingredients</SectionTitle>
-      <Card className="p-4">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-medium" id="servings-label">
-            Servings
-          </span>
-          <div className="flex items-center gap-2" role="group" aria-labelledby="servings-label">
-            <IconButton label="Fewer servings" onClick={() => setServings((s) => Math.max(1, s - 1))} disabled={servings <= 1} className="border border-line">
-              <Minus className="size-4" />
-            </IconButton>
-            <span className="w-8 text-center text-lg font-semibold tabular" aria-live="polite">
-              {servings}
-            </span>
-            <IconButton label="More servings" onClick={() => setServings((s) => Math.min(12, s + 1))} disabled={servings >= 12} className="border border-line">
-              <Plus className="size-4" />
-            </IconButton>
+      <section aria-labelledby="recipe-time" data-section="time">
+        <SectionTitle id="recipe-time">Time</SectionTitle>
+        <Card className="p-4 flex items-center gap-3">
+          <Clock className="size-5 text-muted shrink-0" aria-hidden />
+          <div>
+            <div className="text-lg font-semibold tabular">{recipeMinutes(recipe)} min</div>
+            <div className="text-xs text-muted">
+              {recipe.prepMinutes} min prep{recipe.cookMinutes ? ` + ${recipe.cookMinutes} min cook` : ' · no cooking'}
+            </div>
           </div>
-        </div>
-        <p className="text-xs text-muted mt-1">
-          Whole recipe: {displayMacro(nutrition.total.kcal, 'kcal')} kcal · {displayMacro(nutrition.total.protein, 'protein')} g protein
-        </p>
-        <ul className="mt-3 divide-y divide-line">
-          {scaled.ingredients.map((r) => {
-            const original = r.swappedFrom ?? r.ingredientId;
-            const subs = substitutesFor(recipe, original);
-            return (
-              <li key={original} className="flex items-start gap-2 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <div className="text-[15px]">
-                    <span className="font-medium">{r.display}</span> {r.ingredient?.name.toLowerCase() ?? r.ingredientId}
+        </Card>
+      </section>
+
+      <section aria-labelledby="recipe-servings" data-section="servings">
+        <SectionTitle id="recipe-servings">Servings</SectionTitle>
+        <Card className="p-4">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-medium">Cooking for</span>
+            <div className="flex items-center gap-2" role="group" aria-label="Servings">
+              <IconButton label="Fewer servings" onClick={() => setServings((s) => Math.max(1, s - 1))} disabled={servings <= 1} className="border border-line">
+                <Minus className="size-4" />
+              </IconButton>
+              <span className="w-8 text-center text-lg font-semibold tabular" aria-live="polite" data-testid="servings-value">
+                {servings}
+              </span>
+              <IconButton label="More servings" onClick={() => setServings((s) => Math.min(12, s + 1))} disabled={servings >= 12} className="border border-line">
+                <Plus className="size-4" />
+              </IconButton>
+            </div>
+          </div>
+          <p className="text-xs text-muted mt-1">
+            Whole recipe: {displayMacro(nutrition.total.kcal, 'kcal')} kcal · {displayMacro(nutrition.total.protein, 'protein')} g protein
+          </p>
+        </Card>
+      </section>
+
+      <section aria-labelledby="recipe-macros" data-section="macros">
+        <SectionTitle id="recipe-macros">Per serving</SectionTitle>
+        <Card className="p-4">
+          <div className="grid grid-cols-4 gap-2">
+            <Stat label="kcal" value={displayMacro(ps.kcal, 'kcal')} />
+            <Stat label="Protein" value={`${displayMacro(ps.protein, 'protein')} g`} />
+            <Stat label="Carbs" value={`${displayMacro(ps.carbs, 'carbs')} g`} />
+            <Stat label="Fat" value={`${displayMacro(ps.fat, 'fat')} g`} />
+          </div>
+          <p className="text-xs text-muted mt-2">
+            Estimated from generic ingredient data{swaps.length ? ' with your swaps' : ''}. Fibre about {displayMacro(ps.fiber ?? 0, 'fiber')} g.
+          </p>
+        </Card>
+      </section>
+
+      <section aria-labelledby="recipe-ingredients" data-section="ingredients">
+        <SectionTitle
+          id="recipe-ingredients"
+          action={<span className="text-xs text-muted tabular">{haveIngredients.length} of {scaled.ingredients.length} ticked</span>}
+        >
+          Ingredients
+        </SectionTitle>
+        <Card className="px-4 py-1">
+          <ul className="divide-y divide-line">
+            {scaled.ingredients.map((r) => {
+              const original = r.swappedFrom ?? r.ingredientId;
+              const subs = substitutesFor(recipe, original);
+              const name = r.ingredient?.name.toLowerCase() ?? r.ingredientId;
+              return (
+                <TickRow
+                  key={original}
+                  checked={haveIngredients.includes(original)}
+                  onChange={(on) => setHaveIngredients((l) => toggle(l, original, on))}
+                  label={`${r.display} ${name}`}
+                  action={
+                    subs.length > 0 ? (
+                      <Button size="sm" variant="ghost" icon={<Repeat2 className="size-4" />} onClick={() => setSwapFor(original)} aria-label={`Swap ${r.ingredient?.name ?? ''}`}>
+                        Swap
+                      </Button>
+                    ) : undefined
+                  }
+                >
+                  <span className="block text-[15px]">
+                    <span className="font-medium">{r.display}</span> {name}
                     {r.ri.optional && <span className="text-muted"> (optional)</span>}
-                  </div>
-                  <div className="text-xs text-muted">
+                  </span>
+                  <span className="block text-xs text-muted">
                     {formatGrams(r.scaledGrams)}
                     {r.ri.prep && !r.swappedFrom ? ` · ${r.ri.prep}` : ''}
-                    {r.swappedFrom ? ` · swapped for ${INGREDIENTS_BY_ID.get(r.swappedFrom)?.name.toLowerCase()}` : ''}
-                  </div>
-                </div>
-                {subs.length > 0 && (
-                  <Button size="sm" variant="ghost" icon={<Repeat2 className="size-4" />} onClick={() => setSwapFor(original)} aria-label={`Swap ${r.ingredient?.name ?? ''}`}>
-                    Swap
-                  </Button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </Card>
+                    {r.swappedFrom ? ` · swapped for ${ingName(r.swappedFrom)}` : ''}
+                  </span>
+                </TickRow>
+              );
+            })}
+          </ul>
+        </Card>
+      </section>
 
-      <SectionTitle>Method</SectionTitle>
-      <Card className="p-4">
-        <ol className="flex flex-col gap-3">
-          {recipe.steps.map((s, i) => (
-            <li key={i} className="flex gap-3">
-              <span className="shrink-0 size-7 rounded-full bg-surface-3 text-sm font-semibold flex items-center justify-center" aria-hidden>
-                {i + 1}
-              </span>
-              <span className="text-[15px] pt-0.5">
-                <span className="sr-only">Step {i + 1}: </span>
-                {s}
-              </span>
-            </li>
-          ))}
-        </ol>
-        {recipe.notes && <p className="text-sm text-muted mt-4">{recipe.notes}</p>}
-      </Card>
+      <section aria-labelledby="recipe-steps" data-section="steps">
+        <SectionTitle id="recipe-steps">How to make it</SectionTitle>
+        <Card className="px-4 py-1">
+          <ol className="divide-y divide-line">
+            {recipe.steps.map((s, i) => (
+              <TickRow key={i} checked={doneSteps.includes(i)} onChange={(on) => setDoneSteps((l) => toggle(l, i, on))} label={`Step ${i + 1} done`}>
+                <span className="flex gap-3">
+                  <span className="shrink-0 size-7 rounded-full bg-surface-3 text-sm font-semibold flex items-center justify-center no-underline" aria-hidden>
+                    {i + 1}
+                  </span>
+                  <span className="text-[15px] pt-0.5">
+                    <span className="sr-only">Step {i + 1}: </span>
+                    {s}
+                  </span>
+                </span>
+              </TickRow>
+            ))}
+          </ol>
+        </Card>
+      </section>
+
+      {recipe.substitutions.length > 0 && (
+        <section aria-labelledby="recipe-subs" data-section="substitutions">
+          <SectionTitle id="recipe-subs">Substitutions</SectionTitle>
+          <Card className="px-4 py-1">
+            <ul className="divide-y divide-line">
+              {recipe.substitutions.map((s) => {
+                const current = swaps.find((x) => x.from === s.ingredientId)?.to;
+                return (
+                  <li key={s.ingredientId} className="flex items-center gap-2 py-2.5">
+                    <span className="flex-1 min-w-0 text-sm">
+                      Instead of <span className="font-medium">{ingName(s.ingredientId)}</span>: {s.alternatives.map(ingName).join(' or ')}
+                      {current && <span className="block text-xs text-accent">Using {ingName(current)}</span>}
+                    </span>
+                    <Button size="sm" variant="ghost" onClick={() => setSwapFor(s.ingredientId)} aria-label={`Choose a substitute for ${ingName(s.ingredientId)}`}>
+                      Choose
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        </section>
+      )}
+
+      {recipe.notes && (
+        <section aria-labelledby="recipe-notes" data-section="notes">
+          <SectionTitle id="recipe-notes">Notes</SectionTitle>
+          <Card className="p-4">
+            <p className="text-sm">{recipe.notes}</p>
+          </Card>
+        </section>
+      )}
       <AllergenNote className="mt-3 px-1" />
 
-      <div className="sticky bottom-[calc(76px+env(safe-area-inset-bottom))] mt-4">
-        <Button variant="primary" size="lg" block onClick={() => setLogOpen(true)}>
+      <div className="flex flex-col gap-2 mt-4 sticky bottom-[calc(76px+env(safe-area-inset-bottom))]">
+        <Button variant="primary" size="lg" block icon={<NotebookPen className="size-5" />} onClick={() => setLogOpen(true)}>
           Log this meal
         </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="secondary" icon={<CalendarPlus className="size-4" />} onClick={() => setPlanOpen(true)}>
+            Add to meal plan…
+          </Button>
+          <Button variant="secondary" aria-pressed={fav} icon={<Star className={cx('size-4', fav && 'fill-current text-accent')} />} onClick={() => void toggleFav()}>
+            {fav ? 'Saved' : 'Save to favourites'}
+          </Button>
+        </div>
       </div>
 
       <Sheet open={swapFor !== null} onClose={() => setSwapFor(null)} title="Swap ingredient">
@@ -203,6 +319,7 @@ function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
         )}
       </Sheet>
       <LogSheet open={logOpen} onClose={() => setLogOpen(false)} recipeId={recipe.id} swaps={swaps} />
+      {planOpen && <AddToPlanSheet recipe={recipe} swaps={swaps} onClose={() => setPlanOpen(false)} />}
     </Page>
   );
 }

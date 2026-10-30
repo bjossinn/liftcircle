@@ -15,6 +15,7 @@ import type { LiftDb } from '@/db/db';
 import { applyWeekPlan, revertWeekPlan, weekPlanState, WEEK_PLAN_EXPIRED, WEEK_PLAN_STALE, type WeekPlan } from '@/domain/program/schedule';
 import type { ActivityLog, ISODate, Program, WorkoutSession } from '@/domain/types';
 import { formatDate } from '@/lib/dates';
+import { humanizeDates } from '../../../../supabase/functions/_shared/ai/humanDates';
 
 export function WeekPlanCard({
   plan, program, sessions, activities, today, weekStart, db,
@@ -81,13 +82,13 @@ export function WeekPlanCard({
       {plan.adjustments.length > 0 && (
         <ul className="text-xs text-muted mt-1 list-disc pl-4">
           {plan.adjustments.map((a, i) => (
-            <li key={i}>{a}</li>
+            <li key={i}>{humanizeDates(a, today)}</li>
           ))}
         </ul>
       )}
       {plan.warnings.map((w, i) => (
         <p key={i} className="text-xs text-warn mt-1">
-          {w}
+          {humanizeDates(w, today)}
         </p>
       ))}
       <p className="text-xs text-muted mt-1.5">

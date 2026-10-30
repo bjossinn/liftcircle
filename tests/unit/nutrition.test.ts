@@ -280,9 +280,9 @@ describe('food log', () => {
 });
 
 describe('data integrity', () => {
-  it('has 24 complete recipes with resolvable ingredients', () => {
-    expect(RECIPES).toHaveLength(24);
-    expect(new Set(RECIPES.map((r) => r.id)).size).toBe(24);
+  it('has 84 complete recipes with resolvable ingredients', () => {
+    expect(RECIPES).toHaveLength(84);
+    expect(new Set(RECIPES.map((r) => r.id)).size).toBe(84);
     const counts = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
     let veg = 0;
     let df = 0;
@@ -303,7 +303,7 @@ describe('data integrity', () => {
       if (satisfiesTag(tags, 'vegetarian')) veg++;
       if (tags.includes('dairy_free')) df++;
     }
-    expect(counts).toEqual({ breakfast: 6, lunch: 6, dinner: 8, snack: 4 });
+    expect(counts).toEqual({ breakfast: 21, lunch: 21, dinner: 28, snack: 14 });
     expect(veg).toBeGreaterThanOrEqual(8);
     expect(df).toBeGreaterThanOrEqual(8);
   });
@@ -315,9 +315,11 @@ describe('data integrity', () => {
       expect(protein + carbs + fat, i.id).toBeLessThanOrEqual(101);
       if (i.id === 'spices') continue;
       const atwater = protein * 4 + carbs * 4 + fat * 9;
-      // Fibre-rich foods (crispbread, chia) sit below 4/4/9 because fibre yields little energy.
+      // Fibre-rich foods (crispbread, chia, cocoa) sit below 4/4/9 because fibre yields little energy, so 4/4/9 on
+      // available carbohydrate (carbs − fibre) is accepted too.
       // Low-energy foods (lemon juice, vegetables) use food-specific factors, so allow a small absolute gap.
-      const ok = Math.abs(atwater - kcal) <= 15 || Math.abs(atwater - kcal) / kcal < 0.3;
+      const near = (a: number) => Math.abs(a - kcal) <= 15 || Math.abs(a - kcal) / kcal < 0.3;
+      const ok = near(atwater) || near(atwater - (i.per100g.fiber ?? 0) * 4);
       expect(ok, `${i.id}: ${kcal} kcal vs 4/4/9 ${Math.round(atwater)}`).toBe(true);
       expect(i.source.length).toBeGreaterThan(10);
     }

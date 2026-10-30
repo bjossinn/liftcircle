@@ -619,7 +619,7 @@ export function goalProgress(g: UserGoal, c: GoalContext): GoalProgress {
   switch (g.kind) {
     case 'sessions_per_week': {
       const n = completedSessions(c.sessions).filter((s) => s.date >= wk && s.date <= c.today).length;
-      return { current: n, fraction: frac(n, g.target), text: `${n} of ${g.target} workouts this week`, reached: n >= g.target };
+      return { current: n, fraction: frac(n, g.target), text: `${n} of ${g.target} workout${g.target === 1 ? '' : 's'} this week`, reached: n >= g.target };
     }
     case 'cardio_minutes': {
       const m = Math.round(c.activities.filter((a) => !a.deletedAt && a.date >= wk && a.date <= c.today).reduce((s, a) => s + a.durationSec / 60, 0));
@@ -630,7 +630,7 @@ export function goalProgress(g: UserGoal, c: GoalContext): GoalProgress {
       const days = proteinDays(c.foodLogs, wk, c.today, c.proteinTargetG);
       const met = days.filter((d) => d.met).length;
       const noData = days.filter((d) => d.proteinG == null).length;
-      return { current: met, fraction: frac(met, g.target), text: `${met} of ${g.target} days this week${noData ? ` · ${noData} without logs` : ''}`, reached: met >= g.target };
+      return { current: met, fraction: frac(met, g.target), text: `${met} of ${g.target} day${g.target === 1 ? '' : 's'} this week${noData ? ` · ${noData} without logs` : ''}`, reached: met >= g.target };
     }
     case 'exercise_load': {
       const ex = g.exerciseId ? c.byId.get(g.exerciseId) : undefined;

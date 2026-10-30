@@ -306,6 +306,65 @@ cards; nothing changes until the user taps. Migration `20261102000001_ai_coach_a
 - **Custom recipes: not implemented.** LiftCircle has no user-created recipes (only the catalog and custom *foods*), so
   "Save to my recipes" from AI-built recipes was skipped.
 
+## 4b. Fixes from live testing in 0.7.0
+
+**Meal plans get built on the server.** `propose_meal_plan` no longer takes recipe ids. The model passes intent only:
+`week`, `days` (weekday names or dates), `meals_per_day`, `quick`, `diet`, `avoid`, `preferences`. The server
+(`_shared/ai/meals.ts buildMealPlanAction`) runs the app's own planner — `selectMeals` + `balanceDay` via
+`generateMealPlan` in `supabase/functions/_shared/nutrition/mealplan.ts`. That file, and `_shared/nutrition/recipes.ts`,
+are now the single implementation: `src/domain/nutrition/recipes.ts` and `mealplan.ts` register the bundled catalog as
+the default and re-export them; only the shopping list stays app-only.
+- Inputs: the user's targets, diet, allergens, dislikes, cook time, budget and meals per day (`prefsFromAccountPayload`
+  = the app's `planPrefsFrom`). Request preferences only tighten these (quick → ≤ 15 min, extra diet tags, "no fish"
+  → allergens, other foods → dislikes).
+- Default days: the rest of this week, or next week when fewer than 3 days are left.
+- If any meal slot has no recipe, the reason names the constraint ("Nothing in the catalog fits Vegan + no soy + ≤ 5 min.
+  It's … that rules everything out").
+- A parity test checks that the same settings give the same plan in the app and on the server.
+- **Server fallback:** if the user asks for a meal plan to be made/added — or answers a blocked meal-plan request with
+  "ok / try now" — and the model doesn't call the tool, the server builds the plan itself and replaces the text with a
+  one-line summary (`ai_reply_replaced`, reason `meal_plan_fallback`). Invented meals are never presented as the plan.
+
+**find_recipes.** Matching is case- and accent-insensitive, covers ingredient names and synonyms (fish → cod/salmon/
+tuna, yoghurt → yogurt/skyr, …), and reads tags (high protein, vegetarian, vegan, dairy-free, gluten-free, quick) and
+the meal type from the query. When the query matches nothing, or is vague, it steps back to the best fits for the user's
+targets (protein per serving closest to protein per meal) and says so in `fallback`. It is empty only when the user's own
+allergens/diet/dislikes/cook time exclude everything, and then `reason` names the constraint.
+
+**The card is the source of truth** (`_shared/ai/postcheck.ts`).
+- The prompt says not to restate a card's details; one short line at most.
+- After the model replies, the server checks session names + weekdays/dates against the validated week plan or the
+  program's schedule, and recipe names / long lists against the meal plan.
+- A contradiction replaces the reply with a generated summary, logged as `ai_reply_replaced`. Example: "Here's this
+  week: **Full body C** moves to Saturday, **Full body B** is skipped this week. Sat 31 Oct is not one of your usual
+  training days. Tap **Apply to this week** to use it."
+- Consistent text passes through unchanged.
+
+**Follow-ups** (`_shared/ai/conversation.ts`).
+- The prompt gets the user's most recent undelivered request (meal plan, this-week change, program, recipes), its words
+  in `<user_data kind="open_request">`, and whether it was blocked by sharing or setup.
+- "ok / yes / do it / try again / try now" resume it first. Two-part answers ("yes, but make the meal plan") get both
+  parts handled.
+- When sharing was **widened** since the previous reply, the last few pre-change messages are carried over and the coach
+  is told to acknowledge it ("Thanks — I can see your nutrition now") and continue. "Widened" is judged from the
+  previous reply's stored grounding labels.
+- If any category was revoked, the history cut-off stays as before (privacy).
+
+**Links, dates, polish.**
+- Link markers go at the end of the message. The lead-in lines they leave behind ("Open the meal plan:") are removed on
+  the server and in the app.
+- Recipe links (`[[open:/nutrition/recipes/<id>|Open recipe]]`) are counted separately, up to 3 per message, and only
+  for catalog ids.
+- The coach never writes a recipe's ingredients or steps in chat: name in bold, one line on why it fits, and a link. A
+  written-out recipe is logged as `ai_full_recipe_warning`.
+- Recipe cards show name, time and protein, with Open / Add to plan… / Save. Logging a meal is on the recipe screen.
+- Users never see ISO dates. `_shared/ai/humanDates.ts` turns them into "today", "tomorrow", a weekday later this week,
+  or "Sat 31 Oct", in replies, "Why this?" and week-plan warnings, both on the server and in the app (older messages
+  too).
+- Plurals: "1 recent workout", "of 1 workout", and so on. "Why this?" only shows when there is text.
+
+`MAX_TOOL_ROUNDS` stays 4.
+
 ## 5. Testing status
 
 | What | How | Status |
@@ -327,4 +386,6 @@ cards; nothing changes until the user taps. Migration `20261102000001_ai_coach_a
 | Meal plan actions on the device: parse, preview = balanceDay/planStatus, replace vs empty days, idempotent replay, Undo | `npx vitest run tests/unit/aiMealPlanApply.test.ts` | passing (8) |
 | Chat UI v4, **MOCKED** aiApi: Markdown in AI messages, user messages literal, link buttons navigate, meal plan card apply/Undo, recipe cards (open, favourite, log) | `npx vitest run tests/unit/aiUi.test.ts` | passing (23 incl. earlier) |
 | DB v4: meal_plan and recipe_suggestions actions stored, replayed and returned to their owner only; unknown kinds dropped; client can't write | `node tests/rls/ai-run.mjs` (CI) | see PR CI |
-| Live OpenAI / Anthropic API | `OPENAI_API_KEY=… node tests/live/ai-live.mjs` (or `ANTHROPIC_API_KEY=…`; prints the two-sessions reply, Why, week plan and soft checks, then the off-topic Python check — no code and a mention of training, which fails the run; without a key prints BLOCKED) | **not verified here** (no key; sandbox egress to api.openai.com refused). The script was run against a local OpenAI-format stub only. After deploying: run it with the real key, then send one chat message from the app and check `ai_usage`. |
+| 0.7.0 fixes, **MOCKED** provider + real catalog: server/app meal plan parity, plan with nutrition shared and a 198 g target, default/next-week/named days, preferences only tighten, impossible constraints explained, missing sharing/targets, invented meals replaced by a real plan; find_recipes tolerant matching, tags, fallback, empty-with-reason; text vs card conflicts (corrected / unchanged); open request + sharing widened / revoked; link lead-in cleanup; recipe links (valid kept, unknown stripped, max 3); no-full-recipe rule + warning; human dates in text and week warnings; chip plurals | `npx vitest run tests/unit/aiCoachFixes.test.ts` | passing (24) |
+| Chat UI 0.7.0, **MOCKED** aiApi: recipe cards (name/time/protein, Open, Save, Add to plan…), recipe link opens the recipe page with no lead-in line, ISO dates shown as human dates, "Why this?" hidden without text, legacy chip label, week-card warnings | `npx vitest run tests/unit/aiUi.test.ts` | passing (26 incl. earlier) |
+| Live OpenAI / Anthropic API | `OPENAI_API_KEY=… node tests/live/ai-live.mjs` (or `ANTHROPIC_API_KEY=…`; prints the two-sessions reply, Why, week plan and soft checks, then the off-topic Python check — no code and a mention of training — and (0.7.0) "make me a meal plan for this week and add it" → a meal_plan action and "Ok try now" after a sharing-blocked request → resumed; the hard checks fail the run; without a key prints BLOCKED) | **not verified here** (no key; sandbox egress to api.openai.com refused). The script was run against a local OpenAI-format stub only. After deploying: run it with the real key, then send one chat message from the app and check `ai_usage`. |

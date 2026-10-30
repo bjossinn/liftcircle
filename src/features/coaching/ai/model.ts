@@ -146,7 +146,7 @@ export function isHardUnavailable(a: AiAvailability | undefined): boolean {
 export function usageLine(u: Partial<AiUsage> | undefined): string | null {
   if (!u || typeof u.requests !== 'number') return null;
   if (typeof u.limitRequests === 'number' && u.limitRequests > 0)
-    return `${u.requests} of ${u.limitRequests} messages used today · ${Math.max(0, u.limitRequests - u.requests)} left`;
+    return `${u.requests} of ${u.limitRequests} message${u.limitRequests === 1 ? '' : 's'} used today · ${Math.max(0, u.limitRequests - u.requests)} left`;
   return `${u.requests} message${u.requests === 1 ? '' : 's'} today`;
 }
 

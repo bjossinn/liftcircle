@@ -76,7 +76,12 @@ Turn it on from the Nutrition tab: **protein only**, or protein + calories + mac
 starting point within a 1.6–2.2 g/kg range, not an exact requirement. Calorie estimates use the Mifflin–St Jeor
 equation plus an activity factor and a small goal adjustment, all shown and editable. Log food via quick entries,
 recipes, generic foods, your own foods, or saved meals; missing values are treated as *unknown*, not zero.
-**Recipes** (24, with vegetarian and dairy-free options) scale by servings and recalculate when you swap ingredients.
+**Recipes** (84, mostly simple everyday dishes — plenty of high-protein, vegetarian, vegan, dairy-free, gluten-free
+and no-cook options, plus a few 4-serving batch recipes) scale by servings and recalculate when you swap ingredients.
+Filter by meal, diet and **Quick (≤ 15 min)**. Each recipe page is a prep guide: time (prep + cook), a servings
+selector, macros per serving, an ingredient list you can tick off, numbered steps under **How to make it** that you can
+tick off too, substitutions and notes. The screen stays awake while a recipe is open (where the browser supports it).
+From there: **Add to meal plan…**, **Log this meal** and **Save to favourites**.
 **Meal plan** builds a week from your preferences and allergies and balances each day toward your protein target with
 portions and protein sides. If a day can't reach it within your restrictions, it shows the gap and practical changes
 (allergies are never relaxed); **Balance day** / **Balance all days** re-run it after your edits. In protein-only mode
@@ -152,8 +157,14 @@ logging and manual targets only, no automatic prescriptions.
     totals against your targets. **Add to my meal plan** adds it to that week (if those days already have meals, choose
     **Replace these days** or **Only empty days**); **Customize first** adds it and opens the meal plan screen so you
     can swap or adjust. **Undo** puts the days back as they were.
-  - **Recipes:** recipe ideas come as cards with **Open**, **Save to favourites**, **Add to plan…** (pick a day this
-    week and a meal) and **Log this meal** (adds it to today's food log; Undo in the message that pops up).
+  - **Recipes:** recipe ideas come as cards (name, time, protein per serving) with **Open**, **Add to plan…** (pick a
+    day this week and a meal) and **Save**. The coach doesn't type out recipes in chat: it names the dish, says why it
+    fits ("34 g protein, 15 min") and gives an **Open recipe** button to the step-by-step page.
+  - **Meal plans are built for you (0.7.0):** ask "make me a meal plan for the week and add it" and the coach builds it
+    from your targets, diet, allergies and cooking time with the same planner as the Meal plan screen. If something
+    blocks it (say, nutrition isn't shared), share it and reply "ok, try now": it picks up where it left off.
+  - What the coach writes always matches the card under it, dates read like "Sat 31 Oct" or "tomorrow", and link
+    buttons sit at the end of the message.
   Everything it suggests respects your allergies, diet, disliked foods, equipment and excluded exercises.
 - **Without an account** you can read what human and AI coaching involve and browse approved coaches' public listings;
   requesting, messaging and the AI coach need an account. Unsent messages to your coach are kept as a draft on your

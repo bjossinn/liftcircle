@@ -67,7 +67,7 @@ An independent review of the sync, auth and logger code found 6 real bugs: lost-
   - Finish flow and summary with records; history calendar with search; editing and deleting past sessions (with an offer to remove the shared post); templates.
 - **Activities:** 12 types with relevant fields, pace/speed, optional labelled energy estimate, templates, interval timer.
 - **Progress:** consistency/adherence, exercise charts, PRs (labelled e1RM), working sets per muscle, volume with its conventions shown, cardio, bodyweight with a 7-day average, measurements, protein consistency, goals, factual observations.
-- **Nutrition:** protein-only or full targets with the calculation shown, 74 ingredients, 24 recipes computed from their ingredients, scaling, substitutions, food logging (quick, recipe, food, custom, saved, copy), weekly meal plan, shopping list.
+- **Nutrition:** protein-only or full targets with the calculation shown, 102 ingredients, 84 recipes computed from their ingredients, scaling, substitutions, food logging (quick, recipe, food, custom, saved, copy), weekly meal plan, shopping list.
 - **Backend**
   - 7 migrations, owner-only private tables with typed projections and normalized session tables, global versioning, `sync_push` / `sync_pull` compare-and-swap.
   - Social schema, RLS everywhere with least-privilege grants, rate limits, trigger-created notifications, reports with a server-authorized moderator role.

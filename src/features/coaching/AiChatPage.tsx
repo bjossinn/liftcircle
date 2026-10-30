@@ -31,6 +31,7 @@ import { MealPlanCard } from './ai/MealPlanCard';
 import { RecipeCards } from './ai/RecipeCards';
 import { Markdown } from './ai/markdown';
 import { extractOpenLinks } from '../../../supabase/functions/_shared/ai/appGuide';
+import { humanizeDates } from '../../../supabase/functions/_shared/ai/humanDates';
 import { useActiveProgram, useAllActivities, useAllSessions } from '@/features/train/hooks';
 import { todayISO } from '@/lib/dates';
 import { useExercises } from '@/data/catalog';
@@ -537,6 +538,11 @@ function safeRecord(sessions: WorkoutSession[], byId: Map<ID, Exercise>, unit: W
   }
 }
 
+/** Grounding chips; replies stored before 0.7.0 said "1 recent workouts". */
+export function groundingLabel(g: string): string {
+  return g.replace(/^1 recent workouts$/, '1 recent workout');
+}
+
 interface WeekCtx {
   program: Program | null | undefined;
   sessions: WorkoutSession[] | undefined;
@@ -588,7 +594,8 @@ function MessageItem({
       </li>
     );
   }
-  const body = extractOpenLinks(m.content);
+  const body = extractOpenLinks(humanizeDates(m.content, week.today));
+  const whyText = m.why ? extractOpenLinks(humanizeDates(m.why, week.today)).text : '';
   return (
     <li>
       <article aria-label="AI coach message" className="max-w-[92%]">
@@ -611,10 +618,10 @@ function MessageItem({
             ))}
           </div>
         )}
-        {m.why && (
+        {whyText && (
           <details className="mt-1.5 group">
             <summary className="cursor-pointer select-none text-sm text-muted min-h-11 inline-flex items-center gap-1 hover:text-ink">Why this?</summary>
-            <Markdown text={extractOpenLinks(m.why).text} className="text-sm text-muted px-1 pb-1" />
+            <Markdown text={whyText} className="text-sm text-muted px-1 pb-1" />
           </details>
         )}
         {m.weekPlan && (
@@ -628,7 +635,7 @@ function MessageItem({
             <ul className="contents">
               {m.grounding.map((g, i) => (
                 <li key={i}>
-                  <Badge>{g}</Badge>
+                  <Badge>{groundingLabel(g)}</Badge>
                 </li>
               ))}
             </ul>
