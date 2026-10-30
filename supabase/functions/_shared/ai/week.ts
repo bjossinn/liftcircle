@@ -10,6 +10,8 @@
  */
 import type { SessionPayload, UserFacts, WeekAdjustmentAction } from './types.ts';
 
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { datePair, shortDate } from './humanDates.ts';
 export const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const LATE_WINDOW_DAYS = 2;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -204,10 +206,10 @@ export function validateWeekAdjustment(raw: Record<string, unknown>, ctx: WeekTo
 
   const warnings: string[] = [];
   const avail = new Set(ap.availableWeekdays);
-  for (const c of chosen) if (avail.size && !avail.has(weekdayOf(c.date))) warnings.push(`${dayLabel(c.date)} is not one of your usual training days.`);
+  for (const c of chosen) if (avail.size && !avail.has(weekdayOf(c.date))) warnings.push(`${shortDate(c.date)} is not one of your usual training days.`);
   const hardDates = [...chosen.map((c) => c.date), ...w.completed.map((c) => c.date)].sort();
   for (let i = 1; i < hardDates.length; i++) if (addDays(hardDates[i - 1], 1) === hardDates[i]) {
-    warnings.push(`Sessions on back-to-back days (${hardDates[i - 1]} and ${hardDates[i]}) — keep the effort a little lower on the second.`);
+    warnings.push(`Back-to-back days (${datePair(hardDates[i - 1], hardDates[i])}): keep the effort a little lower on the second.`);
     break;
   }
   const action: WeekAdjustmentAction = {

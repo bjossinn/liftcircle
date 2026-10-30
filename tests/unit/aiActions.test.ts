@@ -3,7 +3,7 @@
  *  - answer length/format rules reach the prompt for every coach style; tidyReply keeps Markdown markers;
  *  - missing-data rules (sharing vs setup, both, partial help) with in-app links;
  *  - [[open:…]] links validated before storing;
- *  - in-app actions: propose_meal_plan validation (bad ids, allergens, dislikes, dates, sharing, targets),
+ *  - in-app actions: recipe cards from find_recipes (meal plans are covered in aiCoachFixes.test.ts),
  *    recipe cards from find_recipes, one action per reply, new programs via propose_program_change
  *    (excluded exercises / stale base refused, coach-managed → for_coach_review).
  */
@@ -11,10 +11,10 @@ import { describe, expect, it } from 'vitest';
 import { handleAiCoach, type CoachDeps } from '../../supabase/functions/_shared/ai/coach';
 import { buildContext, COACH_STYLES } from '../../supabase/functions/_shared/ai/context';
 import { tidyReply } from '../../supabase/functions/_shared/ai/reply';
-import { runTool, TOOL_DEFS, validateMealPlan, type ToolState } from '../../supabase/functions/_shared/ai/tools';
-import { mealPlanBlocker, nutritionStatus } from '../../supabase/functions/_shared/ai/dataStatus';
+import { runTool, TOOL_DEFS, type ToolState } from '../../supabase/functions/_shared/ai/tools';
+import { mealPlanBlocker } from '../../supabase/functions/_shared/ai/dataStatus';
 import type {
-  AccountStatePayload, ActiveProgramRow, AiDb, AiScopes, AiSettingsRow, FetchLike, MealPlanAction, RecipeSuggestionsAction, RecordExchangeInput,
+  AccountStatePayload, ActiveProgramRow, AiDb, AiScopes, AiSettingsRow, FetchLike, RecipeSuggestionsAction, RecordExchangeInput,
   RefExercise, RefIngredient, RefRecipe, SessionPayload, StoredExchange, StoredMessage, UserFacts,
 } from '../../supabase/functions/_shared/ai/types';
 
@@ -128,7 +128,6 @@ const facts = (over: Partial<UserFacts> = {}): UserFacts => ({
   units: 'kg', timeZone: 'UTC', weekStart: 1, equipment: ['dumbbell', 'bench'], excludedExerciseIds: ['push-up'], limitations: [], allergens: ['peanuts'], dietTags: [],
   dislikedIngredientIds: ['tuna'], maxCookMinutes: 30, activeProgram: null, ...over,
 });
-const NUT = nutritionStatus(data().account, true);
 
 /* ================================================================== length & format */
 describe('MOCKED ai-coach v4: shorter, formatted answers', () => {
@@ -208,7 +207,7 @@ describe('MOCKED ai-coach v4: missing-data rules', () => {
 
 /* ================================================================== links */
 describe('MOCKED ai-coach v4: in-app links are validated before storing', () => {
-  it('keeps valid links (incl. known ids), strips invented paths, at most 2', async () => {
+  it('keeps valid links (incl. known ids), strips invented paths; recipe links count separately', async () => {
     const m = makeDb(data());
     const { fetch } = provider([
       text('Turn it on in Settings.\n[[open:/settings|Open Settings]]\n[[open:/secret/admin|Admin]]\n[[open:/train/history/sess-1|Last workout]]\n[[open:/nutrition/recipes/chicken-rice|Bowl]]'),
@@ -218,71 +217,12 @@ describe('MOCKED ai-coach v4: in-app links are validated before storing', () => 
     expect(content).toContain('[[open:/settings|Open Settings]]');
     expect(content).toContain('[[open:/train/history/sess-1|Last workout]]');
     expect(content).not.toContain('/secret/admin');
-    expect(content).not.toContain('/nutrition/recipes/chicken-rice'); // 3rd valid link → over the limit
+    expect(content).toContain('[[open:/nutrition/recipes/chicken-rice|Bowl]]'); // recipe links have their own limit (3)
     expect(m.recorded[0].reply.content).toBe(content);
   });
 });
 
-/* ================================================================== meal plans */
-const day = (date: string, meals: unknown[]) => ({ date, meals });
-const lunch = (servings = 1.5, extra: Record<string, unknown> = {}) => ({ slot: 'lunch', recipe_id: 'chicken-rice', servings, ...extra });
-const mpCtx = (over: Partial<Parameters<typeof validateMealPlan>[1]> = {}) => ({
-  facts: facts(), today: '2026-10-29', nutrition: NUT, messageId: mid(9), recipes: RECIPES, ingredients: INGREDIENTS, ...over,
-});
-
-describe('MOCKED ai-coach v4: propose_meal_plan validation', () => {
-  it('valid plan → action with catalog names, quarter servings, the week and the targets', () => {
-    const { action, errors } = validateMealPlan({ days: [day('2026-10-30', [lunch(1.4, { protein_side: { ingredient_id: 'skyr', grams: 152 } })]), day('2026-10-29', [lunch()])], summary: 'Two high-protein days' }, mpCtx());
-    expect(errors).toEqual([]);
-    expect(action).toMatchObject({
-      kind: 'meal_plan', id: mid(9), weekStart: '2026-10-26', weekEnd: '2026-11-01', targets: { proteinG: 150, kcal: 2600 }, summary: 'Two high-protein days',
-      days: [
-        { date: '2026-10-29', items: [{ slot: 'lunch', recipeId: 'chicken-rice', name: 'Chicken and rice bowl', servings: 1.5 }] },
-        { date: '2026-10-30', items: [{ servings: 1.5, extras: [{ ingredientId: 'skyr', grams: 150 }] }] },
-      ],
-    });
-  });
-
-  it('refuses unknown recipe ids, allergens, disliked ingredients and protein sides that conflict', () => {
-    expect(validateMealPlan({ days: [day('2026-10-30', [{ slot: 'lunch', recipe_id: 'made-up', servings: 1 }])] }, mpCtx()).errors[0]).toMatch(/Unknown recipe id "made-up"/);
-    expect(validateMealPlan({ days: [day('2026-10-30', [{ slot: 'breakfast', recipe_id: 'pb-oats', servings: 1 }])] }, mpCtx()).errors[0]).toMatch(/Peanut butter oats conflicts with the user's allergens/);
-    expect(validateMealPlan({ days: [day('2026-10-30', [{ slot: 'dinner', recipe_id: 'tuna-rice', servings: 1 }])] }, mpCtx()).errors[0]).toMatch(/Tuna rice conflicts/);
-    expect(validateMealPlan({ days: [day('2026-10-30', [lunch(1, { protein_side: { ingredient_id: 'peanut-butter', grams: 30 } })])] }, mpCtx()).errors[0]).toMatch(/Peanut butter conflicts/);
-    expect(validateMealPlan({ days: [day('2026-10-30', [lunch(1, { protein_side: { ingredient_id: 'skyr', grams: 30 } })])] }, mpCtx({ facts: facts({ dietTags: ['vegan'] }) })).errors.join(' ')).toMatch(/conflicts/);
-  });
-
-  it('refuses out-of-range numbers, past days, other weeks, duplicate days', () => {
-    expect(validateMealPlan({ days: [day('2026-10-30', [lunch(5)])] }, mpCtx()).errors[0]).toMatch(/servings must be 0\.5–3/);
-    expect(validateMealPlan({ days: [day('2026-10-30', [lunch(1, { protein_side: { ingredient_id: 'skyr', grams: 900 } })])] }, mpCtx()).errors[0]).toMatch(/grams must be 10–300/);
-    expect(validateMealPlan({ days: [day('2026-10-27', [lunch()])] }, mpCtx()).errors[0]).toMatch(/in the past/);
-    expect(validateMealPlan({ days: [day('2026-11-04', [lunch()])] }, mpCtx()).errors[0]).toMatch(/not in this week/);
-    expect(validateMealPlan({ days: [day('2026-10-30', [lunch()]), day('2026-10-30', [lunch()])] }, mpCtx()).errors[0]).toMatch(/appears twice/);
-    const next = validateMealPlan({ week: 'next', days: [day('2026-11-03', [lunch()])] }, mpCtx());
-    expect(next.action?.weekStart).toBe('2026-11-02');
-  });
-
-  it('refuses without sharing or targets (missing-data message with the link)', () => {
-    expect(validateMealPlan({ days: [day('2026-10-30', [lunch()])] }, mpCtx({ nutrition: { ...NUT, shared: false } })).errors[0]).toMatch(/AI coach settings \[\[open:\/coaching\/ai\/settings/);
-    expect(validateMealPlan({ days: [day('2026-10-30', [lunch()])] }, mpCtx({ nutrition: { ...NUT, proteinG: null } })).errors[0]).toMatch(/\[\[open:\/nutrition\/targets\|Set your targets\]\]/);
-    expect(validateMealPlan({ days: [day('2026-10-30', [lunch()])] }, mpCtx({ nutrition: { ...NUT, enabled: false } })).errors[0]).toMatch(/Nutrition features/);
-  });
-
-  it('end to end: find_recipes → propose_meal_plan → reply stores ONE meal_plan action (it wins over recipe cards)', async () => {
-    const m = makeDb(data());
-    const { fetch, requests } = provider([
-      toolUse('find_recipes', { query: 'chicken' }),
-      toolUse('propose_meal_plan', { days: [day('2026-10-30', [lunch()])], summary: 'Friday lunch' }, 'toolu_2'),
-      text('Here’s **Friday** sorted — want me to do Saturday too?'),
-    ]);
-    const res = await handleAiCoach(deps(m.db, fetch), U, send('plan my meals for tomorrow'));
-    expect(requests[0].tools.map((t) => t.name)).toContain('propose_meal_plan');
-    const action = (res.body.reply as StoredMessage).action as MealPlanAction;
-    expect(action.kind).toBe('meal_plan');
-    expect(action.id).toBe(mid(1));
-    expect(m.recorded[0].reply.action).toEqual(action);
-  });
-});
-
+/* ================================================================== recipes (meal plans: aiCoachFixes.test.ts) */
 describe('MOCKED ai-coach v4: recipe cards', () => {
   it('find_recipes results become a recipe_suggestions action (allergen-filtered, server macros)', async () => {
     const m = makeDb(data());
@@ -294,10 +234,11 @@ describe('MOCKED ai-coach v4: recipe cards', () => {
     expect(action.recipes[0].perServing).toEqual({ kcal: 508, protein_g: 51.9, carbs_g: 56, fat_g: 6 });
   });
 
-  it('no results → no card', async () => {
+  it('the user’s own constraints exclude everything → no card, and the reason names the constraint', async () => {
     const state: ToolState = { proposal: null, proposalAttempts: 0 };
-    await runTool('find_recipes', { query: 'zzz' }, { db: makeDb(data()).db, facts: facts(), catalog: new Map(), state, messageId: mid(3) });
+    const out = await runTool('find_recipes', { query: 'zzz' }, { db: makeDb(data()).db, facts: facts({ maxCookMinutes: 5 }), catalog: new Map(), state, messageId: mid(3) });
     expect(state.recipes ?? null).toBeNull();
+    expect(JSON.parse(out.content).reason).toMatch(/5-minute cooking limit/);
   });
 });
 

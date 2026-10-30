@@ -12,13 +12,15 @@
  * user previews and applies on the device; nothing here writes to the user's records.
  * No tool reads or writes other users' data, settings, permissions, messages or coach records.
  */
-import type { AiDb, MealPlanAction, MealSlotName, RecipeSuggestionsAction, RefExercise, RefIngredient, RefRecipe, UserFacts, WeekAdjustmentAction } from './types.ts';
+import type { AccountStatePayload, AiDb, MealPlanAction, RecipeSuggestionsAction, RefExercise, RefIngredient, RefRecipe, UserFacts, WeekAdjustmentAction } from './types.ts';
 import type { WeekState } from './week.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
-import { addDays, validateWeekAdjustment, weekBounds } from './week.ts';
+import { validateWeekAdjustment } from './week.ts';
 import type { NutritionStatus } from './dataStatus.ts';
 // @ts-ignore see above
 import { mealPlanBlocker } from './dataStatus.ts';
+// @ts-ignore see above
+import { buildMealPlanAction, dietOk, explainNoRecipes, parseQuery, totalMinutes, wordsMatch } from './meals.ts';
 import type { NormProgram } from './validate.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { decideTarget, missingEquipment, normalizeProposedProgram, validateForUser, validateProposedProgram } from './validate.ts';
@@ -48,11 +50,11 @@ export const TOOL_DEFS = [
   {
     name: 'find_recipes',
     description:
-      "Search LiftCircle's recipe catalog. Results are already filtered to exclude the user's allergens, diet restrictions and disliked ingredients, and include per-serving kcal/protein/carbs/fat computed from ingredient data. Use for meal ideas.",
+      "Search LiftCircle's recipe catalog. Matching is tolerant: words in recipe or ingredient names, synonyms (fish → cod/salmon/tuna), tags in the query (high protein, vegetarian, vegan, dairy-free, gluten-free, quick) and meal type. With no or a vague query it returns the best fits for the user's targets — it is never empty unless the user's own allergens/diet/dislikes/cook time exclude everything, and then it gives the reason. Results are filtered for the user's allergens, diet and dislikes, with per-serving macros computed from ingredient data, and appear as recipe cards in the app.",
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Optional words to match in the recipe name, e.g. "chicken", "oats".' },
+        query: { type: 'string', description: 'Optional, free text, e.g. "quick high protein breakfast", "chicken", "no-cook lunch".' },
         meal: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
         min_protein_g: { type: 'number', description: 'Minimum protein per serving.' },
         max_results: { type: 'integer', minimum: 1, maximum: 5 },
@@ -149,43 +151,19 @@ export const TOOL_DEFS = [
   {
     name: 'propose_meal_plan',
     description:
-      'Offer a meal plan the user can add to the app\'s meal plan ("Add to my meal plan"). Use catalog recipe ids from find_recipes only; the server refuses unknown ids and anything with the user\'s allergens, diet restrictions or disliked ingredients. Pick portions (servings) and optional protein sides to reach the user\'s protein target; the app re-balances portions with its own rules and shows each day\'s totals vs targets. Needs Nutrition shared and a protein target. Nothing changes until the user taps the button.',
+      "Build a meal plan and offer it to the user (\"Add to my meal plan\"). Pass INTENT only — the server picks catalog recipes, portions and protein sides with the app's own meal planner from the user's targets, diet, allergens, dislikes, cook-time and budget settings. Use it whenever the user wants a meal plan made or added; never present your own invented meals as the plan. Default days: the rest of this week (next week if fewer than 3 days are left). Needs Nutrition shared and a protein target; otherwise it returns the reason. Nothing changes until the user taps the button.",
     input_schema: {
       type: 'object',
       properties: {
-        week: { type: 'string', enum: ['this', 'next'], description: 'This week (default; only today or later) or next week.' },
-        days: {
-          type: 'array',
-          description: 'One entry per day to plan (1–7), any subset of the week.',
-          items: {
-            type: 'object',
-            properties: {
-              date: { type: 'string', description: 'YYYY-MM-DD within the chosen week.' },
-              meals: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    slot: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
-                    recipe_id: { type: 'string', description: 'Catalog recipe id from find_recipes.' },
-                    servings: { type: 'number', minimum: 0.5, maximum: 3, description: 'In quarter servings, e.g. 1, 1.25, 1.5.' },
-                    protein_side: {
-                      type: 'object',
-                      description: 'Optional catalog protein side added to this meal.',
-                      properties: { ingredient_id: { type: 'string' }, grams: { type: 'number', minimum: 10, maximum: 300 } },
-                      required: ['ingredient_id', 'grams'],
-                    },
-                  },
-                  required: ['slot', 'recipe_id', 'servings'],
-                },
-              },
-            },
-            required: ['date', 'meals'],
-          },
-        },
+        week: { type: 'string', enum: ['this', 'next'], description: 'Only if the user said which week.' },
+        days: { type: 'array', items: { type: 'string' }, description: 'Only if the user named days: weekday names ("Wednesday") or YYYY-MM-DD dates.' },
+        meals_per_day: { type: 'integer', minimum: 1, maximum: 6, description: 'Only if the user asked for a different number than their setting.' },
+        quick: { type: 'boolean', description: 'User wants quick meals (≤ 15 min).' },
+        diet: { type: 'array', items: { type: 'string', enum: ['vegetarian', 'vegan', 'pescatarian', 'dairy_free', 'gluten_free'] }, description: 'Extra diet rules for this plan.' },
+        avoid: { type: 'array', items: { type: 'string' }, description: 'Foods to leave out for this plan, e.g. "fish", "mushrooms".' },
+        preferences: { type: 'string', description: 'Any other wishes in the user\'s words, e.g. "high protein, quick lunches".' },
         summary: { type: 'string', description: 'One short sentence describing the plan.' },
       },
-      required: ['days'],
     },
   },
 ] as const;
@@ -225,6 +203,8 @@ export interface ToolContext {
   today?: string;
   /** Nutrition sharing/setup status (propose_meal_plan refuses without sharing and a protein target). */
   nutrition?: NutritionStatus;
+  /** The user's account state (diet, targets) — read for the meal planner and recipe ranking, never sent wholesale. */
+  account?: AccountStatePayload | null;
 }
 
 export interface ToolOutcome {
@@ -283,38 +263,71 @@ export function perServingMacros(recipe: RefRecipe, ing: Map<string, RefIngredie
 async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutcome> {
   const [recipes, ingredients] = await Promise.all([ctx.db.getRecipes(), ctx.db.getIngredients()]);
   const ing = new Map(ingredients.map((i) => [i.id, i]));
-  const words = (typeof input.query === 'string' ? input.query : '').toLowerCase().split(/\s+/).filter((w) => w.length > 1).slice(0, 5);
-  const meal = typeof input.meal === 'string' ? input.meal : null;
-  const minP = typeof input.min_protein_g === 'number' ? input.min_protein_g : null;
+  const intent = parseQuery(typeof input.query === 'string' ? input.query : '');
+  const meal = typeof input.meal === 'string' && ['breakfast', 'lunch', 'dinner', 'snack'].includes(input.meal) ? input.meal : intent.meal;
+  const minP = typeof input.min_protein_g === 'number' ? input.min_protein_g : intent.highProtein ? (meal === 'snack' ? 15 : 25) : null;
   const max = Math.min(5, Math.max(1, typeof input.max_results === 'number' ? Math.round(input.max_results) : 3));
-  const out = [];
+
+  // 1. The user's own constraints (allergens, diet, dislikes, cook time) — never relaxed.
+  const allowed: { r: RefRecipe; omit: string[]; macros: ReturnType<typeof perServingMacros>; minutes: number }[] = [];
   for (const r of recipes) {
-    if (meal && r.meal !== meal) continue;
-    const name = r.name.toLowerCase();
-    const ingNames = (r.ingredients ?? []).map((x) => ing.get(x.ingredientId)?.name.toLowerCase() ?? '').join(' ');
-    if (words.length && !words.some((w) => name.includes(w) || ingNames.includes(w))) continue;
-    const minutes = (r.prepMinutes ?? 0) + (r.cookMinutes ?? 0);
+    const minutes = totalMinutes(r);
     if (ctx.facts.maxCookMinutes != null && minutes > ctx.facts.maxCookMinutes) continue;
     const fit = recipeFits(r, ing, ctx.facts);
     if (!fit.ok) continue;
-    const macros = perServingMacros(r, ing, fit.omit);
-    if (minP != null && macros.protein_g < minP) continue;
-    out.push({ id: r.id, name: r.name, meal: r.meal, total_minutes: minutes, per_serving: macros, ...(fit.omit.length ? { omit_optional: fit.omit } : {}) });
+    allowed.push({ r, omit: fit.omit, macros: perServingMacros(r, ing, fit.omit), minutes });
   }
-  out.sort((a, b) => b.per_serving.protein_g - a.per_serving.protein_g);
-  const shown = out.slice(0, max);
-  if (shown.length) {
-    ctx.state.recipes = {
-      kind: 'recipe_suggestions',
-      id: ctx.messageId ?? '',
-      recipes: shown.map((r) => ({ id: r.id, name: r.name, meal: r.meal, totalMinutes: r.total_minutes, perServing: r.per_serving })),
-    };
+  if (!allowed.length) {
+    const reason = explainNoRecipes(
+      { allergens: ctx.facts.allergens, dietTags: ctx.facts.dietTags, disliked: ctx.facts.dislikedIngredientIds, maxMinutes: ctx.facts.maxCookMinutes, meal: null },
+      recipes, ing, ctx.facts,
+    );
+    return { content: JSON.stringify({ results: [], reason, note: 'The user\'s own settings exclude every recipe. Explain this reason; don\'t invent recipes.' }) };
   }
+
+  // 2. What this search asked for, loosened step by step until something matches (never past the user's constraints).
+  const want = (x: (typeof allowed)[number], o: { words: boolean; meal: boolean; extras: boolean }) =>
+    (!o.meal || !meal || x.r.meal === meal) &&
+    (!o.extras || ((!intent.quick || x.minutes <= 15) && dietOk(x.r, intent.diet, ing) && (minP == null || x.macros.protein_g >= minP))) &&
+    (!o.words || wordsMatch(x.r, intent.words, ing));
+  const steps = [
+    { words: true, meal: true, extras: true, note: null as string | null },
+    { words: false, meal: true, extras: true, note: intent.words.length ? `No recipe matched "${intent.words.join(' ')}"; these are the closest fits for the rest of the request.` : null },
+    { words: false, meal: true, extras: false, note: 'Nothing matched every part of the request; these are the best fits for the user\'s targets for that meal.' },
+    { words: false, meal: false, extras: false, note: 'Nothing matched the request; these are the best fits for the user\'s targets.' },
+  ];
+  let picked: typeof allowed = [];
+  let note: string | null = null;
+  for (const s of steps) {
+    picked = allowed.filter((x) => want(x, s));
+    if (picked.length) {
+      note = s.note;
+      break;
+    }
+  }
+  // Best fit for the targets: protein per serving close to the user's protein per meal (else most protein).
+  const meals = (ctx.account?.profile?.diet?.mealsPerDay as number | undefined) ?? 3;
+  const perMeal = ctx.nutrition?.proteinG ? ctx.nutrition.proteinG / Math.max(1, meals) : null;
+  const vague = !intent.words.length || note != null;
+  picked.sort((a, b) =>
+    vague && perMeal != null && minP == null
+      ? Math.abs(a.macros.protein_g - perMeal) - Math.abs(b.macros.protein_g - perMeal) || a.r.id.localeCompare(b.r.id)
+      : b.macros.protein_g - a.macros.protein_g || a.r.id.localeCompare(b.r.id),
+  );
+  const shown = picked.slice(0, max).map((x) => ({
+    id: x.r.id, name: x.r.name, meal: x.r.meal, total_minutes: x.minutes, per_serving: x.macros, ...(x.omit.length ? { omit_optional: x.omit } : {}),
+  }));
+  ctx.state.recipes = {
+    kind: 'recipe_suggestions',
+    id: ctx.messageId ?? '',
+    recipes: shown.map((r) => ({ id: r.id, name: r.name, meal: r.meal, totalMinutes: r.total_minutes, perServing: r.per_serving })),
+  };
   return {
     content: JSON.stringify({
       note: 'Filtered for the user\'s allergens, diet and dislikes. Macros are per serving, computed from ingredient data (optional extras excluded).',
+      ...(note ? { fallback: note } : {}),
       results: shown,
-      ...(shown.length ? { shown_to_user: 'These appear as recipe cards under your reply (Open, Save to favourites, Add to plan, Log this meal).' } : {}),
+      shown_to_user: 'These appear as recipe cards under your reply (Open, Add to plan, Save). Link a recipe with [[open:/nutrition/recipes/<id>|Open recipe]]; never write out its ingredients or steps.',
     }),
   };
 }
@@ -419,108 +432,6 @@ function proposeWeekAdjustment(input: Record<string, unknown>, ctx: ToolContext)
 }
 
 /* ------------------------------------------------------------------ meal plans */
-const SLOTS: MealSlotName[] = ['breakfast', 'lunch', 'dinner', 'snack'];
-const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
-
-/** Does a catalog ingredient pass the user's allergen / diet / dislike filters? */
-export function ingredientFits(i: RefIngredient, facts: UserFacts): boolean {
-  const flags = facts.dietTags.map((t) => DIET_FLAG[t]).filter(Boolean);
-  return !(i.allergens ?? []).some((a) => facts.allergens.includes(a)) && !facts.dislikedIngredientIds.includes(i.id) && flags.every((f) => i.diet?.[f] === true);
-}
-
-/**
- * Validates a propose_meal_plan input against the catalogs and THIS user's filters and targets. Returns the action to
- * store with the reply, or errors (then nothing is offered). Pure apart from the injected catalogs.
- */
-export function validateMealPlan(
-  input: Record<string, unknown>,
-  ctx: { facts: UserFacts; today: string; nutrition: NutritionStatus; messageId: string; recipes: RefRecipe[]; ingredients: RefIngredient[] },
-): { action: MealPlanAction | null; errors: string[] } {
-  const blocker = mealPlanBlocker(ctx.nutrition);
-  if (blocker) return { action: null, errors: [blocker] };
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  const rec = new Map(ctx.recipes.map((r) => [r.id, r]));
-  const ing = new Map(ctx.ingredients.map((i) => [i.id, i]));
-  const { start: thisStart } = weekBounds(ctx.today, ctx.facts.weekStart);
-  const next = input.week === 'next';
-  const start = next ? addDays(thisStart, 7) : thisStart;
-  const end = addDays(start, 6);
-  const rawDays = Array.isArray(input.days) ? input.days : [];
-  if (rawDays.length < 1 || rawDays.length > 7) errors.push('Plan 1–7 days.');
-  const seen = new Set<string>();
-  const days: MealPlanAction['days'] = [];
-  for (const d of rawDays.slice(0, 7)) {
-    const day = obj(d);
-    const date = day.date;
-    if (!isDate(date) || date < start || date > end) {
-      errors.push(`Date "${String(date).slice(0, 20)}" is not in ${next ? 'next' : 'this'} week (${start} to ${end}).`);
-      continue;
-    }
-    if (!next && date < ctx.today) {
-      errors.push(`${date} is in the past; plan today or later.`);
-      continue;
-    }
-    if (seen.has(date)) {
-      errors.push(`${date} appears twice.`);
-      continue;
-    }
-    seen.add(date);
-    const meals = Array.isArray(day.meals) ? day.meals : [];
-    if (meals.length < 1 || meals.length > 6) errors.push(`${date}: plan 1–6 meals.`);
-    const items: MealPlanAction['days'][number]['items'] = [];
-    for (const m of meals.slice(0, 6)) {
-      const meal = obj(m);
-      const slot = SLOTS.includes(meal.slot as MealSlotName) ? (meal.slot as MealSlotName) : null;
-      const id = typeof meal.recipe_id === 'string' ? meal.recipe_id.slice(0, 100) : '';
-      const r = rec.get(id);
-      if (!slot) errors.push(`${date}: unknown meal slot.`);
-      if (!r) {
-        errors.push(`Unknown recipe id "${id}". Use ids from find_recipes.`);
-        continue;
-      }
-      const fit = recipeFits(r, ing, ctx.facts);
-      if (!fit.ok) {
-        errors.push(`${r.name} conflicts with the user's allergens, diet or disliked ingredients.`);
-        continue;
-      }
-      const sv = typeof meal.servings === 'number' && Number.isFinite(meal.servings) ? Math.round(meal.servings * 4) / 4 : NaN;
-      if (!(sv >= 0.5 && sv <= 3)) errors.push(`${r.name}: servings must be 0.5–3.`);
-      const minutes = (r.prepMinutes ?? 0) + (r.cookMinutes ?? 0);
-      if (ctx.facts.maxCookMinutes != null && minutes > ctx.facts.maxCookMinutes)
-        warnings.push(`${r.name} takes about ${minutes} min (over your ${ctx.facts.maxCookMinutes}-minute limit).`);
-      let extras: { ingredientId: string; grams: number }[] | undefined;
-      if (meal.protein_side != null) {
-        const side = obj(meal.protein_side);
-        const sid = typeof side.ingredient_id === 'string' ? side.ingredient_id.slice(0, 100) : '';
-        const si = ing.get(sid);
-        const g = typeof side.grams === 'number' && Number.isFinite(side.grams) ? Math.round(side.grams / 5) * 5 : NaN;
-        if (!si) errors.push(`Unknown protein side "${sid}".`);
-        else if (!ingredientFits(si, ctx.facts)) errors.push(`${si.name} conflicts with the user's allergens, diet or disliked ingredients.`);
-        else if (!(g >= 10 && g <= 300)) errors.push(`${si.name}: grams must be 10–300.`);
-        else extras = [{ ingredientId: si.id, grams: g }];
-      }
-      if (slot && sv >= 0.5 && sv <= 3) items.push({ slot, recipeId: r.id, name: r.name, servings: sv, ...(extras ? { extras } : {}) });
-    }
-    days.push({ date, items });
-  }
-  if (errors.length) return { action: null, errors: [...new Set(errors)].slice(0, 20) };
-  days.sort((a, b) => (a.date < b.date ? -1 : 1));
-  return {
-    action: {
-      kind: 'meal_plan',
-      id: ctx.messageId,
-      weekStart: start,
-      weekEnd: end,
-      days,
-      targets: { proteinG: ctx.nutrition.proteinG!, kcal: ctx.nutrition.kcal },
-      summary: typeof input.summary === 'string' ? input.summary.trim().slice(0, 300) : '',
-      warnings: [...new Set(warnings)].slice(0, 4),
-    },
-    errors: [],
-  };
-}
-
 const NO_NUTRITION: NutritionStatus = { shared: false, enabled: null, autoDisabled: false, proteinG: null, kcal: null, macros: false };
 
 async function proposeMealPlan(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutcome> {
@@ -530,18 +441,17 @@ async function proposeMealPlan(input: Record<string, unknown>, ctx: ToolContext)
   }
   const nutrition = ctx.nutrition ?? NO_NUTRITION;
   const [recipes, ingredients] = mealPlanBlocker(nutrition) ? [[], []] : await Promise.all([ctx.db.getRecipes(), ctx.db.getIngredients()]);
-  const { action, errors } = validateMealPlan(input, {
-    facts: ctx.facts, today: ctx.today ?? new Date().toISOString().slice(0, 10), nutrition, messageId: ctx.messageId ?? '', recipes, ingredients,
+  const { action, errors, adjusted } = buildMealPlanAction(input, {
+    facts: ctx.facts, account: ctx.account ?? null, today: ctx.today ?? new Date().toISOString().slice(0, 10), nutrition, messageId: ctx.messageId ?? '', recipes, ingredients,
   });
-  if (!action) return { content: JSON.stringify({ status: 'invalid', errors, note: 'Fix these and call again once, or explain to the user without a plan.' }), isError: true };
+  if (!action) return { content: JSON.stringify({ status: 'not_built', errors, note: 'Tell the user exactly this reason (with its link if any). Do not invent meals.' }), isError: true };
   ctx.state.mealPlan = action;
   return {
     content: JSON.stringify({
       status: 'offered',
-      week: { start: action.weekStart, end: action.weekEnd },
-      days: action.days.map((d) => ({ date: d.date, meals: d.items.map((i) => `${i.slot}: ${i.name} ×${i.servings}`) })),
-      warnings: action.warnings,
-      note: 'The user sees the plan with each day\'s totals vs targets and an "Add to my meal plan" button. Nothing has changed yet.',
+      days: action.days.length,
+      ...(adjusted.length ? { adjusted } : {}),
+      note: 'The plan is shown as a card with each day\'s meals and totals vs targets, plus "Add to my meal plan". Reply in one or two short lines (e.g. "Here\'s your week — tap Add to my meal plan to put it in the app."). Do not list the meals; the card shows them.',
     }),
   };
 }

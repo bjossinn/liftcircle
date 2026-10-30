@@ -191,7 +191,7 @@ function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; 
             ))}
           </Select>
         </IntakeRow>
-        <IntakeRow label="Training days per week" k="daysPerWeek" draft={draft} keep={keep} summary={draft.daysPerWeek != null ? `${draft.daysPerWeek} days` : null}>
+        <IntakeRow label="Training days per week" k="daysPerWeek" draft={draft} keep={keep} summary={draft.daysPerWeek != null ? `${draft.daysPerWeek} day${draft.daysPerWeek === 1 ? '' : 's'}` : null}>
           <NumberInput ariaLabel="Training days per week" value={draft.daysPerWeek ?? null} decimals={false} min={1} max={7} onChange={(v) => set('daysPerWeek', v ?? undefined)} suffix="days" />
         </IntakeRow>
         <IntakeRow label="Session length" k="sessionMinutes" draft={draft} keep={keep} summary={draft.sessionMinutes != null ? `${draft.sessionMinutes} min` : null}>

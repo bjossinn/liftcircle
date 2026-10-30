@@ -8,7 +8,9 @@
  * Supabase. Scenario (repair brief §3): saved 3-session plan (Full body A/B/C Mon/Wed/Fri), A done on Monday,
  * today Wednesday, the user says "I can only train twice this week". Prints the reply, the "Why this?" part and
  * the structured week plan, then soft checks. Then an off-topic request ("How do I write a for loop in Python?")
- * must get a short in-voice redirect: no code, and it mentions training (hard checks). Costs two to four provider calls.
+ * must get a short in-voice redirect: no code, and it mentions training (hard checks). Then (0.7.0) "make me a meal plan
+ * for this week and add it" must return a meal_plan action, and "Ok try now" after a request that was blocked by
+ * nutrition sharing must resume it (hard checks). Costs four to ten provider calls.
  *
  * Without a key it prints BLOCKED and exits 0. Exit 1 when a provider call fails or the off-topic reply contains code
  * or doesn't steer back to training.
@@ -127,3 +129,61 @@ for (const [name, ok] of hard) console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`);
 console.log(`${offWords <= 50 ? 'PASS' : 'WARN'}  short redirect (≤ 40 words asked; got ${offWords})`);
 void stored;
 if (hard.some(([, ok]) => !ok)) process.exit(1);
+
+/* 0.7.0: meal plans get built, and "ok try now" resumes a request that was blocked by sharing. Real key only. */
+const catBuild = await build({
+  stdin: { contents: "export { RECIPES } from './src/data/recipes.ts'; export { INGREDIENTS } from './src/data/ingredients.ts';", resolveDir: ROOT, loader: 'ts' },
+  bundle: true, write: false, format: 'esm', platform: 'neutral', logLevel: 'silent',
+});
+const { RECIPES, INGREDIENTS } = await import(`data:text/javascript;base64,${Buffer.from(catBuild.outputFiles[0].text).toString('base64')}`);
+const nutritionAccount = {
+  settings: { units: { weight: 'kg' }, timeZone: 'UTC', weekStart: 1, nutritionEnabled: true },
+  profile: { goal: 'build_muscle', experience: 'intermediate', limitations: [], diet: { tags: [], allergens: [], dislikedIngredientIds: [], maxCookMinutes: 30, mealsPerDay: 3, budget: 'any' } },
+  nutrition: { mode: 'protein_only', proteinG: 198, proteinPerKg: 2.2 },
+};
+const allScopes = { profile: true, training: true, measurements: false, nutrition: true };
+const mealDb = (extra = {}) => ({
+  ...db,
+  getSettings: async () => ({ ...(await db.getSettings()), scopes: allScopes, profileNotes: '', ...extra.settings }),
+  getAccountState: async () => nutritionAccount,
+  getRecipes: async () => RECIPES,
+  getIngredients: async () => INGREDIENTS,
+  getHistory: extra.getHistory ?? (async () => []),
+});
+const liveNow = () => new Date('2026-10-28T12:00:00Z');
+
+const mp = await handleAiCoach({ db: mealDb(), env: (k) => process.env[k], fetch: globalThis.fetch, now: liveNow, log: () => {} }, UID,
+  { action: 'send', id: '00000000-0000-4000-8000-0000000a3a11', text: 'make me a meal plan for this week and add it', mode: 'chat' });
+if (mp.status !== 200) {
+  console.log(`FAIL: meal plan provider call returned ${mp.status} ${JSON.stringify(mp.body)}`);
+  process.exit(1);
+}
+console.log('\nLIVE provider reply (make me a meal plan for this week and add it)\n');
+console.log(mp.body.reply.content);
+console.log(`action: ${mp.body.reply.action?.kind ?? 'none'} (${mp.body.reply.action?.days?.length ?? 0} days)`);
+
+const CHANGED = '2026-10-28T11:00:00Z';
+const blocked = [
+  { id: '00000000-0000-4000-8000-0000000b0001', role: 'user', content: 'make a meal plan for the week and add it', createdAt: '2026-10-28T10:00:00Z' },
+  { id: '00000000-0000-4000-8000-0000000b0002', role: 'assistant', content: 'I can’t see your nutrition yet. You can share it under AI coach settings.\n[[open:/coaching/ai/settings|Change what the coach can see]]', createdAt: '2026-10-28T10:00:05Z', grounding: ['Profile & preferences', '1 recent workout'] },
+];
+const resume = await handleAiCoach(
+  { db: mealDb({ settings: { scopesChangedAt: CHANGED }, getHistory: async (_u, after) => blocked.filter((m) => !after || m.createdAt > after) }), env: (k) => process.env[k], fetch: globalThis.fetch, now: liveNow, log: () => {} },
+  UID,
+  { action: 'send', id: '00000000-0000-4000-8000-0000000b0003', text: 'Ok try now', mode: 'chat' },
+);
+if (resume.status !== 200) {
+  console.log(`FAIL: resume provider call returned ${resume.status} ${JSON.stringify(resume.body)}`);
+  process.exit(1);
+}
+console.log('\nLIVE provider reply ("Ok try now" after sharing nutrition)\n');
+console.log(resume.body.reply.content);
+const mealHard = [
+  ['"make me a meal plan … and add it" → a meal_plan action', mp.body.reply.action?.kind === 'meal_plan'],
+  ['"ok try now" after a blocked request → resumes it (meal_plan action)', resume.body.reply.action?.kind === 'meal_plan'],
+];
+console.log('\nMeal plan / follow-up checks:');
+for (const [name, ok] of mealHard) console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`);
+console.log(`${/nutrition/i.test(resume.body.reply.content) ? 'PASS' : 'WARN'}  notices that nutrition is now shared`);
+console.log(`${!/\d{4}-\d{2}-\d{2}/.test(mp.body.reply.content + resume.body.reply.content) ? 'PASS' : 'FAIL'}  no ISO dates in the replies`);
+if (mealHard.some(([, ok]) => !ok)) process.exit(1);
