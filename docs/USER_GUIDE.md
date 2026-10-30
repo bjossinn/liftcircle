@@ -201,6 +201,9 @@ stops them on that phone.
 
 Launch it from the home-screen icon; it opens full-screen and works offline after the first load. When a new version
 is ready you'll see **Update available** — it never reloads in the middle of a workout.
+The app checks for new versions every hour and whenever you reopen it. To check right away, go to **Settings →
+Check for updates** and tap **Check**. If a new version is ready, tap **Update** (there or in the banner). You can't
+install an update while a workout is in progress.
 
 ## Backups & your data
 
