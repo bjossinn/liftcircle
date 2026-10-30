@@ -413,16 +413,17 @@ describe('MOCKED ai-coach: proposal validation', () => {
     expect(recorded[0].proposal!.target).toBe('for_coach_review');
   });
 
-  it('tool loop is bounded: the 3rd round forbids tools (tool_choice none)', async () => {
+  it('tool loop is bounded: the 4th round forbids tools (tool_choice none)', async () => {
     const { db } = makeDb({ [A]: userA() });
     const { fetch, requests } = mockFetch([
       toolUse('exercise_alternatives', { exercise_id: 'goblet-squat' }),
       toolUse('exercise_alternatives', { exercise_id: 'goblet-squat' }, 'toolu_2'),
+      toolUse('exercise_alternatives', { exercise_id: 'goblet-squat' }, 'toolu_3'),
       text('Final answer.'),
     ]);
     const res = await handleAiCoach(deps(db, fetch), A, sendBody());
-    expect(requests).toHaveLength(3);
-    expect(requests.map((r) => r.body.tool_choice?.type)).toEqual(['auto', 'auto', 'none']);
+    expect(requests).toHaveLength(4);
+    expect(requests.map((r) => r.body.tool_choice?.type)).toEqual(['auto', 'auto', 'auto', 'none']);
     expect((res.body.reply as StoredMessage).content).toBe('Final answer.');
   });
 });

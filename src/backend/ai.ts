@@ -11,6 +11,7 @@
  */
 import type { ID } from '@/domain/types';
 import type { WeekPlan } from '@/domain/program/schedule';
+import { toMealPlanSuggestion, toRecipeSuggestions, type MealPlanSuggestion, type RecipeSuggestions } from '@/domain/nutrition/aiActions';
 import type { AiApi, AiAvailability, AiMessage, AiSettings, AiUsage, ProgramProposal } from './coachingContract';
 import { backendConfigured, requireSupabase } from './supabase';
 import { BackendError, toBackendError } from './syncRemote';
@@ -121,8 +122,11 @@ function toSettings(raw: Record<string, unknown> | null): AiSettings | null {
   };
 }
 
-/** An AI message plus the optional v2 fields: collapsed "Why this?" reasoning and a this-week plan action. */
-export type AiChatMessage = AiMessage & { why?: string | null; weekPlan?: WeekPlan | null };
+/**
+ * An AI message plus the optional fields: collapsed "Why this?" reasoning and at most one structured action — a this-week
+ * plan, a meal plan suggestion or recipe cards (ai_messages.action; unknown or malformed kinds are dropped).
+ */
+export type AiChatMessage = AiMessage & { why?: string | null; weekPlan?: WeekPlan | null; mealPlan?: MealPlanSuggestion | null; recipes?: RecipeSuggestions | null };
 
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const strs = (v: unknown, max = 8) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, max) : []);
@@ -158,7 +162,7 @@ export function toWeekPlan(raw: unknown): WeekPlan | null {
 function toMessage(raw: Record<string, unknown>): AiChatMessage {
   return {
     ...(typeof raw.why === 'string' && raw.why.trim() ? { why: raw.why } : {}),
-    ...(raw.action ? { weekPlan: toWeekPlan(raw.action) } : {}),
+    ...(raw.action ? { weekPlan: toWeekPlan(raw.action), mealPlan: toMealPlanSuggestion(raw.action), recipes: toRecipeSuggestions(raw.action) } : {}),
     id: String(raw.id),
     role: raw.role === 'assistant' ? 'assistant' : 'user',
     content: String(raw.content ?? ''),

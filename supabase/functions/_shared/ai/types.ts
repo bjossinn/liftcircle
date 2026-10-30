@@ -34,8 +34,8 @@ export interface StoredMessage {
   grounding?: string[];
   /** Optional reasoning, shown collapsed under "Why this?" (null/absent when the model gave none). */
   why?: string | null;
-  /** Optional structured action attached to the reply (e.g. a this-week schedule adjustment). */
-  action?: WeekAdjustmentAction | null;
+  /** Optional structured action attached to the reply (this-week schedule change, meal plan or recipe cards). */
+  action?: AiAction | null;
 }
 
 /**
@@ -64,6 +64,37 @@ export interface WeekAdjustmentAction {
   warnings: string[];
   summary: string;
 }
+
+/** A slot in the app's meal plan (src/domain/types.ts MealSlot). */
+export type MealSlotName = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+/**
+ * A meal plan for this or next week the user can add to the app's meal plan ("Add to my meal plan"). Built only from
+ * catalog recipe ids and catalog protein sides that pass the user's allergen, diet and dislike filters (server-checked).
+ * The app balances each day with its own balanceDay and shows planStatus totals vs targets; nothing changes until the
+ * user taps the button. Items get ids prefixed "ai:<id>:" so applying twice is a no-op and Undo can find them.
+ */
+export interface MealPlanAction {
+  kind: 'meal_plan';
+  /** = the user message id of the exchange. */
+  id: string;
+  weekStart: string;
+  weekEnd: string;
+  days: { date: string; items: { slot: MealSlotName; recipeId: string; name: string; servings: number; extras?: { ingredientId: string; grams: number }[] }[] }[];
+  /** Targets the plan was built for (informational; the app re-checks against the current targets). */
+  targets: { proteinG: number; kcal: number | null };
+  summary: string;
+  warnings: string[];
+}
+
+/** Recipe cards from a find_recipes call (catalog recipes already filtered for the user; macros computed server-side). */
+export interface RecipeSuggestionsAction {
+  kind: 'recipe_suggestions';
+  id: string;
+  recipes: { id: string; name: string; meal: string; totalMinutes: number; perServing: { kcal: number; protein_g: number; carbs_g: number; fat_g: number } }[];
+}
+
+export type AiAction = WeekAdjustmentAction | MealPlanAction | RecipeSuggestionsAction;
 
 /** camelCase ProgramProposal as returned by the SQL helpers (src/backend/coachingContract.ts). */
 export type ProposalJson = Record<string, unknown> & { id: string; status: string; target: string };
@@ -187,7 +218,7 @@ export interface SessionPayload {
   exercises?: { exerciseId?: string; discomfort?: boolean; sets?: LoggedSetPayload[] }[];
 }
 export interface AccountStatePayload {
-  settings?: { units?: { weight?: string; length?: string; distance?: string }; timeZone?: string; weekStart?: number };
+  settings?: { units?: { weight?: string; length?: string; distance?: string }; timeZone?: string; weekStart?: number; nutritionEnabled?: boolean };
   profile?: {
     goal?: string;
     secondaryGoal?: string;
@@ -252,7 +283,7 @@ export interface RecordExchangeInput {
     inputTokens: number;
     outputTokens: number;
     why?: string | null;
-    action?: WeekAdjustmentAction | null;
+    action?: AiAction | null;
   };
   proposal: RecordProposalInput | null;
   usage: { inputTokens: number; outputTokens: number; costUsd: number | null };

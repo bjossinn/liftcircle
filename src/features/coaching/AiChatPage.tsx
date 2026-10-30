@@ -6,11 +6,13 @@
  * An empty conversation opens with an app-rendered, personalized welcome (ai/welcome.ts): no model call, nothing
  * stored, so refreshes and parallel tabs can't duplicate it or cost anything. Quick-reply chips under it send a normal
  * user message, so the real AI answers. Replies may carry a collapsed
- * "Why this?" and a this-week plan the user can apply (ai/WeekPlanCard.tsx).
+ * "Why this?" and one action card: a this-week plan (ai/WeekPlanCard.tsx), a meal plan (ai/MealPlanCard.tsx) or
+ * recipe cards (ai/RecipeCards.tsx). AI text and "Why this?" render as a safe Markdown subset (ai/markdown.tsx);
+ * valid [[open:/path|Label]] markers become in-app buttons under the message. User messages stay plain text.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Bot, ClipboardCheck, CloudOff, MoreVertical, Pause, Play, RotateCcw, SendHorizontal, Settings2, Sparkles, Trash2, Lightbulb, Pencil, AlertTriangle } from 'lucide-react';
+import { ArrowUpRight, Bot, ClipboardCheck, CloudOff, MoreVertical, Pause, Play, RotateCcw, SendHorizontal, Settings2, Sparkles, Trash2, Lightbulb, Pencil, AlertTriangle } from 'lucide-react';
 import { Badge, Button, ConfirmDialog, IconButton, ListRow, Notice, Sheet, Spinner, cx } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { aiApi, type AiChatMessage } from '@/backend/ai';
@@ -25,6 +27,10 @@ import {
 import { useActiveCoach, useAiBoot } from './ai/useAi';
 import { buildWelcome, localHour, recentRecord } from './ai/welcome';
 import { WeekPlanCard } from './ai/WeekPlanCard';
+import { MealPlanCard } from './ai/MealPlanCard';
+import { RecipeCards } from './ai/RecipeCards';
+import { Markdown } from './ai/markdown';
+import { extractOpenLinks } from '../../../supabase/functions/_shared/ai/appGuide';
 import { useActiveProgram, useAllActivities, useAllSessions } from '@/features/train/hooks';
 import { todayISO } from '@/lib/dates';
 import { useExercises } from '@/data/catalog';
@@ -379,7 +385,7 @@ function Chat({
                   pending={m.pending}
                   proposal={m.proposalId ? proposals[m.proposalId] : undefined}
                   coach={coach}
-                  onShare={() => setShare({ key: m.id, text: m.content })}
+                  onShare={() => setShare({ key: m.id, text: extractOpenLinks(m.content).text })}
                   onRetry={retry}
                   onEdit={editPending}
                   retryDisabled={blocked}
@@ -553,6 +559,7 @@ function MessageItem({
   onEdit: () => void;
   retryDisabled: boolean;
 }) {
+  const nav = useNavigate();
   if (m.role === 'user') {
     return (
       <li className="flex justify-end">
@@ -581,6 +588,7 @@ function MessageItem({
       </li>
     );
   }
+  const body = extractOpenLinks(m.content);
   return (
     <li>
       <article aria-label="AI coach message" className="max-w-[92%]">
@@ -591,16 +599,29 @@ function MessageItem({
           <span className="text-sm font-semibold">AI coach</span>
           <AiBadge />
         </div>
-        <div className="rounded-2xl rounded-tl-md bg-surface border border-line px-3.5 py-2.5 whitespace-pre-wrap break-words text-[15px]">{m.content}</div>
+        <div className="rounded-2xl rounded-tl-md bg-surface border border-line px-3.5 py-2.5 text-[15px]" data-testid="ai-message-body">
+          <Markdown text={body.text} />
+        </div>
+        {body.links.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-2" role="group" aria-label="Open in the app">
+            {body.links.map((l) => (
+              <Button key={l.path} size="sm" variant="secondary" icon={<ArrowUpRight className="size-4" />} onClick={() => nav(l.path)}>
+                {l.label}
+              </Button>
+            ))}
+          </div>
+        )}
         {m.why && (
           <details className="mt-1.5 group">
             <summary className="cursor-pointer select-none text-sm text-muted min-h-11 inline-flex items-center gap-1 hover:text-ink">Why this?</summary>
-            <p className="text-sm text-muted whitespace-pre-wrap break-words px-1 pb-1">{m.why}</p>
+            <Markdown text={extractOpenLinks(m.why).text} className="text-sm text-muted px-1 pb-1" />
           </details>
         )}
         {m.weekPlan && (
           <WeekPlanCard plan={m.weekPlan} program={week.program} sessions={week.sessions} activities={week.activities} today={week.today} weekStart={week.weekStart} db={week.db} />
         )}
+        {m.mealPlan && <MealPlanCard plan={m.mealPlan} />}
+        {m.recipes && <RecipeCards suggestions={m.recipes} />}
         {m.grounding && m.grounding.length > 0 && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <span className="text-xs text-muted">Based on:</span>
@@ -620,9 +641,13 @@ function MessageItem({
           >
             <Sparkles className="size-5 text-accent shrink-0 mt-0.5" aria-hidden />
             <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-[15px]">Suggested plan change — review</span>
+              <span className="block font-semibold text-[15px]">
+                {proposal && !proposal.baseProgramId && proposal.target !== 'for_coach_review' ? 'Add to my program — review' : 'Suggested plan change — review'}
+              </span>
               <span className="block text-xs text-muted mt-0.5">
-                {proposal ? `${proposal.program.name}${proposal.changeSummary[0] ? ` · ${proposal.changeSummary[0]}` : ''}` : 'An AI suggestion. Nothing changes until you apply it.'}
+                {proposal
+                  ? `${proposal.program.name}${proposal.changeSummary[0] ? ` · ${proposal.changeSummary[0]}` : ''}`
+                  : 'An AI suggestion. Preview it, then add it to your program — nothing changes until you do.'}
               </span>
             </span>
           </Link>
