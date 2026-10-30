@@ -90,7 +90,7 @@ describe('MealPlanPage (protein-only fixture)', () => {
     expect(text()).toMatch(/You're tracking protein only, so calories are shown for information/);
     expect(text()).toMatch(/kcal \(for information\)/);
     expect(text()).not.toMatch(/\/ 2600 kcal/); // a stale calorie value is never shown as a target
-    expect(text()).toMatch(/19 g short/); // first day: 125 g of 144 g
+    expect(text()).toMatch(/16 g short/); // first day: 128 g of 144 g (84-recipe catalogue; was 125 g with 24 recipes)
     const before = text();
 
     // Reload: the same warnings and gaps are derived from the persisted plan.
