@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { CheckCircle2, ChevronLeft, ChevronRight, Minus, Pencil, Plus, RefreshCw, Scale, Settings2, ShoppingCart, Shuffle, Trash2 } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, History, Minus, Pencil, Plus, RefreshCw, Scale, Settings2, ShoppingCart, Shuffle, Trash2 } from 'lucide-react';
 import {
-  Button, Card, ChipGroup, ConfirmDialog, EmptyState, IconButton, Notice, NumberInput, Page, SectionTitle, Segmented, Select, Sheet, Spinner,
+  Button, Card, ChipGroup, ConfirmDialog, EmptyState, IconButton, ListRow, Notice, NumberInput, Page, SectionTitle, Segmented, Select, Sheet, Spinner,
 } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { useApp } from '@/state/app';
-import { kvGet, kvSet, newRecord, saveRecord } from '@/db/repo';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { alive, kvGet, kvSet, newRecord, saveRecord } from '@/db/repo';
 import { addDays, formatDate, startOfWeek, todayISO } from '@/lib/dates';
 import type { Allergen, BudgetPref, DietPrefs, DietTag, ID, MealPlan, MealPlanExtra, MealPlanItem, MealSlot } from '@/domain/types';
 import { INGREDIENTS, INGREDIENTS_BY_ID } from '@/data/ingredients';
@@ -32,9 +33,18 @@ export default function MealPlanPage() {
   const [params] = useSearchParams();
   const [weekStart, setWeekStart] = useState(() => {
     const w = params.get('week');
-    return w && /^d{4}-d{2}-d{2}$/.test(w) ? startOfWeek(w, account.settings.weekStart) : thisWeek;
+    return w && /^\d{4}-\d{2}-\d{2}$/.test(w) ? startOfWeek(w, account.settings.weekStart) : thisWeek;
   });
   const plan = useWeekPlan(weekStart);
+  const [showEarlier, setShowEarlier] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  // Today first: days already past go in a collapsed "Earlier this week" section at the end. A week that is
+  // entirely past (or entirely ahead) shows in date order.
+  const { upcoming, earlier } = useMemo(() => {
+    const idx = plan ? plan.days.map((_, i) => i) : [];
+    const ahead = idx.filter((i) => plan!.days[i].date >= today);
+    return ahead.length ? { upcoming: ahead, earlier: idx.filter((i) => plan!.days[i].date < today) } : { upcoming: idx, earlier: [] as number[] };
+  }, [plan, today]);
   const [busy, setBusy] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
@@ -72,6 +82,77 @@ export default function MealPlanPage() {
     }
   }
 
+  const renderDay = (dayIdx: number) => {
+    if (!plan || !status) return null;
+    const day = plan.days[dayIdx];
+    const st = status.days[dayIdx];
+    const n = st.totals;
+    return (
+      <section key={day.date} aria-labelledby={`d-${day.date}`}>
+        <SectionTitle
+          id={`d-${day.date}`}
+          action={
+            <IconButton label={`Add a meal on ${formatDate(day.date)}`} size="sm" onClick={() => setAdding(day.date)}>
+              <Plus className="size-5" />
+            </IconButton>
+          }
+        >
+          {day.date === today ? 'Today' : formatDate(day.date, { weekday: 'long', day: 'numeric', month: 'short' })}
+        </SectionTitle>
+        <Card>
+          {day.items.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-muted">No meals planned.</p>
+          ) : (
+            <ul className="divide-y divide-line">
+              {[...day.items]
+                .sort((a, b) => MEAL_ORDER.indexOf(a.slot) - MEAL_ORDER.indexOf(b.slot))
+                .map((it) => {
+                  const r = RECIPES_BY_ID.get(it.recipeId);
+                  if (!r) return null;
+                  const m = planItemNutrition(it, RECIPES_BY_ID);
+                  return (
+                    <li key={it.id} className="flex items-center gap-1 pl-4 pr-1 py-2 min-h-16">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs text-muted">{MEAL_LABELS[it.slot]}</div>
+                        <Link to={`/nutrition/recipes/${r.id}`} className="text-[15px] font-medium hover:underline block truncate">
+                          {r.name}
+                        </Link>
+                        {it.extras?.length ? (
+                          <div className="text-xs text-accent">+ {it.extras.map((e) => extraText(e)).join(', ')}</div>
+                        ) : null}
+                        <div className="text-xs text-muted">
+                          {it.servings} serving{it.servings === 1 ? '' : 's'} · {displayMacro(m.protein, 'protein')} g protein · {displayMacro(m.kcal, 'kcal')} kcal
+                          {it.swaps?.length ? ' · with swaps' : ''}
+                        </div>
+                      </div>
+                      <IconButton label={`Swap ${r.name} for another recipe`} size="sm" onClick={() => save(swapMeal(plan, day.date, it.id, prefs))}>
+                        <Shuffle className="size-4" />
+                      </IconButton>
+                      <IconButton label={`Edit ${r.name}`} size="sm" onClick={() => setEditing({ date: day.date, item: it })}>
+                        <Pencil className="size-4" />
+                      </IconButton>
+                    </li>
+                  );
+                })}
+            </ul>
+          )}
+          <div className="px-4 py-2.5 border-t border-line text-xs text-muted tabular">
+            <span className={st.state === 'on_target' ? 'text-accent font-medium' : st.state === 'short' || st.state === 'over' ? 'text-warn font-medium' : ''}>
+              {st.state === 'on_target' && <CheckCircle2 className="inline size-3.5 mr-1 -mt-0.5" aria-hidden />}
+              Day total: {displayMacro(n.protein, 'protein')}
+              {st.proteinTarget != null ? ` / ${st.proteinTarget}` : ''} g protein
+            </span>
+            {' · '}
+            {displayMacro(n.kcal, 'kcal')}
+            {st.kcalTarget != null ? ` / ${st.kcalTarget}` : ''} kcal{st.kcalTarget == null ? ' (for information)' : ''} · {displayMacro(n.carbs, 'carbs')} g carbs ·{' '}
+            {displayMacro(n.fat, 'fat')} g fat
+          </div>
+          {st.message && <DayGap status={st} onBalance={st.balanced ? () => save(replacePlanDay(plan, st.balanced!)) : undefined} />}
+        </Card>
+      </section>
+    );
+  };
+
   const back = (
     <IconButton label="Back" onClick={() => nav(-1)}>
       <ChevronLeft className="size-6" />
@@ -83,9 +164,14 @@ export default function MealPlanPage() {
       title="Meal plan"
       back={back}
       actions={
-        <IconButton label="Plan preferences" onClick={() => setPrefsOpen(true)}>
-          <Settings2 className="size-5" />
-        </IconButton>
+        <>
+          <IconButton label="Past meal plans" onClick={() => setHistoryOpen(true)}>
+            <History className="size-5" />
+          </IconButton>
+          <IconButton label="Plan preferences" onClick={() => setPrefsOpen(true)}>
+            <Settings2 className="size-5" />
+          </IconButton>
+        </>
       }
     >
       <div className="flex items-center justify-between gap-2 mb-3">
@@ -102,6 +188,13 @@ export default function MealPlanPage() {
           <ChevronRight className="size-5" />
         </IconButton>
       </div>
+      {weekStart !== thisWeek && (
+        <div className="flex justify-center -mt-1 mb-3">
+          <Button size="sm" variant="ghost" onClick={() => setWeekStart(thisWeek)}>
+            Back to this week
+          </Button>
+        </div>
+      )}
 
       {plan === undefined ? (
         <Spinner />
@@ -157,74 +250,21 @@ export default function MealPlanPage() {
               Regenerate
             </Button>
           </div>
-          {plan.days.map((day, dayIdx) => {
-            const st = status!.days[dayIdx];
-            const n = st.totals;
-            return (
-              <section key={day.date} aria-labelledby={`d-${day.date}`}>
-                <SectionTitle
-                  id={`d-${day.date}`}
-                  action={
-                    <IconButton label={`Add a meal on ${formatDate(day.date)}`} size="sm" onClick={() => setAdding(day.date)}>
-                      <Plus className="size-5" />
-                    </IconButton>
-                  }
-                >
-                  {day.date === today ? 'Today' : formatDate(day.date, { weekday: 'long', day: 'numeric', month: 'short' })}
-                </SectionTitle>
-                <Card>
-                  {day.items.length === 0 ? (
-                    <p className="px-4 py-3 text-sm text-muted">No meals planned.</p>
-                  ) : (
-                    <ul className="divide-y divide-line">
-                      {[...day.items]
-                        .sort((a, b) => MEAL_ORDER.indexOf(a.slot) - MEAL_ORDER.indexOf(b.slot))
-                        .map((it) => {
-                          const r = RECIPES_BY_ID.get(it.recipeId);
-                          if (!r) return null;
-                          const m = planItemNutrition(it, RECIPES_BY_ID);
-                          return (
-                            <li key={it.id} className="flex items-center gap-1 pl-4 pr-1 py-2 min-h-16">
-                              <div className="min-w-0 flex-1">
-                                <div className="text-xs text-muted">{MEAL_LABELS[it.slot]}</div>
-                                <Link to={`/nutrition/recipes/${r.id}`} className="text-[15px] font-medium hover:underline block truncate">
-                                  {r.name}
-                                </Link>
-                                {it.extras?.length ? (
-                                  <div className="text-xs text-accent">+ {it.extras.map((e) => extraText(e)).join(', ')}</div>
-                                ) : null}
-                                <div className="text-xs text-muted">
-                                  {it.servings} serving{it.servings === 1 ? '' : 's'} · {displayMacro(m.protein, 'protein')} g protein · {displayMacro(m.kcal, 'kcal')} kcal
-                                  {it.swaps?.length ? ' · with swaps' : ''}
-                                </div>
-                              </div>
-                              <IconButton label={`Swap ${r.name} for another recipe`} size="sm" onClick={() => save(swapMeal(plan, day.date, it.id, prefs))}>
-                                <Shuffle className="size-4" />
-                              </IconButton>
-                              <IconButton label={`Edit ${r.name}`} size="sm" onClick={() => setEditing({ date: day.date, item: it })}>
-                                <Pencil className="size-4" />
-                              </IconButton>
-                            </li>
-                          );
-                        })}
-                    </ul>
-                  )}
-                  <div className="px-4 py-2.5 border-t border-line text-xs text-muted tabular">
-                    <span className={st.state === 'on_target' ? 'text-accent font-medium' : st.state === 'short' || st.state === 'over' ? 'text-warn font-medium' : ''}>
-                      {st.state === 'on_target' && <CheckCircle2 className="inline size-3.5 mr-1 -mt-0.5" aria-hidden />}
-                      Day total: {displayMacro(n.protein, 'protein')}
-                      {st.proteinTarget != null ? ` / ${st.proteinTarget}` : ''} g protein
-                    </span>
-                    {' · '}
-                    {displayMacro(n.kcal, 'kcal')}
-                    {st.kcalTarget != null ? ` / ${st.kcalTarget}` : ''} kcal{st.kcalTarget == null ? ' (for information)' : ''} · {displayMacro(n.carbs, 'carbs')} g carbs ·{' '}
-                    {displayMacro(n.fat, 'fat')} g fat
-                  </div>
-                  {st.message && <DayGap status={st} onBalance={st.balanced ? () => save(replacePlanDay(plan, st.balanced!)) : undefined} />}
-                </Card>
-              </section>
-            );
-          })}
+          {upcoming.map((dayIdx) => renderDay(dayIdx))}
+          {earlier.length > 0 && (
+            <button
+              type="button"
+              aria-expanded={showEarlier}
+              onClick={() => setShowEarlier((v) => !v)}
+              className="mt-4 w-full flex items-center justify-between gap-2 min-h-11 px-4 rounded-xl border border-line text-sm font-medium hover:bg-surface-2"
+            >
+              <span>
+                Earlier this week · {earlier.length} day{earlier.length === 1 ? '' : 's'}
+              </span>
+              <ChevronDown className={`size-4 text-muted transition-transform${showEarlier ? ' rotate-180' : ''}`} aria-hidden />
+            </button>
+          )}
+          {showEarlier && earlier.map((dayIdx) => renderDay(dayIdx))}
           <p className="text-xs text-muted mt-4 px-1">
             Plans are a starting point built from your preferences and approximate targets. Portions and protein sides are adjusted to bring each day close
             to your protein target; change them to suit your appetite.
@@ -269,7 +309,51 @@ export default function MealPlanPage() {
         )}
       </Sheet>
       <PrefsSheet open={prefsOpen} onClose={() => setPrefsOpen(false)} />
+      <Sheet open={historyOpen} onClose={() => setHistoryOpen(false)} title="Past meal plans">
+        {historyOpen && (
+          <PastPlans
+            thisWeek={thisWeek}
+            current={weekStart}
+            onPick={(w) => {
+              setWeekStart(w);
+              setShowEarlier(false);
+              setHistoryOpen(false);
+            }}
+          />
+        )}
+      </Sheet>
     </Page>
+  );
+}
+
+/** Weeks before this one that have a saved plan, newest first. Tapping one opens that week on this screen. */
+function PastPlans({ thisWeek, current, onPick }: { thisWeek: string; current: string; onPick: (weekStart: string) => void }) {
+  const { db } = useApp();
+  const weeks = useLiveQuery(async () => {
+    const rows = alive(await db.mealPlans.where('weekStart').below(thisWeek).toArray());
+    const latest = new Map<string, MealPlan>();
+    for (const r of rows) if (!latest.has(r.weekStart) || latest.get(r.weekStart)!.updatedAt < r.updatedAt) latest.set(r.weekStart, r);
+    return [...latest.values()].sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1));
+  }, [db, thisWeek]);
+  if (weeks === undefined) return <Spinner />;
+  if (weeks.length === 0) return <p className="text-sm text-muted">No earlier meal plans yet. Plans you make are kept here after their week ends.</p>;
+  return (
+    <ul className="-mx-4 divide-y divide-line">
+      {weeks.map((p) => {
+        const meals = p.days.reduce((n, d) => n + d.items.length, 0);
+        const label = p.weekStart === addDays(thisWeek, -7) ? 'Last week' : `Week of ${formatDate(p.weekStart, { day: 'numeric', month: 'short' })}`;
+        return (
+          <li key={p.weekStart}>
+            <ListRow
+              title={label}
+              subtitle={`${formatDate(p.weekStart, { day: 'numeric', month: 'short' })} – ${formatDate(addDays(p.weekStart, 6), { day: 'numeric', month: 'short' })} · ${meals} meal${meals === 1 ? '' : 's'}${p.weekStart === current ? ' · showing' : ''}`}
+              right={<ChevronRight className="size-4" />}
+              onClick={() => onPick(p.weekStart)}
+            />
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
