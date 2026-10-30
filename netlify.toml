@@ -7,3 +7,7 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # Public client values: the Supabase URL and publishable key are meant to ship in the
+  # browser bundle (access is enforced by RLS), so it's fine to commit them here.
+  VITE_SUPABASE_URL = "https://haryomdlsgrgrnsbdxui.supabase.co"
+  VITE_SUPABASE_ANON_KEY = "sb_publishable_YKXvyZGJhRezItObxUh_fg_0qc30qAv"
