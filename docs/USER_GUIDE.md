@@ -87,6 +87,9 @@ portions and protein sides. If a day can't reach it within your restrictions, it
 (allergies are never relaxed); **Balance day** / **Balance all days** re-run it after your edits. In protein-only mode
 calories are shown for information only. The **shopping list** adds it all up, sides included. Allergen
 filtering uses generic data — always check packaged-food labels.
+This week's plan starts with **today**. Days already past are under **Earlier this week** at the bottom; tap it to
+show them. To look back, use the arrows or the clock icon (**Past meal plans**), which lists earlier weeks newest first.
+**Back to this week** returns you to the current week.
 
 Under-18s and anyone who indicates pregnancy/breastfeeding or a condition needing individual nutrition advice get
 logging and manual targets only, no automatic prescriptions.
