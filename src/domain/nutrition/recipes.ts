@@ -274,6 +274,17 @@ export function recipeMinutes(recipe: Recipe): number {
   return recipe.prepMinutes + recipe.cookMinutes;
 }
 
+/** "Quick" recipe filter: total prep + cook time in minutes. */
+export const QUICK_MINUTES = 15;
+
+/**
+ * A simple everyday recipe: ≤ 20 min hands-on (prepMinutes), ≤ 8 non-optional ingredients and ≤ 6 steps.
+ * Cooking time may be longer (a batch chilli simmers on its own).
+ */
+export function isSimpleRecipe(recipe: Recipe): boolean {
+  return recipe.prepMinutes <= 20 && recipe.ingredients.filter((i) => !i.optional).length <= 8 && recipe.steps.length >= 1 && recipe.steps.length <= 6;
+}
+
 /** Gram-weighted average ingredient cost tier (seasonings excluded), 1–3. */
 export function recipeCostTier(recipe: Recipe, byId: IngredientIndex = INGREDIENTS_BY_ID): number {
   let g = 0;

@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { ChevronLeft, Search, Star } from 'lucide-react';
+import { ChevronLeft, Search, Star, Timer } from 'lucide-react';
 import { Button, Card, ChipGroup, EmptyState, IconButton, Input, Page, Segmented, Toggle, cx } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { useApp } from '@/state/app';
 import type { DietTag, MealSlot } from '@/domain/types';
 import { RECIPES } from '@/data/recipes';
 import {
-  ALLERGEN_LABELS, DIET_TAG_LABELS, MEAL_LABELS, MEAL_ORDER, displayMacro, recipeMatches, recipeMinutes, recipeNutrition,
+  ALLERGEN_LABELS, DIET_TAG_LABELS, MEAL_LABELS, MEAL_ORDER, QUICK_MINUTES, displayMacro, recipeMatches, recipeMinutes, recipeNutrition,
 } from '@/domain/nutrition/recipes';
 import { AllergenNote } from './shared';
 
@@ -23,6 +23,7 @@ export default function RecipesPage() {
   const [tags, setTags] = useState<DietTag[]>(() => diet.tags.filter((t) => FILTER_TAGS.includes(t)));
   const [hideAllergens, setHideAllergens] = useState(diet.allergens.length > 0);
   const [favOnly, setFavOnly] = useState(false);
+  const [quick, setQuick] = useState(false);
   const favs = account.favorites.recipes;
 
   const list = useMemo(
@@ -33,9 +34,10 @@ export default function RecipesPage() {
           meal: meal === 'all' ? undefined : meal,
           tags,
           excludeAllergens: hideAllergens ? diet.allergens : undefined,
+          maxMinutes: quick ? QUICK_MINUTES : undefined,
         }),
       ).filter((r) => !favOnly || favs.includes(r.id)),
-    [q, meal, tags, hideAllergens, diet.allergens, favOnly, favs],
+    [q, meal, tags, hideAllergens, diet.allergens, favOnly, favs, quick],
   );
 
   async function toggleFav(id: string) {
@@ -53,7 +55,13 @@ export default function RecipesPage() {
     setMeal('all');
     setTags([]);
     setFavOnly(false);
+    setQuick(false);
   };
+  const chip = (on: boolean) =>
+    cx(
+      'min-h-11 px-3.5 rounded-full border text-sm inline-flex items-center gap-1.5',
+      on ? 'bg-accent-soft border-accent text-accent font-medium' : 'border-line text-ink hover:bg-surface-2',
+    );
 
   return (
     <Page
@@ -83,12 +91,12 @@ export default function RecipesPage() {
             role="checkbox"
             aria-checked={favOnly}
             onClick={() => setFavOnly(!favOnly)}
-            className={cx(
-              'min-h-11 px-3.5 rounded-full border text-sm inline-flex items-center gap-1.5',
-              favOnly ? 'bg-accent-soft border-accent text-accent font-medium' : 'border-line text-ink hover:bg-surface-2',
-            )}
+            className={chip(favOnly)}
           >
             <Star className="size-4" aria-hidden /> Favourites
+          </button>
+          <button type="button" role="checkbox" aria-checked={quick} onClick={() => setQuick(!quick)} className={chip(quick)}>
+            <Timer className="size-4" aria-hidden /> Quick (≤ {QUICK_MINUTES} min)
           </button>
         </div>
         {diet.allergens.length > 0 && (

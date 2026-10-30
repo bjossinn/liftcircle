@@ -60,19 +60,21 @@ describe('fixture: 80 kg, protein-only 144 g, 3 meals, ≤30 min, no milk', () =
 
   it('reproduces the reviewed week from meal selection alone (target only ranks recipes)', () => {
     const before = selectMeals(WEEK, FIXTURE);
-    // The review rounded the raw sum; that is exactly the reported week.
+    // The review rounded the raw sum. Updated Nov 2026 for the 84-recipe catalogue (the 24-recipe week was
+    // 125, 112, 87, 99, 114, 107, 102): the larger pool ranks more high-protein meals into the week.
     const raw = before.days.map((d) => d.items.reduce((s, i) => s + recipeNutrition(RECIPES_BY_ID.get(i.recipeId)!, { servings: i.servings }).total.protein, 0));
-    expect(raw.map(Math.round)).toEqual([125, 112, 87, 99, 114, 107, 102]);
-    // The single rounding rule (stored 0.1 g per meal, then whole grams) shows day 4 (99.46 g raw) as 100 g,
-    // the same number the food log shows if those meals are logged.
-    expect(dailyProtein(before).map((p) => displayMacro(p, 'protein'))).toEqual([125, 112, 87, 100, 114, 107, 102]);
+    expect(raw.map(Math.round)).toEqual([128, 121, 111, 104, 98, 94, 88]);
+    // The single rounding rule (stored 0.1 g per meal, then whole grams) gives the same numbers the food log
+    // shows if those meals are logged.
+    expect(dailyProtein(before).map((p) => displayMacro(p, 'protein'))).toEqual([128, 121, 111, 104, 98, 94, 88]);
   });
 
   it('puts every day within ±7 g of 144 g after reconciling, keeping meal count, cook time and exclusions', () => {
     const { plan, warnings } = generateMealPlan(WEEK, FIXTURE);
     const after = dailyProtein(plan);
-    // Before → after (g/day): 125,112,87,99,114,107,102 → 142.6,141.8,138.6,138.3,144.8,137.6,141.0
-    expect(after).toEqual([142.6, 141.8, 138.6, 138.3, 144.8, 137.6, 141]);
+    // Before → after (g/day): 128,121,111,104,98,94,88 → 140.4,139.4,140.6,140.3,144.5,140.9,143.3
+    // (the 24-recipe catalogue gave 142.6,141.8,138.6,138.3,144.8,137.6,141.0)
+    expect(after).toEqual([140.4, 139.4, 140.6, 140.3, 144.5, 140.9, 143.3]);
     for (const p of after) expect(Math.abs(p - 144)).toBeLessThanOrEqual(7);
     for (const d of plan.days) expect(d.items).toHaveLength(3);
     expectConstraintsRespected(plan, FIXTURE);
@@ -97,10 +99,12 @@ describe('fixture: 80 kg, protein-only 144 g, 3 meals, ≤30 min, no milk', () =
 });
 
 describe('multiple dietary constraints', () => {
-  it('pescatarian + dairy-free + no shellfish + ≤20 min + low budget stays on target', () => {
-    const prefs: PlanPrefs = { tags: ['pescatarian', 'dairy_free'], allergens: ['shellfish'], dislikedIngredientIds: [], maxCookMinutes: 20, budget: 'low', mealsPerDay: 3, proteinTarget: 144 };
+  it('pescatarian + dairy-free + no shellfish + ≤15 min + low budget stays on target', () => {
+    // ≤15 min (was ≤20 before Nov 2026): the larger catalogue has 20-minute pescatarian dinners, and this test
+    // exercises the relaxed-time path.
+    const prefs: PlanPrefs = { tags: ['pescatarian', 'dairy_free'], allergens: ['shellfish'], dislikedIngredientIds: [], maxCookMinutes: 15, budget: 'low', mealsPerDay: 3, proteinTarget: 144 };
     const { plan, warnings } = generateMealPlan(WEEK, prefs);
-    expect(warnings).toContain('No dinner recipes fit within 20 minutes; some take longer.');
+    expect(warnings).toContain('No dinner recipes fit within 15 minutes; some take longer.');
     expectConstraintsRespected(plan, prefs, { relaxedSlots: ['dinner'] });
     for (const p of dailyProtein(plan)) expect(Math.abs(p - 144)).toBeLessThanOrEqual(7);
   });
@@ -133,7 +137,9 @@ describe('impossible constraints', () => {
   it('shows a per-day gap with an explanation and never relaxes allergens or the diet', () => {
     const { plan, warnings } = generateMealPlan(WEEK, prefs);
     expect(warnings).toContain('No breakfast recipes match your diet and allergy settings, so that meal is left empty.');
-    expectConstraintsRespected(plan, prefs);
+    // Since Nov 2026 the only matching dinners are 35-minute batch recipes, so dinner relaxes the cooking time.
+    expect(warnings).toContain('No dinner recipes fit within 30 minutes; some take longer.');
+    expectConstraintsRespected(plan, prefs, { relaxedSlots: ['dinner'] });
     const st = planStatus(plan, prefs);
     expect(st.onTarget).toBe(0);
     for (const d of st.days) {
@@ -148,7 +154,8 @@ describe('impossible constraints', () => {
   });
 
   it('suggests practical changes when the gap is small but unreachable', () => {
-    const p2: PlanPrefs = { tags: ['vegetarian', 'gluten_free'], allergens: ['milk', 'egg'], dislikedIngredientIds: [], maxCookMinutes: 30, budget: 'any', mealsPerDay: 3, proteinTarget: 144 };
+    // Soy added Nov 2026: without it the new tofu recipes reach the target, so there is no gap to explain.
+    const p2: PlanPrefs = { tags: ['vegetarian', 'gluten_free'], allergens: ['milk', 'egg', 'soy'], dislikedIngredientIds: [], maxCookMinutes: 30, budget: 'any', mealsPerDay: 3, proteinTarget: 144 };
     const { plan } = generateMealPlan(WEEK, p2);
     expectConstraintsRespected(plan, p2, { relaxedSlots: ['dinner'] });
     const d = planStatus(plan, p2).days[0];
@@ -266,7 +273,7 @@ describe('reload: warnings and totals are derived identically from the persisted
     const legacy = JSON.parse(JSON.stringify(selectMeals(WEEK, FIXTURE))) as PlanDraft;
     for (const d of legacy.days) for (const i of d.items) expect(i.extras).toBeUndefined();
     const st = planStatus(legacy, FIXTURE);
-    expect(st.days.map((d) => displayMacro(d.totals.protein, 'protein'))).toEqual([125, 112, 87, 100, 114, 107, 102]);
+    expect(st.days.map((d) => displayMacro(d.totals.protein, 'protein'))).toEqual([128, 121, 111, 104, 98, 94, 88]);
     expect(st.days.filter((d) => d.state === 'short')).toHaveLength(7);
     expect(st.days.every((d) => d.balanced)).toBe(true);
     expect(buildShoppingList(legacy, RECIPES_BY_ID).length).toBeGreaterThan(0);

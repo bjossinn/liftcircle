@@ -202,6 +202,72 @@ export const INGREDIENTS: Ingredient[] = [
     label('vegetable stock made from cube or concentrate; many contain celery'), PLANT, 1, ['celery'], { cup: 240 }),
   ing('spices', 'Herbs, spices, salt & pepper', 'condiment', 'as_sold', [0, 0, 0, 0, 0],
     'Treated as negligible energy at recipe quantities (a few grams)', PLANT, 1, [], { tsp: 2 }),
+
+  /* ------------------------------------------- added Nov 2026 (recipe pack 2) */
+  // protein foods
+  ing('haddock-raw', 'Haddock fillet (raw)', 'protein', 'raw', [74, 16.32, 0, 0.45, 0],
+    typ('Fish, haddock, raw'), FISH, 2, ['fish']),
+  ing('smoked-salmon', 'Smoked salmon (cold-smoked)', 'protein', 'as_sold', [117, 18.28, 0, 4.32, 0],
+    typ('Fish, salmon, chinook, smoked'), FISH, 3, ['fish']),
+  ing('sardines-canned', 'Sardines in oil, drained', 'protein', 'as_sold', [208, 24.62, 0, 11.45, 0],
+    typ('Fish, sardine, Atlantic, canned in oil, drained solids with bone'), FISH, 1, ['fish'], { can: 90 }),
+  ing('lamb-mince-raw', 'Lamb mince (raw)', 'protein', 'raw', [282, 16.56, 0, 23.41, 0],
+    typ('Lamb, ground, raw'), MEAT, 2),
+  ing('turkey-mince-raw', 'Turkey mince (raw)', 'protein', 'raw', [148, 19.66, 0, 7.66, 0],
+    typ('Turkey, ground, raw'), MEAT, 2),
+  ing('pork-tenderloin-raw', 'Pork tenderloin (raw)', 'protein', 'raw', [120, 20.95, 0, 3.39, 0],
+    typ('Pork, fresh, loin, tenderloin, separable lean only, raw'), MEAT, 2),
+  // dairy
+  ing('mozzarella-light', 'Mozzarella, reduced fat', 'dairy', 'as_sold', [254, 24.26, 2.77, 15.92, 0],
+    typ('Cheese, mozzarella, part skim milk'), DAIRY, 2, ['milk'], { piece: 125 }),
+  ing('parmesan', 'Parmesan-style hard cheese', 'dairy', 'as_sold', [392, 35.75, 3.22, 25.83, 0],
+    typ('Cheese, parmesan, hard'), DAIRY, 3, ['milk'], { tbsp: 5 }),
+  // grains & starches
+  ing('tortilla-corn', 'Corn tortilla', 'grain', 'as_sold', [218, 5.7, 44.64, 2.85, 6.3],
+    typ('Tortillas, ready-to-bake or -fry, corn'), PLANT, 2, [], { piece: 26 }),
+  ing('rice-cakes', 'Rice cakes, plain', 'grain', 'as_sold', [387, 8.2, 81.5, 2.8, 4.2],
+    typ('Snacks, rice cakes, brown rice, plain'), PLANT, 1, [], { piece: 9 }),
+  ing('pita-wholewheat', 'Wholemeal pitta bread', 'grain', 'as_sold', [266, 9.8, 55.0, 2.6, 7.4],
+    typ('Bread, pita, whole-wheat'), PLANT_GLUTEN, 1, ['wheat', 'gluten'], { piece: 64 }),
+  ing('couscous-dry', 'Couscous (dry)', 'grain', 'dry', [376, 12.76, 77.43, 0.64, 5.0],
+    typ('Couscous, dry'), PLANT_GLUTEN, 1, ['wheat', 'gluten'], { cup: 173 }),
+  ing('rice-noodles-cooked', 'Rice noodles (cooked)', 'grain', 'cooked', [108, 1.79, 24.01, 0.2, 1.0],
+    typ('Rice noodles, cooked'), PLANT, 1, [], { cup: 176 }),
+  // legumes
+  ing('kidney-beans-cooked', 'Red kidney beans, cooked or canned (drained)', 'legume', 'cooked', [127, 8.67, 22.8, 0.5, 6.4],
+    typ('Beans, kidney, red, mature seeds, cooked, boiled, without salt'), PLANT, 1, [], { can: 240, cup: 177 }),
+  ing('white-beans-cooked', 'White beans, cooked or canned (drained)', 'legume', 'cooked', [139, 9.73, 25.09, 0.35, 6.3],
+    typ('Beans, white, mature seeds, cooked, boiled, without salt'), PLANT, 1, [], { can: 240, cup: 179 }),
+  // vegetables
+  ing('cabbage', 'Cabbage, white or green', 'vegetable', 'raw', [25, 1.28, 5.8, 0.1, 2.5],
+    typ('Cabbage, raw'), PLANT, 1, [], { cup: 89 }),
+  ing('green-beans', 'Green beans', 'vegetable', 'raw', [31, 1.83, 6.97, 0.22, 2.7],
+    typ('Beans, snap, green, raw'), PLANT, 1, [], { cup: 100 }),
+  ing('cauliflower', 'Cauliflower', 'vegetable', 'raw', [25, 1.92, 4.97, 0.28, 2.0],
+    typ('Cauliflower, raw'), PLANT, 1, [], { cup: 107 }),
+  ing('spring-onion', 'Spring onions (scallions)', 'vegetable', 'raw', [32, 1.83, 7.34, 0.19, 2.6],
+    typ('Onions, spring or scallions (includes tops and bulb), raw'), PLANT, 1, [], { piece: 15 }),
+  ing('ginger', 'Fresh ginger', 'vegetable', 'raw', [80, 1.82, 17.77, 0.75, 2.0],
+    typ('Ginger root, raw'), PLANT, 1, [], { tsp: 2, tbsp: 6 }),
+  // fruit
+  ing('raspberries', 'Raspberries (fresh or frozen)', 'fruit', 'raw', [52, 1.2, 11.94, 0.65, 6.5],
+    typ('Raspberries, raw'), PLANT, 2, [], { cup: 123 }),
+  ing('raisins', 'Raisins', 'fruit', 'as_sold', [299, 3.07, 79.18, 0.46, 3.7],
+    typ('Raisins, seedless'), PLANT, 1, [], { tbsp: 9, cup: 145 }),
+  ing('lime-juice', 'Lime juice', 'fruit', 'raw', [25, 0.42, 8.42, 0.07, 0.4],
+    typ('Lime juice, raw'), PLANT, 1, [], { tbsp: 15 }),
+  // nuts, seeds, fats
+  ing('cashews', 'Cashew nuts', 'nut_seed', 'as_sold', [553, 18.22, 30.19, 43.85, 3.3],
+    typ('Nuts, cashew nuts, raw'), PLANT, 3, ['tree_nuts'], { cup: 137, tbsp: 9 }),
+  ing('sunflower-seeds', 'Sunflower seeds', 'nut_seed', 'as_sold', [584, 20.78, 20.0, 51.46, 8.6],
+    typ('Seeds, sunflower seed kernels, dried'), PLANT, 1, [], { tbsp: 9 }),
+  ing('sesame-oil', 'Sesame oil', 'fat', 'as_sold', [884, 0, 0, 100, 0],
+    typ('Oil, sesame, salad or cooking'), PLANT, 2, ['sesame'], { tbsp: 13.6, tsp: 4.5 }),
+  // pantry
+  ing('maple-syrup', 'Maple syrup', 'condiment', 'as_sold', [260, 0.04, 67.04, 0.06, 0],
+    typ('Syrups, maple'), PLANT, 3, [], { tbsp: 20, tsp: 6.7 }),
+  ing('cocoa-powder', 'Cocoa powder, unsweetened', 'condiment', 'as_sold', [228, 19.6, 57.9, 13.7, 37.0],
+    typ('Cocoa, dry powder, unsweetened'), PLANT, 2, [], { tbsp: 5.4, tsp: 1.8 }),
 ];
 
 /** Singular/plural nouns for ingredients measured in pieces, used for friendly quantities. */
@@ -223,6 +289,11 @@ export const PIECE_LABELS: Partial<Record<ID, [string, string]>> = {
   'sweet-potato-raw': ['sweet potato', 'sweet potatoes'],
   'tortilla-wheat': ['tortilla', 'tortillas'],
   'rye-crispbread': ['crispbread', 'crispbreads'],
+  'tortilla-corn': ['corn tortilla', 'corn tortillas'],
+  'rice-cakes': ['rice cake', 'rice cakes'],
+  'pita-wholewheat': ['pitta', 'pittas'],
+  'spring-onion': ['spring onion', 'spring onions'],
+  'mozzarella-light': ['ball', 'balls'],
 };
 
 /**
