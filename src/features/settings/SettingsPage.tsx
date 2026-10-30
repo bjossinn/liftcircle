@@ -130,6 +130,12 @@ export default function SettingsPage() {
         <Toggle label="Sound when rest ends" checked={s.rest.sound} onChange={(v) => set((x) => ({ ...x, rest: { ...x.rest, sound: v } }))} />
         <Toggle label="Vibrate when rest ends" description="Where your device supports it." checked={s.rest.vibrate} onChange={(v) => set((x) => ({ ...x, rest: { ...x.rest, vibrate: v } }))} />
         <Toggle label="Keep screen on during workouts" description="Where your browser supports it." checked={s.rest.keepAwake} onChange={(v) => set((x) => ({ ...x, rest: { ...x.rest, keepAwake: v } }))} />
+        <Toggle
+          label="Coach cheers during workouts"
+          description="A short line from your coach when you finish a set or your rest ends, in your coach style. Works offline."
+          checked={s.workout.coachCheers !== false}
+          onChange={(v) => set((x) => ({ ...x, workout: { ...x.workout, coachCheers: v } }))}
+        />
         <Toggle label="Show reps-in-reserve column" description="Optional: how many more reps you could have done." checked={s.workout.showRir} onChange={(v) => set((x) => ({ ...x, workout: { ...x.workout, showRir: v } }))} />
         <p className="text-xs text-muted py-3">Web apps can’t always sound alarms while the phone is locked or the app is in the background. The timer always shows the correct time when you come back.</p>
       </Card>

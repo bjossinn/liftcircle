@@ -5,7 +5,8 @@
  *    separately (stored in ai_messages.why, rendered collapsed under "Why this?"). Robust to the model
  *    omitting it, using a heading instead ("Why this?", "**Why:**"), a closing tag, or putting nothing after it.
  *  - tidyReply: removes boilerplate the style rules forbid (a leading "Great question!", trailing generic offers
- *    such as "Let me know if you have any other questions") and excess blank lines. It never rewrites content.
+ *    such as "Let me know if you have any other questions") and excess blank lines. It never rewrites content and
+ *    keeps a friendly closing check-in question.
  */
 
 /** The requested marker, anywhere. */
@@ -26,8 +27,12 @@ export function splitWhy(text: string): { answer: string; why: string | null } {
 }
 
 const LEADING_FILLER = /^(?:(?:great|good|excellent) question[.!]?|absolutely[.!]|sure(?: thing)?[.!,]|of course[.!,]|happy to help[.!])\s*/i;
+/**
+ * Generic assistant offers only. A friendly closing check-in question ("How did the squats feel?") is part of
+ * the coach's voice (v3 personality) and is kept, as is a warm sign-off.
+ */
 const TRAILING_OFFER =
-  /\n+[ \t]*(?:let me know if (?:you (?:have|need)|there(?:'|’)s)[^\n]*|feel free to (?:ask|reach out)[^\n]*|i hope this helps[^\n]*|hope this helps[^\n]*|happy training[!.]?)[ \t]*$/i;
+  /\n+[ \t]*(?:let me know if (?:you (?:have|need) any (?:other|more|further) questions?|there(?:'|’)s anything else)[^\n]*|feel free to (?:ask|reach out)[^\n]*|i hope this helps[^\n]*|hope this helps[^\n]*|is there anything else i can help(?: you)? with\??)[ \t]*$/i;
 
 export function tidyReply(text: string): string {
   let t = String(text ?? '').replace(/\r\n/g, '\n').trim();
@@ -36,7 +41,7 @@ export function tidyReply(text: string): string {
   return t.replace(/\n{3,}/g, '\n\n').trim();
 }
 
-/** Word count used by tests and the content-free log (routine answers should be ~40–100 words). */
+/** Word count used by tests and the content-free log (routine answers should be ~60–120 words). */
 export function wordCount(text: string): number {
   return (String(text ?? '').match(/[\p{L}\p{N}][\p{L}\p{N}'’.-]*/gu) ?? []).length;
 }

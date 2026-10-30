@@ -4,7 +4,7 @@
  * the server (ai-coach Edge Function) is the authority and builds context only from enabled categories.
  */
 import type { AiAvailability, AiMessage, AiScopes, AiSettings, AiUsage, ProgramProposal } from '@/backend/coachingContract';
-import type { Program } from '@/domain/types';
+import type { CoachStyle, Program } from '@/domain/types';
 
 /* ------------------------------------------------------------ local keys */
 /** Unsent composer text (string). Survives reloads and offline. */
@@ -66,6 +66,17 @@ export const SCOPE_INFO: { key: keyof AiScopes; title: string; sends: string }[]
 
 export const ALWAYS_SENT = 'Your messages in this conversation (the most recent ones, for context) and your AI coach notes.';
 export const NEVER_SENT = 'Your email, photos, social posts and friends, messages with a human coach, coach notes, and private notes about injuries.';
+
+/* --------------------------------------------------------- coach style */
+export const COACH_STYLE_INFO: { key: CoachStyle; title: string; body: string }[] = [
+  { key: 'supportive', title: 'Supportive', body: 'Gentle and encouraging. It never pushes — if you want a day off, it checks in kindly and accepts your call.' },
+  { key: 'balanced', title: 'Balanced', body: 'Encouraging with light accountability. If you want to skip, it asks what’s up and suggests a shorter version.' },
+  { key: 'strict', title: 'Strict', body: 'Tough love. It pushes back firmly on excuses like “too tired” and holds you to a minimum session.' },
+];
+export const COACH_STYLE_SAFETY = 'In every style: pain, injury, illness, poor sleep or feeling overwhelmed always mean rest or an easier plan, and rest days are never “skipping”.';
+
+/** Quick replies under the welcome. Tapping one sends it as the user's message (the real AI answers). */
+export const WELCOME_CHIPS = ['Feeling great 💪', 'Bit tired', 'Sore', 'Short on time', 'Want to skip today'] as const;
 
 export function scopesEqual(a: AiScopes, b: AiScopes): boolean {
   return a.profile === b.profile && a.training === b.training && a.measurements === b.measurements && a.nutrition === b.nutrition;

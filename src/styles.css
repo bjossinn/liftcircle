@@ -121,3 +121,23 @@ dialog::backdrop {
     scroll-behavior: auto !important;
   }
 }
+
+/* Coach cheer popup (src/components/toast.tsx): a short slide-in; none with reduced motion. */
+@keyframes coach-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.coach-pop {
+  animation: coach-pop 180ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .coach-pop {
+    animation: none;
+  }
+}

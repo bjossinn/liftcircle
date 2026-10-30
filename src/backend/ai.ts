@@ -117,6 +117,7 @@ function toSettings(raw: Record<string, unknown> | null): AiSettings | null {
     },
     scopesChangedAt: (raw.scopesChangedAt as string | null) ?? null,
     profileNotes: typeof raw.profileNotes === 'string' ? raw.profileNotes : '',
+    coachStyle: raw.coachStyle === 'supportive' || raw.coachStyle === 'strict' ? raw.coachStyle : 'balanced',
   };
 }
 
@@ -214,6 +215,7 @@ export const aiApi: AiApi = {
     if (s.paused !== undefined) p.paused = s.paused;
     if (s.scopes !== undefined) p.scopes = s.scopes;
     if (s.profileNotes !== undefined) p.profileNotes = s.profileNotes;
+    if (s.coachStyle !== undefined) p.coachStyle = s.coachStyle;
     if (s.acceptConsent) {
       p.acceptConsent = true;
       // Records which provider the user agreed to; the server refuses to send to a different one.

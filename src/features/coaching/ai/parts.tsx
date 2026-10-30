@@ -3,13 +3,14 @@ import { useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { authHref } from '@/features/auth/authReturn';
 import { Bot, ChevronLeft, CloudOff, LogIn, RefreshCw, Share2, Sparkles } from 'lucide-react';
-import { Badge, Button, ConfirmDialog, EmptyState, IconButton, Notice, Toggle } from '@/components/ui';
+import { Badge, Button, ConfirmDialog, EmptyState, IconButton, Notice, Segmented, Toggle } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { coachingApi } from '@/backend/coaching';
 import type { AiAvailability, AiScopes, CoachingRelationship } from '@/backend/coachingContract';
+import type { CoachStyle } from '@/domain/types';
 import { uuid } from '@/lib/id';
 import { BRAND } from '@/config/brand';
-import { ALWAYS_SENT, clip, COACH_MESSAGE_MAX, NEVER_SENT, SCOPE_INFO } from './model';
+import { ALWAYS_SENT, clip, COACH_MESSAGE_MAX, COACH_STYLE_INFO, COACH_STYLE_SAFETY, NEVER_SENT, SCOPE_INFO } from './model';
 
 export function BackButton({ to }: { to?: string }) {
   const nav = useNavigate();
@@ -96,6 +97,20 @@ export function AiGuest() {
         </Button>
       }
     />
+  );
+}
+
+/** Supportive / Balanced / Strict, with what each one means. */
+export function CoachStylePicker({ value, onChange, disabled }: { value: CoachStyle; onChange: (next: CoachStyle) => void; disabled?: boolean }) {
+  const info = COACH_STYLE_INFO.find((s) => s.key === value) ?? COACH_STYLE_INFO[1];
+  return (
+    <div className={disabled ? 'opacity-60 pointer-events-none' : undefined} aria-disabled={disabled || undefined}>
+      <Segmented<CoachStyle> label="Coach style" value={value} onChange={onChange} options={COACH_STYLE_INFO.map((s) => ({ value: s.key, label: s.title }))} />
+      <p className="text-sm text-muted mt-2" aria-live="polite">
+        {info.body}
+      </p>
+      <p className="text-xs text-faint mt-1">{COACH_STYLE_SAFETY}</p>
+    </div>
   );
 }
 

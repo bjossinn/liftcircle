@@ -20,6 +20,8 @@ export interface AiSettingsRow {
   scopes: AiScopes;
   scopesChangedAt?: string | null;
   profileNotes: string;
+  /** 'supportive' | 'balanced' | 'strict'; absent/unknown → balanced (context.ts asCoachStyle). */
+  coachStyle?: string | null;
 }
 
 export interface StoredMessage {

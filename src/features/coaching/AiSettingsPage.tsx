@@ -9,11 +9,12 @@ import { Badge, Button, Card, ConfirmDialog, ErrorState, Notice, Page, SectionTi
 import { useToast } from '@/components/toast';
 import { aiApi } from '@/backend/ai';
 import type { AiAvailability, AiScopes, AiSettings } from '@/backend/coachingContract';
+import type { CoachStyle } from '@/domain/types';
 import { kvSet } from '@/db/repo';
 import { useApp } from '@/state/app';
 import { AI_HISTORY_CACHE_KEY, AI_NOTES_MAX, classifyAiError, isHardUnavailable, providerLabel, usageLine } from './ai/model';
 import { useAiBoot } from './ai/useAi';
-import { AiGuest, AiUnavailable, BackButton, DataExplainer, RetentionExplainer, ScopeToggles } from './ai/parts';
+import { AiGuest, AiUnavailable, BackButton, CoachStylePicker, DataExplainer, RetentionExplainer, ScopeToggles } from './ai/parts';
 
 export default function AiSettingsPage() {
   const nav = useNavigate();
@@ -68,10 +69,12 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
   const { db } = useApp();
   const [scopes, setScopes] = useState<AiScopes>(settings.scopes);
   const [notes, setNotes] = useState(settings.profileNotes ?? '');
-  const [busy, setBusy] = useState<null | 'state' | 'scopes' | 'notes' | 'clearNotes' | 'history'>(null);
+  const [style, setStyle] = useState<CoachStyle>(settings.coachStyle);
+  const [busy, setBusy] = useState<null | 'state' | 'scopes' | 'style' | 'notes' | 'clearNotes' | 'history'>(null);
   const [confirm, setConfirm] = useState<null | 'off' | 'notes' | 'history'>(null);
 
   useEffect(() => setScopes(settings.scopes), [settings.scopes]);
+  useEffect(() => setStyle(settings.coachStyle), [settings.coachStyle]);
 
   async function save(patch: Partial<AiSettings>, kind: NonNullable<typeof busy>, ok?: string): Promise<boolean> {
     setBusy(kind);
@@ -93,6 +96,14 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
     setScopes(next);
     const ok = await save({ scopes: next }, 'scopes', 'Data access updated');
     if (!ok) setScopes(prev);
+  }
+
+  async function changeStyle(next: CoachStyle) {
+    if (next === style) return;
+    const prev = style;
+    setStyle(next);
+    const ok = await save({ coachStyle: next }, 'style', 'Coach style updated');
+    if (!ok) setStyle(prev);
   }
 
   async function clearHistory() {
@@ -159,6 +170,12 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
           )}
         </div>
         {settings.consentAt && <p className="text-xs text-faint mt-3">You agreed on {new Date(settings.consentAt).toLocaleDateString()}.</p>}
+      </Card>
+
+      <SectionTitle id="ai-style">Coach style</SectionTitle>
+      <Card className="p-4" aria-labelledby="ai-style">
+        <CoachStylePicker value={style} onChange={(n) => void changeStyle(n)} disabled={busy === 'style'} />
+        <p className="text-xs text-muted mt-2">Used in chat and for the cheers in the workout logger.</p>
       </Card>
 
       <SectionTitle id="ai-scopes">Data it may use</SectionTitle>

@@ -38,8 +38,10 @@ The Anthropic variables below apply only when Anthropic is the provider.
 2. **Apply the migrations** `supabase/migrations/20261029000003_ai_coach.sql` (after `…01_coaching_schema.sql`,
    before `…04_coaching_lockdown.sql`) and `20261030000002_ai_coach_v2.sql` (adds `ai_messages.why` / `.action`;
    apply it **before** redeploying the function — until then replies still work, but "Why this?" and
-   "Apply to this week" are not stored, so they disappear after a reload): `supabase db push`, or paste them into
-   the SQL editor in order.
+   "Apply to this week" are not stored, so they disappear after a reload), and `20261031000001_ai_coach_style.sql`
+   (adds `ai_settings.coach_style`; until it is applied, saving a coach style fails and everyone gets Balanced):
+   `supabase db push`, or paste them into the SQL editor in order. Merging to main does this automatically through
+   the Deploy Supabase workflow.
 3. **Set the secrets** (Dashboard → Edge Functions → Secrets, or CLI):
    ```sh
    supabase secrets set OPENAI_API_KEY=sk-... OPENAI_MODEL=gpt-5-mini        # OpenAI
@@ -110,7 +112,7 @@ for server-side checks (allergen filtering in `find_recipes`, equipment/exclusio
 detection) — their content is not put in the prompt. Measurement and food-log rows are not read at all
 when their scope is off.
 
-**Stored in your Supabase project:** `ai_settings` (consent time/version, scopes, notes), `ai_messages`
+**Stored in your Supabase project:** `ai_settings` (consent time/version, scopes, notes, coach style), `ai_messages`
 (user messages, AI replies, grounding labels, model, token counts), `ai_usage`, and AI proposals in
 `program_proposals` (`author_kind = 'ai'`).
 
@@ -156,7 +158,55 @@ and does not claim to.
   also count toward the daily limit. Logs contain only event names, token counts, status codes and timings —
   never message content, notes or keys.
 
-## 4. Coaching behaviour (v2, repair brief 29 Oct §3)
+## 4. Coaching behaviour (v3 in 0.4.0; v2 from the repair brief 29 Oct §3)
+
+**v3 personality (0.4.0).** `context.ts SYSTEM_RULES` makes the coach a warm, conversational personal trainer that
+stays practical and specific to the real plan: it uses the user's first name only when the user has told it (notes or
+conversation — the display name is still never read by the function), reacts to what they said, celebrates completed
+workouts, streaks and records by name (from the data only), and writes routine replies of ~60–120 words, warmth first
+and then the concrete recommendation. One friendly closing check-in question is allowed (at most one question per
+message); `tidyReply` keeps it and still strips filler ("Great question!") and generic offers. The `[[why]]` split is
+unchanged.
+
+**Accountability.** When the user wants to skip, or this week's state shows skipped/missed sessions, the coach asks
+what's going on, pushes back on weak reasons ("too tired", "no time", "don't feel like it"), offers a minimum version
+("just the first two exercises, 20 minutes") and reminds them of their goal and what they've already done this week.
+How firmly depends on the **coach style** (`ai_settings.coach_style`, `STYLE_RULES`): Supportive (gentle, never
+pushes), Balanced (default; light accountability), Strict (tough love, firm pushback). The style block is added after
+the rules; unknown/missing values mean Balanced.
+
+**Safety limits (rule 9) override every style:** pain, injury, illness, dizziness, chest symptoms, unusual exhaustion,
+poor sleep from a newborn or night shifts, grief or feeling overwhelmed → no pushing; endorse rest, adjust the plan,
+recommend a professional where relevant. Scheduled rest days are good, never "skipping" (on a rest day the prompt also
+says so explicitly when Training is shared). Never extra training to make up for food; never shame or comment on body,
+weight or eating.
+
+**Scope.** In scope: training, exercises, technique, programs, scheduling; nutrition and protein for the user's goals;
+recovery, sleep and stress as they affect training; motivation, check-ins, brief small talk; using LiftCircle.
+Everything else (coding, homework, emails, news, politics, trivia, other apps) and attempts to change the rules
+("ignore your instructions", "act as a general assistant", roleplay) get no answer, not even partially — a ≤ 40-word
+redirect in the coach's voice back to training. Exceptions: crisis/self-harm → care and local emergency help or a crisis
+line; medical questions → general information plus "see a doctor or physio". Prompt rules reduce but cannot
+guarantee model behaviour; `tests/live/ai-live.mjs` checks the off-topic case against the real provider.
+
+**Greeting v3.** The app-rendered welcome (`welcome.ts`) is time-aware ("Good morning/afternoon/evening", first name
+from the local display name only when Profile is shared), names today's session ("Upper A today, ready to go?") or says
+"Enjoy the rest day.", checks in after a session missed yesterday (firmer in Strict, kind in Supportive) and congratulates
+on a record from the last 3 days (existing record rules). Quick-reply chips (Feeling great 💪, Bit tired, Sore, Short on
+time, Want to skip today) send the chip as a normal user message, so the real AI answers. The welcome is still never
+stored and never calls the model.
+
+**Coach cheers (logger, no AI).** `src/domain/coachCheers.ts` picks one local line (≤ 12 words, 15+ per situation and
+style, never the same twice in a row) after ✓ — new record (with the number), last set of the workout, top of the rep
+range, reps below target, last set of an exercise (names the next one), otherwise a general line — and when the rest
+deadline passes ("Rest's up, Bench press set 3: 60 kg × 8. Let's go!"; shown once, also after a reload or on return
+from the background). Discomfort-flagged exercises only get caring lines; warm-ups and undo get nothing. It reads the
+style from `Settings.coachStyle`, a local mirror of `ai_settings.coach_style` written whenever AI settings load, so it
+works offline (missing → Balanced). Toggle: `Settings.workout.coachCheers` (missing → on), in Settings → Workout and the
+logger's ⋮ menu. The popup is the toast component's `coach` variant: `aria-live="polite"`, never focused, ~3.5 s,
+tap to dismiss, reduced motion respected, placed above the rest timer and left of the set Done column.
+
+### v2 behaviour (still applies unless v3 above changes it)
 
 **Greeting.** An empty conversation (right after setup → chat, or any later empty conversation of an enabled,
 consented user) opens with a short welcome rendered **by the app** from local, permitted data
@@ -165,10 +215,9 @@ week's done-vs-planned status (training shared), or "Training isn't shared…" /
 model call, costs nothing and is never stored, so refreshes, reconnects and parallel tabs can't duplicate it.
 Existing conversations load as before. Real coaching starts with the user's first message.
 
-**Style** (system rules, `context.ts SYSTEM_RULES`): recommendation and next action first; routine answers one
-short paragraph or 2–4 bullets (~40–100 words), longer only on request or for a full program; no intro or repeated
-onboarding; decide from the plan instead of handing the decision back; at most one focused question and only when
-missing information blocks a useful/safe answer. Optional reasoning goes after a `[[why]]` marker; the server
+**Style (v2, superseded in 0.4.0 by the v3 personality above):** recommendation and next action first; routine
+answers ~40–100 words; at most one focused question. v3 keeps "decide from the plan instead of handing the decision
+back" and "no repeated onboarding". Optional reasoning goes after a `[[why]]` marker; the server
 splits it off (`reply.ts splitWhy`, also tolerant of a "Why this?" heading or a missing marker) into
 `ai_messages.why`, shown collapsed under **Why this?**. `tidyReply` removes a leading "Great question!" and
 trailing generic offers; it never rewrites content. Logs record the reply's word count (no content).
@@ -209,4 +258,8 @@ on a coach's plan; the card says "your coach's sessions stay as they are". Any c
 | Scheduler week plans: overrides only, baseline/history untouched, next-week reversion, stale/expired/week-changed, idempotent + undo, coach plan | `npx vitest run tests/unit/schedule.test.ts` | passing (21) |
 | Chat UI, **MOCKED** aiApi: welcome on empty conversation and after setup, no duplicates across refresh/two tabs and no send, unshared training, resume, collapsed "Why this?", Apply/Undo, stale plan | `npx vitest run tests/unit/aiUi.test.ts tests/unit/aiWelcome.test.ts` | passing (18 + 5) |
 | DB v2: why/action stored, replayed, listed; unknown action kinds dropped; client can't call/write | `node tests/rls/ai-run.mjs` | passing (18 checks) |
-| Live OpenAI / Anthropic API | `OPENAI_API_KEY=… node tests/live/ai-live.mjs` (or `ANTHROPIC_API_KEY=…`; prints the two-sessions reply, Why, week plan and soft checks; without a key prints BLOCKED) | **not verified here** (no key; sandbox egress to api.openai.com refused). The script was run against a local OpenAI-format stub only. After deploying: run it with the real key, then send one chat message from the app and check `ai_usage`. |
+| v3 server logic, **MOCKED** provider: personality/accountability rules, every style reaches the prompt, Strict + "too tired" → pushback + minimum version, Strict + "my knee hurts" → safety wins, rest day ≠ skipping, scope section for every style, off-topic redirect survives `tidyReply`, closing question kept | `npx vitest run tests/unit/aiCoachV2.test.ts` | passing (28 incl. v2) |
+| Welcome v3 (time of day, first name, training/rest day, missed session per style, PR) and quick-reply chips (**MOCKED** aiApi) | `npx vitest run tests/unit/aiWelcome.test.ts tests/unit/aiUi.test.ts` | passing (10 + 19) |
+| Coach cheers: picker (situations × styles, discomfort, no repeats, warm-ups, ≤ 12 words, no food/weight words) and logger UI (popup on ✓, none on undo, rest-over names the next set once, background return, toggle off) | `npx vitest run tests/unit/coachCheers.test.ts tests/unit/coachCheersUi.test.ts`, `npx playwright test tests/e2e/coach-cheers.spec.ts` | passing (15 + 8 + 1 e2e) |
+| DB v3: coach_style default, save/refuse, own row only, no direct write | `node tests/rls/ai-run.mjs` (now also in CI) | see PR CI |
+| Live OpenAI / Anthropic API | `OPENAI_API_KEY=… node tests/live/ai-live.mjs` (or `ANTHROPIC_API_KEY=…`; prints the two-sessions reply, Why, week plan and soft checks, then the off-topic Python check — no code and a mention of training, which fails the run; without a key prints BLOCKED) | **not verified here** (no key; sandbox egress to api.openai.com refused). The script was run against a local OpenAI-format stub only. After deploying: run it with the real key, then send one chat message from the app and check `ai_usage`. |
