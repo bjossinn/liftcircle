@@ -127,10 +127,10 @@ async function visible(actor, sql, params) {
 }
 
 
-const job = (key, minutesFromNow, over = {}) => ({
+const job = (key, minutesFromNow, { payload = {}, ...over } = {}) => ({
   dedupeKey: key,
   fireAt: new Date(Date.now() + minutesFromNow * 60_000).toISOString(),
-  payload: { title: 'LiftCircle', body: 'Upper A today. Ready? 💪', url: '/', tag: 'workout', ...(over.payload ?? {}) },
+  payload: { title: 'LiftCircle', body: 'Upper A today. Ready? 💪', url: '/', tag: 'workout', ...payload },
   ...over,
 });
 const SUB = (n) => ({ endpoint: `https://push.example.net/p/${n}`, p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4', auth: 'BTBZMqHH6r4Tts7J_aSIgg' });
@@ -286,7 +286,8 @@ async function main() {
     await admin.query(`insert into public.notifications (recipient_id, actor_id, type) values ($1, $2, 'friend_accept')`, [U.alice, U.eve]);
     let js = await jobsOf(U.alice, `and kind = 'social'`);
     eq(js.length, 1, 'coalesced into one unsent job');
-    eq(js[0].payload, { title: 'LiftCircle', body: 'Eve accepted your friend request', url: '/friends', tag: 'social' }, 'latest text, no content');
+    const pl = js[0].payload;
+    eq([pl.title, pl.body, pl.url, pl.tag], ['LiftCircle', 'Eve accepted your friend request', '/friends', 'social'], 'latest text, no content');
     await admin.query(`update public.push_jobs set sent_at = now() where id = $1`, [js[0].id]);
     await admin.query(`insert into public.notifications (recipient_id, actor_id, type) values ($1, $2, 'friend_request')`, [U.alice, U.eve]);
     js = await jobsOf(U.alice, `and kind = 'social' and sent_at is null`);

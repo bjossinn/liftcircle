@@ -12,5 +12,4 @@
   VITE_SUPABASE_URL = "https://haryomdlsgrgrnsbdxui.supabase.co"
   VITE_SUPABASE_ANON_KEY = "sb_publishable_YKXvyZGJhRezItObxUh_fg_0qc30qAv"
   # Web Push VAPID PUBLIC key (public by design; the private key lives only in Supabase function secrets).
-  # Placeholder until the owner provides it — while empty, the push notification settings stay hidden.
-  # VITE_VAPID_PUBLIC_KEY = "<public key from: npx web-push generate-vapid-keys>"
+  VITE_VAPID_PUBLIC_KEY = "BHvEU9vOgpEy_N8qJo0qRiFjwhTeXVl9BqaiE3-R_YxMJPAlbKQEjrbdhj_2ei8s-FM9HlkSSOwVKT8VABV-7mI"
