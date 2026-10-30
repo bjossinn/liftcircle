@@ -89,3 +89,7 @@ verify_jwt = false
 
 [functions.finalize-coach-media]
 verify_jwt = false
+
+# Web Push sender, run by pg_cron; authenticates with the x-push-secret header (PUSH_CRON_SECRET). See docs/SETUP.md.
+[functions.push-send]
+verify_jwt = false

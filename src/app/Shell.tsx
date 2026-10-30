@@ -11,6 +11,7 @@ import { HealthBanner, StorageHealthRunner, useHealth } from '@/pwa/HealthBanner
 import { SyncRunner, SyncStatusBanner } from '@/sync/SyncStatus';
 import { PendingPostsRunner } from '@/social/pendingPosts';
 import { GuestImportPrompt } from '@/features/auth/GuestImportPrompt';
+import { usePushScheduler } from '@/pwa/pushScheduler';
 
 // The demo module bundles the program generator and the exercise catalogue to seed sample data;
 // load it only when the demo is actually open so it stays out of the startup bundle.
@@ -48,6 +49,7 @@ export function Shell() {
       <SyncRunner />
       <StorageHealthRunner />
       <PendingPostsRunner />
+      <PushRunner />
       {db.isDemo && (
         <Suspense fallback={null}>
           <DemoBanner />
@@ -64,6 +66,12 @@ export function Shell() {
       {!fullscreen && <TabBar />}
     </div>
   );
+}
+
+/** Keeps this device's push subscription and scheduled reminders current (no-op unless push is on here). */
+function PushRunner() {
+  usePushScheduler();
+  return null;
 }
 
 function TabBar() {

@@ -81,6 +81,8 @@ export default defineConfig({
         // friends' photos and signed media URLs must never land in the SW cache.
         // Personal offline data lives in account-scoped IndexedDB instead.
         runtimeCaching: [],
+        // Push + notificationclick handlers (public/push-sw.js). They add no routes or caching.
+        importScripts: ['push-sw.js'],
       },
       devOptions: { enabled: false },
     }),

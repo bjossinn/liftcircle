@@ -9,6 +9,7 @@ import { enterDemo, exitDemo } from './demo';
 import { updateDiscoverable } from '@/features/social/useMyProfile';
 import { useToast } from '@/components/toast';
 import { BRAND } from '@/config/brand';
+import { PushSection } from './PushSection';
 
 export default function SettingsPage() {
   const nav = useNavigate();
@@ -185,8 +186,9 @@ export default function SettingsPage() {
         <Toggle label="Likes" checked={s.notifications.likes} onChange={(v) => set((x) => ({ ...x, notifications: { ...x.notifications, likes: v } }))} />
         <Toggle label="Comments" checked={s.notifications.comments} onChange={(v) => set((x) => ({ ...x, notifications: { ...x.notifications, comments: v } }))} />
         <Toggle label="Coaching updates" checked={s.notifications.coaching !== false} onChange={(v) => set((x) => ({ ...x, notifications: { ...x.notifications, coaching: v } }))} />
-        <p className="text-xs text-muted py-3">These control in-app notifications. Coaching notifications never include message text. Push notifications aren’t available yet.</p>
+        <p className="text-xs text-muted py-3">These control in-app notifications. Coaching notifications never include message text.</p>
       </Card>
+      <PushSection />
 
       <SectionTitle>Plan & nutrition</SectionTitle>
       <Card className="divide-y divide-line overflow-hidden">

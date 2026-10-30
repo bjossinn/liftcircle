@@ -30,3 +30,6 @@ jobs:
       - run: npm run test:ai-db
         env:
           PG_BIN: /usr/lib/postgresql/16/bin
+      - run: npm run test:push-db
+        env:
+          PG_BIN: /usr/lib/postgresql/16/bin

@@ -87,4 +87,12 @@ test('generated service worker: precache + navigation fallback only; Supabase pa
   expect(sw).toMatch(/NavigationRoute/);
   for (const p of ['auth', 'rest', 'storage', 'functions']) expect(sw).toContain(`/^\\/${p}\\/v1/`);
   expect(sw).not.toMatch(/StaleWhileRevalidate|CacheFirst|NetworkFirst|ExpirationPlugin/);
+  // Push handlers come in via importScripts and add no routes or caching of their own.
+  expect(sw).toMatch(/importScripts\(["']push-sw\.js["']\)/);
+  const push = await request.get('/push-sw.js');
+  expect(push.ok()).toBe(true);
+  const pushSrc = await push.text();
+  for (const ev of ['push', 'notificationclick', 'pushsubscriptionchange']) expect(pushSrc).toContain(`addEventListener('${ev}'`);
+  expect(pushSrc).toContain('showNotification');
+  expect(pushSrc).not.toMatch(/registerRoute|caches\.|addEventListener\(['"]fetch/);
 });

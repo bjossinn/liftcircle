@@ -143,6 +143,27 @@ logging and manual targets only, no automatic prescriptions.
 - **Become a coach**: *Coaching → Become a coach*. Save a draft, submit, and follow the review status. Qualification
   documents are only visible to you and the reviewers.
 
+## Notifications
+
+**Turn them on:** Settings → Notifications → **Turn on notifications** (needs an account). Your phone asks for permission
+once. **On iPhone and iPad** notifications only work in the installed app: in Safari tap **Share → Add to Home Screen**,
+open LiftCircle from the Home Screen, then turn them on (see Install on your phone below). If you blocked them earlier,
+allow them again in your phone or browser settings (iPhone: Settings → Notifications → LiftCircle).
+
+**What you can get** (each has its own switch):
+- **Workout reminders** on planned training days, about 2 hours before you usually start that session (or at noon the
+  first time), or at a fixed time you choose. No reminder on rest days or once you've started or finished.
+- **Rest-over alerts** when the rest timer ends while LiftCircle is in the background ("Rest's up: Bench press set 3,
+  60 kg × 8").
+- **Coaching messages**: "Your coach sent you a message" (never the text).
+- **Friends & social** (off by default): friend requests, likes and comments.
+- **Missed-session nudges**: one nudge the day after a planned session that didn't happen (not after a skip, a move or
+  "Apply to this week", and not after you mentioned pain or illness).
+
+Texts follow your coach style and never mention body weight or food. Nothing is sent during quiet hours (22:00–07:00)
+except rest-over alerts during a workout. **Send a test notification** checks it works; **Turn off on this device**
+stops them on that phone.
+
 ## Install on your phone
 
 - **iPhone/iPad:** open the site in **Safari** → Share button → **Add to Home Screen** → keep **Open as Web App** on → Add.
