@@ -38,6 +38,13 @@ small jumps until a set feels like 2–3 reps left in the tank, then log that as
   if pain persists.
 - **Quick load change:** the − / + buttons under an exercise adjust all remaining sets by the smallest practical jump.
 - **Dumbbells:** enter the weight of *one* dumbbell. **Unilateral moves:** reps are per side. Each exercise shows its rule.
+- **Coach cheers:** when you tick a set, a small popup from your coach reacts to it — a new record (with the number),
+  the top of your rep range ("weight goes up next time"), the last set of an exercise (it names the next one), the last
+  set of the workout, or a few reps short. When the rest timer ends it names your next set, e.g. "Rest's up, Bench press
+  set 3: 60 kg × 8. Let's go!" (if the app was in the background, you see it once when you come back). Lines follow your
+  coach style (Supportive, Balanced or Strict). If you flagged **Felt discomfort**, it only says caring things. No
+  popup for warm-ups or when you undo a set. Tap a popup to dismiss it. It works offline and costs nothing (no AI call).
+  Turn it off in Settings → Workout (**Coach cheers during workouts**) or from the workout's ⋮ menu.
 - **Pause / resume** the whole workout from the header. **Finish** saves completed sets; unticked sets are dropped.
 - Everything saves instantly on your device — closing the app, losing signal, or a failed upload never loses a workout.
   The green **Resume workout** bar brings you back.
@@ -118,7 +125,15 @@ logging and manual targets only, no automatic prescriptions.
   plan, the AI can't replace it without you switching first. Clearing AI history deletes the conversation from
   LiftCircle (suggestions you accepted or declined and daily usage counts are kept); LiftCircle can't delete anything
   on the provider's side.
-  It greets you as soon as you open it and answers briefly (tap **Why this?** for the reasoning). Tell it about a
+  It talks like a friendly personal trainer: it greets you by time of day (and your first name, if you share your
+  profile), names today's session or wishes you a good rest day, checks in after a missed session and congratulates you
+  on new records. Tap a quick reply under the greeting (**Feeling great 💪**, **Bit tired**, **Sore**, **Short on
+  time**, **Want to skip today**) to answer it — the greeting itself is made by the app, so it never costs anything.
+  Choose a **coach style** in setup or AI coach settings: **Supportive** (gentle, never pushes), **Balanced** (the
+  default: encouraging with light accountability) or **Strict** (tough love on excuses). In every style, pain, injury,
+  illness, poor sleep or feeling overwhelmed mean rest or an easier plan, and rest days are never "skipping". The coach
+  only talks about training, nutrition for your goals, recovery, motivation and using LiftCircle; other requests get a
+  short, friendly redirect. It answers briefly (tap **Why this?** for the reasoning). Tell it about a
   one-off change, such as "I can only train twice this week": it picks which of your planned sessions to do, counts
   what you've already done, and offers **Apply to this week**. That only moves or skips sessions for this week (Undo is
   available); your normal schedule comes back next week.

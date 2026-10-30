@@ -234,6 +234,21 @@ async function main() {
     assert(p.paused && p.enabled, 'paused');
     ok(await rpc('alice', 'save_ai_settings', { p: J({ paused: false, scopes: { training: true } }) }), 'resume');
   });
+  await test('settings', 'coach style: defaults to balanced, saves a valid style, refuses unknown values, own row only, no direct write', async () => {
+    const before = ok(await rpc('alice', 'get_ai_settings'), 'get');
+    eq(before.coachStyle, 'balanced', 'default');
+    const s = ok(await rpc('alice', 'save_ai_settings', { p: J({ coachStyle: 'strict' }) }), 'strict');
+    eq(s.coachStyle, 'strict', 'saved');
+    eq(s.scopesChangedAt, before.scopesChangedAt, 'style change does not touch scopes_changed_at');
+    eq(s.profileNotes, before.profileNotes, 'notes untouched');
+    fails(await rpc('alice', 'save_ai_settings', { p: J({ coachStyle: 'drill-sergeant' }) }), 'unknown style', /supportive, balanced or strict/);
+    fails(await rpc('alice', 'save_ai_settings', { p: J({ coachStyle: 3 }) }), 'non-string style', /supportive, balanced or strict/);
+    eq(ok(await rpc('alice', 'get_ai_settings'), 'get').coachStyle, 'strict', 'refused values change nothing');
+    fails(await as('alice', `update public.ai_settings set coach_style = 'supportive' where user_id = $1`, [U.alice]), 'direct update', /permission denied/);
+    eq((await admin.query(`select coach_style from public.ai_settings where user_id = $1`, [U.alice])).rows[0].coach_style, 'strict', 'stored');
+    eq(ok(await rpc('bob', 'get_ai_settings'), 'bob get'), null, 'bob unaffected');
+    ok(await rpc('alice', 'save_ai_settings', { p: J({ coachStyle: 'balanced' }) }), 'back to balanced');
+  });
 
   /* ------------------------------------------------------------ exchanges */
   const M1 = randomUUID();

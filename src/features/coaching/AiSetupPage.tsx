@@ -13,6 +13,7 @@ import { Badge, Button, Card, ChipGroup, IconButton, Notice, Page, ProgressBar, 
 import { useToast } from '@/components/toast';
 import { aiApi } from '@/backend/ai';
 import type { AiScopes } from '@/backend/coachingContract';
+import type { CoachStyle } from '@/domain/types';
 import { useApp } from '@/state/app';
 import { useExercises } from '@/data/catalog';
 import { EQUIPMENT_LABELS, LIMITATION_LABELS } from '@/data/exerciseMeta';
@@ -23,7 +24,7 @@ import { currentVersion } from '@/domain/program/program';
 import type { Allergen, DietTag, Equipment, Experience, Goal, LimitationArea } from '@/domain/types';
 import { AI_NOTES_MAX, classifyAiError, consentOutdated, DEFAULT_SCOPES, isHardUnavailable, liveActive, providerLabel, SCOPE_INFO, settingsActive } from './ai/model';
 import { useAiBoot } from './ai/useAi';
-import { AiGuest, AiUnavailable, BackButton, DataExplainer, ScopeToggles } from './ai/parts';
+import { AiGuest, AiUnavailable, BackButton, CoachStylePicker, DataExplainer, ScopeToggles } from './ai/parts';
 
 const STEPS = ['About', 'Your details', 'Data', 'Agree'] as const;
 type StepIdx = 0 | 1 | 2 | 3;
@@ -46,6 +47,7 @@ export default function AiSetupPage() {
   const [original, setOriginal] = useState<Details | null>(null);
   const [notes, setNotes] = useState('');
   const [scopes, setScopes] = useState<AiScopes>(DEFAULT_SCOPES);
+  const [coachStyle, setCoachStyle] = useState<CoachStyle>(account.settings.coachStyle ?? 'balanced');
   const [consent, setConsent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +73,7 @@ export default function AiSetupPage() {
     if (boot.settings) {
       setScopes(boot.settings.scopes);
       setNotes(boot.settings.profileNotes ?? '');
+      setCoachStyle(boot.settings.coachStyle);
     }
   }, [details, accountReady, programs, boot, account.profile, active]);
 
@@ -139,7 +142,7 @@ export default function AiSetupPage() {
           },
         }));
       }
-      const saved = await aiApi.saveSettings({ enabled: true, paused: false, scopes, profileNotes: finalNotes, acceptConsent: true, provider: providerId });
+      const saved = await aiApi.saveSettings({ enabled: true, paused: false, scopes, profileNotes: finalNotes, coachStyle, acceptConsent: true, provider: providerId });
       setSettings(saved);
       toast.show('Your AI coach is on', { tone: 'success' });
       nav('/coaching/ai', { replace: true });
@@ -314,6 +317,10 @@ export default function AiSetupPage() {
           </div>
           <Card className="px-4 py-1">
             <ScopeToggles value={scopes} onChange={setScopes} />
+          </Card>
+          <Card className="p-4">
+            <h3 className="font-semibold mb-2">Coach style</h3>
+            <CoachStylePicker value={coachStyle} onChange={setCoachStyle} />
           </Card>
           <Card className="p-4">
             <DataExplainer provider={provider} />

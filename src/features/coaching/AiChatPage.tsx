@@ -4,7 +4,8 @@
  * account-scoped kv so they survive reloads and offline. Every send carries a client uuid, and Retry reuses it,
  * so the server can de-duplicate.
  * An empty conversation opens with an app-rendered, personalized welcome (ai/welcome.ts): no model call, nothing
- * stored, so refreshes and parallel tabs can't duplicate it or cost anything. Replies may carry a collapsed
+ * stored, so refreshes and parallel tabs can't duplicate it or cost anything. Quick-reply chips under it send a normal
+ * user message, so the real AI answers. Replies may carry a collapsed
  * "Why this?" and a this-week plan the user can apply (ai/WeekPlanCard.tsx).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
@@ -19,15 +20,16 @@ import { useApp } from '@/state/app';
 import { uuid } from '@/lib/id';
 import {
   AI_DRAFT_KEY, AI_HISTORY_CACHE_KEY, AI_MESSAGE_MAX, AI_PENDING_KEY, CHECKIN_REVIEW_TEXT, classifyAiError, isHardUnavailable, mergeConversation,
-  consentOutdated, providerLabel, settingsActive, SUGGESTED_QUESTIONS, upsertMessages, usageLine, type AiMode, type ClassifiedAiError, type PendingSend,
+  consentOutdated, providerLabel, settingsActive, SUGGESTED_QUESTIONS, upsertMessages, usageLine, WELCOME_CHIPS, type AiMode, type ClassifiedAiError, type PendingSend,
 } from './ai/model';
 import { useActiveCoach, useAiBoot } from './ai/useAi';
-import { buildWelcome } from './ai/welcome';
+import { buildWelcome, localHour, recentRecord } from './ai/welcome';
 import { WeekPlanCard } from './ai/WeekPlanCard';
 import { useActiveProgram, useAllActivities, useAllSessions } from '@/features/train/hooks';
 import { todayISO } from '@/lib/dates';
+import { useExercises } from '@/data/catalog';
 import type { LiftDb } from '@/db/db';
-import type { ActivityLog, ISODate, Program, WorkoutSession } from '@/domain/types';
+import type { ActivityLog, CoachStyle, Exercise, ID, ISODate, Program, WeightUnit, WorkoutSession } from '@/domain/types';
 import { AiBadge, AiGuest, AiUnavailable, availabilityCopy, BackButton, ShareButton, ShareWithCoachDialog } from './ai/parts';
 
 export default function AiChatPage() {
@@ -239,9 +241,11 @@ function Chat({
     if (!canSend) return;
     start(draft.trim(), 'chat');
   }
-  function start(text: string, mode: AiMode) {
+  /** `fromDraft`: the text came from the composer, so clear it (quick replies leave a typed draft alone). */
+  function start(text: string, mode: AiMode, fromDraft = mode === 'chat') {
+    if (blocked) return;
     const p: PendingSend = { id: uuid(), text, mode, status: 'sending', createdAt: new Date().toISOString() };
-    if (mode === 'chat') updateDraft('');
+    if (fromDraft) updateDraft('');
     void run(p);
   }
   function retry() {
@@ -337,7 +341,34 @@ function Chat({
         ) : (
           <>
             {conversation.length === 0 && settings && (
-              <WelcomeMessage settings={settings} goal={account.profile.goal} program={program} sessions={sessions} activities={activities} today={today} weekStart={weekStart} />
+              <>
+                <WelcomeMessage
+                  settings={settings}
+                  goal={account.profile.goal}
+                  displayName={account.profile.displayName}
+                  timeZone={account.settings.timeZone}
+                  unit={account.settings.units.weight}
+                  program={program}
+                  sessions={sessions}
+                  activities={activities}
+                  today={today}
+                  weekStart={weekStart}
+                />
+                {canCompose && !blocked && (
+                  <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="Quick replies">
+                    {WELCOME_CHIPS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => start(c, 'chat', false)}
+                        className="min-h-10 px-3.5 rounded-full border border-accent/40 bg-accent-soft text-sm font-medium hover:bg-surface-2"
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
             <ol className="space-y-4" aria-label="Conversation">
               {conversation.map((m) => (
@@ -453,18 +484,24 @@ function Chat({
 
 /** First message of an empty conversation — built in the app from permitted saved context (no model call). */
 function WelcomeMessage({
-  settings, goal, program, sessions, activities, today, weekStart,
+  settings, goal, displayName, timeZone, unit, program, sessions, activities, today, weekStart,
 }: {
   settings: AiSettings;
   goal?: Parameters<typeof buildWelcome>[0]['goal'];
+  displayName?: string;
+  timeZone: string;
+  unit: WeightUnit;
   program: Program | null | undefined;
   sessions: WorkoutSession[] | undefined;
   activities: ActivityLog[] | undefined;
   today: ISODate;
   weekStart: 0 | 1;
 }) {
+  const { byId } = useExercises();
   if (program === undefined || sessions === undefined) return null; // local data still loading (instant in practice)
-  const w = buildWelcome({ scopes: settings.scopes, goal, program, sessions, activities, today, weekStart });
+  const style: CoachStyle = settings.coachStyle;
+  const record = settings.scopes.training ? safeRecord(sessions, byId, unit, today) : null;
+  const w = buildWelcome({ scopes: settings.scopes, goal, displayName, hour: localHour(timeZone), style, record, program, sessions, activities, today, weekStart });
   return (
     <article aria-label="AI coach welcome" className="max-w-[92%] mb-4">
       <div className="flex items-center gap-2 mb-1">
@@ -484,6 +521,14 @@ function WelcomeMessage({
       <p className="mt-1 text-[11px] text-faint">From your saved details · replies are AI suggestions, not medical advice. Plan changes only happen if you apply them.</p>
     </article>
   );
+}
+
+function safeRecord(sessions: WorkoutSession[], byId: Map<ID, Exercise>, unit: WeightUnit, today: ISODate) {
+  try {
+    return recentRecord(sessions, byId, unit, today);
+  } catch {
+    return null;
+  }
 }
 
 interface WeekCtx {

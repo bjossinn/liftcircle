@@ -199,7 +199,7 @@ describe('AI coach end to end with OpenAI (MOCKED provider)', () => {
 });
 
 describe('client wording and consent state', () => {
-  const s = { enabled: true, paused: false, consentAt: 'x', scopes: { profile: true, training: true, measurements: true, nutrition: true }, profileNotes: '' };
+  const s = { enabled: true, paused: false, consentAt: 'x', scopes: { profile: true, training: true, measurements: true, nutrition: true }, profileNotes: '', coachStyle: 'balanced' as const };
   it('names the provider the server reports, generic otherwise', () => {
     expect(providerLabel({ available: true, provider: 'openai', providerName: 'OpenAI' })).toBe('OpenAI');
     expect(providerLabel({ available: false, reason: 'offline' })).toBe('the AI provider');

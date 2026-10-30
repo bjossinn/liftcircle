@@ -501,6 +501,8 @@ export interface ShareFields {
   records: boolean;
 }
 export type Audience = 'only_me' | 'friends';
+/** How hard the coach pushes (AI chat and workout cheers). Safety limits apply in every style. */
+export type CoachStyle = 'supportive' | 'balanced' | 'strict';
 
 export interface Settings {
   units: UnitPrefs;
@@ -513,7 +515,14 @@ export interface Settings {
     showRir: boolean; defaultSets: number; plateIncrementKg: number; plateIncrementLb: number;
     /** Empty-bar weight for barbell warm-ups (defaults 20 kg / 45 lb when absent). */
     barKg?: number; barLb?: number;
+    /** "Coach cheers during workouts" (logger popups). Optional (added in 0.4.0); undefined means on. */
+    coachCheers?: boolean;
   };
+  /**
+   * Local mirror of the AI coach style (ai_settings.coach_style, the authority) so offline features such as the
+   * logger's coach cheers can follow it. Optional; undefined means 'balanced'.
+   */
+  coachStyle?: CoachStyle;
   /** `coaching` is optional (added later); undefined means on. The server honours it when creating coaching notifications. */
   notifications: { friendRequests: boolean; likes: boolean; comments: boolean; coaching?: boolean };
   social: {

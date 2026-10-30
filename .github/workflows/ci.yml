@@ -1,5 +1,6 @@
-# Checks every pull request (and every push to main): types, unit tests, production build.
-# The database/RLS and Playwright suites need PostgreSQL / browsers and run locally (npm run test:all).
+# Checks every pull request (and every push to main): types, unit tests, production build, and the database/RLS
+# suites against a throwaway PostgreSQL 16 cluster (preinstalled on GitHub's Ubuntu runners), so a migration is
+# tested before merging deploys it. The Playwright suite needs browsers and runs locally (npm run test:all).
 name: CI
 on:
   pull_request:
@@ -20,3 +21,12 @@ jobs:
       - run: npm run typecheck
       - run: npx vitest run
       - run: npm run build
+      # Database suites (same job, so a required "check" covers them before auto-merge deploys a migration).
+      - name: PostgreSQL 16 binaries
+        run: test -x /usr/lib/postgresql/16/bin/initdb || (sudo apt-get update && sudo apt-get install -y postgresql-16)
+      - run: npm run test:rls
+        env:
+          PG_BIN: /usr/lib/postgresql/16/bin
+      - run: npm run test:ai-db
+        env:
+          PG_BIN: /usr/lib/postgresql/16/bin

@@ -190,6 +190,7 @@ const SETTINGS_ON: AiSettings = {
   consentAt: '2026-10-01T10:00:00Z',
   scopes: { profile: true, training: true, measurements: false, nutrition: false },
   profileNotes: '',
+  coachStyle: 'balanced',
 };
 
 function renderAt(path: string, el: ReactElement) {
@@ -477,12 +478,28 @@ describe('AI chat v2 (MOCKED aiApi): greeting, Why this?, Apply to this week', (
     await saveRecord('sessions', completed(p, 'A', 'Full body A', '2026-10-26'), db);
     renderAt('/coaching/ai', createElement(AiChatPage));
     const w = await screen.findByRole('article', { name: 'AI coach welcome' });
-    expect(within(w).getByText('Hi — I’m your AI coach.')).toBeTruthy();
+    expect(within(w).getByText('Good afternoon!')).toBeTruthy(); // 12:00 UTC, no display name
+    expect(within(w).getByText('Full body B today, ready to go?')).toBeTruthy();
     await waitFor(() => expect(within(w).getByText(/You’re on “Full body 3x” — 3 sessions a week \(Mon, Wed, Fri\)/)).toBeTruthy());
     expect(within(w).getByText(/Goal: build muscle/)).toBeTruthy();
     expect(within(w).getByText('This week: 1 of 3 done (Full body A, Mon). Next: Full body B, today.')).toBeTruthy();
     expect(api.send).not.toHaveBeenCalled();
     expect(api.history).toHaveBeenCalledTimes(1);
+  });
+
+  it('quick-reply chips under the welcome send the chip as the user’s message (the real AI answers); the welcome itself is never sent', async () => {
+    const db = h.db as LiftDb;
+    await saveRecord('programs', threeDayPlan(), db);
+    api.send.mockResolvedValueOnce({ reply: { id: 'r-chip', role: 'assistant', content: 'Totally normal. Let’s do a lighter Full body B.', createdAt: '2026-10-28T12:00:01Z' }, proposal: null });
+    renderAt('/coaching/ai', createElement(AiChatPage));
+    await screen.findByRole('article', { name: 'AI coach welcome' });
+    for (const c of ['Feeling great 💪', 'Bit tired', 'Sore', 'Short on time', 'Want to skip today']) await screen.findByRole('button', { name: c });
+    expect(api.send).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Bit tired' }));
+    expect(await screen.findByText('Totally normal. Let’s do a lighter Full body B.')).toBeTruthy();
+    expect(api.send).toHaveBeenCalledTimes(1);
+    expect((api.send.mock.calls[0][0] as { text: string; mode: string })).toMatchObject({ text: 'Bit tired', mode: 'chat' });
+    expect(screen.queryByRole('article', { name: 'AI coach welcome' })).toBeNull();
   });
 
   it('activation: setup → chat opens with the welcome immediately', async () => {

@@ -3,14 +3,14 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import clsx from 'clsx';
 import {
-  AlertTriangle, ArrowDown, ArrowUp, Check, ChevronDown, Info, Link2, Minus, MoreHorizontal, Pause, Play, Plus, Repeat, SkipForward,
+  AlertTriangle, ArrowDown, ArrowUp, Check, ChevronDown, Info, Link2, Minus, MoreHorizontal, MoreVertical, Pause, Play, Plus, Repeat, SkipForward,
   StickyNote, Trash2, Timer, Undo2, RotateCcw,
 } from 'lucide-react';
 import { useApp, useDb } from '@/state/app';
 import { saveRecord, deleteRecord, alive } from '@/db/repo';
 import { useToast } from '@/components/toast';
 import { Badge, Button, ConfirmDialog, EmptyState, IconButton, Input, Segmented, Sheet, Spinner, Textarea, Toggle } from '@/components/ui';
-import type { Exercise, LoggedSet, SessionExercise, SetType, Settings, WeightUnit, WorkoutSession } from '@/domain/types';
+import type { CoachStyle, Exercise, ID, LoggedSet, SessionExercise, SetType, Settings, WeightUnit, WorkoutSession } from '@/domain/types';
 import { useExercises } from '@/data/catalog';
 import { ExercisePicker } from '@/components/ExercisePicker';
 import { loadConventionNote } from '@/data/exerciseMeta';
@@ -26,6 +26,8 @@ import { useSubstitutionConstraints } from './hooks';
 import { suggestionFor } from '@/domain/program/session';
 import { beep, holdWakeLock, primeAudio, vibrate } from './feedback';
 import { maybeAutoShare } from '@/social/autoShare';
+import { cheerForSet, restOverCheer } from '@/domain/coachCheers';
+import type { ToastOptions } from '@/components/toast';
 
 /** Persist a change; resolves true when saved, false when the device couldn't store it. */
 type Mut = (fn: (s: WorkoutSession) => WorkoutSession) => Promise<boolean>;
@@ -74,14 +76,80 @@ function useNow(intervalMs: number, active = true) {
 
 const enteredFor = (kg: number, unit: WeightUnit) => ({ value: round(fromKg(kg, unit), 2), unit });
 
+/** Coach cheers are on unless the user switched them off (Settings → Workout, or the logger menu). */
+export const cheersEnabled = (s: Settings) => s.workout.coachCheers !== false;
+
+const REST_CHEER_KEY = 'lc-rest-cheer-shown';
+function restCheerShown(key: string): boolean {
+  try {
+    return localStorage.getItem(REST_CHEER_KEY) === key;
+  } catch {
+    return false;
+  }
+}
+function markRestCheer(key: string) {
+  try {
+    localStorage.setItem(REST_CHEER_KEY, key);
+  } catch {
+    /* storage blocked: the in-memory guard still prevents repeats while the page is open */
+  }
+}
+
+/**
+ * When the rest timer ends, a coach popup names the next set. Driven by the stored deadline (session.rest.endsAt),
+ * so it is right after a reload or app switch. While the page is hidden nothing is shown; it appears once when the
+ * user comes back. Each deadline is announced at most once (also across reloads).
+ */
+function useRestOverCheer(opts: {
+  session: WorkoutSession | null | undefined;
+  enabled: boolean;
+  style: CoachStyle;
+  byId: Map<ID, Exercise>;
+  unit: WeightUnit;
+  show: (message: string, o?: ToastOptions) => void;
+  lastLine: React.MutableRefObject<string | null>;
+}) {
+  const latest = useRef(opts);
+  latest.current = opts;
+  const endsAt = opts.session?.status === 'active' ? opts.session.rest?.endsAt : undefined;
+  const sessionId = opts.session?.id;
+  useEffect(() => {
+    if (!opts.enabled || endsAt == null || !sessionId) return;
+    const key = `${sessionId}:${endsAt}`;
+    const fire = () => {
+      const o = latest.current;
+      const s = o.session;
+      if (!s || s.rest?.endsAt !== endsAt || Date.now() < endsAt) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (restCheerShown(key)) return;
+      markRestCheer(key);
+      const cheer = restOverCheer(s, o.byId, o.unit, o.style, o.lastLine.current);
+      if (!cheer) return;
+      o.lastLine.current = cheer.line;
+      o.show(cheer.line, { variant: 'coach' });
+    };
+    const t = setTimeout(fire, Math.max(0, endsAt - Date.now()));
+    document.addEventListener('visibilitychange', fire);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('visibilitychange', fire);
+    };
+  }, [opts.enabled, endsAt, sessionId]);
+}
+
 export default function SessionPage() {
   const { id = '' } = useParams();
   const nav = useNavigate();
   const toast = useToast();
-  const { db, account } = useApp();
+  const { db, account, updateAccount } = useApp();
   const settings = account.settings;
+  const cheers = cheersEnabled(settings);
+  const coachStyle: CoachStyle = settings.coachStyle ?? 'balanced';
+  const lastCheer = useRef<string | null>(null);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const { session, update, saveError } = useSessionEditor(id);
   const { byId, get, list } = useExercises();
+  useRestOverCheer({ session, enabled: cheers, style: coachStyle, byId, unit: settings.units.weight, show: toast.show, lastLine: lastCheer });
   const constraints = useSubstitutionConstraints();
   const registry = useMemo(() => new DraftRegistry(), []);
   const history = useLiveQuery(async () => alive(await db.sessions.where('status').equals('completed').toArray()).sort((a, b) => b.startedAt - a.startedAt), [db]);
@@ -168,11 +236,21 @@ export default function SessionPage() {
         return;
       }
       showErrors(null);
-      if (outcome === 'done')
-        toast.show('Set logged', {
-          action: { label: 'Undo', onClick: () => void update((s) => ops.skipRest(ops.toggleSetComplete(s, se.id, set.id, Date.now()).session)) },
-          duration: 3000,
-        });
+      if (outcome !== 'done') return; // undo: quiet
+      const undo = { label: 'Undo', onClick: () => void update((s) => ops.skipRest(ops.toggleSetComplete(s, se.id, set.id, Date.now()).session)) };
+      if (!cheers) {
+        toast.show('Set logged', { action: undo, duration: 3000 });
+        return;
+      }
+      void db.sessions.get(session.id).then((latest) => {
+        const cheer = latest ? cheerForSet({ session: latest, seId: se.id, setId: set.id, style: coachStyle, history: history ?? [], byId, unit: settings.units.weight, last: lastCheer.current }) : null;
+        if (!cheer) {
+          toast.show('Set logged', { action: undo, duration: 3000 }); // warm-up: no coach popup
+          return;
+        }
+        lastCheer.current = cheer.line;
+        toast.show(cheer.line, { variant: 'coach', action: undo });
+      });
     });
   };
 
@@ -209,6 +287,9 @@ export default function SessionPage() {
               {paused ? 'Paused' : formatDuration(ops.elapsedMs(session, now) / 1000)} · {done}/{total} sets
             </div>
           </button>
+          <IconButton label="Workout options" onClick={() => setOptionsOpen(true)}>
+            <MoreVertical className="size-5" />
+          </IconButton>
           <IconButton label={paused ? 'Resume workout' : 'Pause workout'} onClick={() => void update((s) => (s.pausedAt ? ops.resumeSession(s, Date.now()) : ops.pauseSession(s, Date.now())))}>
             {paused ? <Play className="size-5" /> : <Pause className="size-5" />}
           </IconButton>
@@ -307,6 +388,17 @@ export default function SessionPage() {
             });
         }}
       />
+
+      <Sheet open={optionsOpen} onClose={() => setOptionsOpen(false)} title="Workout options">
+        <div className="px-1">
+          <Toggle
+            label="Coach cheers during workouts"
+            description="A short line from your coach when you finish a set or your rest ends. Works offline."
+            checked={cheers}
+            onChange={(v) => void updateAccount((a) => ({ ...a, settings: { ...a.settings, workout: { ...a.settings.workout, coachCheers: v } } }))}
+          />
+        </div>
+      </Sheet>
 
       <FinishSheet open={finishOpen} session={session} onClose={() => setFinishOpen(false)} onFinish={finish} />
 

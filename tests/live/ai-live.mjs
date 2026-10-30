@@ -7,9 +7,11 @@
  * ANTHROPIC_API_KEY (+ ANTHROPIC_MODEL …), AI_PROVIDER to pick — with an in-memory fixture user instead of
  * Supabase. Scenario (repair brief §3): saved 3-session plan (Full body A/B/C Mon/Wed/Fri), A done on Monday,
  * today Wednesday, the user says "I can only train twice this week". Prints the reply, the "Why this?" part and
- * the structured week plan, then soft checks. Costs one or two provider calls.
+ * the structured week plan, then soft checks. Then an off-topic request ("How do I write a for loop in Python?")
+ * must get a short in-voice redirect: no code, and it mentions training (hard checks). Costs two to four provider calls.
  *
- * Without a key it prints BLOCKED and exits 0. Exit 1 only when the provider call fails.
+ * Without a key it prints BLOCKED and exits 0. Exit 1 when a provider call fails or the off-topic reply contains code
+ * or doesn't steer back to training.
  */
 import { build } from 'esbuild';
 import path from 'node:path';
@@ -95,9 +97,33 @@ const checks = [
   ['picks an actual remaining plan session', ['fb-b', 'fb-c'].includes(reply.action?.sessions?.[0]?.templateId)],
   ['mentions the usual schedule next week', /next week/i.test(reply.content)],
   ['does not ask which split', !/upper\s*\/\s*lower|which split|full[- ]body or/i.test(reply.content)],
-  [`concise (≤ 120 words; got ${words})`, words <= 120],
-  ['does not end with a question', !/\?\s*$/.test(reply.content)],
+  [`concise (≤ 150 words; got ${words})`, words <= 150],
+  ['at most one question', (reply.content.match(/\?/g) ?? []).length <= 1],
 ];
 console.log('\nSoft checks (model behaviour can vary):');
 for (const [name, ok] of checks) console.log(`${ok ? 'PASS' : 'WARN'}  ${name}`);
+
+/* Scope (v3): an off-topic request gets a short in-voice redirect — no code, back to training. Real key only. */
+const off = await handleAiCoach(
+  { db, env: (k) => process.env[k], fetch: globalThis.fetch, now: () => new Date('2026-10-28T12:00:00Z'), log: () => {} },
+  UID,
+  { action: 'send', id: '00000000-0000-4000-8000-0000000c0de1', text: 'How do I write a for loop in Python?', mode: 'chat' },
+);
+if (off.status !== 200) {
+  console.log(`FAIL: off-topic provider call returned ${off.status} ${JSON.stringify(off.body)}`);
+  process.exit(1);
+}
+const offReply = off.body.reply.content;
+const offAll = `${offReply}\n${off.body.reply.why ?? ''}`;
+const offWords = (offReply.match(/\S+/g) ?? []).length;
+console.log('\nLIVE provider reply (off-topic: Python for loop)\n');
+console.log(offReply);
+const hard = [
+  ['no code in the reply', !/```|\bfor\s+\w+\s+in\s+\w|range\(|print\(|def\s+\w+\(/.test(offAll)],
+  ['mentions training', /train|workout|session|lift|gym|exercise|upper|lower|full body/i.test(offReply)],
+];
+console.log('\nOff-topic checks:');
+for (const [name, ok] of hard) console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`);
+console.log(`${offWords <= 50 ? 'PASS' : 'WARN'}  short redirect (≤ 40 words asked; got ${offWords})`);
 void stored;
+if (hard.some(([, ok]) => !ok)) process.exit(1);

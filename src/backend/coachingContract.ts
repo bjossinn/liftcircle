@@ -4,7 +4,7 @@
  * Server: supabase/migrations/2026102900000{1..}_*.sql, supabase/functions/{ai-coach,geocode,finalize-coach-media}.
  * Spec of tables/RPCs/states: docs/COACHING_INTERFACES.md.
  */
-import type { ID, ISODate, ProgramVersion } from '@/domain/types';
+import type { CoachStyle, ID, ISODate, ProgramVersion } from '@/domain/types';
 
 /* ================================================================ coaches */
 export type ApplicationStatus = 'draft' | 'submitted' | 'changes_requested' | 'approved' | 'rejected';
@@ -343,6 +343,8 @@ export interface AiSettings {
   scopesChangedAt?: string | null;
   /** User-visible, user-editable notes the AI may use. Cleared/edited by the user only. */
   profileNotes: string;
+  /** How hard the coach pushes (migration 20261031000001). Missing on older servers → 'balanced'. */
+  coachStyle: CoachStyle;
 }
 
 export interface AiMessage {

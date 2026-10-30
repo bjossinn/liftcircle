@@ -19,9 +19,17 @@ export type AiBoot =
     };
 
 export function useAiBoot() {
-  const { auth, backendConfigured, online } = useApp();
+  const { auth, backendConfigured, online, account, accountReady, updateAccount } = useApp();
   const [boot, setBoot] = useState<AiBoot>({ phase: 'loading' });
   const seq = useRef(0);
+
+  // Mirror the coach style into the app's settings so offline features (workout cheers) can follow it.
+  const serverStyle = boot.phase === 'ready' ? boot.settings?.coachStyle : undefined;
+  const localStyle = account?.settings?.coachStyle;
+  useEffect(() => {
+    if (!accountReady || !updateAccount || !serverStyle || serverStyle === (localStyle ?? 'balanced')) return;
+    void updateAccount((a) => ({ ...a, settings: { ...a.settings, coachStyle: serverStyle } })).catch(() => undefined);
+  }, [accountReady, serverStyle, localStyle, updateAccount]);
 
   const load = useCallback(async () => {
     const my = ++seq.current;
