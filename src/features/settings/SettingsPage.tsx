@@ -10,6 +10,7 @@ import { updateDiscoverable } from '@/features/social/useMyProfile';
 import { useToast } from '@/components/toast';
 import { BRAND } from '@/config/brand';
 import { PushSection } from './PushSection';
+import { UpdateCheckRow } from './UpdateCheckRow';
 
 export default function SettingsPage() {
   const nav = useNavigate();
@@ -203,6 +204,7 @@ export default function SettingsPage() {
       <SectionTitle>App</SectionTitle>
       <Card className="divide-y divide-line overflow-hidden">
         <ListRow left={<Database className="size-5 text-muted" />} title="Your data" subtitle="Backup, export, import, sync, delete account" right={<ChevronRight className="size-4" />} onClick={() => nav('/settings/data')} />
+        <UpdateCheckRow />
         <ListRow left={<Smartphone className="size-5 text-muted" />} title="Install on your phone" right={<ChevronRight className="size-4" />} onClick={() => nav('/install')} />
         {!db.isDemo && !signedIn && (
           <ListRow left={<FlaskConical className="size-5 text-muted" />} title="Try with demo data" subtitle="Opens a separate, clearly labelled sample dataset" right={<ChevronRight className="size-4" />} onClick={() => void enterDemo()} />

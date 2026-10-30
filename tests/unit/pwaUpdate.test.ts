@@ -13,7 +13,7 @@ import { LiftDb } from '@/db/db';
 
 const h = vi.hoisted(() => {
   const listeners = new Set<() => void>();
-  const state = { needRefresh: false, offlineReady: false, reloadPending: false };
+  const state = { needRefresh: false, offlineReady: false, reloadPending: false, checkSeq: 0 };
   return {
     state,
     listeners,
@@ -23,6 +23,7 @@ const h = vi.hoisted(() => {
     },
     reloadPage: vi.fn(),
     applyUpdate: vi.fn(async () => {}),
+    checkForUpdates: vi.fn(async (): Promise<string> => 'latest'),
     db: null as unknown as LiftDb,
   };
 });
@@ -34,11 +35,13 @@ vi.mock('@/pwa/update', () => ({
   },
   reloadPage: h.reloadPage,
   applyUpdate: h.applyUpdate,
+  checkForUpdates: h.checkForUpdates,
 }));
 vi.mock('@/state/app', () => ({ useApp: () => ({ db: h.db }) }));
 
 const { UpdateBanner } = await import('@/pwa/UpdateBanner');
 const { HealthBanner } = await import('@/pwa/HealthBanner');
+const { UpdateCheckRow } = await import('@/features/settings/UpdateCheckRow');
 const { ToastProvider } = await import('@/components/toast');
 const health = await import('@/pwa/health');
 
@@ -53,12 +56,14 @@ const session = (status: 'active' | 'completed') => ({
   id: `s-${status}`, date: '2026-10-29', status, name: 'Push', startedAt: Date.now() - 60_000, pausedTotalMs: 0, createdAt: 1, updatedAt: 1, exercises: [],
 });
 
-async function mount(node: 'update' | 'health') {
+async function mount(node: 'update' | 'health' | 'settings') {
   el = document.createElement('div');
   document.body.append(el);
   root = createRoot(el);
+  const body =
+    node === 'update' ? createElement(UpdateBanner) : node === 'health' ? createElement(HealthBanner) : createElement('div', null, createElement(UpdateBanner), createElement(UpdateCheckRow));
   await act(async () => {
-    root.render(createElement(MemoryRouter, null, createElement(ToastProvider, null, createElement(node === 'update' ? UpdateBanner : HealthBanner))));
+    root.render(createElement(MemoryRouter, null, createElement(ToastProvider, null, body)));
   });
   await flush();
 }
@@ -66,9 +71,11 @@ async function mount(node: 'update' | 'health') {
 beforeEach(async () => {
   h.db = new LiftDb(`update-test-${Math.random().toString(36).slice(2)}`);
   await h.db.open();
-  Object.assign(h.state, { needRefresh: false, offlineReady: false, reloadPending: false });
+  Object.assign(h.state, { needRefresh: false, offlineReady: false, reloadPending: false, checkSeq: 0 });
   h.reloadPage.mockClear();
   h.applyUpdate.mockClear();
+  h.checkForUpdates.mockReset();
+  h.checkForUpdates.mockResolvedValue('latest');
   health.resetHealth();
 });
 afterEach(async () => {
@@ -119,6 +126,75 @@ describe('update banner', () => {
     await act(async () => h.set({ reloadPending: true }));
     await flush();
     expect(h.reloadPage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Settings → Check for updates', () => {
+  const click = async (label: string) => {
+    const b = [...el.querySelectorAll('button')].find((x) => x.textContent?.trim() === label) as HTMLButtonElement;
+    expect(b, `button ${label}`).toBeTruthy();
+    await act(async () => b.click());
+    await flush();
+  };
+  const rowStatus = () => [...el.querySelectorAll('[role="status"]')].pop()?.textContent ?? '';
+
+  it('shows the current version and says when it is up to date', async () => {
+    await mount('settings');
+    expect(text()).toContain(`You have v${__APP_VERSION__}`);
+    await click('Check');
+    expect(h.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(text()).toContain(`You’re up to date (v${__APP_VERSION__})`);
+    expect(h.applyUpdate).not.toHaveBeenCalled();
+  });
+
+  it('shows "Checking…" while it looks, then offers Update; the banner shows too', async () => {
+    let finish!: (r: string) => void;
+    h.checkForUpdates.mockImplementationOnce(() => new Promise((r) => (finish = r)));
+    await mount('settings');
+    await click('Check');
+    expect(buttons()).toContain('Checking…');
+    await act(async () => {
+      h.set({ needRefresh: true, checkSeq: 1 });
+      finish('available');
+    });
+    await flush();
+    expect(text()).toContain('Update ready to install');
+    expect(text()).toContain('Update available.');
+    // the banner's and the row's Update buttons both apply the update
+    await click('Update');
+    expect(h.applyUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('a manual check that finds an update re-shows a banner dismissed with "Later"', async () => {
+    await mount('settings');
+    await act(async () => h.set({ needRefresh: true }));
+    await flush();
+    await click('Later');
+    expect(text()).not.toContain('Update available.');
+    await act(async () => h.set({ checkSeq: 1 }));
+    await flush();
+    expect(text()).toContain('Update available.');
+  });
+
+  it('never installs during a workout: no Update button in the row either', async () => {
+    await h.db.sessions.put(session('active') as never);
+    await mount('settings');
+    await act(async () => h.set({ needRefresh: true }));
+    await flush();
+    expect(text()).toContain('Update ready. Install it after your workout.');
+    expect(buttons()).not.toContain('Update');
+  });
+
+  it.each([
+    ['offline', 'You’re offline. Try again later.'],
+    ['unsupported', 'Not available here. Reload to update.'],
+    ['error', 'Couldn’t check. Try again.'],
+  ])('result %s → clear message, and Check stays available', async (result, message) => {
+    h.checkForUpdates.mockResolvedValueOnce(result);
+    await mount('settings');
+    await click('Check');
+    expect(rowStatus()).toBe(message);
+    expect(buttons()).toContain('Check');
   });
 });
 

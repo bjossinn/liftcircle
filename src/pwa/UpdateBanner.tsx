@@ -21,6 +21,10 @@ export function UpdateBanner() {
   const activeCount = useLiveQuery(() => db.sessions.where('status').equals('active').filter((s) => !s.deletedAt).count(), [db]);
   const busy = (activeCount ?? 0) > 0;
   const [dismissed, setDismissed] = useState(false);
+  // "Check for updates" in Settings found one: show the banner again even if "Later" was tapped.
+  useEffect(() => {
+    if (state.checkSeq) setDismissed(false);
+  }, [state.checkSeq]);
   useEffect(() => {
     if (state.offlineReady) toast.show('Ready to work offline', { tone: 'success' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
