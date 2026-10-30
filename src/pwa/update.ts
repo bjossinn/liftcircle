@@ -39,6 +39,32 @@ export function watchInstall(reg: ServiceWorkerRegistration) {
   if (reg.active) reportSwReady();
 }
 
+const HOURLY_MS = 60 * 60 * 1000;
+export const VISIBLE_CHECK_MIN_MS = 5 * 60 * 1000;
+
+/**
+ * Check for a new SW hourly while the app is open, and when the page becomes visible again
+ * (e.g. reopened from the iOS app switcher), at most once every 5 minutes. A check only installs the
+ * new SW; it still waits for "Update", so this never reloads during a workout.
+ */
+export function watchForUpdates(reg: ServiceWorkerRegistration, now = () => Date.now()) {
+  // Registration itself just checked for updates.
+  let lastCheck = now();
+  const check = () => {
+    lastCheck = now();
+    reg.update().catch(() => {});
+  };
+  const interval = setInterval(check, HOURLY_MS);
+  const onVisibilityChange = () => {
+    if (document.visibilityState === 'visible' && now() - lastCheck >= VISIBLE_CHECK_MIN_MS) check();
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  return () => {
+    clearInterval(interval);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+  };
+}
+
 export async function initPwa() {
   if (import.meta.env.DEV) return;
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator) || !navigator.serviceWorker) {
@@ -67,8 +93,7 @@ export async function initPwa() {
       onRegisteredSW(_url, reg) {
         if (!reg) return;
         watchInstall(reg);
-        // Check for updates hourly while the app is open.
-        setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+        watchForUpdates(reg);
       },
       onRegisterError(e) {
         reportSwError(e);
