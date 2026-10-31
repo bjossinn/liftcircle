@@ -256,7 +256,7 @@ export function useCoachOutboxRunner(): void {
 
 /** Status line for an unsent message. Never claims "Sent". */
 export function outboxStatusLabel(item: Pick<CoachOutboxItem, 'status'>, online: boolean, sending = false): string {
-  if (item.status === 'failed') return 'Failed — Retry';
+  if (item.status === 'failed') return 'Failed: Retry';
   if (sending || item.status === 'sending') return 'Sending…';
-  return online ? 'Sending…' : 'Queued — will send when you’re back online';
+  return online ? 'Sending…' : 'Queued: will send when you’re back online';
 }

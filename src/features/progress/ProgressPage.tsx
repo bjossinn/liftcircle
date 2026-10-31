@@ -2,7 +2,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Dumbbell, LineChart as LineChartIcon, Plus } from 'lucide-react';
+import { Dumbbell, Plus } from 'lucide-react';
 import { Button, Card, EmptyState, Page, SectionTitle, Segmented, Spinner } from '@/components/ui';
 import { TopActions } from '@/app/TopActions';
 import { useApp } from '@/state/app';
@@ -12,6 +12,7 @@ import { completedSessions, observations } from '@/domain/stats';
 import { adherence } from '@/domain/program/schedule';
 import { addDays, formatDate, startOfWeek, todayISO } from '@/lib/dates';
 import { ConsistencySection } from './ConsistencySection';
+import { NoWorkoutsArt } from '@/components/illustrations';
 import { ExerciseSection } from './ExerciseSection';
 import { VolumeSection } from './VolumeSection';
 import { CardioSection } from './CardioSection';
@@ -146,9 +147,9 @@ export default function ProgressPage() {
       {nothing ? (
         <Card className="mt-4">
           <EmptyState
-            icon={<LineChartIcon className="size-6" />}
+            illustration={<NoWorkoutsArt />}
             title="Your progress starts with one session"
-            body="Charts, records and observations are built only from what you log — nothing is estimated in advance."
+            body="Charts, records and observations are built only from what you log. Nothing is estimated in advance."
             action={
               <div className="flex flex-col gap-2 w-full max-w-xs">
                 <Button variant="primary" icon={<Dumbbell className="size-4" />} onClick={() => nav('/train')}>Log your first workout</Button>
@@ -164,7 +165,7 @@ export default function ProgressPage() {
             <ul className="flex flex-col gap-1.5 text-sm">
               {obs.map((o) => (
                 <li key={o} className="flex gap-2">
-                  <span className="mt-2 size-1.5 rounded-full bg-accent shrink-0" aria-hidden />
+                  <span className="mt-2 size-1.5 rounded-full bg-ember shrink-0" aria-hidden />
                   <span>{o}</span>
                 </li>
               ))}

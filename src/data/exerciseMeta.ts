@@ -140,7 +140,7 @@ export function loadConventionNote(ex: Exercise): string | null {
   const w = implementWord(ex);
   switch (ex.load) {
     case 'per_hand':
-      if ((ex.implements ?? 1) === 2) parts.push(`${cap(w)} weight is per hand — enter one ${w}, not the pair.`);
+      if ((ex.implements ?? 1) === 2) parts.push(`${cap(w)} weight is per hand. Enter one ${w}, not the pair.`);
       else parts.push(`Enter the weight of the single ${w} you hold.`);
       break;
     case 'total':
@@ -158,7 +158,7 @@ export function loadConventionNote(ex: Exercise): string | null {
       parts.push('Enter the assistance setting. Less assistance means you’re getting stronger.');
       break;
     case 'none':
-      if (ex.equipment.includes('band')) parts.push('Band tension isn’t counted as load — note which band you used.');
+      if (ex.equipment.includes('band')) parts.push('Band tension isn’t counted as load. Note which band you used.');
       break;
   }
   if (ex.tracking === 'duration') parts.push(ex.unilateral ? 'Time is per side.' : 'Log the time for each set.');

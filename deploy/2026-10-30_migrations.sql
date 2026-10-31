@@ -1,4 +1,4 @@
--- LiftCircle deploy 2026-10-30: four additive migrations, in order. Paste into Supabase → SQL Editor → Run.
+-- Hard Earned deploy 2026-10-30: four additive migrations, in order. Paste into Supabase → SQL Editor → Run.
 -- The editor may warn about RLS / destructive statements inside function bodies: both are expected (choose Run).
 -- Safe to re-run: every statement is create-or-replace / if-not-exists / on-conflict-do-nothing.
 begin;
@@ -67,7 +67,7 @@ create trigger workout_sessions_validate_sets
 insert into supabase_migrations.schema_migrations (version, name) values ('20261030000001', 'set_validation') on conflict (version) do nothing;
 
 -- ===================================================== 20261030000002_ai_coach_v2
--- AI coach v2 (2026-10-30): "Why this?" reasoning and a structured this-week schedule action on AI replies.
+-- training assistant v2 (2026-10-30): "Why this?" reasoning and a structured this-week schedule action on AI replies.
 --
 -- Additive only:
 --   * ai_messages.why    — optional reasoning shown collapsed under "Why this?" (≤ 4000 chars).
@@ -228,7 +228,7 @@ insert into supabase_migrations.schema_migrations (version, name) values ('20261
 --       acceptance is refused (hint 'stale_request') instead of silently replacing the newer coach. With 1a this
 --       state is not reachable through the API (activation cancels every other pending request in the same
 --       transaction); the guard keeps it that way for legacy rows and future code paths.
--- 2. export_my_data: adds the caller's coaching data (as client and as coach) and AI coach data, which the
+-- 2. export_my_data: adds the caller's coaching data (as client and as coach) and training assistant data, which the
 --    portability export was missing. Only rows the caller owns or authored, or that are about them and already
 --    visible to them; nothing from another user's private records.
 -- 3. Coach proposal visibility for the client. The client could read any coach proposal whose status was not

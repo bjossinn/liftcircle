@@ -139,7 +139,7 @@ async function processJob(deps, job) {
     if (until) return { id: job.id, status: "deferred", fireAt: until.toISOString() };
   }
   if (!job.subscriptions.length) return { id: job.id, status: "dropped" };
-  const payload = JSON.stringify({ title: job.payload.title || "LiftCircle", body: job.payload.body ?? "", url: job.payload.url || "/", tag: job.payload.tag || job.kind });
+  const payload = JSON.stringify({ title: job.payload.title || "Hard Earned", body: job.payload.body ?? "", url: job.payload.url || "/", tag: job.payload.tag || job.kind });
   let ok = 0;
   let gone = 0;
   for (const sub of job.subscriptions) {

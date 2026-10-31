@@ -67,7 +67,7 @@ export function ProteinPicker({
                 onClick={() => onChange(cycleProteinChoice(value, g))}
                 className={cx(
                   'w-full min-h-12 rounded-xl border px-3 py-2 text-left flex items-center gap-2 text-sm transition-colors',
-                  choice === 'like' && 'bg-accent border-accent text-accent-ink font-semibold',
+                  choice === 'like' && 'bg-accent-soft border-accent text-ink font-semibold',
                   choice === 'exclude' && 'border-line bg-surface-2 text-muted',
                   choice === 'neutral' && 'border-line bg-surface hover:bg-surface-2',
                 )}

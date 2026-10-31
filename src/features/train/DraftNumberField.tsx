@@ -145,7 +145,7 @@ export function DraftNumberField(props: DraftNumberFieldProps) {
       aria-invalid={!!error || undefined}
       title={error ?? undefined}
       className={clsx(
-        'w-full min-h-11 rounded-xl bg-surface-2 border border-line-input px-3 text-[16px] text-ink placeholder:text-faint focus:border-accent focus:outline-none aria-[invalid=true]:border-danger tabular text-center',
+        'w-full min-h-11 rounded-xl bg-field border border-line-input px-3 text-[16px] text-ink placeholder:text-faint focus:border-accent aria-[invalid=true]:border-danger tabular text-center',
         props.inputClassName,
       )}
       value={text}

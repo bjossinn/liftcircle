@@ -39,7 +39,7 @@ export function UpdateBanner() {
     return (
       <div role="status" className="flex items-center gap-3 bg-accent-soft border-b border-accent/30 px-4 py-2 text-sm">
         <RefreshCw className="size-4 text-accent shrink-0" aria-hidden />
-        <span className="flex-1">LiftCircle was updated. It will reload when you finish this workout.</span>
+        <span className="flex-1">Hard Earned was updated. It will reload when you finish this workout.</span>
       </div>
     );
   }

@@ -121,7 +121,7 @@ describe('push notification settings', () => {
     device({ ua: ANDROID, perm: 'denied' });
     await render();
     expect(document.querySelector('[data-testid="push-denied"]')).toBeTruthy();
-    expect(text()).toMatch(/Settings → Notifications → LiftCircle/);
+    expect(text()).toMatch(/Settings → Notifications → Hard Earned/);
     expect(button('Turn on notifications')).toBeNull();
   });
 

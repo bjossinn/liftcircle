@@ -1,4 +1,4 @@
-# LiftCircle backend (Supabase)
+# Hard Earned backend (Supabase)
 
 Connected mode uses Supabase Auth, Postgres with row-level security (RLS), private Storage and three Edge Functions.
 Personal mode does not need any of this.
@@ -6,7 +6,7 @@ Personal mode does not need any of this.
 | Path | What it is |
 | --- | --- |
 | `supabase/migrations/20261028000001…07_*.sql` | Schema, RLS policies, grants, RPCs, storage buckets and policies (apply in order) |
-| `supabase/migrations/20261029*.sql`, `20261030*.sql` | Coaching + AI coach (§8, docs/AI_COACH.md); `20261030000003_authz_fixes.sql` = audit fixes (§8.10) |
+| `supabase/migrations/20261029*.sql`, `20261030*.sql` | Coaching + training assistant (§8, docs/AI_COACH.md); `20261030000003_authz_fixes.sql` = audit fixes (§8.10) |
 | `supabase/seed.sql` | Read-only reference catalogs (generated, see below) |
 | `supabase/functions/finalize-post` | Verifies uploaded photos and publishes a post |
 | `supabase/functions/delete-account` | Removes the caller's storage objects, then deletes the auth user (cascades) |
@@ -432,7 +432,7 @@ The Deno entry point (`push-send/index.ts`) only wires env, the service-role cli
 
 Human coaches, the coach directory, coach/client tools and coaching messages. Migrations
 `20261029000001_coaching_schema.sql` (tables, RLS, helpers, buckets), `…02_coaching_rpcs.sql` (RPCs) and
-`…04_coaching_lockdown.sql` (must stay last). `…03_ai_coach.sql` (AI coach) sits between them and adds AI rows to
+`…04_coaching_lockdown.sql` (must stay last). `…03_ai_coach.sql` (Training assistant) sits between them and adds AI rows to
 `program_proposals`. Client wrapper: `src/backend/coaching.ts` (implements `CoachingApi` from `coachingContract.ts`).
 Names follow `docs/COACHING_INTERFACES.md`.
 

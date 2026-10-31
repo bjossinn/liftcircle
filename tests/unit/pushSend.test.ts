@@ -69,7 +69,7 @@ const NOW = new Date('2026-11-02T12:00:00Z'); // 12:00 UTC = 13:00 in Oslo
 const sub = (n: number) => ({ endpoint: `https://push.example.net/p/${n}`, p256dh: RFC.uaPublic, auth: RFC.auth });
 const job = (over: Partial<DueJob> = {}): DueJob => ({
   id: 'j1', userId: 'u1', kind: 'workout_reminder', fireAt: NOW.toISOString(), attempts: 1,
-  payload: { title: 'LiftCircle', body: 'Upper A today. Ready? 💪', url: '/', tag: 'workout' },
+  payload: { title: 'Hard Earned', body: 'Upper A today. Ready for a session?', url: '/', tag: 'workout' },
   prefs: { timeZone: 'Europe/Oslo', quietStart: '22:00', quietEnd: '07:00', kinds: ['workout_reminder'] },
   subscriptions: [sub(1)],
   ...over,
@@ -104,7 +104,7 @@ describe('MOCKED push-send loop', () => {
     const s = service({});
     const summary = await runPushSend({ db: m.db, send: s.send, now: () => NOW });
     expect(s.sent).toHaveLength(2);
-    expect(JSON.parse(s.sent[0].payload)).toEqual({ title: 'LiftCircle', body: 'Upper A today. Ready? 💪', url: '/', tag: 'workout' });
+    expect(JSON.parse(s.sent[0].payload)).toEqual({ title: 'Hard Earned', body: 'Upper A today. Ready for a session?', url: '/', tag: 'workout' });
     expect(m.finished).toEqual([{ id: 'j1', status: 'sent' }]);
     expect(m.subResults).toEqual([[sub(1).endpoint, 201], [sub(2).endpoint, 201]]);
     expect(summary).toMatchObject({ claimed: 1, sent: 1, cleaned: 3 });

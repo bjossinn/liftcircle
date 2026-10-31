@@ -89,7 +89,7 @@ async function requireUser(req) {
 var PROVIDER = (Deno.env.get("GEOCODER") ?? "none").trim().toLowerCase();
 var CONTACT = (Deno.env.get("GEOCODER_CONTACT_EMAIL") ?? "").trim();
 var BASE = (Deno.env.get("NOMINATIM_URL") ?? "https://nominatim.openstreetmap.org").replace(/\/+$/, "");
-var USER_AGENT = `LiftCircle/1.0 (coach directory geocoding; contact: ${CONTACT || "unset"})`;
+var USER_AGENT = `HardEarned/1.0 (coach directory geocoding; contact: ${CONTACT || "unset"})`;
 var nextSlot = 0;
 async function throttle() {
   const now = Date.now();

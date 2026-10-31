@@ -1,4 +1,4 @@
-// Shared HTTP helpers for LiftCircle Edge Functions (Deno runtime).
+// Shared HTTP helpers for Hard Earned Edge Functions (Deno runtime).
 
 export const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',

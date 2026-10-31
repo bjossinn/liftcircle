@@ -369,8 +369,8 @@ function PrescriptionForm({ rx, ex, onSave, onCancel }: { rx: Prescription; ex?:
           <NumberInput label="Seconds per set" decimals={false} min={5} max={3600} value={d.durationSec ?? 30} onChange={(v) => setD({ ...d, durationSec: v ?? 30 })} />
         ) : (
           <>
-            <NumberInput label="Reps — bottom" decimals={false} min={1} max={50} value={d.repMin} onChange={(v) => setD({ ...d, repMin: v ?? 1 })} />
-            <NumberInput label="Reps — top" decimals={false} min={1} max={50} value={d.repMax} onChange={(v) => setD({ ...d, repMax: v ?? d.repMin })} />
+            <NumberInput label="Reps: bottom" decimals={false} min={1} max={50} value={d.repMin} onChange={(v) => setD({ ...d, repMin: v ?? 1 })} />
+            <NumberInput label="Reps: top" decimals={false} min={1} max={50} value={d.repMax} onChange={(v) => setD({ ...d, repMax: v ?? d.repMin })} />
           </>
         )}
         <NumberInput label="Target RIR" decimals={false} min={0} max={5} value={d.targetRir} onChange={(v) => setD({ ...d, targetRir: v ?? 2 })} />

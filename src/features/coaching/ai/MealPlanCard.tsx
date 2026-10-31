@@ -45,7 +45,7 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
     try {
       const r = applyMealPlanSuggestion(existing, s, overlaps ? mode : 'replace', prefs);
       if (!r) {
-        toast.show('Those days already have meals — nothing to add.', { tone: 'info' });
+        toast.show('Those days already have meals. Nothing to add.', { tone: 'info' });
         return;
       }
       if (!r.alreadyApplied) {
@@ -151,7 +151,7 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
             </div>
           </>
         )}
-        {!account.settings.nutritionEnabled && !applied && <Notice tone="info">Nutrition features are off in Settings — the plan is saved, but turn them on to see it in the Nutrition tab.</Notice>}
+        {!account.settings.nutritionEnabled && !applied && <Notice tone="info">Nutrition features are off in Settings. The plan is saved, but turn them on to see it in the Nutrition tab.</Notice>}
       </div>
     </section>
   );

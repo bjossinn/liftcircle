@@ -240,7 +240,7 @@ export default function ActivityFormPage() {
     }
     setDeleting(false);
     setConfirmDelete(false);
-    toast.show(failed ? 'Activity deleted. The shared post couldn’t be removed right now — you can delete it from the feed.' : 'Activity deleted', { tone: failed ? 'warn' : 'success' });
+    toast.show(failed ? 'Activity deleted. The shared post couldn’t be removed right now. You can delete it from the feed.' : 'Activity deleted', { tone: failed ? 'warn' : 'success' });
     nav(-1);
   };
 

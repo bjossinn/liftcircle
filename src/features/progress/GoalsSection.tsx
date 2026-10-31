@@ -159,7 +159,7 @@ export function GoalsSection({ d, proteinTargetG }: { d: ProgressData; proteinTa
                   <Button size="sm" variant="ghost" className="self-start" icon={<RotateCcw className="size-4" />} onClick={() => setAchieved(g, false)}>Reopen</Button>
                 ) : (
                   <Button size="sm" variant={p.reached ? 'primary' : 'outline'} className="self-start" icon={<CheckCircle2 className="size-4" />} onClick={() => setAchieved(g, true)}>
-                    {p.reached ? 'Target reached — mark achieved' : 'Mark achieved'}
+                    {p.reached ? 'Target reached: mark achieved' : 'Mark achieved'}
                   </Button>
                 )}
               </Card>
@@ -198,7 +198,7 @@ export function GoalsSection({ d, proteinTargetG }: { d: ProgressData; proteinTa
           <Input label="Goal name" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} error={errors.title || null} placeholder={kind === 'custom' ? 'e.g. Run a 10 km race' : undefined} />
           {kind !== 'custom' && (
             <NumberInput
-              label={kind === 'exercise_load' && selectedEx?.tracking === 'assisted' ? `Target assistance (${unit}) — lower is better` : `Target (${kindInfo(kind).unit(unit)})`}
+              label={kind === 'exercise_load' && selectedEx?.tracking === 'assisted' ? `Target assistance (${unit}): lower is better` : `Target (${kindInfo(kind).unit(unit)})`}
               hint={
                 kind === 'exercise_load'
                   ? 'Compared with your heaviest completed working set (warm-ups excluded).'

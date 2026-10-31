@@ -140,16 +140,16 @@ export default function AiProposalsPage() {
   return (
     <Page title={title} back={back}>
       <p className="text-sm text-muted px-1">
-        Plan changes the AI coach suggested. Each one is labelled as an AI suggestion and nothing changes until you review and apply it.
+        Plan changes the training assistant suggested. Each one is labelled as an AI suggestion and nothing changes until you review and apply it.
       </p>
       {items.length === 0 ? (
         <EmptyState
           icon={<Sparkles className="size-6" />}
           title="No suggestions yet"
-          body="Ask the AI coach for help with your schedule or progression — if it proposes a plan change, it shows up here."
+          body="Ask the training assistant for help with your schedule or progression. If it proposes a plan change, it shows up here."
           action={
             <Button variant="primary" icon={<MessageCircle className="size-4" />} onClick={() => nav('/coaching/ai')}>
-              Open AI coach
+              Open training assistant
             </Button>
           }
         />

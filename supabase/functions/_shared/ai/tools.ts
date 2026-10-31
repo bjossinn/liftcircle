@@ -1,5 +1,5 @@
 /**
- * The AI coach's narrowly scoped server operations (pure). The model can only:
+ * The training assistant's narrowly scoped server operations (pure). The model can only:
  *   - find_recipes:            search the shared recipe catalog, pre-filtered by THIS user's allergens/diet,
  *                              with per-serving macros computed from ingredient data;
  *   - exercise_alternatives:   list catalog substitutions that fit THIS user's equipment and exclusions;
@@ -53,7 +53,7 @@ export const TOOL_DEFS = [
   {
     name: 'find_recipes',
     description:
-      "Search LiftCircle's recipe catalog. Matching is tolerant: words in recipe or ingredient names, synonyms (fish → cod/salmon/tuna), tags in the query (high protein, vegetarian, vegan, dairy-free, gluten-free, quick) and meal type. With no or a vague query it returns the best fits for the user's targets — it is never empty unless the user's own allergens/diet/dislikes/cook time exclude everything, and then it gives the reason. Results are filtered for the user's allergens, diet and dislikes, with per-serving macros computed from ingredient data, and appear as recipe cards in the app.",
+      "Search Hard Earned's recipe catalog. Matching is tolerant: words in recipe or ingredient names, synonyms (fish → cod/salmon/tuna), tags in the query (high protein, vegetarian, vegan, dairy-free, gluten-free, quick) and meal type. With no or a vague query it returns the best fits for the user's targets — it is never empty unless the user's own allergens/diet/dislikes/cook time exclude everything, and then it gives the reason. Results are filtered for the user's allergens, diet and dislikes, with per-serving macros computed from ingredient data, and appear as recipe cards in the app.",
     input_schema: {
       type: 'object',
       properties: {

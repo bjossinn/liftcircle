@@ -1,6 +1,22 @@
 # Where we are (deployment) — updated 30 Oct 2026 (v0.3.0 repair release prepared)
 
-Supabase project **LiftCircle** (ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
+Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
+
+## 31 Oct 2026: Hard Earned rebrand (v1.0.0), PR waiting for your review
+
+- What changed:
+  - name, colours, icons, fonts, copy tone and "Training assistant" naming;
+  - one additive migration (`supabase/migrations/20261105000001_hard_earned_brand_text.sql`) that renames
+    server-generated push titles and two fallback names.
+- Reports: docs/BRAND_AUDIT.md (counts, kept references, owner tasks) and docs/VERIFICATION_REPORT.md (commands,
+  results, limits). Screenshots: docs/screenshots/hard-earned/.
+- On merge: Deploy Supabase applies the migration and Netlify deploys the site. Installed apps pick up the new name and
+  icon with the next update, but iOS keeps the old Home Screen icon until the app is removed and added again.
+- Owner tasks (not changed here):
+  - Supabase Auth email templates and sender name;
+  - Netlify site name/domain;
+  - GitHub repo name (optional);
+  - Supabase project display name (optional).
 
 ## Done
 - [x] All 11 migrations applied via the SQL editor (44 tables, RLS on all, buckets `post-media`, `avatars`,
@@ -24,6 +40,6 @@ Full report: docs/AUDIT_2026-10-29.md. Live schema was verified identical to the
    week" → "Apply to this week" card, DevTools console has no "Refused to…" CSP errors.
 
 ## Still to do
-1. Phone test: install, log a workout offline, feed post with photo, AI coach message (check platform.openai.com usage).
+1. Phone test: install, log a workout offline, feed post with photo, training assistant message (check platform.openai.com usage).
 2. Optional: hourly cron for cleanup-media (docs/BACKEND.md §5) — needs the CLEANUP_SECRET in Vault.
 3. Redeploys: rebuild with the two VITE_SUPABASE_* values and drag the new dist onto the site's Deploys page.

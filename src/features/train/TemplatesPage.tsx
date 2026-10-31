@@ -98,7 +98,7 @@ export default function TemplatesPage() {
                 await saveRecord('templates', newRecord<Omit<SavedTemplate, keyof SyncFields>>({ template: emptyTemplate(uuid(), name.trim()) }) as SavedTemplate, db);
                 setCreating(false);
                 setName('');
-                toast.show('Template created — add exercises below', { tone: 'success' });
+                toast.show('Template created: add exercises below', { tone: 'success' });
               }}
             >
               Create

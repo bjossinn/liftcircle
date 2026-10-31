@@ -76,7 +76,7 @@ export default function ShoppingListPage() {
             title="No meal plan for this week"
             body="Generate a week plan and its ingredients are added up here."
             action={
-              <Link to="/nutrition/plan" className="inline-flex items-center min-h-11 px-4 rounded-xl bg-accent text-accent-ink font-semibold">
+              <Link to="/nutrition/plan" className="inline-flex items-center min-h-11 px-4 rounded-xl ember-fill font-semibold">
                 Go to meal plan
               </Link>
             }
@@ -110,7 +110,7 @@ export default function ShoppingListPage() {
                             aria-hidden
                             className={cx(
                               'size-6 shrink-0 rounded-md border flex items-center justify-center peer-focus-visible:ring-2 peer-focus-visible:ring-accent',
-                              on ? 'bg-accent border-accent text-accent-ink' : 'border-line',
+                              on ? 'bg-ember border-edge text-accent-ink' : 'border-line',
                             )}
                           >
                             {on && <Check className="size-4" />}

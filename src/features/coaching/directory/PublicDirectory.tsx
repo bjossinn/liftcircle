@@ -1,5 +1,5 @@
 /**
- * Coaching before the sign-in gate: what a human coach and the AI coach are, what each can see, that both
+ * Coaching before the sign-in gate: what a human coach and the training assistant are, what each can see, that both
  * need an account — plus a read-only preview of approved, listed coaches (public listing fields only,
  * no photos; see supabase/migrations/20261030000004_public_coach_preview.sql). Requesting coaching,
  * messages and all private data stay behind sign-in.
@@ -119,7 +119,7 @@ export function PublicFindCoach() {
 function GuestChoicesLink() {
   return (
     <Link to="/coaching" className="text-sm text-accent font-medium min-h-11 inline-flex items-center px-1">
-      Human coach or AI coach? Compare the options
+      Human coach or training assistant? Compare the options
     </Link>
   );
 }

@@ -1,5 +1,5 @@
 /**
- * Recipe pack 3 (Nov 2026), part: plant. Original recipes written for LiftCircle. Quantities are grams for the whole recipe
+ * Recipe pack 3 (Nov 2026), part: plant. Original recipes written for Hard Earned. Quantities are grams for the whole recipe
  * at `servings`, in the ingredient's stated state. Nutrition, allergens, diet tags and protein groups are COMPUTED from ingredients.
  */
 import type { Recipe } from '@/domain/types';

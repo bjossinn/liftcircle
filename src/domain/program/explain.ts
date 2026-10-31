@@ -90,7 +90,7 @@ export function repsRationale(goal: Goal, experience: Experience): string {
     return 'Main lifts start at 5–8 reps so you can practise technique before going heavier; accessories use 10–15 reps. These ranges are adjustable product defaults.';
   if (goal === 'endurance')
     return 'Strength work uses moderate reps (8–12) and accessories 12–15, so it supports your activity without leaving you very sore. Adjustable product defaults.';
-  return 'Most lifts use moderate rep ranges (about 8–12) and accessories 10–15 reps — practical for building muscle. These are adjustable product defaults, not the only good choice.';
+  return 'Most lifts use moderate rep ranges (about 8–12) and accessories 10–15 reps. Practical for building muscle. These are adjustable product defaults, not the only good choice.';
 }
 
 export function effortRationale(experience: Experience): string {
@@ -102,11 +102,11 @@ export const CALIBRATION_RATIONALE =
   'You don’t need to know your 1-rep max. Lifts without a known comfortable load start with a light calibration session: begin light and add small jumps until a set feels like about 2–3 reps left in the tank. We never guess a starting weight from age or bodyweight.';
 
 /* ---- per-exercise cues (generator writes them; plan screens de-duplicate them for display) */
-export const WARMUP_NONE = 'No separate warm-up needed — make the first set an easy one.';
+export const WARMUP_NONE = 'No separate warm-up needed. Make the first set an easy one.';
 export const WARMUP_SECONDARY = 'If these muscles haven’t worked yet today, do one lighter set of 8 first.';
-export const WARMUP_ACCESSORY = 'Your first set doubles as the warm-up — start conservatively.';
+export const WARMUP_ACCESSORY = 'Your first set doubles as the warm-up. Start conservatively.';
 export const CALIBRATION_CUE = 'Calibration: start light and add small jumps until a set feels like about 2–3 reps left in the tank; log that as your starting load.';
-export const CALIBRATION_NOTE = 'First session is a light calibration session — no 1-rep max needed.';
+export const CALIBRATION_NOTE = 'First session is a light calibration session. No 1-rep max needed.';
 /** Shown once per session instead of on every exercise. */
 export const SESSION_CALIBRATION_TIP = 'Lifts marked “calibrate”: start light and add small jumps until a set feels like 2–3 reps left in the tank, then log that as your starting load.';
 export const SESSION_WARMUP_TIP = 'Other lifts: do one lighter set first if those muscles haven’t worked yet today; otherwise make the first set an easy one.';
@@ -133,7 +133,7 @@ export const PROGRESSION_RATIONALE =
   'Progression uses double progression: when you reach the top of the rep range on every set at the target effort in two sessions (if you don’t log effort, we ask you to confirm it first), we suggest the smallest practical load increase and you start again near the bottom of the range.';
 
 export function limitationRationale(limits: LimitationArea[]): string {
-  return `We left out exercises that commonly load your ${listText(limits.map((l) => LIMITATION_TEXT[l]))}. This isn’t a diagnosis — if something you enjoy feels fine, you can swap it back in. If pain persists, consider a qualified professional.`;
+  return `We left out exercises that commonly load your ${listText(limits.map((l) => LIMITATION_TEXT[l]))}. This isn’t a diagnosis. If something you enjoy feels fine, you can swap it back in. If pain persists, consider a qualified professional.`;
 }
 
 export function blockRationale(weeks: number, reviewWeek: number): string {

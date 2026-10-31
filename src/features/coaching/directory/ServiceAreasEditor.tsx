@@ -27,7 +27,7 @@ export function ServiceAreasEditor({
 
   return (
     <div className="flex flex-col gap-3">
-      {areas.length === 0 && <p className="text-sm text-muted px-1">{inPerson ? 'Add the towns, cities or regions where you meet clients in person.' : 'Optional for online coaching — add places you’d like to be found for.'}</p>}
+      {areas.length === 0 && <p className="text-sm text-muted px-1">{inPerson ? 'Add the towns, cities or regions where you meet clients in person.' : 'Optional for online coaching. Add places you’d like to be found for.'}</p>}
       {areas.map((a, i) => (
         <AreaRowEditor
           key={a.key}

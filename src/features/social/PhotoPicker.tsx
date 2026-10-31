@@ -47,7 +47,7 @@ export function usePhotoPicker(max = MAX_PHOTOS) {
         return;
       }
       const chosen = list.slice(0, free);
-      setNotice(list.length > free ? `A post can have up to ${max} photos — the first ${free === 1 ? 'one was' : `${free} were`} added.` : null);
+      setNotice(list.length > free ? `A post can have up to ${max} photos. The first ${free === 1 ? 'one was' : `${free} were`} added.` : null);
       const items: PickedPhoto[] = chosen.map((f) => ({ id: uuid(), name: f.name || 'Photo', status: 'processing', description: '' }));
       setPhotos((cur) => [...cur, ...items]);
       chosen.forEach((file, i) => {

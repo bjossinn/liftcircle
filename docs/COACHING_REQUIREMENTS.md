@@ -3,10 +3,10 @@
 Extend the existing app (do not restart or redesign). Preserve existing accounts, data, workouts, nutrition tools,
 social features, offline support and home-screen installation. Additive, versioned migrations; focused changes;
 follow the existing stack. Three connected parts: an approved human-coach directory, coach/client tools, and an
-optional AI coach.
+optional training assistant.
 
 ## 2. Navigation, accounts, and coach applications
-Coaching area with: Look for a coach · My coach and coaching messages · AI coach · Coach dashboard (applicants and
+Coaching area with: Look for a coach · My coach and coaching messages · training assistant · Coach dashboard (applicants and
 approved coaches) · Coach administration (authorized app admins). One login/account with additional permissions; a
 coach still uses their personal fitness account and can switch into the coach area.
 "Become a coach" → application → admin review. Collect name, profile photo, bio, experience, specialties, languages,
@@ -70,8 +70,8 @@ for participants retaining access under the retention policy. Persist before sho
 messages or notifications; offline messages labeled drafts/queued and recheck permission before sending.
 Notifications never leak content to unrelated users. Block/report controls; existing moderation model.
 
-## 8. AI coach enrollment and experience
-"Start with an AI coach" beside "Look for a coach"; short setup; activates after the user agrees; no admin approval.
+## 8. Training assistant enrollment and experience
+"Start with the training assistant" beside "Look for a coach"; short setup; activates after the user agrees; no admin approval.
 Reuse goals, experience, days, equipment, exclusions, preferences; ask only missing info; allow corrections. Explain data
 categories sent to the AI provider; enable/pause/disable and change data access. Label AI messages and AI
 recommendations. Provide: persistent chat; suggested questions and on-demand progress/check-in review; explanations

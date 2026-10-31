@@ -30,7 +30,7 @@ export function SyncStatusBanner() {
       <Link to="/auth?reauth=1" className="flex items-center gap-2 bg-warn-soft border-b border-warn/30 px-4 py-2 text-sm">
         <CloudOff className="size-4 text-warn shrink-0" aria-hidden />
         <span className="flex-1">
-          Backup paused — sign in again to resume{s.pending > 0 ? ` (${s.pending} change${s.pending === 1 ? '' : 's'} waiting)` : ''}. Your data is safe on this device.
+          Backup paused: sign in again to resume{s.pending > 0 ? ` (${s.pending} change${s.pending === 1 ? '' : 's'} waiting)` : ''}. Your data is safe on this device.
         </span>
       </Link>
     );

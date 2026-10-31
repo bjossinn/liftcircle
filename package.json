@@ -1,7 +1,7 @@
 {
-  "name": "liftcircle",
+  "name": "hard-earned",
   "private": true,
-  "version": "0.9.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,7 @@
     "test:rls": "node tests/rls/run.mjs",
     "test:ai-db": "node tests/rls/ai-run.mjs",
     "test:e2e": "playwright test",
-    "icons": "node scripts/make-icons.mjs",
+    "icons": "node scripts/copy-brand-icons.mjs",
     "test:live": "vitest run --config vitest.live.config.ts",
     "test:all": "npm run typecheck && npm test && npm run test:rls && npm run test:ai-db && npm run test:push-db && npm run test:e2e",
     "test:push-db": "node tests/rls/push-run.mjs"

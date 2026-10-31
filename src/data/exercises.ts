@@ -1,7 +1,7 @@
 import type { Exercise } from '@/domain/types';
 
 /**
- * Curated starter catalog. Instructions are original LiftCircle text.
+ * Curated starter catalog. Instructions are original Hard Earned text.
  * No media links: the app shows an intentional glyph per movement pattern instead.
  *
  * Load conventions (see exerciseMeta.loadConventionNote):
@@ -1075,7 +1075,7 @@ export const EXERCISES: Exercise[] = [
     stresses: ['lower_back'],
     setup: 'Strap your feet in so the strap crosses the widest part of your foot. Sit tall, grab the handle and start with knees bent and shins vertical.',
     execution: 'Drive with the legs first, then swing the torso back slightly, then pull the handle to your lower ribs. Return in reverse order: arms, body, then legs. Log distance and time.',
-    cues: ['Legs, body, arms — then arms, body, legs', 'Most of the power comes from the legs', 'Smooth, steady rhythm'],
+    cues: ['Legs, body, arms, then arms, body, legs', 'Most of the power comes from the legs', 'Smooth, steady rhythm'],
     mistakes: ['Pulling with the arms before the legs finish', 'Rounding the back at the catch', 'Rushing the recovery'],
     substitutions: ['stationary-bike', 'incline-treadmill-walk', 'burpee', 'jumping-jack'],
   },

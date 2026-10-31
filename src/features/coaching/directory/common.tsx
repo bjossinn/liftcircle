@@ -36,7 +36,7 @@ export function CoachingAccessNotice({ access }: { access: Exclude<CoachingAcces
         <EmptyState
           icon={<ServerOff className="size-6" aria-hidden />}
           title="Coaching needs the online version"
-          body="Coaching connects you with real coaches, so it’s part of the account-based, online version of LiftCircle. Your workouts, programs, nutrition and progress keep working fully on this device."
+          body="Coaching connects you with real coaches, so it’s part of the account-based, online version of Hard Earned. Your workouts, programs, nutrition and progress keep working fully on this device."
         />
       );
     case 'guest':
@@ -44,7 +44,7 @@ export function CoachingAccessNotice({ access }: { access: Exclude<CoachingAcces
         <EmptyState
           icon={<GraduationCap className="size-6" aria-hidden />}
           title="Train with a coach"
-          body="Find an approved coach near you or online, or apply to coach others. Sign in to get started — your workouts on this device can come with you."
+          body="Find an approved coach near you or online, or apply to coach others. Sign in to get started. Your workouts on this device can come with you."
           action={
             <Button variant="primary" onClick={() => nav(authHref('signup', pathname))}>
               Sign in or create an account
@@ -93,7 +93,7 @@ export function GuestCoachingIntro({ browse = true }: { browse?: boolean }) {
         <p className="text-sm">A real coach, approved by our team, who works with you in person or online.</p>
         <p className="text-sm text-muted">
           <span className="font-medium text-ink">What they see:</span> only your request and intro until they accept. After that, only the categories you
-          allow — training, measurements, nutrition, check-ins. You can change or revoke this at any time.
+          allow: training, measurements, nutrition, check-ins. You can change or revoke this at any time.
         </p>
         {browse && (
           <Link to="/coaching/find" className="mt-1 inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl bg-surface-2 text-ink hover:bg-surface-3 border border-line text-[15px]">
@@ -108,12 +108,12 @@ export function GuestCoachingIntro({ browse = true }: { browse?: boolean }) {
             <Bot className="size-5" aria-hidden />
           </span>
           <h2 id="guest-ai" className="font-semibold">
-            The AI coach
+            The training assistant
           </h2>
         </div>
         <p className="text-sm">An automated assistant that answers questions and suggests changes to your plan. Its messages are always labelled as AI, and nothing changes unless you accept it.</p>
         <p className="text-sm text-muted">
-          <span className="font-medium text-ink">What it sees:</span> only the categories you turn on — your profile and training by default; measurements and
+          <span className="font-medium text-ink">What it sees:</span> only the categories you turn on. Your profile and training by default; measurements and
           nutrition only if you allow them. Your messages are processed by an AI provider. It never sees your photos, posts or human-coach chats.
         </p>
       </Card>
@@ -199,7 +199,7 @@ export function ApprovedBadge() {
   return (
     <Badge tone="accent">
       <BadgeCheck className="size-3.5" aria-hidden />
-      Approved coach
+      Listed coach
     </Badge>
   );
 }

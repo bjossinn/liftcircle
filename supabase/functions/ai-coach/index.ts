@@ -1,4 +1,4 @@
-// ai-coach — the AI coach backend (OpenAI Chat Completions or Anthropic Messages API). See docs/AI_COACH.md.
+// ai-coach — the training assistant backend (OpenAI Chat Completions or Anthropic Messages API). See docs/AI_COACH.md.
 //
 // POST {action:'status'} | {action:'send', id, text, mode} with the user's access token.
 // All logic lives in the Deno-free modules in ../_shared/ai/ (unit-tested with vitest); this file only

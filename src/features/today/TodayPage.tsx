@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import clsx from 'clsx';
-import { Activity, CalendarClock, Check, ChevronRight, Dumbbell, Play, Plus, Sparkles, Timer } from 'lucide-react';
+import { Activity, CalendarClock, Check, ChevronRight, Dumbbell, Flame, Play, Plus, Timer } from 'lucide-react';
 import { useApp } from '@/state/app';
 import { Badge, Button, Card, ConfirmDialog, Page, ProgressBar, SectionTitle, Spinner } from '@/components/ui';
 import { TopActions } from '@/app/TopActions';
@@ -12,8 +12,17 @@ import { saveRecord } from '@/db/repo';
 import { NutritionTodayCard } from '@/features/nutrition/NutritionTodayCard';
 import { useToast } from '@/components/toast';
 import { BRAND } from '@/config/brand';
+import { BrandMoment } from '@/components/BrandMark';
 import { PlanOwnerBadge } from '@/features/program/PlanOwner';
 import { useExercises } from '@/data/catalog';
+import { plannedWeekStreak } from '@/domain/program/streak';
+
+/** A friendly greeting for the time of day (device clock). */
+export function greeting(hour = new Date().getHours()): string {
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
 
 export default function TodayPage() {
   const { account, db } = useApp();
@@ -43,6 +52,11 @@ export default function TodayPage() {
       return null;
     }
   }, [program, sessions, activities, today, weekFrom, weekTo]);
+  const celebrations = settings.workout.celebrations !== false;
+  const streak = useMemo(
+    () => (celebrations && program && sessions ? plannedWeekStreak(program, sessions, activities ?? [], today, settings.weekStart) : 0),
+    [celebrations, program, sessions, activities, today, settings.weekStart],
+  );
 
   if (sessions === undefined || program === undefined || activities === undefined) return <Spinner />;
 
@@ -60,16 +74,34 @@ export default function TodayPage() {
   const name = account.profile.displayName;
 
   return (
-    <Page title={name ? `Hi, ${name}` : 'Today'} actions={<TopActions />}>
-      <p className="text-sm text-muted -mt-1 mb-3">{formatDate(today, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+    <Page title={name ? `${greeting()}, ${name}` : greeting()} actions={<TopActions />}>
+      <div className="-mt-1 mb-4 flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-muted">{formatDate(today, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+          <p className="text-[15px] font-medium mt-0.5">
+            {active
+              ? 'You’re mid-workout. Pick up where you left off.'
+              : next?.date === today
+                ? `Today’s focus: ${next.template.name}`
+                : program
+                  ? 'Rest day. Recovery counts too.'
+                  : isNew
+                    ? 'Let’s get you started.'
+                    : 'Ready when you are.'}
+          </p>
+        </div>
+        {streak > 0 && (
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-streak-soft text-streak px-2.5 min-h-8 text-sm font-semibold" title="Weeks in a row with every planned session done">
+            <Flame className="size-4 flame" aria-hidden />
+            {streak}-week streak
+          </span>
+        )}
+      </div>
 
       {isNew && !active && (
-        <Card className="p-5 space-y-3">
-          <div className="flex items-center gap-2 text-accent">
-            <Sparkles className="size-5" aria-hidden />
-            <span className="font-semibold">Welcome to {BRAND.name}</span>
-          </div>
-          <p className="text-[15px]">Answer a few questions and get a starting program that fits your days, equipment and time — or just start logging.</p>
+        <Card className="p-5 space-y-3" tint="accent">
+          <BrandMoment title={`Welcome to ${BRAND.name}`} />
+          <p className="text-[15px]">Let’s set up your training. Answer a few questions for a starting program that fits your days, equipment and time, or start logging straight away.</p>
           <div className="flex flex-col gap-2">
             <Button variant="primary" size="lg" onClick={() => nav('/onboarding')}>
               Set up my plan
@@ -90,7 +122,7 @@ export default function TodayPage() {
             <div className="text-xs text-muted">Workout in progress</div>
           </div>
           <Button variant="primary" onClick={() => nav(`/train/session/${active.id}`)}>
-            Resume
+            Continue workout
           </Button>
         </Card>
       )}
@@ -99,7 +131,7 @@ export default function TodayPage() {
         <>
           <SectionTitle>{next?.date === today ? 'Today’s session' : 'Next session'}</SectionTitle>
           {next ? (
-            <Card className="p-4">
+            <Card className="p-4" tint="accent">
               <div className="flex items-start gap-3">
                 <div className="size-11 rounded-xl bg-accent-soft text-accent flex items-center justify-center shrink-0">
                   {next.template.kind === 'lifting' ? <Dumbbell className="size-5" /> : <Activity className="size-5" />}
@@ -128,7 +160,7 @@ export default function TodayPage() {
                 {next.template.kind === 'lifting' || next.template.exercises.length > 0 ? 'Start workout' : 'Log this activity'}
               </Button>
               {next.date !== today && (
-                <p className="text-xs text-muted mt-2 text-center">You can start it early — it’ll count for this planned session.</p>
+                <p className="text-xs text-muted mt-2 text-center">You can start it early. It’ll count for this planned session.</p>
               )}
             </Card>
           ) : (
@@ -178,7 +210,7 @@ export default function TodayPage() {
       )}
 
       <SectionTitle>This week</SectionTitle>
-      <Card className="p-4">
+      <Card className="p-4" tint="streak">
         <div className="grid grid-cols-7 gap-1" role="list" aria-label="Days this week">
           {Array.from({ length: 7 }, (_, i) => addDays(weekFrom, i)).map((d) => {
             const done = activeDays.has(d);
@@ -189,7 +221,7 @@ export default function TodayPage() {
                 <span
                   className={clsx(
                     'size-9 rounded-full flex items-center justify-center text-xs',
-                    done ? 'bg-accent text-accent-ink' : planned ? 'border-2 border-dashed border-accent/60' : 'bg-surface-2',
+                    done ? 'bg-success text-bg' : planned ? 'border-2 border-dashed border-accent/60' : 'bg-surface-2',
                     d === today && !done && 'ring-2 ring-accent/50',
                   )}
                 >
@@ -244,7 +276,7 @@ export default function TodayPage() {
           onClick={async () => {
             if (!missedAction || !program) return;
             await saveRecord('programs', skipPlanned(program, missedAction.date, missedAction.template.id), db);
-            toast.show('Skipped — your plan continues as scheduled.');
+            toast.show('Skipped: your plan continues as scheduled.');
             setMissedAction(null);
           }}
         >
@@ -266,8 +298,8 @@ function Mini({ label, value }: { label: string; value: string }) {
 
 function QuickLink({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
   return (
-    <Link to={to} className="flex items-center gap-2.5 rounded-2xl bg-surface border border-line px-3.5 min-h-14 hover:bg-surface-2">
-      <span className="text-accent">{icon}</span>
+    <Link to={to} className="pressable card-shadow flex items-center gap-2.5 rounded-2xl bg-surface border border-line px-3.5 min-h-14 hover:bg-surface-2">
+      <span className="size-8 rounded-xl bg-accent-soft text-accent flex items-center justify-center">{icon}</span>
       <span className="font-medium flex-1 text-sm leading-tight">{label}</span>
       <ChevronRight className="size-4 text-faint" aria-hidden />
     </Link>

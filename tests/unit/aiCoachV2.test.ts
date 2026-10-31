@@ -1,5 +1,5 @@
 /**
- * AI coach v2 (repair brief 29 Oct, §3) — server logic with a MOCKED provider (injected fetch) and an in-memory
+ * training assistant v2 (repair brief 29 Oct, §3) — server logic with a MOCKED provider (injected fetch) and an in-memory
  * data accessor. No network and no live provider: every describe block is labelled MOCKED. The live check is the
  * opt-in script tests/live/ai-live.mjs.
  *
@@ -182,7 +182,7 @@ describe('MOCKED ai-coach v2: response style instructions', () => {
     expect(SYSTEM_RULES).toMatch(/warm, conversational personal trainer/);
     expect(SYSTEM_RULES).toMatch(/first name when they have told you it/);
     expect(SYSTEM_RULES).toMatch(/React to what they actually said/);
-    expect(SYSTEM_RULES).toMatch(/Celebrate completed workouts, streaks and new records by name/);
+    expect(SYSTEM_RULES).toMatch(/Acknowledge completed workouts, streaks and new records by name/);
     expect(SYSTEM_RULES).toMatch(/Default 40–90 words. The main answer comes first/);
     expect(SYSTEM_RULES).not.toMatch(/60–120 words/);
     expect(SYSTEM_RULES).toMatch(/Don't repeat setup\/onboarding questions/);
@@ -480,8 +480,8 @@ describe('MOCKED ai-coach v3: coach styles reach the prompt', () => {
     const { system, messages } = await ctxFor(styled('strict'), 'I’m too tired, skipping today');
     expect(String(messages.at(-1)?.content)).toBe('I’m too tired, skipping today');
     expect(system).toMatch(/Coach style: STRICT/);
-    expect(system).toMatch(/Push back firmly on excuses like "too tired", "no time" or "don't feel like it"/);
-    expect(system).toMatch(/minimum version as the non-negotiable plan \(e\.g\. "first two exercises, 20 minutes/);
+    expect(system).toMatch(/Push back firmly on reasons like "too tired", "no time" or "don't feel like it"/);
+    expect(system).toMatch(/minimum version as the plan \(e\.g\. "first two exercises, 20 minutes/);
     expect(system).toMatch(/Offer a minimum version, e\.g\. "just the first two exercises, 20 minutes"/);
     expect(system).toMatch(/remind them of their goal and what they've done this week/i);
     expect(system).toMatch(/Never insult, shame or guilt-trip/);
@@ -527,8 +527,8 @@ describe('MOCKED ai-coach v3: scope (keep the coach on topic)', () => {
   it('the scope section, its examples and the exceptions are in the prompt for every style', async () => {
     for (const st of COACH_STYLES) {
       const { system } = await ctxFor(styled(st), 'How do I write a for loop in Python?');
-      expect(system).toMatch(/Scope — you are only a fitness coach/);
-      expect(system).toMatch(/In scope: training, exercises, technique, programs and scheduling; nutrition and protein in the context of the user's goals; recovery, sleep and stress as they affect training; motivation, check-ins and brief friendly small talk; questions about using LiftCircle/);
+      expect(system).toMatch(/Scope — you are only a training assistant/);
+      expect(system).toMatch(/In scope: training, exercises, technique, programs and scheduling; nutrition and protein in the context of the user's goals; recovery, sleep and stress as they affect training; motivation, check-ins and brief friendly small talk; questions about using Hard Earned/);
       expect(system).toMatch(/Out of scope: everything else — for example coding, homework, writing emails or essays, news, politics, trivia, other apps/);
       expect(system).toMatch(/not even partially/);
       expect(system).toMatch(/at most 40 words, in your coach voice, and steer back to training/);

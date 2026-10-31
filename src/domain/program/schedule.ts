@@ -176,7 +176,7 @@ export function rescheduleMissed(
       break;
     }
   }
-  if (earliest >= horizon) return finishSkip(p, origin, templateId, 'Your next ' + t.name + ' is coming up, so we skipped this one — just carry on with the plan.');
+  if (earliest >= horizon) return finishSkip(p, origin, templateId, 'Your next ' + t.name + ' is coming up, so we skipped this one. Just carry on with the plan.');
 
   const others = plannedSessionsInRange(p, addDays(earliest, -1), horizon, today, sessions).filter(
     (x) => !(x.template.id === templateId && x.date === missedDate) && x.status !== 'skipped' && x.status !== 'moved',
@@ -243,7 +243,7 @@ export function adherence(p: Program, from: ISODate, to: ISODate, today: ISODate
 /* ------------------------------------------------------------------ this-week plans (temporary) */
 
 /**
- * A temporary, this-week-only schedule change (from the AI coach's "Apply to this week"). Mirrors the server's
+ * A temporary, this-week-only schedule change (from the training assistant's "Apply to this week"). Mirrors the server's
  * WeekAdjustmentAction (supabase/functions/_shared/ai/types.ts). It is applied as date-specific overrides
  * (moved / skipped) tagged with `weekPlanId`, so it:
  *  - never changes the program's versions, content, frequency, split, inputs or rotation;
@@ -275,9 +275,9 @@ export type WeekPlanResult =
   | { ok: true; program: Program; message: string; alreadyApplied?: boolean }
   | { ok: false; reason: 'stale' | 'expired' | 'week_changed'; message: string };
 
-export const WEEK_PLAN_STALE = 'Your plan changed since this suggestion, so it wasn’t applied. Ask the AI coach again.';
+export const WEEK_PLAN_STALE = 'Your plan changed since this suggestion, so it wasn’t applied. Ask the training assistant again.';
 export const WEEK_PLAN_EXPIRED = 'This suggestion was for another week.';
-export const WEEK_PLAN_CHANGED = 'Your week changed since this suggestion (a workout was logged or the schedule moved). Ask the AI coach again.';
+export const WEEK_PLAN_CHANGED = 'Your week changed since this suggestion (a workout was logged or the schedule moved). Ask the training assistant again.';
 
 export function weekPlanState(p: Program | undefined, plan: WeekPlan, today: ISODate, weekStart: 0 | 1): WeekPlanState {
   if (p && p.overrides.some((o) => o.weekPlanId === plan.id)) return 'applied';

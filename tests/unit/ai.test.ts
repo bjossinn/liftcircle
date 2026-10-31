@@ -1,5 +1,5 @@
 /**
- * AI coach server logic — MOCKED provider (injected fetch) and in-memory data accessor.
+ * training assistant server logic — MOCKED provider (injected fetch) and in-memory data accessor.
  * No network, no live Anthropic API: every describe block is labelled MOCKED.
  * Live-provider verification is a separate, manual step (docs/AI_COACH.md).
  */
@@ -115,7 +115,7 @@ function makeDb(users: Record<string, UserData>, opts: { limit?: number } = {}) 
     },
     checkAndCountUsage: async (uid, limit) => {
       const n = (usage.get(uid) ?? 0) + 1;
-      if (n > (opts.limit ?? limit)) throw Object.assign(new Error('You’ve reached today’s AI coach limit of 2 messages.'), { code: 'PT429' });
+      if (n > (opts.limit ?? limit)) throw Object.assign(new Error('You’ve reached today’s training assistant limit of 2 messages.'), { code: 'PT429' });
       usage.set(uid, n);
       return limit - n;
     },

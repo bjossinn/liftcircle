@@ -14,6 +14,9 @@ export default defineConfig({
     baseURL: 'http://localhost:4173',
     ...devices['Pixel 7'],
     trace: 'retain-on-failure',
+    // Every spec starts as a device that already picked a theme, so the first-launch picker doesn't cover the
+    // screens under test. tests/e2e/first-run.spec.ts clears this to walk the first-launch path.
+    storageState: { cookies: [], origins: [{ origin: 'http://localhost:4173', localStorage: [{ name: 'lc-theme-picked', value: '1' }] }] },
   },
   webServer: {
     command: 'npx vite build && npx vite preview --port 4173 --strictPort',

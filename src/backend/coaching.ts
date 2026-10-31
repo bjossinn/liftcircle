@@ -366,7 +366,7 @@ async function mapRelationships(list: RawRelationship[]): Promise<CoachingRelati
     },
     client: {
       userId: r.client_id,
-      displayName: r.client?.display_name || 'LiftCircle member',
+      displayName: r.client?.display_name || 'Hard Earned member',
       avatarUrl: r.client?.avatar_path ? avatars.get(r.client.avatar_path) ?? null : null,
     },
     status: r.status,

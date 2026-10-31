@@ -130,11 +130,11 @@ export function PushSection() {
               <span>On iPhone and iPad, notifications only work in the installed app.</span>
             </p>
             <ol className="text-sm text-muted list-decimal pl-5 space-y-1">
-              <li>Open LiftCircle in Safari.</li>
+              <li>Open Hard Earned in Safari.</li>
               <li>
                 Tap <strong className="text-ink">Share</strong>, then <strong className="text-ink">Add to Home Screen</strong>.
               </li>
-              <li>Open LiftCircle from your Home Screen and come back here.</li>
+              <li>Open Hard Earned from your Home Screen and come back here.</li>
             </ol>
             <Link to="/install" className="text-sm text-accent underline">
               Step-by-step install guide
@@ -145,9 +145,9 @@ export function PushSection() {
         ) : support === 'denied' ? (
           <div data-testid="push-denied">
           <Notice tone="warn">
-            <p className="font-medium">Notifications are blocked for LiftCircle.</p>
+            <p className="font-medium">Notifications are blocked for Hard Earned.</p>
             <p className="mt-1">
-              iPhone/iPad: Settings → Notifications → LiftCircle → Allow Notifications. Android/Chrome: tap the lock icon next to the address (or long-press the app icon → App info) → Notifications → Allow. Desktop: the site settings next to the address bar.
+              iPhone/iPad: Settings → Notifications → Hard Earned → Allow Notifications. Android/Chrome: tap the lock icon next to the address (or long-press the app icon → App info) → Notifications → Allow. Desktop: the site settings next to the address bar.
               Then come back here and turn them on.
             </p>
           </Notice>
@@ -156,7 +156,7 @@ export function PushSection() {
           <p className="text-sm text-muted">Sign in to get reminders and coaching messages as notifications.</p>
         ) : !on ? (
           <>
-            <p className="text-sm text-muted">Get workout reminders, rest-over alerts and coaching messages on this device, even when LiftCircle is closed. You choose which ones next.</p>
+            <p className="text-sm text-muted">Get workout reminders, rest-over alerts and coaching messages on this device, even when Hard Earned is closed. You choose which ones next.</p>
             <Button variant="primary" icon={<BellRing className="size-4" />} loading={busy === 'enable'} disabled={!online} onClick={() => void turnOn()}>
               Turn on notifications
             </Button>

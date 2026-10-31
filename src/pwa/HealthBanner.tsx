@@ -74,8 +74,8 @@ export function HealthBanner() {
       <div role="alert" className={`${bar} bg-danger-soft border-danger/30`}>
         <AlertTriangle className="size-4 text-danger shrink-0 mt-0.5" aria-hidden />
         <span className="flex-1">
-          <strong className="font-semibold">This browser isn’t letting LiftCircle save on this device.</strong> Private browsing or blocked site data can
-          cause this, and workouts can’t be kept. Allow site data for LiftCircle or open it in a normal window, then reload.
+          <strong className="font-semibold">This browser isn’t letting Hard Earned save on this device.</strong> Private browsing or blocked site data can
+          cause this, and workouts can’t be kept. Allow site data for Hard Earned or open it in a normal window, then reload.
         </span>
       </div>
     );
@@ -85,7 +85,7 @@ export function HealthBanner() {
       <div role="alert" className={`${bar} bg-danger-soft border-danger/30`}>
         <HardDrive className="size-4 text-danger shrink-0 mt-0.5" aria-hidden />
         <span className="flex-1">
-          <strong className="font-semibold">Your device storage is full.</strong> New changes may not be saved. Free up some space, then reload LiftCircle.
+          <strong className="font-semibold">Your device storage is full.</strong> New changes may not be saved. Free up some space, then reload Hard Earned.
         </span>
       </div>
     );
@@ -96,8 +96,8 @@ export function HealthBanner() {
         <CloudOff className="size-4 text-muted shrink-0 mt-0.5" aria-hidden />
         <span className="flex-1">
           {h.sw === 'error'
-            ? 'Offline mode couldn’t be set up this time. LiftCircle works while you’re online; reload to try again.'
-            : 'Offline mode isn’t available in this browser window. LiftCircle works while you’re online.'}
+            ? 'Offline mode couldn’t be set up this time. Hard Earned works while you’re online; reload to try again.'
+            : 'Offline mode isn’t available in this browser window. Hard Earned works while you’re online.'}
         </span>
         <button
           type="button"

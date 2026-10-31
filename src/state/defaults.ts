@@ -7,7 +7,6 @@ export const DEFAULT_SHARE_FIELDS = { duration: true, exerciseNames: true, weigh
 export function defaultSettings(): Settings {
   return {
     units: { weight: 'kg', length: 'cm', distance: 'km' },
-    theme: 'dark',
     weekStart: 1,
     timeZone: deviceTimeZone(),
     language: 'en',

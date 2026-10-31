@@ -26,7 +26,8 @@ import { useSubstitutionConstraints } from './hooks';
 import { suggestionFor } from '@/domain/program/session';
 import { beep, holdWakeLock, primeAudio, vibrate } from './feedback';
 import { maybeAutoShare } from '@/social/autoShare';
-import { cheerForSet, restOverCheer } from '@/domain/coachCheers';
+import { cheerForSet, recordForSet, restOverCheer } from '@/domain/coachCheers';
+import { celebrate } from '@/components/celebrate';
 import type { ToastOptions } from '@/components/toast';
 import { cancelRestPush, useRestPush } from '@/pwa/pushScheduler';
 
@@ -239,6 +240,12 @@ export default function SessionPage() {
       }
       showErrors(null);
       if (outcome !== 'done') return; // undo: quiet
+      // A new personal record gets one brief celebration (Settings → Celebrations; never with reduced motion).
+      if (settings.workout.celebrations !== false) {
+        void db.sessions.get(session.id).then((latest) => {
+          if (latest && recordForSet(latest, se.id, set.id, history ?? [], byId, settings.units.weight)) celebrate();
+        });
+      }
       const undo = { label: 'Undo', onClick: () => void update((s) => ops.skipRest(ops.toggleSetComplete(s, se.id, set.id, Date.now()).session)) };
       if (!cheers) {
         toast.show('Set logged', { action: undo, duration: 3000 });
@@ -262,7 +269,7 @@ export default function SessionPage() {
     await update((s) => ops.finishSession({ ...s, notes: notes || undefined }, Date.now()));
     const finished = await db.sessions.get(session.id);
     if (!finished || finished.status !== 'completed') {
-      toast.show('Couldn’t finish the workout — try again.', { tone: 'error' });
+      toast.show('We couldn’t save this workout. Try again.', { tone: 'error' });
       return;
     }
     setFinishOpen(false);
@@ -306,7 +313,7 @@ export default function SessionPage() {
         {saveError && (
           <div role="alert" className="rounded-xl bg-danger-soft border border-danger/30 px-4 py-3 text-sm flex items-center gap-3">
             <AlertTriangle className="size-4 text-danger shrink-0" aria-hidden />
-            <span className="flex-1">Couldn’t save your last change on this device. What you typed is still here — retry, or free up storage space.</span>
+            <span className="flex-1">Couldn’t save your last change on this device. What you typed is still here. Retry, or free up storage space.</span>
             <Button size="sm" onClick={saveError.retry}>
               Retry
             </Button>
@@ -315,7 +322,7 @@ export default function SessionPage() {
         {paused && (
           <div className="rounded-xl bg-warn-soft border border-warn/30 px-4 py-3 text-sm flex items-center gap-3">
             <Pause className="size-4 text-warn" aria-hidden />
-            <span className="flex-1">Workout paused — the clock isn’t running.</span>
+            <span className="flex-1">Workout paused: the clock isn’t running.</span>
             <Button size="sm" onClick={() => void update((s) => ops.resumeSession(s, Date.now()))}>
               Resume
             </Button>
@@ -381,7 +388,7 @@ export default function SessionPage() {
               const cur = s.exercises.find((e) => e.id === p.exId);
               const from = cur ? get(cur.exerciseId) : undefined;
               if (cur?.sets.some((x) => x.completed)) {
-                toast.show('Completed sets stay with the original exercise — added the new one below.', { tone: 'info' });
+                toast.show('Completed sets stay with the original exercise. Added the new one below.', { tone: 'info' });
                 const rx = adaptPrescription(cur.prescription, from, ex);
                 const left = Math.max(1, cur.sets.filter((x) => !x.completed && x.type !== 'warmup').length);
                 return ops.addExercise(s, ex, left, rx ? { ...rx, sets: left } : undefined);
@@ -614,7 +621,7 @@ function ExerciseBlock(props: {
           <div className="px-1">
             <Toggle
               label="Felt discomfort"
-              description="Pauses automatic load increases for this exercise and suggests alternatives. Not a diagnosis — if pain persists, check with a professional."
+              description="Pauses automatic load increases for this exercise and suggests alternatives. Not a diagnosis: if pain persists, check with a professional."
               checked={!!se.discomfort}
               onChange={(v) => void update((s) => ops.setDiscomfort(s, se.id, v))}
             />
@@ -729,10 +736,10 @@ function ProgressionCard(props: {
   // The next action itself (first-time calibration, discomfort/recovery safety) stays visible; rationale is expandable.
   const inlineReason = sg.action === 'calibrate' || warn;
   const askEffort = (sg.effortBasis === 'not_recorded' || sg.effortBasis === 'partial') && (sg.action === 'increase_load' || sg.action === 'reduce_assistance');
-  const btn = (active: boolean) => clsx('min-h-11 px-3 rounded-xl text-xs font-medium border', active ? 'bg-accent text-accent-ink border-accent' : 'bg-surface border-line text-ink hover:bg-surface-2');
+  const btn = (active: boolean) => clsx('min-h-11 px-3 rounded-xl text-xs font-medium border', active ? 'bg-accent-soft text-ink border-accent font-semibold' : 'bg-surface border-line-input text-ink hover:bg-surface-2');
 
   return (
-    <div className={clsx('mx-4 mt-2 rounded-xl px-3 py-2 text-xs', warn ? 'bg-warn-soft' : 'bg-accent-soft')} aria-label="Progression suggestion" role="group">
+    <div className={clsx('mx-4 mt-2 rounded-xl px-3 py-2 text-xs', warn ? 'bg-warn-soft' : 'bg-surface-2')} aria-label="Progression suggestion" role="group">
       <div className="flex gap-2 items-start">
         <Info className="size-4 shrink-0 mt-px" aria-hidden />
         <div className="flex-1 min-w-0">
@@ -813,7 +820,7 @@ export function SetRow(props: {
   const errText = errors ? Object.values(errors).filter(Boolean)[0] : undefined;
   return (
     <div data-set-pending={!set.completed && set.type !== 'warmup' ? 'true' : undefined}>
-      <div role="row" className={clsx('flex items-center gap-1.5 px-1 py-1 rounded-xl', set.completed && 'bg-accent-soft')}>
+      <div role="row" className={clsx('flex items-center gap-1.5 px-1 py-1 min-h-14 rounded-xl', set.completed && 'bg-success-soft')}>
         <button
           role="cell"
           onClick={props.onMenu}
@@ -892,11 +899,12 @@ export function SetRow(props: {
             aria-pressed={set.completed}
             aria-label={set.completed ? `Set ${props.label} done. Tap to undo` : `Mark set ${props.label} done`}
             className={clsx(
-              'size-11 rounded-xl flex items-center justify-center border transition-colors',
-              set.completed ? 'bg-accent text-accent-ink border-accent' : props.isNext ? 'border-accent bg-surface-2 text-accent' : 'border-line bg-surface-2 text-muted hover:text-ink',
+              'size-12 rounded-xl flex items-center justify-center border transition-colors duration-[120ms]',
+              set.completed ? 'bg-success text-bg border-success' : props.isNext ? 'border-accent bg-surface-2 text-accent' : 'border-line bg-surface-2 text-muted hover:text-ink',
             )}
           >
-            <Check className="size-5" strokeWidth={3} />
+            {/* Remounts on completion so the ✓ settles in (styles.css → .set-pop). */}
+            <Check key={set.completed ? 'done' : 'todo'} className={clsx('size-5', set.completed && 'set-pop')} strokeWidth={3} />
           </button>
         </div>
       </div>
@@ -951,7 +959,7 @@ function SetMenu(props: {
 }
 
 function MenuItem({ icon, label, onClick, href, disabled, danger }: { icon: React.ReactNode; label: string; onClick?: () => void; href?: string; disabled?: boolean; danger?: boolean }) {
-  const cls = clsx('flex items-center gap-3 min-h-12 px-2 rounded-xl text-left hover:bg-surface-2 disabled:opacity-40', danger && 'text-danger');
+  const cls = clsx('flex items-center gap-3 min-h-12 px-2 rounded-xl text-left hover:bg-surface-2 disabled:text-disabled-ink disabled:hover:bg-transparent', danger && 'text-danger');
   if (href)
     return (
       <Link to={href} className={cls}>
@@ -997,12 +1005,12 @@ function RestBar({ session, settings, update, now }: { session: WorkoutSession; 
   return (
     <div className="fixed bottom-0 inset-x-0 z-40 pb-safe bg-surface/95 backdrop-blur border-t border-line">
       <div className="h-1 bg-surface-3" aria-hidden>
-        <div className="h-full bg-accent transition-[width] duration-200" style={{ width: `${pct}%` }} />
+        <div className="h-full bg-ember transition-[width] duration-200" style={{ width: `${pct}%` }} />
       </div>
       <div className="mx-auto max-w-2xl flex items-center gap-1 px-3 py-2">
-        <Timer className={clsx('size-5 shrink-0', over ? 'text-accent' : 'text-muted')} aria-hidden />
+        <RestRing pct={over ? 100 : pct} over={over} />
         <div className="flex-1 min-w-0" role="timer" aria-live="off" aria-label={over ? 'Rest finished' : `Rest ${formatDuration(remaining / 1000)} remaining`}>
-          <div className="text-2xl font-bold tabular leading-none">{over ? 'Go!' : formatDuration(Math.ceil(remaining / 1000))}</div>
+          <div className="text-2xl font-bold tabular leading-none">{over ? 'Ready' : formatDuration(Math.ceil(remaining / 1000))}</div>
           <div className="text-[11px] text-muted">{paused ? 'Rest paused' : over ? 'Rest finished' : 'Rest'}</div>
         </div>
         {!over && (
@@ -1026,6 +1034,21 @@ function RestBar({ session, settings, update, now }: { session: WorkoutSession; 
         </IconButton>
       </div>
     </div>
+  );
+}
+
+/** Progress ring around the timer icon; the arc eases between ticks (styles.css → .ring-arc). Decorative. */
+function RestRing({ pct, over }: { pct: number; over: boolean }) {
+  const r = 16;
+  const c = 2 * Math.PI * r;
+  return (
+    <span className="relative size-10 shrink-0 flex items-center justify-center" aria-hidden>
+      <svg viewBox="0 0 40 40" className="absolute inset-0 -rotate-90">
+        <circle cx="20" cy="20" r={r} fill="none" strokeWidth="3.5" className="stroke-surface-3" />
+        <circle cx="20" cy="20" r={r} fill="none" strokeWidth="3.5" strokeLinecap="round" className={clsx('ring-arc', over ? 'stroke-accent' : 'stroke-accent/80')} strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} />
+      </svg>
+      <Timer className={clsx('size-4', over ? 'text-accent set-pop' : 'text-muted')} />
+    </span>
   );
 }
 
@@ -1074,7 +1097,7 @@ function FinishSheet({ open, session, onClose, onFinish }: { open: boolean; sess
             {done} set{done === 1 ? '' : 's'} completed.{left > 0 && <span className="text-muted"> {left} unticked set{left === 1 ? '' : 's'} won’t be saved.</span>}
           </p>
         )}
-        <Textarea label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="How did it feel?" />
+        <Textarea label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="How did this session feel?" />
       </div>
     </Sheet>
   );

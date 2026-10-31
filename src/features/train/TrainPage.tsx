@@ -39,7 +39,7 @@ export default function TrainPage() {
             <div className="text-xs text-muted">In progress</div>
           </div>
           <Button variant="primary" onClick={() => nav(`/train/session/${active.id}`)}>
-            Resume
+            Continue workout
           </Button>
         </Card>
       ) : (
@@ -88,7 +88,7 @@ export default function TrainPage() {
         </Card>
       ) : (
         <Card className="p-4 text-sm">
-          <p className="text-muted">No program yet. Get a suggested plan based on your days, equipment and goals — or build your own.</p>
+          <p className="text-muted">No program yet. Get a suggested plan based on your days, equipment and goals, or build your own.</p>
           <div className="flex gap-2 mt-3">
             <Button variant="primary" onClick={() => nav('/onboarding')}>
               Suggest a program

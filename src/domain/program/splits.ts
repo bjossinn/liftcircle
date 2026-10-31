@@ -37,27 +37,27 @@ const onceWeeklyNote = (exp: Experience) => (isNewer(exp) ? ' Newer lifters usua
 
 /** First entry per day count = recommended default. */
 const STRENGTH: Record<number, Entry[]> = {
-  1: [{ key: 'fb1', family: 'full_body', alsoFits: ['upper_lower', 'ppl'], tradeoff: () => 'One session that practises every major movement — the only structure that covers everything on one day.' }],
+  1: [{ key: 'fb1', family: 'full_body', alsoFits: ['upper_lower', 'ppl'], tradeoff: () => 'One session that practises every major movement. The only structure that covers everything on one day.' }],
   2: [
     { key: 'fb2', family: 'full_body', tradeoff: () => 'Each muscle group twice a week, and missing a session still leaves a complete workout.' },
     { key: 'ul2', family: 'upper_lower', alsoFits: ['ppl'], tradeoff: (e) => `More work per muscle in each session, but each muscle group is trained once a week.${onceWeeklyNote(e)}` },
   ],
   3: [
-    { key: 'fb3', family: 'full_body', tradeoff: () => 'Main lifts practised three times a week with shorter sessions — the easiest to recover from.' },
-    { key: 'ulf', family: 'upper_lower', alsoFits: ['full_body'], tradeoff: () => 'An upper, a lower and a full-body day — more work per session, upper and lower body each trained twice.' },
+    { key: 'fb3', family: 'full_body', tradeoff: () => 'Main lifts practised three times a week with shorter sessions. The easiest to recover from.' },
+    { key: 'ulf', family: 'upper_lower', alsoFits: ['full_body'], tradeoff: () => 'An upper, a lower and a full-body day. More work per session, upper and lower body each trained twice.' },
     { key: 'ppl3', family: 'ppl', tradeoff: (e) => `Most work per muscle in each session, but each muscle group is trained once a week and a missed day skips a whole area.${onceWeeklyNote(e)}` },
   ],
   4: [
     { key: 'ul4', family: 'upper_lower', alsoFits: ['ppl'], tradeoff: () => 'Each muscle group twice a week with focused sessions and a recovery day for each half.' },
-    { key: 'fb4', family: 'full_body', tradeoff: () => 'Four shorter full-body sessions — frequent practice of every lift; handy when sessions are short.' },
+    { key: 'fb4', family: 'full_body', tradeoff: () => 'Four shorter full-body sessions. Frequent practice of every lift; handy when sessions are short.' },
   ],
   5: [
-    { key: 'ulppl', family: 'ppl', alsoFits: ['upper_lower'], tradeoff: (e) => `Upper/lower plus push, pull and legs — high frequency and volume.${isNewer(e) ? ' Demanding to recover from when you’re newer.' : ''}` },
-    { key: 'ul5', family: 'upper_lower', alsoFits: ['full_body'], tradeoff: () => 'Upper/lower twice plus a full-body day — twice-weekly frequency with less specialised days.' },
+    { key: 'ulppl', family: 'ppl', alsoFits: ['upper_lower'], tradeoff: (e) => `Upper/lower plus push, pull and legs. High frequency and volume.${isNewer(e) ? ' Demanding to recover from when you’re newer.' : ''}` },
+    { key: 'ul5', family: 'upper_lower', alsoFits: ['full_body'], tradeoff: () => 'Upper/lower twice plus a full-body day. Twice-weekly frequency with less specialised days.' },
   ],
   6: [
-    { key: 'ppl6', family: 'ppl', alsoFits: ['upper_lower'], tradeoff: () => 'Push, pull and legs twice each — high volume; needs good sleep and recovery.' },
-    { key: 'ul6', family: 'upper_lower', tradeoff: () => 'Upper and lower three times each — high frequency with moderate work per session.' },
+    { key: 'ppl6', family: 'ppl', alsoFits: ['upper_lower'], tradeoff: () => 'Push, pull and legs twice each. High volume; needs good sleep and recovery.' },
+    { key: 'ul6', family: 'upper_lower', tradeoff: () => 'Upper and lower three times each. High frequency with moderate work per session.' },
   ],
 };
 

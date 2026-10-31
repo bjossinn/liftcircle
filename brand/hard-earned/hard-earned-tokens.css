@@ -1,0 +1,334 @@
+/* Hard Earned UI tokens — 2026-10-31.
+   Default theme: dark. Apply data-theme="dark" or data-theme="light" to <html>.
+   No external imports or JavaScript dependencies. Theme persistence belongs to the app.
+   Inter / Barlow Semi Condensed may be self-hosted separately; system fallbacks remain usable.
+   Pair verification: contrast-matrix.json. Opaque solid colours only; not a conformance claim. */
+
+:root {
+  --he-font-ui: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --he-font-display: "Barlow Semi Condensed", "Inter", system-ui, sans-serif;
+  --he-space-1: 0.25rem;
+  --he-space-2: 0.5rem;
+  --he-space-3: 0.75rem;
+  --he-space-4: 1rem;
+  --he-space-5: 1.25rem;
+  --he-space-6: 1.5rem;
+  --he-space-8: 2rem;
+  --he-space-10: 2.5rem;
+  --he-space-12: 3rem;
+  --he-space-16: 4rem;
+  --he-radius-small: 0.5rem;
+  --he-radius-control: 0.75rem;
+  --he-radius-card: 1rem;
+  --he-radius-dialog: 1.5rem;
+  --he-radius-pill: 999px;
+  --he-border-width: 1px;
+  --he-control-border-width: 2px;
+  --he-focus-width: 3px;
+  --he-focus-offset: 3px;
+  --he-target-min: 3rem;
+  --he-row-min: 3.5rem;
+  --he-text-caption: 0.875rem;
+  --he-text-body: 1rem;
+  --he-text-heading: 1.75rem;
+  --he-text-display: clamp(2.5rem, 4vw + 1rem, 4rem);
+  --he-text-stat: 2.5rem;
+  --he-leading-body: 1.5;
+  --he-leading-heading: 1.15;
+  --he-weight-normal: 400;
+  --he-weight-label: 600;
+  --he-weight-heading: 700;
+  --he-duration-fast: 120ms;
+  --he-duration-standard: 200ms;
+  --he-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --he-canvas: #17191B;
+  --he-surface: #202326;
+  --he-raised: #2A2E31;
+  --he-field: #17191B;
+  --he-text: #F3EFE7;
+  --he-text-secondary: #B7BABB;
+  --he-text-muted: #939A9D;
+  --he-border-subtle: #3D4448;
+  --he-border-control: #7E888D;
+  --he-accent: #FF694F;
+  --he-accent-hover: #FF806B;
+  --he-accent-pressed: #E9563D;
+  --he-on-accent: #17191B;
+  --he-accent-ink: #FF806B;
+  --he-selected-surface: #392B29;
+  --he-disabled-surface: #303438;
+  --he-disabled-text: #9DA4A8;
+  --he-focus: #AEE9DD;
+  --he-success: #7FD4AB;
+  --he-error: #FF9C91;
+  --he-warning: #E9C16C;
+  --he-danger-fill: #FF9C91;
+  --he-danger-hover: #FFB5AC;
+  --he-danger-pressed: #EB8175;
+  --he-on-danger: #17191B;
+  --he-info: #9CCCF5;
+  --he-chart-1: #FF694F;
+  --he-chart-2: #AEE9DD;
+  --he-chart-3: #89BFFF;
+  --he-chart-4: #C5A7F2;
+  --he-chart-5: #E9C16C;
+  /* Semantic aliases resolve in each theme, including nested theme previews. */
+  --he-control-bg: var(--he-field);
+  --he-control-hover: var(--he-raised);
+  --he-control-pressed: var(--he-canvas);
+  --he-control-border: var(--he-border-control);
+  --he-control-border-hover: var(--he-text-secondary);
+  --he-control-focus: var(--he-focus);
+  --he-primary-bg: var(--he-accent);
+  --he-primary-hover: var(--he-accent-hover);
+  --he-primary-pressed: var(--he-accent-pressed);
+  --he-primary-text: var(--he-on-accent);
+  --he-primary-border: #17191B;
+  --he-chart-axis: var(--he-text-secondary);
+  --he-chart-grid: var(--he-border-subtle);
+  --he-chart-neutral: var(--he-text-muted);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --he-canvas: #F3EFE7;
+  --he-surface: #FFFFFF;
+  --he-raised: #E6E2DB;
+  --he-field: #FFFFFF;
+  --he-text: #17191B;
+  --he-text-secondary: #50595E;
+  --he-text-muted: #59636A;
+  --he-border-subtle: #D1CCC4;
+  --he-border-control: #6C767C;
+  --he-accent: #FF694F;
+  --he-accent-hover: #FF806B;
+  --he-accent-pressed: #E9563D;
+  --he-on-accent: #17191B;
+  --he-accent-ink: #A93623;
+  --he-selected-surface: #F8DBD4;
+  --he-disabled-surface: #E1DDD6;
+  --he-disabled-text: #555E64;
+  --he-focus: #086966;
+  --he-success: #1E704F;
+  --he-error: #B32F2F;
+  --he-warning: #79520A;
+  --he-danger-fill: #B32F2F;
+  --he-danger-hover: #982727;
+  --he-danger-pressed: #7E2020;
+  --he-on-danger: #FFFFFF;
+  --he-info: #185D91;
+  --he-chart-1: #A93623;
+  --he-chart-2: #1D6A63;
+  --he-chart-3: #245C99;
+  --he-chart-4: #78409A;
+  --he-chart-5: #79520A;
+  /* Semantic aliases resolve in each theme, including nested theme previews. */
+  --he-control-bg: var(--he-field);
+  --he-control-hover: var(--he-raised);
+  --he-control-pressed: var(--he-canvas);
+  --he-control-border: var(--he-border-control);
+  --he-control-border-hover: var(--he-text-secondary);
+  --he-control-focus: var(--he-focus);
+  --he-primary-bg: var(--he-accent);
+  --he-primary-hover: var(--he-accent-hover);
+  --he-primary-pressed: var(--he-accent-pressed);
+  --he-primary-text: var(--he-on-accent);
+  --he-primary-border: #17191B;
+  --he-chart-axis: var(--he-text-secondary);
+  --he-chart-grid: var(--he-border-subtle);
+  --he-chart-neutral: var(--he-text-muted);
+}
+
+/* Optional scoped application styles. They are examples, not an application reset. */
+.he-app {
+  background: var(--he-canvas);
+  color: var(--he-text);
+  font-family: var(--he-font-ui);
+  font-size: var(--he-text-body);
+  line-height: var(--he-leading-body);
+  font-optical-sizing: auto;
+}
+.he-app, .he-app *, .he-app *::before, .he-app *::after { box-sizing: border-box; }
+.he-heading {
+  font-family: var(--he-font-display);
+  font-size: var(--he-text-heading);
+  font-weight: var(--he-weight-heading);
+  line-height: var(--he-leading-heading);
+}
+.he-display {
+  font-family: var(--he-font-display);
+  font-size: var(--he-text-display);
+  font-weight: var(--he-weight-heading);
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+}
+.he-stat {
+  font-family: var(--he-font-ui);
+  font-size: var(--he-text-stat);
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.he-numeric { font-variant-numeric: lining-nums tabular-nums; }
+.he-secondary { color: var(--he-text-secondary); }
+.he-muted { color: var(--he-text-muted); }
+.he-card {
+  background: var(--he-surface);
+  color: var(--he-text);
+  border: var(--he-border-width) solid var(--he-border-subtle);
+  border-radius: var(--he-radius-card);
+  padding: var(--he-space-5);
+  /* This subtle border is decorative. Use .he-control for an interactive card. */
+}
+.he-control, .he-button, .he-input, .he-choice {
+  min-height: var(--he-target-min);
+  font: inherit;
+  border: var(--he-control-border-width) solid var(--he-control-border);
+  border-radius: var(--he-radius-control);
+  background: var(--he-control-bg);
+  color: var(--he-text);
+  transition: background-color var(--he-duration-fast) var(--he-ease),
+              border-color var(--he-duration-fast) var(--he-ease);
+}
+.he-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--he-space-2);
+  min-width: var(--he-target-min);
+  padding: 0.625rem 1rem;
+  font-weight: var(--he-weight-label);
+  line-height: 1.25;
+  cursor: pointer;
+}
+.he-input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.he-input::placeholder { color: var(--he-text-muted); opacity: 1; }
+.he-button:not(:disabled):not([aria-disabled="true"]):hover,
+.he-choice:not(:disabled):not([aria-disabled="true"]):hover {
+  background: var(--he-control-hover);
+  border-color: var(--he-control-border-hover);
+}
+.he-button:not(:disabled):not([aria-disabled="true"]):active {
+  background: var(--he-control-pressed);
+  border-color: var(--he-control-border-hover);
+}
+.he-input:not(:disabled):hover { border-color: var(--he-control-border-hover); }
+.he-button--primary {
+  background: var(--he-primary-bg);
+  color: var(--he-primary-text);
+  border-color: var(--he-primary-border);
+  /* Charcoal outline is necessary for this supplied light-theme boundary treatment. */
+}
+.he-button--primary:not(:disabled):not([aria-disabled="true"]):hover {
+  background: var(--he-primary-hover);
+  color: var(--he-primary-text);
+  border-color: var(--he-primary-border);
+}
+.he-button--primary:not(:disabled):not([aria-disabled="true"]):active {
+  background: var(--he-primary-pressed);
+  color: var(--he-primary-text);
+  border-color: var(--he-primary-border);
+}
+.he-button--danger {
+  background: var(--he-danger-fill);
+  color: var(--he-on-danger);
+  border-color: var(--he-danger-fill);
+}
+.he-button--danger:not(:disabled):not([aria-disabled="true"]):hover {
+  background: var(--he-danger-hover);
+  color: var(--he-on-danger);
+  border-color: var(--he-danger-hover);
+}
+.he-button--danger:not(:disabled):not([aria-disabled="true"]):active {
+  background: var(--he-danger-pressed);
+  color: var(--he-on-danger);
+  border-color: var(--he-danger-pressed);
+}
+.he-button:disabled, .he-button[aria-disabled="true"], .he-input:disabled,
+.he-choice:disabled, .he-choice[aria-disabled="true"] {
+  background: var(--he-disabled-surface);
+  color: var(--he-disabled-text);
+  border-color: var(--he-disabled-surface);
+  opacity: 1;
+  cursor: not-allowed;
+  /* aria-disabled needs matching application behaviour; CSS does not disable actions. */
+}
+.he-choice[aria-selected="true"], .he-choice[aria-pressed="true"] {
+  background: var(--he-selected-surface);
+  color: var(--he-text);
+  border-color: var(--he-accent-ink);
+  /* Also render a check/radio mark or explicit text; selection must not rely on colour. */
+}
+.he-choice[aria-selected="true"] .he-state-icon,
+.he-choice[aria-pressed="true"] .he-state-icon { color: var(--he-accent-ink); }
+.he-choice:not(:disabled):not([aria-disabled="true"])[aria-selected="true"]:hover,
+.he-choice:not(:disabled):not([aria-disabled="true"])[aria-pressed="true"]:hover {
+  background: var(--he-selected-surface);
+  color: var(--he-text);
+  border-color: var(--he-accent-ink);
+}
+.he-input[aria-invalid="true"], .he-input[aria-invalid="true"]:hover {
+  border-color: var(--he-error);
+}
+.he-error { color: var(--he-error); }
+.he-success { color: var(--he-success); }
+.he-warning { color: var(--he-warning); }
+.he-info { color: var(--he-info); }
+.he-link {
+  color: var(--he-accent-ink);
+  text-decoration-line: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1.5px;
+}
+.he-link:hover { text-decoration-thickness: 2.5px; }
+/* The 3px gap must show one of the tested canvas/surface/raised/selected surfaces.
+   Do not clip this outline with overflow:hidden. Images/gradients need a local check. */
+.he-control:focus-visible, .he-button:focus-visible, .he-input:focus-visible,
+.he-choice:focus-visible, .he-link:focus-visible {
+  outline: var(--he-focus-width) solid var(--he-focus);
+  outline-offset: var(--he-focus-offset);
+}
+.he-chart-axis { fill: var(--he-chart-axis); color: var(--he-chart-axis); }
+.he-chart-grid { stroke: var(--he-chart-grid); }
+.he-chart-neutral { stroke: var(--he-chart-neutral); }
+.he-chart-series-1 { stroke: var(--he-chart-1); }
+.he-chart-series-2 { stroke: var(--he-chart-2); stroke-dasharray: 8 4; }
+.he-chart-series-3 { stroke: var(--he-chart-3); stroke-dasharray: 2 4; }
+.he-chart-series-4 { stroke: var(--he-chart-4); stroke-dasharray: 8 3 2 3; }
+.he-chart-series-5 { stroke: var(--he-chart-5); stroke-dasharray: 12 5; }
+/* Pair each chart series with a distinct marker shape and visible direct label.
+   Grid lines above are decorative; use --he-border-control if an axis line is essential. */
+.he-progress-fill { transition: width var(--he-duration-standard) var(--he-ease); }
+@media (prefers-reduced-motion: no-preference) {
+  .he-reveal { animation: he-reveal 160ms var(--he-ease) both; }
+  @keyframes he-reveal {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .he-button, .he-input, .he-choice, .he-control, .he-progress-fill {
+    transition: none;
+  }
+  .he-reveal { animation: none; transform: none; }
+}
+@media (forced-colors: active) {
+  .he-control, .he-button, .he-input, .he-choice {
+    forced-color-adjust: auto;
+    border-color: ButtonText;
+  }
+  .he-control:focus-visible, .he-button:focus-visible, .he-input:focus-visible,
+  .he-choice:focus-visible, .he-link:focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 3px;
+  }
+}

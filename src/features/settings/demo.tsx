@@ -161,7 +161,7 @@ export function DemoBanner() {
   return (
     <div role="status" className="flex items-center gap-2 bg-info/15 border-b border-info/30 px-4 py-2 text-sm">
       <FlaskConical className="size-4 text-info shrink-0" aria-hidden />
-      <span className="flex-1">Demo data — sample records, not a real person.</span>
+      <span className="flex-1">Demo data: sample records, not a real person.</span>
       <Button size="sm" variant="ghost" onClick={() => void exitDemo()}>
         Exit demo
       </Button>

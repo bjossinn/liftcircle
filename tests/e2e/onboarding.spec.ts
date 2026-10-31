@@ -3,7 +3,7 @@ import { completeOnboarding } from './helpers';
 
 test('new user completes onboarding and gets a schedule matching days, equipment and session length', async ({ page }) => {
   await completeOnboarding(page, 'Björn');
-  await expect(page.getByRole('heading', { name: 'Hi, Björn' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening), Björn$/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Start workout|Log this activity/ })).toBeVisible();
 
   await page.goto('/train/program');

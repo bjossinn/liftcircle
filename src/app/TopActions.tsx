@@ -18,7 +18,7 @@ export function TopActions() {
           </Link>
           <Link to="/notifications" className={cls} aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'} title="Notifications">
             <Bell className="size-5" />
-            {unread > 0 && <span className="absolute top-2.5 right-2.5 size-2 rounded-full bg-accent" aria-hidden />}
+            {unread > 0 && <span className="absolute top-2.5 right-2.5 size-2 rounded-full bg-ember" aria-hidden />}
           </Link>
           <Link to="/profile" className={cls} aria-label="Your profile" title="Profile">
             <UserRound className="size-5" />

@@ -526,7 +526,11 @@ export type CoachStyle = 'supportive' | 'balanced' | 'strict';
 
 export interface Settings {
   units: UnitPrefs;
-  theme: 'dark' | 'light' | 'system';
+  /**
+   * 'dark' = Dark, 'light' = Light, 'system' = Match my phone (names in src/theme/theme.ts). Optional since
+   * 0.8.0: undefined means not chosen yet (new accounts), and the first-launch picker asks.
+   */
+  theme?: 'dark' | 'light' | 'system';
   weekStart: 0 | 1;
   timeZone: string;
   language: 'en';
@@ -537,9 +541,11 @@ export interface Settings {
     barKg?: number; barLb?: number;
     /** "Coach cheers during workouts" (logger popups). Optional (added in 0.4.0); undefined means on. */
     coachCheers?: boolean;
+    /** A brief celebration on a new record and at the end of a workout, plus the Today streak flame. Optional (0.8.0); undefined means on. */
+    celebrations?: boolean;
   };
   /**
-   * Local mirror of the AI coach style (ai_settings.coach_style, the authority) so offline features such as the
+   * Local mirror of the training assistant style (ai_settings.coach_style, the authority) so offline features such as the
    * logger's coach cheers can follow it. Optional; undefined means 'balanced'.
    */
   coachStyle?: CoachStyle;

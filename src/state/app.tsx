@@ -5,6 +5,7 @@ import { saveRecord } from '@/db/repo';
 import type { AccountState } from '@/domain/types';
 import { defaultAccountState } from './defaults';
 import { backendConfigured, supabase } from '@/backend/supabase';
+import { applyTheme, effectiveThemeChoice, resolveTheme, watchSystemTheme } from '@/theme/theme';
 
 export type AuthStatus = 'loading' | 'guest' | 'signed_in' | 'expired';
 export interface AuthInfo {
@@ -130,18 +131,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const accountRow = useLiveQuery(async () => (await db.account.get(ACCOUNT_ROW_ID)) ?? null, [db]);
   const account = useMemo(() => accountRow ?? defaultAccountState(), [accountRow]);
 
-  // Apply theme.
+  // Apply the theme: the account's choice, else this device's, else Match system (src/theme/theme.ts). Match
+  // system follows the phone live. Wait for the account row so a stored choice doesn't flash the default first.
+  const themeChoice = accountRow === undefined ? null : effectiveThemeChoice(account.settings.theme);
   useEffect(() => {
-    const t = account.settings.theme;
-    const resolved = t === 'system' ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : t;
-    document.documentElement.dataset.theme = resolved;
-    try {
-      localStorage.setItem('lc-theme', resolved);
-    } catch {
-      /* ignore */
-    }
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'light' ? '#f4f6f5' : '#16191d');
-  }, [account.settings.theme]);
+    if (!themeChoice) return;
+    const apply = () => applyTheme(resolveTheme(themeChoice), { fade: true });
+    apply();
+    return themeChoice === 'system' ? watchSystemTheme(apply) : undefined;
+  }, [themeChoice]);
 
   const updateAccount = useCallback(
     async (fn: (a: AccountState) => AccountState) => {

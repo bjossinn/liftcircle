@@ -14,7 +14,7 @@ export function PrivacySummary() {
         <li>Other members can only see your username, display name, avatar, bio and interests, and the posts you choose to share with them.</li>
         <li>
           Age, weight, measurements, injuries and food logs are never shown to other members. You can choose to share selected categories with a coach you approve, or with the
-          AI coach after you agree to it — and change or stop that at any time.
+          training assistant after you agree to it, and change or stop that at any time.
         </li>
         <li>
           You can download a backup or delete your account at any time from{' '}

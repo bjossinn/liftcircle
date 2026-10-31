@@ -1,4 +1,4 @@
-# Coaching & AI coach — cross-slice spec
+# Coaching & training assistant — cross-slice spec
 
 Contract types: `src/backend/coachingContract.ts` (CoachingApi, AiApi). This file fixes the **server** names so the
 database, Edge Functions and client wrappers agree. All new SQL lives in NEW migrations

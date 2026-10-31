@@ -222,7 +222,7 @@ const db = (acc: AccountStatePayload) =>
     getIngredients: async () => REF_INGREDIENTS,
   }) as unknown as AiDb;
 
-describe('MOCKED AI coach: protein preferences', () => {
+describe('MOCKED training assistant: protein preferences', () => {
   const excl = { liked: ['tuna'], excluded: ['prawns', 'pork'] };
 
   it('the nutrition context includes likes and "not for me" proteins, worded as a preference, not an allergy', async () => {

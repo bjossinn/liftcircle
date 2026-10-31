@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui';
 export function planOwnerText(p: Pick<Program, 'managedBy'> | null | undefined): string | null {
   const m = p?.managedBy;
   if (!m || m.kind === 'self') return null;
-  if (m.kind === 'coach') return m.coachName ? `Managed by your coach, ${m.coachName}` : 'Managed by your coach';
+  if (m.kind === 'coach') return m.coachName ? `Assigned by ${m.coachName}` : 'Managed by your coach';
   return 'AI-suggested plan you accepted';
 }
 

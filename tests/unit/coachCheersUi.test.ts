@@ -77,7 +77,7 @@ const button = (label: string) => {
 };
 const click = (el: Element) => act(() => void el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })));
 const popups = () => [...document.querySelectorAll<HTMLElement>('[data-coach-cheer]')];
-const popupText = () => popups().map((p) => p.textContent?.replace(/^Coach: /, '').replace(/Undo$/, '').trim());
+const popupText = () => popups().map((p) => p.textContent?.replace(/^Training assistant: /, '').replace(/Undo$/, '').trim());
 const db = () => h.db as LiftDb;
 const account = () => h.account as AccountState;
 

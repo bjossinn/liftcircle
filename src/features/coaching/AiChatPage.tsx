@@ -1,5 +1,5 @@
 /**
- * /coaching/ai — full-screen AI coach conversation.
+ * /coaching/ai — full-screen training assistant conversation.
  * History lives on the server (aiApi.history); the unsent draft and the one unconfirmed message live in
  * account-scoped kv so they survive reloads and offline. Every send carries a client uuid, and Retry reuses it,
  * so the server can de-duplicate.
@@ -38,6 +38,7 @@ import { useExercises } from '@/data/catalog';
 import type { LiftDb } from '@/db/db';
 import type { ActivityLog, CoachStyle, Exercise, ID, ISODate, Program, WeightUnit, WorkoutSession } from '@/domain/types';
 import { AiBadge, AiGuest, AiUnavailable, availabilityCopy, BackButton, ShareButton, ShareWithCoachDialog } from './ai/parts';
+import { EmptyChatArt } from '@/components/illustrations';
 
 export default function AiChatPage() {
   const nav = useNavigate();
@@ -46,7 +47,7 @@ export default function AiChatPage() {
   if (boot.phase === 'loading')
     return (
       <ChatShell>
-        <Spinner label="Loading AI coach" />
+        <Spinner label="Loading training assistant" />
       </ChatShell>
     );
   if (boot.phase === 'guest')
@@ -71,21 +72,21 @@ export default function AiChatPage() {
           <div className="size-12 rounded-2xl bg-surface-2 flex items-center justify-center text-accent">
             <Sparkles className="size-6" aria-hidden />
           </div>
-          <h2 className="text-base font-semibold">{reconsent ? 'Please review the AI coach again' : s && s.consentAt ? 'The AI coach is turned off' : 'Set up your AI coach'}</h2>
+          <h2 className="text-base font-semibold">{reconsent ? 'Please review the training assistant again' : s && s.consentAt ? 'The training assistant is turned off' : 'Set up your training assistant'}</h2>
           <p className="text-sm text-muted max-w-xs">
             {reconsent
-              ? `The AI coach now uses ${providerLabel(boot.availability)}. Check what would be sent and agree again before chatting.`
+              ? `The training assistant now uses ${providerLabel(boot.availability)}. Check what would be sent and agree again before chatting.`
               : s && s.consentAt
               ? 'Turn it back on to keep chatting. Your earlier conversation is still here until you clear it.'
-              : 'A short setup: check your details, choose what the AI coach may use, and agree to how it works.'}
+              : 'A short setup: check your details, choose what the training assistant may use, and agree to how it works.'}
           </p>
           {s && s.consentAt && !reconsent ? (
             <Button variant="primary" onClick={() => nav('/coaching/ai/settings')}>
-              Open AI coach settings
+              Open training assistant settings
             </Button>
           ) : (
             <Button variant="primary" onClick={() => nav('/coaching/ai/setup')}>
-              Set up AI coach
+              Set up training assistant
             </Button>
           )}
         </div>
@@ -102,7 +103,7 @@ function ChatShell({ children, menu }: { children: ReactNode; menu?: ReactNode }
         <div className="mx-auto max-w-2xl flex items-center gap-1 px-2 min-h-14">
           <BackButton />
           <div className="flex-1 min-w-0 flex items-center gap-2 px-1">
-            <h1 className="text-lg font-semibold truncate">AI coach</h1>
+            <h1 className="text-lg font-semibold truncate">Training assistant</h1>
             <AiBadge />
           </div>
           {menu}
@@ -271,7 +272,7 @@ function Chat({
     setBusy('pause');
     try {
       setSettings(await aiApi.saveSettings({ paused: next }));
-      toast.show(next ? 'AI coach paused' : 'AI coach resumed', { tone: 'success' });
+      toast.show(next ? 'Training assistant paused' : 'Training assistant resumed', { tone: 'success' });
       setMenuOpen(false);
     } catch (e) {
       toast.show(classifyAiError(e).message, { tone: 'error' });
@@ -297,7 +298,7 @@ function Chat({
   }
 
   const menu = (
-    <IconButton label="AI coach menu" onClick={() => setMenuOpen(true)}>
+    <IconButton label="Training assistant menu" onClick={() => setMenuOpen(true)}>
       <MoreVertical className="size-5" />
     </IconButton>
   );
@@ -310,7 +311,7 @@ function Chat({
         {offline && (
           <Notice tone="warn" className="flex gap-2 items-start">
             <CloudOff className="size-4 mt-0.5 shrink-0" aria-hidden />
-            <span>You’re offline. Keep writing — your draft is saved on this device and you can send it when you’re back online.</span>
+            <span>You’re offline. Keep writing: your draft is saved on this device and you can send it when you’re back online.</span>
           </Notice>
         )}
         {!offline && providerDown && (
@@ -327,7 +328,7 @@ function Chat({
         {paused && (
           <Notice tone="info" className="flex gap-2 items-center">
             <Pause className="size-4 shrink-0" aria-hidden />
-            <span className="flex-1">The AI coach is paused. It won’t read your data or reply until you resume.</span>
+            <span className="flex-1">The training assistant is paused. It won’t read your data or reply until you resume.</span>
             <Button size="sm" variant="primary" loading={busy === 'pause'} onClick={() => void setPaused(false)}>
               Resume
             </Button>
@@ -335,7 +336,7 @@ function Chat({
         )}
         {(limitReached || sendError?.kind === 'rate_limited') && (
           <Notice tone="warn">
-            You’ve reached today’s AI coach limit{uLine ? ` (${uLine})` : ''}. It resets tomorrow — your message is kept.
+            You’ve reached today’s training assistant limit{uLine ? ` (${uLine})` : ''}. It resets tomorrow: your message is kept.
           </Notice>
         )}
         {historyNote && <Notice>{historyNote}</Notice>}
@@ -349,6 +350,9 @@ function Chat({
           <>
             {conversation.length === 0 && settings && (
               <>
+                <div className="w-32 mx-auto mb-3">
+                  <EmptyChatArt />
+                </div>
                 <WelcomeMessage
                   settings={settings}
                   goal={account.profile.goal}
@@ -426,7 +430,7 @@ function Chat({
         )}
         <form onSubmit={submit} className="flex items-end gap-2">
           <label htmlFor="ai-composer" className="sr-only">
-            Message the AI coach
+            Message the training assistant
           </label>
           <textarea
             id="ai-composer"
@@ -435,37 +439,37 @@ function Chat({
             maxLength={AI_MESSAGE_MAX}
             disabled={!loaded}
             rows={Math.min(6, Math.max(1, draft.split('\n').length))}
-            placeholder={pending ? 'Waiting for your last message…' : 'Ask your AI coach…'}
+            placeholder={pending ? 'Waiting for your last message…' : 'Ask your training assistant…'}
             onChange={(e) => updateDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit();
             }}
             aria-describedby="ai-composer-hint"
-            className="flex-1 min-h-11 max-h-40 rounded-xl bg-surface-2 border border-line px-3 py-2.5 text-[16px] text-ink placeholder:text-faint focus:border-accent focus:outline-none resize-none"
+            className="flex-1 min-h-11 max-h-40 rounded-xl bg-field border border-line-input px-3 py-2.5 text-[16px] text-ink placeholder:text-faint focus:border-accent resize-none"
           />
-          <IconButton type="submit" label="Send" disabled={!canSend} className={cx(canSend && 'bg-accent text-accent-ink hover:bg-accent-strong')}>
+          <IconButton type="submit" label="Send" disabled={!canSend} className={cx(canSend && 'ember-fill')}>
             <SendHorizontal className="size-5" />
           </IconButton>
         </form>
         <p id="ai-composer-hint" className="text-[11px] text-faint mt-1 mb-1">
           {offline
-            ? 'Offline — draft saved on this device.'
+            ? 'Offline: draft saved on this device.'
             : paused
-              ? 'Paused — resume to send.'
+              ? 'Paused: resume to send.'
               : pending?.status === 'failed'
                 ? 'Retry or edit your last message before sending another.'
                 : `AI replies are suggestions, not medical advice.${uLine ? ` ${uLine}.` : ''}`}
         </p>
       </div>
 
-      <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title="AI coach">
+      <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title="Training assistant">
         {uLine && <p className="text-sm text-muted mb-2">{uLine}</p>}
         <div className="-mx-5">
           <ListRow left={<Settings2 className="size-5 text-muted" />} title="Settings" subtitle="Data access, notes, pause or turn off" onClick={() => nav('/coaching/ai/settings')} />
           <ListRow left={<Sparkles className="size-5 text-muted" />} title="AI suggestions" subtitle="Suggested plan changes to review" onClick={() => nav('/coaching/ai/proposals')} />
           <ListRow
             left={paused ? <Play className="size-5 text-muted" /> : <Pause className="size-5 text-muted" />}
-            title={paused ? 'Resume AI coach' : 'Pause AI coach'}
+            title={paused ? 'Resume training assistant' : 'Pause training assistant'}
             subtitle={paused ? 'Start replying again' : 'Stop using your data and replying until you resume'}
             onClick={() => (busy ? undefined : void setPaused(!paused))}
           />
@@ -481,7 +485,7 @@ function Chat({
         busy={busy === 'clear'}
         onCancel={() => setConfirmClear(false)}
         onConfirm={() => void clearHistory()}
-        body="This deletes your AI coach messages from your account and this device. Your AI coach notes, suggestions you applied, and your plan are not affected. It can’t be undone."
+        body="This deletes your training assistant messages from your account and this device. Your training assistant notes, suggestions you applied, and your plan are not affected. It can’t be undone."
       />
 
       {share && coach && <ShareWithCoachDialog key={share.key} open text={share.text} relationship={coach} onClose={() => setShare(null)} />}
@@ -510,12 +514,12 @@ function WelcomeMessage({
   const record = settings.scopes.training ? safeRecord(sessions, byId, unit, today) : null;
   const w = buildWelcome({ scopes: settings.scopes, goal, displayName, hour: localHour(timeZone), style, record, program, sessions, activities, today, weekStart });
   return (
-    <article aria-label="AI coach welcome" className="max-w-[92%] mb-4">
+    <article aria-label="Training assistant welcome" className="max-w-[92%] mb-4">
       <div className="flex items-center gap-2 mb-1">
         <span className="size-6 rounded-full bg-surface-3 flex items-center justify-center text-info" aria-hidden>
           <Bot className="size-3.5" />
         </span>
-        <span className="text-sm font-semibold">AI coach</span>
+        <span className="text-sm font-semibold">Training assistant</span>
         <AiBadge />
       </div>
       <div className="rounded-2xl rounded-tl-md bg-surface border border-line px-3.5 py-2.5 text-[15px] space-y-1.5">
@@ -581,7 +585,7 @@ function MessageItem({
           )}
           {pending?.status === 'failed' && (
             <div className="mt-1 flex flex-wrap items-center justify-end gap-1">
-              <span className="text-xs text-danger">Not sent{pending.error ? ` — ${pending.error}` : ''}</span>
+              <span className="text-xs text-danger">Not sent{pending.error ? `: ${pending.error}` : ''}</span>
               <Button size="sm" variant="secondary" icon={<RotateCcw className="size-4" />} onClick={onRetry} disabled={retryDisabled}>
                 Retry
               </Button>
@@ -598,12 +602,12 @@ function MessageItem({
   const whyText = m.why ? extractOpenLinks(humanizeDates(m.why, week.today)).text : '';
   return (
     <li>
-      <article aria-label="AI coach message" className="max-w-[92%]">
+      <article aria-label="Training assistant message" className="max-w-[92%]">
         <div className="flex items-center gap-2 mb-1">
           <span className="size-6 rounded-full bg-surface-3 flex items-center justify-center text-info" aria-hidden>
             <Bot className="size-3.5" />
           </span>
-          <span className="text-sm font-semibold">AI coach</span>
+          <span className="text-sm font-semibold">Training assistant</span>
           <AiBadge />
         </div>
         <div className="rounded-2xl rounded-tl-md bg-surface border border-line px-3.5 py-2.5 text-[15px]" data-testid="ai-message-body">
@@ -649,12 +653,12 @@ function MessageItem({
             <Sparkles className="size-5 text-accent shrink-0 mt-0.5" aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block font-semibold text-[15px]">
-                {proposal && !proposal.baseProgramId && proposal.target !== 'for_coach_review' ? 'Add to my program — review' : 'Suggested plan change — review'}
+                {proposal && !proposal.baseProgramId && proposal.target !== 'for_coach_review' ? 'Add to my program: review' : 'Suggested plan change: review'}
               </span>
               <span className="block text-xs text-muted mt-0.5">
                 {proposal
                   ? `${proposal.program.name}${proposal.changeSummary[0] ? ` · ${proposal.changeSummary[0]}` : ''}`
-                  : 'An AI suggestion. Preview it, then add it to your program — nothing changes until you do.'}
+                  : 'An AI suggestion. Preview it, then add it to your program. Nothing changes until you do.'}
               </span>
             </span>
           </Link>

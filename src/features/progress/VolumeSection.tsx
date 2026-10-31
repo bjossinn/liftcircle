@@ -91,7 +91,7 @@ export function VolumeSection({ d }: { d: ProgressData }) {
                   <XAxis dataKey="week" tickFormatter={shortDate} {...axisProps(c)} interval="preserveStartEnd" minTickGap={16} />
                   <YAxis {...axisProps(c)} width={56} tickFormatter={(v: number) => (v >= 1000 ? `${round(v / 1000, 1)}k` : String(v))} />
                   <Tooltip cursor={{ fill: c.accentSoft }} content={(p) => <ChartTip {...p} labelFmt={weekLabel} valueFmt={(v) => `${fmtInt(v)} ${unit}`} />} />
-                  <Bar dataKey="value" name={b.label} fill={bucket === 'freeWeightKg' ? c.accent : bucket === 'machineKg' ? c.info : c.warn} radius={[4, 4, 0, 0]} isAnimationActive={chartAnimation()} />
+                  <Bar dataKey="value" name={b.label} fill={bucket === 'freeWeightKg' ? c.series[0] : bucket === 'machineKg' ? c.series[1] : c.series[2]} radius={[4, 4, 0, 0]} isAnimationActive={chartAnimation()} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartFigure>

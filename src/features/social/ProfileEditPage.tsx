@@ -216,7 +216,7 @@ function ProfileForm({ meId }: { meId: string }) {
                 <Check className="size-3" aria-hidden /> Available
               </span>
             ) : availability === 'error' ? (
-              'Couldn’t check right now — we’ll check when you save.'
+              'Couldn’t check right now. We’ll check when you save.'
             ) : (
               '3–20 characters: lowercase letters, numbers, underscores. Friends find you by this exact name.'
             )

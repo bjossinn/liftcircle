@@ -1,8 +1,26 @@
 # Build status
 
-_Last updated: 30 Oct 2026 · version 0.3.0 (repair & audit release — see “v0.3.0 repairs” below and docs/AUDIT_2026-10-29.md; 0.2.0 added human coaches, coach directory and AI coach)_
+_Last updated: 31 Oct 2026 · version 1.0.0 (Hard Earned rebrand, see below). Earlier: 30 Oct 2026 · version 0.3.0 (repair & audit release — see “v0.3.0 repairs” below and docs/AUDIT_2026-10-29.md; 0.2.0 added human coaches, coach directory and training assistant)_
 
 Status labels used here: ✅ **tested** means an automated test ran and passed; 🟡 **built, not tested here** means it is implemented but could only be checked by reading the code or by a manual pass in an emulated browser; ⏳ **needs your setup** means it needs external accounts or physical devices.
+
+## 1.0.0: Hard Earned rebrand (31 Oct 2026)
+
+Rebrand from the previous name to **Hard Earned** (brand kit in `brand/hard-earned/`): name, colours (dark flagship and
+light), icons, fonts (Inter, Barlow Semi Condensed), shape, motion and copy tone. No layout, route, feature, data or
+training-logic changes. One additive migration changes four SQL functions' user-visible strings. Includes the
+visual-refresh work (themes, first-run picker) and main up to 0.9.0.
+
+| Suite | Command | Result |
+|---|---|---|
+| TypeScript | `npm run typecheck` | ✅ 0 errors |
+| Unit and UI | `npx vitest run` | ✅ 1191 / 1191 (53 files), incl. 367 brand-kit contrast checks |
+| Build | `npm run build` | ✅ precache 191 entries (~3.76 MB) |
+| e2e | `npm run test:e2e` | ⚠️ 26 / 27: `units-backup` unit-switch race, also failing on main |
+| Database / RLS, AI DB | `npm run test:rls`, `npm run test:ai-db` | ⏳ not run locally (no PostgreSQL); CI runs them |
+
+Details: docs/VERIFICATION_REPORT.md and docs/BRAND_AUDIT.md (rename counts, the exact list of kept references, owner
+tasks). Screenshots: docs/screenshots/hard-earned/.
 
 ## Verification results (all run in this build environment, 29–30 Oct 2026, v0.3.0)
 
@@ -11,7 +29,7 @@ Status labels used here: ✅ **tested** means an automated test ran and passed; 
 | TypeScript (app + tooling + tests) | `npm run typecheck` | ✅ 0 errors |
 | Unit tests (Vitest, jsdom + fake-indexeddb; backends **mocked**) | `npx vitest run` | ✅ **573 / 573** in 33 files |
 | Database / RLS (real PostgreSQL 16 with Supabase auth/storage stubs, all 15 migrations) | `npm run test:rls` | ✅ **478 / 478**; coaching matrix 321/321 cells; 24 audit + 9 public-preview tests |
-| AI coach database checks (same throwaway PostgreSQL) | `npm run test:ai-db` | ✅ **19 / 19** |
+| Training assistant database checks (same throwaway PostgreSQL) | `npm run test:ai-db` | ✅ **19 / 19** |
 | Browser e2e (Playwright, Chromium, Pixel 7 emulation, production build + service worker) | `npm run test:e2e` | ✅ **25 / 25** |
 | Production build | `npm run build` | ✅ (PWA precache 186 entries, ~2.4 MB; CSP inline-hash check passes) |
 | Live schema vs repo | `tests/live/schema-fingerprint.sql` in the SQL editor vs `node tests/live/schema-fingerprint.mjs` | ✅ identical at migration 20261029000004 (164 functions, 71 policies + expressions, 45 tables' RLS, grants, 5 buckets); deploy file reproduces the full-repo fingerprint |
@@ -47,7 +65,7 @@ An independent review of the sync, auth and logger code found 6 real bugs: lost-
 **Done (all §3–§17 areas):**
 
 - **Foundation**
-  - Design system with a dark graphite theme and light/system themes.
+  - Design system: the Hard Earned brand (1.0.0), dark (flagship) and light themes plus Match my phone.
   - Six tabs (Coaching added in 0.2.0) plus secondary navigation, a persistent "Resume workout" bar, offline/update/sync banners, safe areas, focus states, reduced motion.
 - **Accounts**
   - Email sign-up, verification, sign-in and password reset (PKCE flow).
@@ -88,7 +106,7 @@ Full findings matrix, capability matrix and commands: **docs/AUDIT_2026-10-29.md
 - **Split choice:** an explicit split selector (2 days: Full-body A/B or Upper/Lower; 3 days: Full body, Upper/Lower/Full
   or Push/Pull/Legs; more at higher frequencies) saved in the draft and the program; "Change split" is separate from
   "Shuffle exercises"; no hidden variant parity.
-- **AI coach:** an immediate, app-rendered welcome; short direct answers with a "Why this?" expansion; this week's real
+- **training assistant:** an immediate, app-rendered welcome; short direct answers with a "Why this?" expansion; this week's real
   plan state in context; typed settings beat stale notes; temporary week plans ("I can only train twice this week")
   with **Apply to this week** / Undo, never touching the baseline plan.
 - **Logging:** typed values saved without blur (debounce + local draft + flush on every exit); shared set validation
@@ -140,7 +158,7 @@ Contracts: docs/COACHING_INTERFACES.md · backend: docs/BACKEND.md §8 · AI: do
 - **One active plan:** `Program.managedBy` marks self / coach / AI. Today, Train and the program screen label coach and
   AI plans; "Make it self-managed" is an explicit choice. Accepting creates a new version (stale proposals are refused
   on the device *and* on the server); an AI suggestion can't replace a coach-managed plan unless the user switches.
-- **AI coach:** setup + consent (to the named provider; a later provider switch asks users to agree again) with data-category controls, pause/disable, persistent chat with labelled AI
+- **training assistant:** setup + consent (to the named provider; a later provider switch asks users to agree again) with data-category controls, pause/disable, persistent chat with labelled AI
   messages, grounding chips, suggested questions, check-in review, structured proposals validated server-side
   (exercise ids, owned equipment, exclusions, ranges, schedule, base version), pending suggestions list. The provider
   (OpenAI Chat Completions or Anthropic Messages API, chosen by env) is called only from the `ai-coach` function (key in function secrets), with per-user daily limits,
@@ -199,7 +217,7 @@ live Nominatim; email delivery of nothing new (coaching notifications are in-app
 
 - A Supabase project: `supabase db push` (now 15 migrations), load `seed.sql`, deploy 6 functions, set `CLEANUP_SECRET`, configure auth redirect URLs and SMTP. See docs/SETUP.md §2–4 and §7.
 - First admin: one SQL insert into `public.app_roles` (docs/SETUP.md §7.3).
-- Optional: `GEOCODER` secrets for distance search; an **OpenAI Platform API key** (or Anthropic Console key) for the AI coach — API use is billed per token, separately from ChatGPT/Claude.ai subscriptions.
+- Optional: `GEOCODER` secrets for distance search; an **OpenAI Platform API key** (or Anthropic Console key) for the training assistant — API use is billed per token, separately from ChatGPT/Claude.ai subscriptions.
 - A Netlify site with the two `VITE_SUPABASE_*` env vars. See docs/SETUP.md §5.
 - Three confirmed test users for `npm run test:live`.
 

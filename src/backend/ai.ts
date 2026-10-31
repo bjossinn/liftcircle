@@ -34,8 +34,8 @@ export class AiError extends BackendError {
 const OFFLINE = 'You appear to be offline. Check your connection and try again.';
 const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 
-async function rpc<T>(fn: string, args?: Record<string, unknown>, fallback = 'Couldn’t reach the AI coach. Please try again.'): Promise<T> {
-  if (!backendConfigured) throw new AiError('The AI coach isn’t set up on this server.', 'backend_missing', undefined, 'backend_missing');
+async function rpc<T>(fn: string, args?: Record<string, unknown>, fallback = 'Couldn’t reach the training assistant. Please try again.'): Promise<T> {
+  if (!backendConfigured) throw new AiError('The training assistant isn’t set up on this server.', 'backend_missing', undefined, 'backend_missing');
   let res: { data: unknown; error: unknown };
   try {
     res = await requireSupabase().rpc(fn, args);
@@ -69,25 +69,25 @@ async function mapInvokeError(error: unknown): Promise<BackendError> {
     }
     const s = ctx.status;
     if (s === 401) return new AiError('Your session has expired. Please sign in again.', 'auth', 401);
-    if (s === 429) return new AiError(body.error || 'You’ve reached today’s AI coach limit.', 'rate_limited', 429, 'rate_limited', body.usage);
-    if (s === 409) return new AiError(body.error || 'The AI coach is turned off.', body.code || 'ai_disabled', 409, 'disabled');
+    if (s === 429) return new AiError(body.error || 'You’ve reached today’s training assistant limit.', 'rate_limited', 429, 'rate_limited', body.usage);
+    if (s === 409) return new AiError(body.error || 'The training assistant is turned off.', body.code || 'ai_disabled', 409, 'disabled');
     if (s === 503 || body.code === 'ai_unavailable') {
       const reason: Unavailable = body.reason === 'not_configured' ? 'not_configured' : 'provider_down';
-      return new AiError(body.error || 'The AI coach is unavailable right now.', 'ai_unavailable', s, reason);
+      return new AiError(body.error || 'The training assistant is unavailable right now.', 'ai_unavailable', s, reason);
     }
-    if (s === 404) return new AiError('The AI coach isn’t deployed on this server yet.', 'ai_unavailable', 404, 'backend_missing');
-    return new AiError(body.error || 'Couldn’t reach the AI coach. Please try again.', body.code || `http_${s}`, s);
+    if (s === 404) return new AiError('The training assistant isn’t deployed on this server yet.', 'ai_unavailable', 404, 'backend_missing');
+    return new AiError(body.error || 'Couldn’t reach the training assistant. Please try again.', body.code || `http_${s}`, s);
   }
   const name = String((error as Error)?.name ?? '');
   const msg = String((error as Error)?.message ?? '');
   if (/FunctionsFetchError|FunctionsRelayError/.test(name) || /Failed to send a request|failed to fetch|network/i.test(msg) || isOffline()) {
     return new AiError(OFFLINE, 'network', undefined, 'offline');
   }
-  return toBackendError(error, 'Couldn’t reach the AI coach. Please try again.');
+  return toBackendError(error, 'Couldn’t reach the training assistant. Please try again.');
 }
 
 async function invoke<T>(body: Record<string, unknown>): Promise<T> {
-  if (!backendConfigured) throw new AiError('The AI coach isn’t set up on this server.', 'backend_missing', undefined, 'backend_missing');
+  if (!backendConfigured) throw new AiError('The training assistant isn’t set up on this server.', 'backend_missing', undefined, 'backend_missing');
   if (isOffline()) throw new AiError(OFFLINE, 'network', undefined, 'offline');
   let res: { data: unknown; error: unknown };
   try {
@@ -226,7 +226,7 @@ export const aiApi: AiApi = {
       if (s.provider) p.consentVersion = `2026-10-29:${s.provider}`;
     }
     const saved = toSettings(await rpc<Record<string, unknown>>('save_ai_settings', { p }));
-    if (!saved) throw new AiError('Couldn’t save AI coach settings.', 'unknown');
+    if (!saved) throw new AiError('Couldn’t save training assistant settings.', 'unknown');
     return saved;
   },
 

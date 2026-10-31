@@ -14,7 +14,7 @@ migrations already applied by hand (including `deploy/2026-10-30_migrations.sql`
 
 ## One-time setup (owner)
 
-1. **Netlify:** Site configuration → Build & deploy → Link repository → GitHub → the LiftCircle repo, branch `main`.
+1. **Netlify:** Site configuration → Build & deploy → Link repository → GitHub → the `bjossinn/liftcircle` repo, branch `main`.
    Then Environment variables: `VITE_SUPABASE_URL = https://haryomdlsgrgrnsbdxui.supabase.co` and
    `VITE_SUPABASE_ANON_KEY = <the publishable key>`. Both are public client settings.
 2. **GitHub repo secrets** (Settings → Secrets and variables → Actions → New repository secret):

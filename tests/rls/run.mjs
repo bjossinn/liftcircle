@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * LiftCircle database authorization tests (`npm run test:rls`).
+ * Hard Earned database authorization tests (`npm run test:rls`).
  *
  * Starts a throwaway PostgreSQL 16 cluster, installs a minimal Supabase stand-in
  * (tests/rls/supabase-stub.sql: roles, auth.uid(), storage schema), applies EVERY migration in

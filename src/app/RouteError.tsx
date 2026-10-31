@@ -11,9 +11,9 @@ export function RouteError() {
   // Every screen is saved for offline use when the app is installed, so a missing screen means either the
   // offline copy hasn't finished downloading (offline) or a newer version replaced this one (online).
   return (
-    <Page title="LiftCircle">
+    <Page title="Hard Earned">
       <ErrorState
-        title={!chunk ? 'Something went wrong' : offline ? 'This screen isn’t available offline yet' : 'LiftCircle was updated'}
+        title={!chunk ? 'Something went wrong' : offline ? 'This screen isn’t available offline yet' : 'Hard Earned was updated'}
         message={
           !chunk
             ? 'Your saved workouts are safe on this device. Try reloading.'

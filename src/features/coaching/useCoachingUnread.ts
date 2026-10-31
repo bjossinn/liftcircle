@@ -13,7 +13,7 @@ import { useCoachOutboxRunner } from '@/coaching/outbox';
 
 export const UNREAD_POLL_MS = 60_000;
 /** Screens dispatch this after marking messages read so the badge refreshes immediately. */
-export const COACHING_UNREAD_EVENT = 'liftcircle:coaching-unread';
+export const COACHING_UNREAD_EVENT = 'hard-earned:coaching-unread';
 
 export function notifyCoachingUnreadChanged() {
   try {

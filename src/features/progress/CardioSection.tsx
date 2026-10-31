@@ -9,7 +9,7 @@ import { formatDistance, fromMeters, round } from '@/domain/units';
 import type { ActivityType } from '@/domain/types';
 import { formatDate, formatMinutes } from '@/lib/dates';
 import { ActivityIcon } from '@/features/activities/icons';
-import { ChartFigure, ChartTip, axisProps, chartAnimation, shortDate, useChartColors, weekLabel } from './charts';
+import { ChartFigure, ChartTip, axisProps, chartAnimation, seriesLine, shortDate, useChartColors, weekLabel } from './charts';
 import { fmtInt, type ProgressData } from './shared';
 
 export function CardioSection({ d }: { d: ProgressData }) {
@@ -91,7 +91,7 @@ export function CardioSection({ d }: { d: ProgressData }) {
               <XAxis dataKey="week" tickFormatter={shortDate} {...axisProps(c)} interval="preserveStartEnd" minTickGap={16} />
               <YAxis {...axisProps(c)} width={48} />
               <Tooltip cursor={{ fill: c.accentSoft }} content={(p) => <ChartTip {...p} labelFmt={weekLabel} valueFmt={(v) => (metric === 'minutes' ? `${v} min` : `${v} ${du}`)} />} />
-              <Bar dataKey="value" name={metric === 'minutes' ? 'Minutes' : 'Distance'} fill={c.info} radius={[4, 4, 0, 0]} isAnimationActive={chartAnimation()} />
+              <Bar dataKey="value" name={metric === 'minutes' ? 'Minutes' : 'Distance'} fill={c.series[0]} radius={[4, 4, 0, 0]} isAnimationActive={chartAnimation()} />
             </BarChart>
           </ResponsiveContainer>
         </ChartFigure>
@@ -124,7 +124,7 @@ export function CardioSection({ d }: { d: ProgressData }) {
                     cursor={{ stroke: c.line }}
                     content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => (isSpeed ? `${v} ${paceUnit}` : `${formatPaceSec(v)} ${paceUnit}`)} />}
                   />
-                  <Line type="monotone" dataKey="value" name={isSpeed ? 'Speed' : 'Pace'} stroke={c.info} strokeWidth={2} dot={{ r: 4, strokeWidth: 2, stroke: c.surface }} activeDot={{ r: 6 }} isAnimationActive={chartAnimation()} />
+                  <Line type="monotone" dataKey="value" name={isSpeed ? 'Speed' : 'Pace'} strokeWidth={2} isAnimationActive={chartAnimation()} {...seriesLine(0, c)} />
                 </LineChart>
               </ResponsiveContainer>
             </ChartFigure>

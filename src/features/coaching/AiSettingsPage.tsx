@@ -1,5 +1,5 @@
 /**
- * /coaching/ai/settings — turn the AI coach on/off or pause it, change what data it may use,
+ * /coaching/ai/settings — turn the training assistant on/off or pause it, change what data it may use,
  * view/edit its notes (its only persistent memory), see today's usage and how data is kept.
  */
 import { useEffect, useState, type ReactNode } from 'react';
@@ -23,38 +23,38 @@ export default function AiSettingsPage() {
 
   if (boot.phase === 'loading')
     return (
-      <Page title="AI coach settings" back={back}>
+      <Page title="Training assistant settings" back={back}>
         <Spinner label="Loading settings" />
       </Page>
     );
   if (boot.phase === 'guest')
     return (
-      <Page title="AI coach settings" back={back}>
+      <Page title="Training assistant settings" back={back}>
         <AiGuest />
       </Page>
     );
   const a = boot.availability;
   if (isHardUnavailable(a) || (!a.available && a.reason === 'offline'))
     return (
-      <Page title="AI coach settings" back={back}>
+      <Page title="Training assistant settings" back={back}>
         <AiUnavailable reason={(a as Extract<AiAvailability, { available: false }>).reason} onRetry={() => void reload()} />
       </Page>
     );
   if (boot.settings === undefined)
     return (
-      <Page title="AI coach settings" back={back}>
-        <ErrorState title="Couldn’t load your AI coach settings" message={boot.settingsError} onRetry={() => void reload()} />
+      <Page title="Training assistant settings" back={back}>
+        <ErrorState title="Couldn’t load your training assistant settings" message={boot.settingsError} onRetry={() => void reload()} />
       </Page>
     );
   if (boot.settings === null)
     return (
-      <Page title="AI coach settings" back={back}>
+      <Page title="Training assistant settings" back={back}>
         <div className="flex flex-col items-center text-center px-6 py-10 gap-3">
           <Sparkles className="size-8 text-accent" aria-hidden />
-          <h2 className="text-base font-semibold">You haven’t set up the AI coach</h2>
+          <h2 className="text-base font-semibold">You haven’t set up the training assistant</h2>
           <p className="text-sm text-muted max-w-xs">It’s optional. Set it up to choose what it may use and agree to how it works.</p>
           <Button variant="primary" onClick={() => nav('/coaching/ai/setup')}>
-            Set up AI coach
+            Set up training assistant
           </Button>
         </div>
       </Page>
@@ -102,7 +102,7 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
     if (next === style) return;
     const prev = style;
     setStyle(next);
-    const ok = await save({ coachStyle: next }, 'style', 'Coach style updated');
+    const ok = await save({ coachStyle: next }, 'style', 'Assistant style updated');
     if (!ok) setStyle(prev);
   }
 
@@ -124,10 +124,10 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
   const notesDirty = notes !== (settings.profileNotes ?? '');
 
   return (
-    <Page title="AI coach settings" back={back}>
+    <Page title="Training assistant settings" back={back}>
       <Card className="p-4">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold flex-1">AI coach</h2>
+          <h2 className="font-semibold flex-1">Training assistant</h2>
           <Badge tone={state === 'on' ? 'accent' : state === 'paused' ? 'warn' : 'neutral'}>{state === 'on' ? 'On' : state === 'paused' ? 'Paused' : 'Off'}</Badge>
         </div>
         <p className="text-sm text-muted mt-1">
@@ -139,12 +139,12 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {state === 'on' && (
-            <Button icon={<Pause className="size-4" />} loading={busy === 'state'} onClick={() => void save({ paused: true }, 'state', 'AI coach paused')}>
+            <Button icon={<Pause className="size-4" />} loading={busy === 'state'} onClick={() => void save({ paused: true }, 'state', 'Training assistant paused')}>
               Pause
             </Button>
           )}
           {state === 'paused' && (
-            <Button variant="primary" icon={<Play className="size-4" />} loading={busy === 'state'} onClick={() => void save({ paused: false }, 'state', 'AI coach resumed')}>
+            <Button variant="primary" icon={<Play className="size-4" />} loading={busy === 'state'} onClick={() => void save({ paused: false }, 'state', 'Training assistant resumed')}>
               Resume
             </Button>
           )}
@@ -155,12 +155,12 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
           )}
           {state === 'off' &&
             (settings.consentAt ? (
-              <Button variant="primary" icon={<Power className="size-4" />} loading={busy === 'state'} onClick={() => void save({ enabled: true, paused: false }, 'state', 'AI coach is on')}>
+              <Button variant="primary" icon={<Power className="size-4" />} loading={busy === 'state'} onClick={() => void save({ enabled: true, paused: false }, 'state', 'Training assistant is on')}>
                 Turn on
               </Button>
             ) : (
               <Button variant="primary" onClick={() => nav('/coaching/ai/setup')}>
-                Set up AI coach
+                Set up training assistant
               </Button>
             ))}
           {state !== 'off' && (
@@ -172,7 +172,7 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
         {settings.consentAt && <p className="text-xs text-faint mt-3">You agreed on {new Date(settings.consentAt).toLocaleDateString()}.</p>}
       </Card>
 
-      <SectionTitle id="ai-style">Coach style</SectionTitle>
+      <SectionTitle id="ai-style">Assistant style</SectionTitle>
       <Card className="p-4" aria-labelledby="ai-style">
         <CoachStylePicker value={style} onChange={(n) => void changeStyle(n)} disabled={busy === 'style'} />
         <p className="text-xs text-muted mt-2">Used in chat and for the cheers in the workout logger.</p>
@@ -188,10 +188,10 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
         {settings.scopesChangedAt ? ` Last changed ${new Date(settings.scopesChangedAt).toLocaleString()}.` : ''}
       </p>
 
-      <SectionTitle id="ai-notes">AI coach notes</SectionTitle>
+      <SectionTitle id="ai-notes">Training assistant notes</SectionTitle>
       <Card className="p-4 space-y-3">
         <p className="text-sm text-muted">
-          These notes are the only thing the AI coach remembers about you apart from your conversation. Only you can change them — the AI never edits them.
+          These notes are the only thing the training assistant remembers about you apart from your conversation. Only you can change them. The AI never edits them.
         </p>
         <Textarea label="Notes" value={notes} maxLength={AI_NOTES_MAX} onChange={(e) => setNotes(e.target.value)} hint={`${notes.length} / ${AI_NOTES_MAX}`} />
         <div className="flex gap-2 flex-wrap">
@@ -224,7 +224,7 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
 
       <SectionTitle>Conversation</SectionTitle>
       <Card className="p-4">
-        <p className="text-sm text-muted">Clearing deletes your AI coach messages from your account and this device. Notes and applied plan changes are kept.</p>
+        <p className="text-sm text-muted">Clearing deletes your training assistant messages from your account and this device. Notes and applied plan changes are kept.</p>
         <Button className="mt-3" variant="danger" icon={<Trash2 className="size-4" />} onClick={() => setConfirm('history')}>
           Clear history
         </Button>
@@ -237,24 +237,24 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
       </Card>
 
       {state !== 'off' && (
-        <Notice className="mt-4">The AI coach gives general fitness guidance, not medical advice. For pain, injuries or health conditions, talk to a health professional.</Notice>
+        <Notice className="mt-4">The training assistant gives general fitness guidance, not medical advice. For pain, injuries or health conditions, talk to a health professional.</Notice>
       )}
 
       <ConfirmDialog
         open={confirm === 'off'}
-        title="Turn off the AI coach?"
+        title="Turn off the training assistant?"
         confirmLabel="Turn off"
         danger
         busy={busy === 'state'}
         onCancel={() => setConfirm(null)}
         onConfirm={async () => {
-          if (await save({ enabled: false }, 'state', 'AI coach turned off')) setConfirm(null);
+          if (await save({ enabled: false }, 'state', 'Training assistant turned off')) setConfirm(null);
         }}
         body="It stops reading your data and replying. Your conversation and notes stay in your account until you clear them, and you can turn it back on later."
       />
       <ConfirmDialog
         open={confirm === 'notes'}
-        title="Clear AI coach notes?"
+        title="Clear training assistant notes?"
         confirmLabel="Clear notes"
         danger
         busy={busy === 'clearNotes'}
@@ -265,7 +265,7 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
             setConfirm(null);
           }
         }}
-        body="The AI coach won’t use them any more. Your profile and plan aren’t affected."
+        body="The training assistant won’t use them any more. Your profile and plan aren’t affected."
       />
       <ConfirmDialog
         open={confirm === 'history'}
@@ -275,7 +275,7 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
         busy={busy === 'history'}
         onCancel={() => setConfirm(null)}
         onConfirm={() => void clearHistory()}
-        body="This deletes your AI coach messages from your account and this device. It can’t be undone."
+        body="This deletes your training assistant messages from your account and this device. It can’t be undone."
       />
     </Page>
   );

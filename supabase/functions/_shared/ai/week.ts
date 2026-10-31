@@ -1,5 +1,5 @@
 /**
- * "This week" for the AI coach (pure): which planned sessions of the active plan fall in the user's current
+ * "This week" for the training assistant (pure): which planned sessions of the active plan fall in the user's current
  * week, which are done / left / skipped / moved, which workouts were completed, and which dates are still free.
  * It mirrors the app's scheduler (src/domain/program/schedule.ts plannedSessionsInRange) closely enough for
  * coaching: weekday slots of the current version from the plan's start date, date-specific overrides
@@ -163,7 +163,7 @@ const strList = (v: unknown, maxItems: number, maxLen: number): string[] =>
 export function validateWeekAdjustment(raw: Record<string, unknown>, ctx: WeekToolContext): { action: WeekAdjustmentAction | null; errors: string[] } {
   const ap = ctx.facts.activeProgram;
   const w = ctx.week;
-  if (!ctx.trainingShared) return { action: null, errors: ['Training data is not shared, so this week cannot be planned. Answer in text and suggest sharing Training in AI coach settings.'] };
+  if (!ctx.trainingShared) return { action: null, errors: ['Training data is not shared, so this week cannot be planned. Answer in text and suggest sharing Training in training assistant settings.'] };
   if (!ap || !ap.version || !w) return { action: null, errors: ['The user has no active plan to adjust.'] };
   const errors: string[] = [];
   const target = typeof raw.total_sessions_this_week === 'number' ? raw.total_sessions_this_week : Number(raw.total_sessions_this_week);

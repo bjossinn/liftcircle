@@ -22,7 +22,7 @@ Today the generator forces full-body for 2 lifting days, and for 3 days when exp
 - Tests: every experience level at 2 and 3 days; a fresh wizard and a restored draft with the same visible inputs produce
   the same structure.
 
-## 3. AI coach: greet immediately, coach directly
+## 3. Training assistant: greet immediately, coach directly
 Greeting: after activation, open the conversation and immediately show a brief personalized welcome from permitted
 saved context; same when an enabled, consented user opens an existing empty conversation. An app-rendered contextual
 welcome is acceptable (later coaching must use the real AI). If persisted/model-generated, make creation idempotent

@@ -1,4 +1,4 @@
--- Minimal, faithful stand-in for the parts of a hosted Supabase database that LiftCircle's
+-- Minimal, faithful stand-in for the parts of a hosted Supabase database that Hard Earned's
 -- migrations depend on. Run as the bootstrap superuser (supabase_admin) BEFORE the migrations,
 -- which are then applied as the non-superuser `postgres` role, exactly like `supabase db push`.
 -- NOT a migration: never apply this to a real project.

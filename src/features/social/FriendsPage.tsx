@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Ban, Check, ChevronLeft, Search, Share2, UserMinus, UserPlus, Users, X } from 'lucide-react';
+import { Ban, Check, ChevronLeft, Search, Share2, UserMinus, UserPlus, X } from 'lucide-react';
 import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, IconButton, Input, Notice, Page, Segmented, SectionTitle, Spinner } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { socialApi } from '@/backend/social';
@@ -9,6 +9,7 @@ import type { FriendRequest, FriendStatus, ID, SocialProfile } from '@/domain/ty
 import { friendlyError } from '@/social/pendingPosts';
 import { AccessNotice, Avatar, Time, shareLink, usernameProblem, useSocialAccess } from './common';
 import { useMyProfile } from './useMyProfile';
+import { NoFriendsArt } from '@/components/illustrations';
 
 type Tab = 'friends' | 'requests' | 'blocked';
 type PersonLike = Pick<SocialProfile, 'id' | 'username' | 'displayName' | 'avatarUrl'>;
@@ -116,7 +117,7 @@ function FriendsContent({ meId }: { meId: string }) {
           size="sm"
           className="mt-2"
           icon={<Share2 className="size-4" />}
-          onClick={() => void shareLink(`${publicAppUrl.replace(/\/$/, '')}/u/${encodeURIComponent(me.profile!.username)}`, `${me.profile!.displayName} on LiftCircle`, toast)}
+          onClick={() => void shareLink(`${publicAppUrl.replace(/\/$/, '')}/u/${encodeURIComponent(me.profile!.username)}`, `${me.profile!.displayName} on Hard Earned`, toast)}
         >
           Share my profile link
         </Button>
@@ -141,7 +142,7 @@ function FriendsContent({ meId }: { meId: string }) {
         <Spinner label="Loading friends" />
       ) : tab === 'friends' ? (
         lists.friends.length === 0 ? (
-          <EmptyState icon={<Users className="size-6" aria-hidden />} title="No friends yet" body="Find people by their exact username, or share your profile link with them." />
+          <EmptyState illustration={<NoFriendsArt />} title="No friends yet" body="Training is better together. Find people by their exact username, or share your profile link." />
         ) : (
           <Card className="mt-3 overflow-hidden">
             <ul className="divide-y divide-line">
@@ -313,7 +314,7 @@ function FindByUsername({ meId, onChanged }: { meId: string; onChanged: () => vo
       {searching && <Spinner label="Searching" />}
       {result === 'none' && (
         <p className="text-sm text-muted mt-3" role="status">
-          No one found with the username @{normalized}. Usernames are exact — check the spelling.
+          No one found with the username @{normalized}. Usernames are exact: check the spelling.
         </p>
       )}
       {result === 'self' && (

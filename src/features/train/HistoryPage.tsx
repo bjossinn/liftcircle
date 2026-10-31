@@ -10,6 +10,7 @@ import { addDays, formatDate, formatMinutes, startOfWeek, todayISO, WEEKDAY_SHOR
 import { activityLabel } from '@/domain/activities';
 import { formatDistance } from '@/domain/units';
 import { sessionDurationSec } from '@/domain/stats';
+import { NoWorkoutsArt } from '@/components/illustrations';
 
 type Kind = 'all' | 'workouts' | 'activities';
 interface Item {
@@ -127,12 +128,12 @@ export default function HistoryPage() {
                 className={clsx(
                   'min-h-11 rounded-lg flex flex-col items-center justify-center text-sm tabular',
                   !inMonth && 'opacity-35',
-                  day === d ? 'bg-accent text-accent-ink' : d === today ? 'ring-1 ring-accent' : 'hover:bg-surface-2',
+                  day === d ? 'bg-ember text-accent-ink' : d === today ? 'ring-1 ring-accent' : 'hover:bg-surface-2',
                 )}
               >
                 {Number(d.slice(8))}
                 <span className="flex gap-0.5 h-1.5 mt-0.5">
-                  {hasW && <span className={clsx('size-1.5 rounded-full', day === d ? 'bg-accent-ink' : 'bg-accent')} />}
+                  {hasW && <span className={clsx('size-1.5 rounded-full', day === d ? 'bg-accent-ink' : 'bg-ember')} />}
                   {hasA && <span className={clsx('size-1.5 rounded-full', day === d ? 'bg-accent-ink' : 'bg-info')} />}
                 </span>
               </button>
@@ -141,7 +142,7 @@ export default function HistoryPage() {
         </div>
         <div className="flex gap-4 justify-center text-[11px] text-muted mt-2">
           <span className="flex items-center gap-1">
-            <span className="size-1.5 rounded-full bg-accent" /> Workout
+            <span className="size-1.5 rounded-full bg-ember" /> Workout
           </span>
           <span className="flex items-center gap-1">
             <span className="size-1.5 rounded-full bg-info" /> Activity
@@ -175,7 +176,7 @@ export default function HistoryPage() {
       </div>
 
       {items.length === 0 ? (
-        <EmptyState icon={<Dumbbell className="size-6" />} title="No history yet" body="Finished workouts and logged activities show up here." action={<Button variant="primary" onClick={() => nav('/train')}>Start training</Button>} />
+        <EmptyState illustration={<NoWorkoutsArt />} title="Your training history starts with your first workout." body="Finished workouts and activities collect here." action={<Button variant="primary" onClick={() => nav('/train')}>Log a workout</Button>} />
       ) : filtered.length === 0 ? (
         <EmptyState title="No matches" body="Try another search or filter." />
       ) : (

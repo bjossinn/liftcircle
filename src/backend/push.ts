@@ -7,7 +7,7 @@ import { BackendError, toBackendError } from './syncRemote';
 import { DEFAULT_PUSH_PREFS, PUSH_KINDS, type PushKind, type PushPrefs, type ScheduledJob } from '@/domain/pushSchedule';
 
 async function rpc<T>(fn: string, args?: Record<string, unknown>): Promise<T> {
-  if (!backendConfigured) throw new BackendError('Notifications need the LiftCircle server.', 'backend_missing');
+  if (!backendConfigured) throw new BackendError('Notifications need the Hard Earned server.', 'backend_missing');
   const { data, error } = await requireSupabase().rpc(fn, args);
   if (error) throw toBackendError(error, 'Couldn’t update notifications. Please try again.');
   return data as T;

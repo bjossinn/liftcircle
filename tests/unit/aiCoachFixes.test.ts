@@ -1,5 +1,5 @@
 /**
- * AI coach fixes from live testing (0.7.0) — MOCKED provider (injected fetch), in-memory data, the app's REAL recipe
+ * training assistant fixes from live testing (0.7.0) — MOCKED provider (injected fetch), in-memory data, the app's REAL recipe
  * and ingredient catalog:
  *  - meal plans are built on the server from intent with the app's own planner (parity with the app), with nutrition
  *    shared and a protein target; a vague request still gets a plan; impossible constraints give a clear reason; a model
@@ -199,7 +199,7 @@ describe('MOCKED meal plans are built on the server', () => {
   });
 
   it('without sharing or targets → the missing-data reason with its link (no plan)', () => {
-    expect(buildMealPlanAction({}, planCtx(account(), { nutrition: { ...nutritionStatus(account(), false) } })).errors[0]).toMatch(/AI coach settings/);
+    expect(buildMealPlanAction({}, planCtx(account(), { nutrition: { ...nutritionStatus(account(), false) } })).errors[0]).toMatch(/training assistant settings/);
     const none = account({ nutrition: { mode: 'none' } });
     expect(buildMealPlanAction({}, planCtx(none)).errors[0]).toMatch(/Set your targets/);
   });
@@ -308,7 +308,7 @@ describe('MOCKED reply text must match the action card', () => {
 describe('MOCKED follow-ups resume the open request', () => {
   const blockedExchange = (grounding: string[]): StoredMessage[] => [
     { id: mid(80), role: 'user', content: 'make a meal plan for the week and add it', createdAt: '2026-10-29T09:00:00Z' },
-    { id: mid(81), role: 'assistant', content: 'I can’t see your nutrition yet. You can share it under AI coach settings.\n[[open:/coaching/ai/settings|Change what the coach can see]]', createdAt: '2026-10-29T09:00:05Z', grounding },
+    { id: mid(81), role: 'assistant', content: 'I can’t see your nutrition yet. You can share it under training assistant settings.\n[[open:/coaching/ai/settings|Change what the coach can see]]', createdAt: '2026-10-29T09:00:05Z', grounding },
   ];
 
   it('findOpenRequest / isFollowUp', () => {

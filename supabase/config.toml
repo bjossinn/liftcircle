@@ -80,7 +80,7 @@ verify_jwt = false
 [functions.cleanup-media]
 verify_jwt = false
 
-# AI coach (OpenAI or Anthropic, chosen by secrets). See docs/AI_COACH.md.
+# training assistant (OpenAI or Anthropic, chosen by secrets). See docs/AI_COACH.md.
 [functions.ai-coach]
 verify_jwt = false
 

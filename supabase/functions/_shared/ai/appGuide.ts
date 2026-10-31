@@ -1,5 +1,5 @@
 /**
- * App guide for the AI coach (pure, dependency-free; shared by the ai-coach function and the app).
+ * App guide for the training assistant (pure, dependency-free; shared by the ai-coach function and the app).
  *
  *  - APP_GUIDE: one compact line per main screen (path, what you do there, how to get there from the tab bar). It is
  *    put into the system prompt so "where do I turn that on?" gets a correct answer with a link. Keep it in sync with
@@ -52,14 +52,14 @@ export const APP_GUIDE: GuideEntry[] = [
   },
   { path: '/settings/data', what: 'Your data: export, backups, import, delete account', how: 'Settings → Your data' },
   { path: '/install', what: 'Install the app on your phone (Home Screen)', how: 'Settings → Install on your phone' },
-  { path: '/coaching', what: 'Coaching hub: AI coach, your human coach, find a coach', how: 'Coaching tab' },
+  { path: '/coaching', what: 'Coaching hub: Training assistant, your human coach, find a coach', how: 'Coaching tab' },
   { path: '/coaching/find', what: 'Find a human coach', how: 'Coaching tab → Find a coach' },
   { path: '/coaching/my', what: 'Your human coach and their plan', how: 'Coaching tab → My coach' },
   { path: '/coaching/apply', what: 'Apply to become a coach', how: 'Coaching tab → Become a coach' },
-  { path: '/coaching/ai', what: 'This AI coach chat', how: 'Coaching tab → AI coach' },
-  { path: '/coaching/ai/setup', what: 'AI coach setup and consent', how: 'Coaching tab → AI coach → Set up' },
-  { path: '/coaching/ai/settings', what: 'AI coach settings: what the AI can see (Profile, Training, Measurements, Nutrition), notes, coach style, pause', how: 'AI coach → ⋮ → Settings' },
-  { path: '/coaching/ai/proposals', what: 'AI suggestions: plan changes to review and apply', how: 'AI coach → ⋮ → AI suggestions' },
+  { path: '/coaching/ai', what: 'This training assistant chat', how: 'Coaching tab → training assistant' },
+  { path: '/coaching/ai/setup', what: 'Training assistant setup and consent', how: 'Coaching tab → training assistant → Set up' },
+  { path: '/coaching/ai/settings', what: 'Training assistant settings: what the AI can see (Profile, Training, Measurements, Nutrition), notes, assistant style, pause', how: 'Training assistant → ⋮ → Settings' },
+  { path: '/coaching/ai/proposals', what: 'AI suggestions: plan changes to review and apply', how: 'Training assistant → ⋮ → AI suggestions' },
 ];
 
 /**

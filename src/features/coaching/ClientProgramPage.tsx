@@ -204,7 +204,7 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
     try {
       const saved = await coachingApi.saveProposal(payload()); // idempotent on id
       setServerStatus(saved.status);
-      toast.show('Draft saved — the client can’t see drafts.', { tone: 'success' });
+      toast.show('Draft saved: the client can’t see drafts.', { tone: 'success' });
       await reloadProposals();
     } catch (e) {
       toast.show(coachingError(e, 'Couldn’t save the draft. It’s still kept on this device.'), { tone: 'error' });
@@ -223,7 +223,7 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
       toast.show(`Sent to ${who}. Nothing changes until they accept.`, { tone: 'success' });
       await reloadProposals();
     } catch (e) {
-      toast.show(coachingError(e, 'Couldn’t send. Your draft is kept on this device — try again.'), { tone: 'error' });
+      toast.show(coachingError(e, 'Couldn’t send. Your draft is kept on this device. Try again.'), { tone: 'error' });
     } finally {
       setBusy(null);
     }
@@ -282,8 +282,8 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
                       baseContent
                         ? base.content
                           ? `Start from version ${base.version}`
-                          : `Start from the version you wrote — ${who} has changed it since (now v${base.version})`
-                        : 'Their plan’s content isn’t available to you — start from a template or the generator and send it as an update'
+                          : `Start from the version you wrote. ${who} has changed it since (now v${base.version})`
+                        : 'Their plan’s content isn’t available to you. Start from a template or the generator and send it as an update'
                     }
                     onClick={baseContent ? () => start(proposedFromVersion(baseContent, base.name), true) : undefined}
                   />
@@ -357,7 +357,7 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
               byId={byId}
               catalog={catalog}
               pickerOnlyIds={BUNDLED_IDS}
-              pickerOnlyNote="Only exercises from the shared catalog can be sent — your client’s app doesn’t have your custom exercises."
+              pickerOnlyNote="Only exercises from the shared catalog can be sent. Your client’s app doesn’t have your custom exercises."
               unit={unit}
               weekStart={account.settings.weekStart}
               experience={answers.experience}
@@ -381,7 +381,7 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
           <SectionTitle>Changes {useBase ? `vs. version ${base!.version}` : ''}</SectionTitle>
           <Card className="px-4 py-3">
             {useBase && !base!.content && base!.approxContent && (
-              <p className="text-xs text-warn mb-2">Compared with the version you wrote — {who} has changed their plan since, so the comparison may miss their own edits.</p>
+              <p className="text-xs text-warn mb-2">Compared with the version you wrote. {who} has changed their plan since, so the comparison may miss their own edits.</p>
             )}
             <ul className="list-disc pl-4 text-sm flex flex-col gap-1">
               {changes.map((c, i) => (
@@ -399,7 +399,7 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
                   <li key={e}>{e}</li>
                 ))}
               </ul>
-              {unknownCustom && <p className="mt-2 text-xs">Custom exercises from your own library can’t be sent — your client doesn’t have them. Pick a catalog exercise instead.</p>}
+              {unknownCustom && <p className="mt-2 text-xs">Custom exercises from your own library can’t be sent. Your client doesn’t have them. Pick a catalog exercise instead.</p>}
             </Notice>
           )}
 
@@ -524,7 +524,7 @@ function TemplatePicker({ open, templates, onClose, onPick }: { open: boolean; t
         </>
       }
     >
-      <p className="text-sm text-muted mb-2">Each session is copied into the client’s plan — editing it there doesn’t change your template.</p>
+      <p className="text-sm text-muted mb-2">Each session is copied into the client’s plan. Editing it there doesn’t change your template.</p>
       <ul className="flex flex-col gap-1" role="group" aria-label="Templates">
         {templates.map((t) => {
           const on = sel.includes(t.id);

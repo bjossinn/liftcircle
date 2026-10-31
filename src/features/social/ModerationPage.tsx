@@ -51,7 +51,7 @@ function ModerationGate() {
   }, [check]);
   if (error) return <ErrorState message={error} onRetry={check} />;
   if (allowed === null) return <Spinner />;
-  if (!allowed) return <EmptyState icon={<ShieldCheck className="size-6" aria-hidden />} title="Moderators only" body="This area is only available to LiftCircle moderators." />;
+  if (!allowed) return <EmptyState icon={<ShieldCheck className="size-6" aria-hidden />} title="Moderators only" body="This area is only available to Hard Earned moderators." />;
   return <ReportQueue />;
 }
 

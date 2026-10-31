@@ -7,7 +7,7 @@ import { RECORD_KIND_LABELS, e1rmEligible, exerciseSeries, exercisesWithHistory,
 import { fromKg, round } from '@/domain/units';
 import { exerciseName } from '@/data/catalog';
 import { formatDate, formatDuration } from '@/lib/dates';
-import { ChartFigure, ChartTip, Legend, axisProps, chartAnimation, shortDate, useChartColors } from './charts';
+import { ChartFigure, ChartTip, Legend, axisProps, chartAnimation, seriesLine, shortDate, useChartColors } from './charts';
 import { conventionNote, type ProgressData } from './shared';
 
 export function ExerciseSection({ d }: { d: ProgressData }) {
@@ -45,7 +45,7 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
   let chart: ReactElement | null = null;
   let summary = '';
   let table: { headers: string[]; rows: (string | number)[][] } = { headers: [], rows: [] };
-  let legend: { label: string; color: string; dashed?: boolean }[] = [];
+  let legend: { label: string; color: string; dashed?: boolean; series?: number }[] = [];
   const data = series.map((p) => ({
     date: p.date,
     top: w(p.topWeightKg),
@@ -57,7 +57,7 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
   }));
   const first = data[0];
   const last = data.at(-1);
-  const lineProps = { type: 'monotone' as const, strokeWidth: 2, dot: { r: 4, strokeWidth: 2, stroke: c.surface }, activeDot: { r: 6 }, isAnimationActive: chartAnimation(), connectNulls: true };
+  const lineProps = { type: 'monotone' as const, strokeWidth: 2, isAnimationActive: chartAnimation(), connectNulls: true };
   const common = (
     <>
       <CartesianGrid vertical={false} stroke={c.line} />
@@ -67,8 +67,8 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
 
   if (tracking === 'weight_reps' || tracking === 'bodyweight_plus') {
     const eligible = ex ? e1rmEligible(ex) : false;
-    legend = [{ label: tracking === 'bodyweight_plus' ? 'Top added load' : 'Top-set weight', color: c.accent }];
-    if (eligible) legend.push({ label: 'Estimated 1RM (Epley)', color: c.info, dashed: true });
+    legend = [{ label: tracking === 'bodyweight_plus' ? 'Top added load' : 'Top-set weight', color: c.series[0], series: 0 }];
+    if (eligible) legend.push({ label: 'Estimated 1RM (Epley)', color: c.series[1], series: 1 });
     const tops = data.filter((x) => x.top != null);
     summary = tops.length
       ? `Top working set went from ${tops[0].top} ${unit} on ${formatDate(tops[0].date)} to ${tops.at(-1)!.top} ${unit} on ${formatDate(tops.at(-1)!.date)} across ${series.length} session${series.length === 1 ? '' : 's'}.${eligible ? ' Estimated 1RM is a calculation, not a tested maximum.' : ''}`
@@ -82,12 +82,12 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
         {common}
         <YAxis {...axisProps(c)} domain={['auto', 'auto']} width={52} unit={` ${unit}`} />
         <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => `${v} ${unit}`} />} />
-        <Line dataKey="top" name={legend[0].label} stroke={c.accent} {...lineProps} />
-        {eligible && <Line dataKey="e1rm" name="Estimated 1RM (Epley)" stroke={c.info} strokeDasharray="5 4" {...lineProps} />}
+        <Line dataKey="top" name={legend[0].label} {...lineProps} {...seriesLine(0, c)} />
+        {eligible && <Line dataKey="e1rm" name="Estimated 1RM (Epley)" {...lineProps} {...seriesLine(1, c)} />}
       </LineChart>
     );
   } else if (tracking === 'reps') {
-    legend = [{ label: 'Best set (reps)', color: c.accent }, { label: 'Total reps', color: c.info }];
+    legend = [{ label: 'Best set (reps)', color: c.series[0], series: 0 }, { label: 'Total reps', color: c.series[1], series: 1 }];
     summary = first && last ? `Best set went from ${first.maxReps} to ${last.maxReps} reps; total reps from ${first.reps} to ${last.reps} across ${series.length} sessions.` : '';
     table = { headers: ['Date', 'Best set', 'Total reps', 'Working sets'], rows: series.map((p) => [formatDate(p.date), p.maxReps, p.totalReps, p.workingSets]) };
     chart = (
@@ -95,12 +95,12 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
         {common}
         <YAxis {...axisProps(c)} allowDecimals={false} width={48} />
         <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => `${v} reps`} />} />
-        <Line dataKey="maxReps" name="Best set (reps)" stroke={c.accent} {...lineProps} />
-        <Line dataKey="reps" name="Total reps" stroke={c.info} strokeDasharray="5 4" {...lineProps} />
+        <Line dataKey="maxReps" name="Best set (reps)" {...lineProps} {...seriesLine(0, c)} />
+        <Line dataKey="reps" name="Total reps" {...lineProps} {...seriesLine(1, c)} />
       </LineChart>
     );
   } else if (tracking === 'assisted') {
-    legend = [{ label: 'Least assistance', color: c.accent }];
+    legend = [{ label: 'Least assistance', color: c.series[0], series: 0 }];
     const pts = data.filter((x) => x.assist != null);
     summary = pts.length ? `Assistance went from ${pts[0].assist} ${unit} to ${pts.at(-1)!.assist} ${unit}. Lower means you are lifting more of your own bodyweight.` : 'No assisted sets with reps in this period.';
     table = { headers: ['Date', `Least assistance (${unit})`, 'Best set (reps)', 'Working sets'], rows: series.map((p, i) => [formatDate(p.date), data[i].assist ?? '–', p.maxReps, p.workingSets]) };
@@ -109,11 +109,11 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
         {common}
         <YAxis {...axisProps(c)} domain={[0, 'auto']} width={52} unit={` ${unit}`} />
         <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => `${v} ${unit}`} />} />
-        <Line dataKey="assist" name="Least assistance" stroke={c.accent} {...lineProps} />
+        <Line dataKey="assist" name="Least assistance" {...lineProps} {...seriesLine(0, c)} />
       </LineChart>
     );
   } else {
-    legend = [{ label: 'Longest set', color: c.accent }];
+    legend = [{ label: 'Longest set', color: c.series[0], series: 0 }];
     const pts = data.filter((x) => x.longest != null);
     summary = pts.length ? `Longest set went from ${formatDuration(pts[0].longest!)} to ${formatDuration(pts.at(-1)!.longest!)} across ${pts.length} sessions.` : 'No timed sets in this period.';
     table = { headers: ['Date', 'Longest set', 'Working sets'], rows: series.map((p) => [formatDate(p.date), p.longestSec ? formatDuration(p.longestSec) : '–', p.workingSets]) };
@@ -122,7 +122,7 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
         {common}
         <YAxis {...axisProps(c)} tickFormatter={(v: number) => formatDuration(v)} width={52} />
         <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => formatDuration(v)} />} />
-        <Line dataKey="longest" name="Longest set" stroke={c.accent} {...lineProps} />
+        <Line dataKey="longest" name="Longest set" {...lineProps} {...seriesLine(0, c)} />
       </LineChart>
     );
   }
@@ -150,7 +150,7 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
               {chart ?? <div />}
             </ResponsiveContainer>
           </ChartFigure>
-          {series.length === 1 && <p className="text-xs text-muted px-1 mt-1">One session so far — a trend appears after your next one.</p>}
+          {series.length === 1 && <p className="text-xs text-muted px-1 mt-1">One session so far. A trend appears after your next one.</p>}
         </div>
       )}
 

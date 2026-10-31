@@ -347,7 +347,7 @@ function walkTemplate(ctx: Ctx): SessionTemplate {
     kind: 'walk',
     exercises: [],
     estimatedMinutes: minutes,
-    cardio: { activity: 'walk', minutes, intensity: 'easy', notes: 'Easy pace — you could hold a conversation. Any walk counts, split it up if you like.' },
+    cardio: { activity: 'walk', minutes, intensity: 'easy', notes: 'Easy pace: you could hold a conversation. Any walk counts, split it up if you like.' },
   };
 }
 
@@ -365,7 +365,7 @@ function cardioTemplate(ctx: Ctx, activity: ActivityType): SessionTemplate {
       activity,
       minutes,
       intensity,
-      notes: intensity === 'easy' ? 'Keep it easy: you should be able to talk in full sentences.' : 'Enjoy it — keep the effort moderate on the day before a lifting session.',
+      notes: intensity === 'easy' ? 'Keep it easy: you should be able to talk in full sentences.' : 'Enjoy it, but keep the effort moderate on the day before a lifting session.',
     },
   };
 }
@@ -380,7 +380,7 @@ function mobilityTemplate(ctx: Ctx, variant: number, activity?: ActivityType): S
       kind: 'mobility',
       exercises: [],
       estimatedMinutes: minutes,
-      cardio: { activity, minutes, intensity: 'easy', notes: 'Gentle and comfortable — no forcing end ranges.' },
+      cardio: { activity, minutes, intensity: 'easy', notes: 'Gentle and comfortable: no forcing end ranges.' },
     };
   }
   const slot: SlotDef = { key: 'mob', label: 'Mobility', patterns: ['mobility'], fallbackPatterns: ['trunk'], priority: 3, prefer: MOBILITY_PREFER };
@@ -398,7 +398,7 @@ function mobilityTemplate(ctx: Ctx, variant: number, activity?: ActivityType): S
       kind: 'mobility',
       exercises: [],
       estimatedMinutes: minutes,
-      cardio: { activity: 'mobility', minutes, intensity: 'easy', notes: 'Gentle full-body mobility — move through comfortable ranges.' },
+      cardio: { activity: 'mobility', minutes, intensity: 'easy', notes: 'Gentle full-body mobility: move through comfortable ranges.' },
     };
   }
   const exercises: Prescription[] = chosen.map((ex, i) => ({
@@ -434,7 +434,7 @@ function conditioningTemplate(ctx: Ctx, variant: number): SessionTemplate | null
     ...(ex.tracking === 'reps' ? {} : { durationSec: 40 }),
     targetRir: 3,
     restSec: 80,
-    warmup: i === 0 ? 'Start with 3–5 minutes of easy movement, then build up gradually.' : 'Keep the effort moderate — challenging but controlled.',
+    warmup: i === 0 ? 'Start with 3–5 minutes of easy movement, then build up gradually.' : 'Keep the effort moderate. Challenging but controlled.',
     priority: 3,
     alternatives: ranked.filter((r) => r.id !== ex.id).map((r) => r.id).slice(0, 3),
   }));
@@ -458,12 +458,12 @@ function enduranceTemplates(ctx: Ctx, count: number): SessionTemplate[] {
     ? `Easy, conversational effort for about ${base} min${distText}. When it feels comfortable, add about 5–10 % next week; hold steady every 4th week.`
     : dist
       ? `Easy, conversational effort covering about ${Math.round(dist * 10) / 10} km. Log your time so the plan can build from it.`
-      : 'Calibration: go easy for about 20 minutes at a pace where you can talk. Log time and distance — we’ll build from there.';
+      : 'Calibration: go easy for about 20 minutes at a pace where you can talk. Log time and distance. We’ll build from there.';
   const out: SessionTemplate[] = [];
   const easy: SessionTemplate = {
     id: 'end:easy',
     name: `Easy ${label.toLowerCase()}`,
-    focus: 'Endurance — easy',
+    focus: 'Endurance: easy',
     kind: 'cardio',
     exercises: [],
     estimatedMinutes: base,
@@ -475,7 +475,7 @@ function enduranceTemplates(ctx: Ctx, count: number): SessionTemplate[] {
     out.push({
       id: 'end:long',
       name: `Longer ${label.toLowerCase()}`,
-      focus: 'Endurance — longer easy',
+      focus: 'Endurance: longer easy',
       kind: 'cardio',
       exercises: [],
       estimatedMinutes: longMin,
@@ -486,7 +486,7 @@ function enduranceTemplates(ctx: Ctx, count: number): SessionTemplate[] {
     out.push({
       id: 'end:steady',
       name: `Steady ${label.toLowerCase()}`,
-      focus: 'Endurance — steady',
+      focus: 'Endurance: steady',
       kind: 'cardio',
       exercises: [],
       estimatedMinutes: base,
@@ -601,14 +601,14 @@ export function chooseSplit(a: OnboardingAnswers, variant = 0, availableCount = 
   if (a.goal === 'endurance') {
     if (capped > 2)
       warnings.push(`With an endurance-first goal we suggest 2 supporting strength sessions rather than ${capped}, so your key sessions stay fresh. You can add more sessions in your program.`);
-    if (lifting === 0) warnings.push('One or two short strength sessions a week can support your endurance training — add one any time.');
+    if (lifting === 0) warnings.push('One or two short strength sessions a week can support your endurance training. Add one any time.');
   } else if (lifting === 0) {
-    warnings.push('This plan has no lifting days. Strength training about twice a week is a common recommendation for general health — you can add it later.');
+    warnings.push('This plan has no lifting days. Strength training about twice a week is a common recommendation for general health. You can add it later.');
   } else if (lifting === 5 && beginner) {
-    warnings.push('For someone newer or returning to lifting, 4 days (upper/lower) is usually easier to recover from. We built the 5-day plan you chose — consider 4 days if you feel run down.');
+    warnings.push('For someone newer or returning to lifting, 4 days (upper/lower) is usually easier to recover from. We built the 5-day plan you chose. Consider 4 days if you feel run down.');
   } else if (lifting >= 6) {
     if (beginner)
-      warnings.push('Six lifting days is a lot when you’re new or returning — 3–4 days usually gives similar progress with more recovery. We kept your choice; you can lower it any time.');
+      warnings.push('Six lifting days is a lot when you’re new or returning. 3–4 days usually gives similar progress with more recovery. We kept your choice; you can lower it any time.');
     else if (a.experience === 'intermediate') warnings.push('Six lifting days needs good sleep and recovery. If sessions start to feel flat, drop to 4–5 days.');
   }
   const resolution = resolveSplit(a, lifting);
@@ -695,7 +695,7 @@ export function generateProgram(answers: OnboardingAnswers, catalog: Exercise[],
     const others = choice.resolution.options.length > 1;
     const why = choice.resolution.explicit && !choice.resolution.recommended
       ? `You chose this structure for ${days}.`
-      : `This is our recommended product default for ${days}${others ? ' — you can choose another structure' : ''}.`;
+      : `This is our recommended product default for ${days}${others ? ': you can choose another structure' : ''}.`;
     rationale.push(`${choice.split.label}: ${choice.split.description} ${why}`);
   }
   if (answers.goal === 'endurance') {
@@ -704,14 +704,14 @@ export function generateProgram(answers: OnboardingAnswers, catalog: Exercise[],
     rationale.push(
       endCount
         ? `Built around your ${act}: ${endCount} session${endCount === 1 ? '' : 's'} a week, ${answers.endurance?.recentMinutes ? `starting from your recent comfortable ${answers.endurance.recentMinutes} minutes` : 'starting with a gentle calibration session'} and progressing gradually.`
-        : `There were no free days left for ${act} sessions — reduce lifting days or add available days to make room.`,
+        : `There were no free days left for ${act} sessions. Reduce lifting days or add available days to make room.`,
     );
     if (choice.split) rationale.push(`${lifting} supporting strength session${lifting === 1 ? '' : 's'} (${choice.split.label}): ${choice.split.description}`);
   }
   if (liftDays.length) {
-    rationale.push(`Lifting on ${X.weekdaysText(liftDays)}${extraDays.length ? `; ${answers.goal === 'endurance' ? 'endurance sessions' : 'easier days'} on ${X.weekdaysText(extraDays)}` : ''} — only days you said you’re available.`);
+    rationale.push(`Lifting on ${X.weekdaysText(liftDays)}${extraDays.length ? `; ${answers.goal === 'endurance' ? 'endurance sessions' : 'easier days'} on ${X.weekdaysText(extraDays)}` : ''}: only days you said you’re available.`);
   } else if (extraDays.length) {
-    rationale.push(`Sessions on ${X.weekdaysText(extraDays)} — only days you said you’re available.`);
+    rationale.push(`Sessions on ${X.weekdaysText(extraDays)}: only days you said you’re available.`);
   }
   if (extraDays.length && liftDays.length && answers.goal !== 'endurance') {
     rationale.push(`You wanted ${total} active days: ${liftDays.length} are lifting days and ${extraDays.length} ${extraDays.length === 1 ? 'is an easier day' : 'are easier days'} (${X.listText([...new Set(extraKinds)])}), so hard sessions stay spaced out.`);
@@ -719,10 +719,10 @@ export function generateProgram(answers: OnboardingAnswers, catalog: Exercise[],
   const eq = [...ctx.equipment].filter((e) => e !== 'bodyweight');
   rationale.push(
     eq.length >= ALL_EQUIPMENT.length - 1
-      ? 'You have a full gym, so exercises use standard gym equipment — main lifts favour free weights you can progress in small steps.'
+      ? 'You have a full gym, so exercises use standard gym equipment. Main lifts favour free weights you can progress in small steps.'
       : eq.length
         ? `Every exercise uses only equipment you have (${X.listText(eq.map((e) => X.EQUIPMENT_TEXT[e]))}) or your bodyweight.`
-        : 'Every exercise uses only your bodyweight — no equipment needed.',
+        : 'Every exercise uses only your bodyweight. No equipment needed.',
   );
   const lift = templates.filter((t) => t.kind === 'lifting');
   if (lift.length) {
@@ -750,7 +750,7 @@ export function generateProgram(answers: OnboardingAnswers, catalog: Exercise[],
       const trimmedOnly = lift.some((t) => (t.trimmedExerciseIds ?? []).some((id) => g.patterns.includes(ctx.byId.get(id)?.pattern as MovementPattern)));
       warnings.push(
         trimmedOnly
-          ? `No ${g.label} work this week — it was trimmed to fit ${ctx.budget}-minute sessions. Longer sessions or one more day would bring it back.`
+          ? `No ${g.label} work this week. It was trimmed to fit ${ctx.budget}-minute sessions. Longer sessions or one more day would bring it back.`
           : `No ${g.label} exercise fits your equipment, exclusions and the areas you asked us to go easy on${g.key === 'vpull' ? ' (a pull-up bar or a band would add one)' : ''}. Add or swap one in your program if you can.`,
       );
     }
@@ -764,7 +764,7 @@ export function generateProgram(answers: OnboardingAnswers, catalog: Exercise[],
       }).length,
     }));
     if (liftDays.length === 1) {
-      rationale.push('With one lifting day each major muscle group is trained once a week — a solid start. A second day would allow the commonly recommended twice-weekly practice.');
+      rationale.push('With one lifting day each major muscle group is trained once a week. A solid start. A second day would allow the commonly recommended twice-weekly practice.');
     } else {
       const once = freq.filter((f) => f.n < 2);
       if (!once.length) rationale.push(`Each major muscle group is trained about ${Math.min(...freq.map((f) => f.n))}× or more a week.`);
@@ -776,7 +776,7 @@ export function generateProgram(answers: OnboardingAnswers, catalog: Exercise[],
     if (trimmedAny.length)
       warnings.push(`To fit ${ctx.budget} minutes we removed some lower-priority accessories (${X.listText(trimmedAny.map((t) => t.name))}). They’re listed with each session if you have extra time.`);
     const over = lift.filter((t) => t.estimatedMinutes > ctx.budget);
-    if (over.length) warnings.push(`${X.listText(over.map((t) => t.name))} may run a little over ${ctx.budget} minutes even after trimming — shorten rests slightly or drop a set.`);
+    if (over.length) warnings.push(`${X.listText(over.map((t) => t.name))} may run a little over ${ctx.budget} minutes even after trimming. Shorten rests slightly or drop a set.`);
   }
 
   // back-to-back lifting
@@ -787,7 +787,7 @@ export function generateProgram(answers: OnboardingAnswers, catalog: Exercise[],
     const pairText = X.listText(pairs.map(([x, y]) => `${WEEKDAY_SHORT[x]}–${WEEKDAY_SHORT[y]}`));
     warnings.push(
       byChoice
-        ? `Your preferred days put lifting back-to-back (${pairText}). That’s fine, but newer lifters usually recover better with a rest day between — you can move a session in your program.`
+        ? `Your preferred days put lifting back-to-back (${pairText}). That’s fine, but newer lifters usually recover better with a rest day between. You can move a session in your program.`
         : `Your available days make back-to-back lifting unavoidable (${pairText}). Keep the second day conservative and stop sets with 3 reps in reserve.`,
     );
   } else if (pairs.length && fullBody) {
@@ -804,7 +804,7 @@ export function generateProgram(answers: OnboardingAnswers, catalog: Exercise[],
   const reviewWeek = weeks;
   rationale.push(X.blockRationale(weeks, reviewWeek));
   if (lift.length) rationale.push(X.PROGRESSION_RATIONALE);
-  if (answers.limitations.length) warnings.push('If an exercise causes pain, stop it and flag discomfort — we’ll hold its progression and suggest alternatives. This app doesn’t diagnose injuries.');
+  if (answers.limitations.length) warnings.push('If an exercise causes pain, stop it and flag discomfort. We’ll hold its progression and suggest alternatives. This app doesn’t diagnose injuries.');
 
   return {
     version: 1,

@@ -31,7 +31,7 @@ interface GeocodeResult {
 const PROVIDER = (Deno.env.get('GEOCODER') ?? 'none').trim().toLowerCase();
 const CONTACT = (Deno.env.get('GEOCODER_CONTACT_EMAIL') ?? '').trim();
 const BASE = (Deno.env.get('NOMINATIM_URL') ?? 'https://nominatim.openstreetmap.org').replace(/\/+$/, '');
-const USER_AGENT = `LiftCircle/1.0 (coach directory geocoding; contact: ${CONTACT || 'unset'})`;
+const USER_AGENT = `HardEarned/1.0 (coach directory geocoding; contact: ${CONTACT || 'unset'})`;
 
 /* ---------------------------------------------------------------- throttle */
 let nextSlot = 0;

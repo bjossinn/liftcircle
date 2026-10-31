@@ -31,7 +31,7 @@ export function conventionNote(ex: Exercise): string | null {
   if (ex.load === 'per_hand') parts.push('Weight is per dumbbell/kettlebell.');
   if (ex.load === 'stack') parts.push('Weight is the machine or cable stack setting.');
   if (ex.load === 'added') parts.push('Weight is the load added to your bodyweight.');
-  if (ex.load === 'assistance') parts.push('Weight is the assistance — less is progress.');
+  if (ex.load === 'assistance') parts.push('Weight is the assistance. Less is progress.');
   if (ex.unilateral) parts.push('Reps are per side.');
   return parts.length ? parts.join(' ') : null;
 }

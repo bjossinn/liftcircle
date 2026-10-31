@@ -163,7 +163,7 @@ export const activityInputSchema = z
       else if (info.maxSpeedKmh && v.durationSec > 0) {
         const kmh = v.distanceM / 1000 / (v.durationSec / 3600);
         if (kmh > info.maxSpeedKmh)
-          ctx.addIssue({ code: 'custom', path: ['distanceM'], message: `That pace looks too fast for a ${info.noun} — check distance and duration` });
+          ctx.addIssue({ code: 'custom', path: ['distanceM'], message: `That pace looks too fast for a ${info.noun}. Check distance and duration` });
       }
     }
     if (v.elevationM != null && (v.elevationM < 0 || v.elevationM > 10_000))

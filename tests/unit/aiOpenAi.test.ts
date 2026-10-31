@@ -1,5 +1,5 @@
 /**
- * AI coach with OpenAI as the provider — MOCKED (injected fetch returning Chat Completions shapes, in-memory db).
+ * training assistant with OpenAI as the provider — MOCKED (injected fetch returning Chat Completions shapes, in-memory db).
  * No network and no live OpenAI API. Covers: provider selection from env, request/response translation
  * (incl. a tool-call round trip), per-provider consent, quota errors, and the client-side provider wording.
  */
@@ -144,7 +144,7 @@ describe('OpenAI translation (pure)', () => {
   });
 });
 
-describe('AI coach end to end with OpenAI (MOCKED provider)', () => {
+describe('Training assistant end to end with OpenAI (MOCKED provider)', () => {
   it('calls Chat Completions with a Bearer key, runs a tool round, records usage', async () => {
     const { db: d, recorded } = db();
     const { fetch, requests } = mockFetch([oaTool('exercise_alternatives', { exercise_id: 'goblet-squat' }), oaText('Try goblet squats.')]);
@@ -210,6 +210,6 @@ describe('client wording and consent state', () => {
     expect(settingsActive(s, a)).toBe(false);
     expect(settingsActive(s, { ...a, consentCurrent: true })).toBe(true);
     expect(settingsActive(s, { available: false, reason: 'offline' })).toBe(true);
-    expect(classifyAiError({ code: 'consent_required', message: 'The AI coach now uses OpenAI.' })).toMatchObject({ kind: 'disabled', message: 'The AI coach now uses OpenAI.' });
+    expect(classifyAiError({ code: 'consent_required', message: 'The training assistant now uses OpenAI.' })).toMatchObject({ kind: 'disabled', message: 'The training assistant now uses OpenAI.' });
   });
 });

@@ -375,7 +375,7 @@ describe('FindCoachPage', () => {
     const text = host.textContent ?? '';
     expect(text).toContain('Near Reykjavík, Iceland');
     expect(text).toContain('Online coaches');
-    expect(text).toContain('Approved coach');
+    expect(text).toContain('Listed coach');
     expect(text).not.toMatch(/km away/);
     expect(text).not.toMatch(/verified|certified/i);
   });
@@ -418,7 +418,7 @@ describe('FindCoachPage', () => {
     expect(api.searchCoaches.mock.calls[0]![0].radiusKm).toBeUndefined();
     expect(router.state.location.search).not.toMatch(/64\.1|21\.9/);
     // Server said distance isn't available → truthful notice, radius stays disabled.
-    expect(host.textContent).toContain('Distance search isn’t available — showing matches by place.');
+    expect(host.textContent).toContain('Distance search isn’t available. Showing matches by place.');
     const distance = [...host.querySelectorAll('label')].find((l) => l.textContent === 'Distance')!;
     expect(host.querySelector<HTMLSelectElement>(`#${CSS.escape(distance.htmlFor)}`)!.disabled).toBe(true);
   });

@@ -1,5 +1,5 @@
 /**
- * Pure helpers for the AI coach screens (no React, no network).
+ * Pure helpers for the training assistant screens (no React, no network).
  * What each data category sends mirrors the AiScopes contract (src/backend/coachingContract.ts);
  * the server (ai-coach Edge Function) is the authority and builds context only from enabled categories.
  */
@@ -64,14 +64,14 @@ export const SCOPE_INFO: { key: keyof AiScopes; title: string; sends: string }[]
   },
 ];
 
-export const ALWAYS_SENT = 'Your messages in this conversation (the most recent ones, for context) and your AI coach notes.';
+export const ALWAYS_SENT = 'Your messages in this conversation (the most recent ones, for context) and your training assistant notes.';
 export const NEVER_SENT = 'Your email, photos, social posts and friends, messages with a human coach, coach notes, and private notes about injuries.';
 
 /* --------------------------------------------------------- coach style */
 export const COACH_STYLE_INFO: { key: CoachStyle; title: string; body: string }[] = [
-  { key: 'supportive', title: 'Supportive', body: 'Gentle and encouraging. It never pushes — if you want a day off, it checks in kindly and accepts your call.' },
+  { key: 'supportive', title: 'Supportive', body: 'Gentle and encouraging. It never pushes: if you want a day off, it checks in kindly and accepts your call.' },
   { key: 'balanced', title: 'Balanced', body: 'Encouraging with light accountability. If you want to skip, it asks what’s up and suggests a shorter version.' },
-  { key: 'strict', title: 'Strict', body: 'Tough love. It pushes back firmly on excuses like “too tired” and holds you to a minimum session.' },
+  { key: 'strict', title: 'Strict', body: 'Firm and direct. It pushes back on reasons like “too tired” and holds you to a minimum session.' },
 ];
 export const COACH_STYLE_SAFETY = 'In every style: pain, injury, illness, poor sleep or feeling overwhelmed always mean rest or an easier plan, and rest days are never “skipping”.';
 
@@ -123,19 +123,19 @@ export function classifyAiError(e: unknown): ClassifiedAiError {
   const reason = (typeof err.reason === 'string' ? err.reason : typeof details.reason === 'string' ? details.reason : undefined) as ClassifiedAiError['reason'];
 
   if (code === 'network' || /failed to fetch|networkerror|network request failed|load failed|fetch failed|offline/i.test(msg))
-    return { kind: 'offline', message: 'You appear to be offline. Your message is kept — try again when you’re connected.' };
+    return { kind: 'offline', message: 'You appear to be offline. Your message is kept. Try again when you’re connected.' };
   if (code === 'PT429' || code === 'rate_limited' || status === 429)
-    return { kind: 'rate_limited', message: msg || 'You’ve reached today’s AI coach limit.', usage: pickUsage(err.usage, err.details) };
-  if (code === 'ai_paused' || code === 'paused') return { kind: 'paused', message: 'The AI coach is paused.' };
+    return { kind: 'rate_limited', message: msg || 'You’ve reached today’s training assistant limit.', usage: pickUsage(err.usage, err.details) };
+  if (code === 'ai_paused' || code === 'paused') return { kind: 'paused', message: 'The training assistant is paused.' };
   if (code === 'consent_required' || (reason as string) === 'consent_required')
-    return { kind: 'disabled', message: msg || 'The AI coach’s provider changed. Review and agree again in AI coach setup.' };
+    return { kind: 'disabled', message: msg || 'The training assistant’s provider changed. Review and agree again in training assistant setup.' };
   if (code === 'ai_disabled' || code === 'disabled' || reason === 'disabled')
-    return { kind: 'disabled', message: 'The AI coach is turned off.' };
+    return { kind: 'disabled', message: 'The training assistant is turned off.' };
   if (code === 'ai_unavailable' || status === 503 || reason === 'not_configured' || reason === 'provider_down')
-    return { kind: 'unavailable', reason: reason ?? 'provider_down', message: 'The AI coach is unavailable right now.' };
-  if (/not implemented/i.test(msg)) return { kind: 'unavailable', reason: 'backend_missing', message: 'The AI coach isn’t set up on this server yet.' };
+    return { kind: 'unavailable', reason: reason ?? 'provider_down', message: 'The training assistant is unavailable right now.' };
+  if (/not implemented/i.test(msg)) return { kind: 'unavailable', reason: 'backend_missing', message: 'The training assistant isn’t set up on this server yet.' };
   if (code === 'auth' || status === 401) return { kind: 'auth', message: 'Your session has expired. Please sign in again.' };
-  return { kind: 'failed', message: msg || 'Couldn’t reach the AI coach. Please try again.' };
+  return { kind: 'failed', message: msg || 'Couldn’t reach the training assistant. Please try again.' };
 }
 
 /** True when the server will never answer (no point showing a chat composer). */
@@ -219,7 +219,7 @@ export function isCoachManaged(programs: Program[]): boolean {
 
 /** Plain-text summary used when the user shares a suggestion with their human coach. */
 export function proposalShareText(p: ProgramProposal, describe: string[]): string {
-  const lines = [`AI coach suggestion: ${p.program.name}`];
+  const lines = [`Training assistant suggestion: ${p.program.name}`];
   const changes = p.changeSummary.length ? p.changeSummary : describe;
   for (const c of changes.slice(0, 12)) lines.push(`• ${c}`);
   if (p.message) lines.push('', p.message);

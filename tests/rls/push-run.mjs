@@ -130,7 +130,7 @@ async function visible(actor, sql, params) {
 const job = (key, minutesFromNow, { payload = {}, ...over } = {}) => ({
   dedupeKey: key,
   fireAt: new Date(Date.now() + minutesFromNow * 60_000).toISOString(),
-  payload: { title: 'LiftCircle', body: 'Upper A today. Ready? 💪', url: '/', tag: 'workout', ...payload },
+  payload: { title: 'Hard Earned', body: 'Upper A today. Ready for a session?', url: '/', tag: 'workout', ...payload },
   ...over,
 });
 const SUB = (n) => ({ endpoint: `https://push.example.net/p/${n}`, p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4', auth: 'BTBZMqHH6r4Tts7J_aSIgg' });
@@ -239,7 +239,7 @@ async function main() {
     await admin.query(`update public.push_jobs set sent_at = now() where user_id = $1 and dedupe_key = 'reminder:d1'`, [U.alice]);
     ok(await rpc('alice', 'replace_scheduled_jobs', { p_kind: 'workout_reminder', p_jobs: J([job('reminder:d1', 90, { payload: { body: 'changed' } }), job('reminder:d3', 180)]) }), 'replace');
     const rows = Object.fromEntries((await jobsOf(U.alice, `and kind = 'workout_reminder'`)).map((j) => [j.dedupe_key, j]));
-    eq(rows['reminder:d1'].payload.body, 'Upper A today. Ready? 💪', 'sent job not rewritten');
+    eq(rows['reminder:d1'].payload.body, 'Upper A today. Ready for a session?', 'sent job not rewritten');
     assert(rows['reminder:d2'].cancelled_at, 'd2 not in the new list → cancelled');
     assert(!rows['reminder:d3'].cancelled_at, 'd3 scheduled');
     // Re-adding a cancelled key revives it.
@@ -287,7 +287,7 @@ async function main() {
     let js = await jobsOf(U.alice, `and kind = 'social'`);
     eq(js.length, 1, 'coalesced into one unsent job');
     const pl = js[0].payload;
-    eq([pl.title, pl.body, pl.url, pl.tag], ['LiftCircle', 'Eve accepted your friend request', '/friends', 'social'], 'latest text, no content');
+    eq([pl.title, pl.body, pl.url, pl.tag], ['Hard Earned', 'Eve accepted your friend request', '/friends', 'social'], 'latest text, no content');
     await admin.query(`update public.push_jobs set sent_at = now() where id = $1`, [js[0].id]);
     await admin.query(`insert into public.notifications (recipient_id, actor_id, type) values ($1, $2, 'friend_request')`, [U.alice, U.eve]);
     js = await jobsOf(U.alice, `and kind = 'social' and sent_at is null`);

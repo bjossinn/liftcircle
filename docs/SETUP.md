@@ -38,7 +38,7 @@ To try the production build (service worker, offline, install prompt): `npm run 
    npx supabase functions deploy cleanup-media --no-verify-jwt
    npx supabase secrets set CLEANUP_SECRET=$(openssl rand -hex 24)
    ```
-   (Coaching and the AI coach add three more functions; see §7.)
+   (Coaching and the training assistant add three more functions; see §7.)
    Then schedule `cleanup-media` hourly (Integrations → Cron), see docs/BACKEND.md §5.
    The service-role key is available to functions automatically — **never** put it in the app or `.env.local`.
 
@@ -106,10 +106,10 @@ Then the live check against your own project (creates posts, then deletes them):
 Finally, on a real phone: open the HTTPS site, install it (docs/USER_GUIDE.md), launch from the home screen, log a set,
 turn on airplane mode, reload, keep logging.
 
-## 7. Coaching and the AI coach (added 29 Oct 2026)
+## 7. Coaching and the training assistant (added 29 Oct 2026)
 
 Everything below is optional: without it, the Coaching tab truthfully says what isn't available and the rest of the
-app keeps working. Details: docs/BACKEND.md §8 (coaching), docs/AI_COACH.md (AI coach).
+app keeps working. Details: docs/BACKEND.md §8 (coaching), docs/AI_COACH.md (Training assistant).
 
 1. **Apply the 4 new migrations, in this order** (additive; no existing table is rewritten):
    `20261029000001_coaching_schema.sql`, `…02_coaching_rpcs.sql`, `…03_ai_coach.sql`, `…04_coaching_lockdown.sql`.
@@ -142,7 +142,7 @@ app keeps working. Details: docs/BACKEND.md §8 (coaching), docs/AI_COACH.md (AI
    ```
    Public OpenStreetMap Nominatim is free for light use only (≤ 1 request/s, identify your app). For real traffic, set
    `NOMINATIM_URL` to a self-hosted Nominatim, or put a commercial geocoder behind the same `geocode` function.
-5. **AI coach (optional, paid per use).** Pick **one** provider. Either way the key lives only in the function
+5. **training assistant (optional, paid per use).** Pick **one** provider. Either way the key lives only in the function
    secrets — never in `.env.local` or Netlify — and the app tells users which company receives their data.
 
    **OpenAI** (platform.openai.com → API keys). A ChatGPT Plus/Pro/Team subscription does **not** include API access;
@@ -162,7 +162,7 @@ app keeps working. Details: docs/BACKEND.md §8 (coaching), docs/AI_COACH.md (AI
      AI_PRICE_INPUT_PER_MTOK=<$ per M input tokens> AI_PRICE_OUTPUT_PER_MTOK=<$ per M output tokens>
    ```
    Prices are only used for the cost estimate in `public.ai_usage`; copy them from your provider's pricing page. A chat
-   message is typically 1–3 API calls with a few thousand input tokens. Without a key, the AI coach screens say
+   message is typically 1–3 API calls with a few thousand input tokens. Without a key, the training assistant screens say
    "not set up" and nothing is sent anywhere. Users agree to one named provider: if you switch provider later, each
    user is asked to review and agree again before anything is sent to the new one.
 6. **Nothing to change in Netlify**: the app still only needs `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Rebuild
@@ -215,10 +215,10 @@ job isn't scheduled (the migration prints a NOTICE instead of failing).
 4. **Public key in the site build**: put the *public* key in `netlify.toml` → `[build.environment]` as
    `VITE_VAPID_PUBLIC_KEY = "<public key>"` (replace the commented placeholder) and redeploy. It is a public value.
 5. Check: Settings → Notifications → **Turn on notifications** → **Send a test notification** (arrives within the cron
-   interval). On iPhone/iPad, first add LiftCircle to the Home Screen and open it from there.
+   interval). On iPhone/iPad, first add Hard Earned to the Home Screen and open it from there.
 
 Limits to know: reminders and missed-session nudges are computed on the device and uploaded for the next 14 days, so
-a nudge can't be sent for plan changes made on another device that hasn't opened LiftCircle since; a workout logged
+a nudge can't be sent for plan changes made on another device that hasn't opened Hard Earned since; a workout logged
 offline late at night can leave an already-scheduled nudge in place until the app is back online.
 
 ## Troubleshooting
@@ -230,6 +230,6 @@ offline late at night can leave an already-scheduled nudge in place until the ap
 - **Photos fail with "required update"** — the `finalize-post` function isn't deployed.
 - **Coaching says "Coaching isn't available right now"** — the 2026-10-29 migrations aren't applied yet (§7.1).
 - **"Admins only" on the admin screen** — your user id isn't in `public.app_roles` with role `admin` (§7.3).
-- **AI coach says "not set up"** — no `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` function secret (or `AI_PROVIDER` names a provider without a key), the key is invalid, or `ai-coach` isn't deployed (§7.5).
-- **AI coach says "unavailable" with OpenAI** — often out of API credits (billing is separate from ChatGPT), or `OPENAI_MODEL` names a model your key can't use. The function logs `kind: quota` or the HTTP status, never message content.
+- **training assistant says "not set up"** — no `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` function secret (or `AI_PROVIDER` names a provider without a key), the key is invalid, or `ai-coach` isn't deployed (§7.5).
+- **training assistant says "unavailable" with OpenAI** — often out of API credits (billing is separate from ChatGPT), or `OPENAI_MODEL` names a model your key can't use. The function logs `kind: quota` or the HTTP status, never message content.
 - **Chat photos stay "Uploading…"** — `finalize-coach-media` isn't deployed.

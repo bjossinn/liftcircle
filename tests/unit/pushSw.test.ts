@@ -1,11 +1,11 @@
 /**
  * public/push-sw.js (imported into the Workbox service worker): a push always shows a notification with the payload,
- * a click focuses an open LiftCircle window (navigating it) or opens the deep link, and the file adds no caching.
+ * a click focuses an open Hard Earned window (navigating it) or opens the deep link, and the file adds no caching.
  * Evaluated with a fake ServiceWorkerGlobalScope as `self`.
  */
 import { describe, expect, it, vi } from 'vitest';
 import SRC from '../../public/push-sw.js?raw';
-const ORIGIN = 'https://liftcircle.example';
+const ORIGIN = 'https://hard-earned.example';
 
 function load(windows: { url: string }[] = []) {
   const handlers: Record<string, (e: unknown) => void> = {};
@@ -46,9 +46,9 @@ describe('service worker push handlers', () => {
 
   it('a push shows a notification with the payload (tag per kind so newer ones replace older)', async () => {
     const sw = load();
-    await sw.dispatch('push', pushEvent({ title: 'LiftCircle', body: 'Rest’s up: Bench press set 3, 60 kg × 8', url: '/train/session/w1', tag: 'rest' }));
+    await sw.dispatch('push', pushEvent({ title: 'Hard Earned', body: 'Rest’s up: Bench press set 3, 60 kg × 8', url: '/train/session/w1', tag: 'rest' }));
     expect(sw.shown).toHaveLength(1);
-    expect(sw.shown[0].title).toBe('LiftCircle');
+    expect(sw.shown[0].title).toBe('Hard Earned');
     expect(sw.shown[0].options).toMatchObject({ body: 'Rest’s up: Bench press set 3, 60 kg × 8', tag: 'rest', renotify: true, data: { url: '/train/session/w1' } });
   });
 
@@ -57,12 +57,12 @@ describe('service worker push handlers', () => {
     await sw.dispatch('push', { data: null });
     await sw.dispatch('push', { data: { json: () => { throw new Error('bad'); }, text: () => 'plain text' } });
     await sw.dispatch('push', pushEvent({ title: 'X', url: '//evil.example/phish' }));
-    expect(sw.shown.map((s) => s.title)).toEqual(['LiftCircle', 'LiftCircle', 'X']);
+    expect(sw.shown.map((s) => s.title)).toEqual(['Hard Earned', 'Hard Earned', 'X']);
     expect(sw.shown[1].options.body).toBe('plain text');
     expect((sw.shown[2].options.data as { url: string }).url).toBe('/');
   });
 
-  it('click focuses an open LiftCircle window and navigates it to the deep link', async () => {
+  it('click focuses an open Hard Earned window and navigates it to the deep link', async () => {
     const sw = load([{ url: `${ORIGIN}/progress` }]);
     const close = vi.fn();
     await sw.dispatch('notificationclick', { notification: { close, data: { url: '/coaching/messages/r1' } } });

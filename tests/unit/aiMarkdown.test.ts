@@ -1,5 +1,5 @@
 /**
- * Safe Markdown subset for AI coach messages (src/features/coaching/ai/markdown.tsx): formatting, headings as bold
+ * Safe Markdown subset for training assistant messages (src/features/coaching/ai/markdown.tsx): formatting, headings as bold
  * lines, lists with one nesting level, inline code, https-only links, and XSS inputs rendering inert.
  */
 import { describe, expect, it } from 'vitest';

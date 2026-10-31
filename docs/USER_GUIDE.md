@@ -1,4 +1,4 @@
-# LiftCircle user guide
+# Hard Earned user guide
 
 ## Getting started
 
@@ -19,6 +19,18 @@ around 2–3 keeps sessions productive without grinding.
 
 **First sessions:** if you didn't enter a comfortable known weight, exercises say *Calibrate* — start light and add
 small jumps until a set feels like 2–3 reps left in the tank, then log that as your starting load.
+
+## Looks & celebrations
+
+The first time you open the app it asks you to **Pick your look**: **Dark** (charcoal with ember accents, the
+flagship look), **Light** (chalk with ember accents), or **Match my phone** (follows your phone's light or dark mode).
+Tap a card to try it; it changes straight away. You can switch anytime in **Settings → Appearance**. Your choice is
+saved with your settings, so signing in on another phone keeps it. If you chose Midnight or Daylight before 1.0, you
+now see Dark or Light: the same choice, in the Hard Earned colours.
+
+Two moments get a brief, quiet celebration: a **new personal record** and **finishing a workout**. Today also shows a
+**streak flame** for each week in a row in which you did every planned session. Turn them off in **Settings →
+Workouts & rest timer → Celebrations**. With your phone's "reduce motion" setting on, there's no animation at all.
 
 ## Logging a workout
 
@@ -88,7 +100,7 @@ drumstick icon on Recipes, the same chip grid asks *Which proteins do you like?*
 (filled), twice for **Not for me** (crossed out), and a third time to go back to no preference. It's optional.
 - **Liked** proteins are picked more often and listed first, but other proteins still turn up for variety.
 - **Not for me** proteins never appear: not in meal plans, swaps, protein sides, the shopping list, recipe lists
-  (switch off **Hide proteins I've excluded** on Recipes to browse them anyway) or the AI coach's suggestions. If a
+  (switch off **Hide proteins I've excluded** on Recipes to browse them anyway) or the training assistant's suggestions. If a
   recipe only uses one as a side ingredient and has a substitute, it's made with the substitute instead (the recipe page
   says so). A recipe built around it is left out.
 - This is a taste preference, separate from **allergies**, which stay a safety filter.
@@ -130,7 +142,7 @@ logging and manual targets only, no automatic prescriptions.
 - **Look for a coach**: search by town, region or country, or tap *Use my location* (asked only when you tap it; a
   refusal still leaves the manual search). Filter by in person / online, specialty, language and whether the coach is
   taking new clients. Distances appear only when they can actually be calculated. Every listed coach was approved by
-  LiftCircle's reviewers; "approved" means platform approval, not a verified credential unless a qualification says so.
+  Hard Earned's reviewers; "approved" means platform approval, not a verified credential unless a qualification says so.
 - **Request coaching**: a short intake is prefilled from your goals and preferences — remove anything you don't want to
   send. Choose what the coach may see: training history, measurements, nutrition, check-ins. Being friends never gives
   a coach access. Until the coach accepts, they see only the intake and your message.
@@ -141,20 +153,20 @@ logging and manual targets only, no automatic prescriptions.
   One primary coach at a time: you can request another coach, and when they accept, coaching with the current one ends.
 - **Your plan's owner** is shown on Today, Train and the program screen ("Managed by your coach", "AI-suggested").
   You can always make the plan self-managed again from the program screen.
-- **AI coach** (if your LiftCircle server has it set up): a short setup, then you agree to what is sent to the AI
+- **training assistant** (if your Hard Earned server has it set up): a short setup, then you agree to what is sent to the AI
   provider (the app names it — OpenAI or Anthropic, depending on the server) and can change or pause that at any time. It explains things using your own records, suggests
   adjustments, and drafts plans — always as a suggestion you preview and apply yourself. If a human coach manages your
   plan, the AI can't replace it without you switching first. Clearing AI history deletes the conversation from
-  LiftCircle (suggestions you accepted or declined and daily usage counts are kept); LiftCircle can't delete anything
+  Hard Earned (suggestions you accepted or declined and daily usage counts are kept); Hard Earned can't delete anything
   on the provider's side.
   It talks like a friendly personal trainer: it greets you by time of day (and your first name, if you share your
   profile), names today's session or wishes you a good rest day, checks in after a missed session and congratulates you
   on new records. Tap a quick reply under the greeting (**Feeling great 💪**, **Bit tired**, **Sore**, **Short on
   time**, **Want to skip today**) to answer it — the greeting itself is made by the app, so it never costs anything.
-  Choose a **coach style** in setup or AI coach settings: **Supportive** (gentle, never pushes), **Balanced** (the
+  Choose a **coach style** in setup or training assistant settings: **Supportive** (gentle, never pushes), **Balanced** (the
   default: encouraging with light accountability) or **Strict** (tough love on excuses). In every style, pain, injury,
   illness, poor sleep or feeling overwhelmed mean rest or an easier plan, and rest days are never "skipping". The coach
-  only talks about training, nutrition for your goals, recovery, motivation and using LiftCircle; other requests get a
+  only talks about training, nutrition for your goals, recovery, motivation and using Hard Earned; other requests get a
   short, friendly redirect. It answers briefly (tap **Why this?** for the reasoning). Tell it about a
   one-off change, such as "I can only train twice this week": it picks which of your planned sessions to do, counts
   what you've already done, and offers **Apply to this week**. That only moves or skips sessions for this week (Undo is
@@ -164,7 +176,7 @@ logging and manual targets only, no automatic prescriptions.
   breakdown?") when you want more. Links in AI messages open in a new tab; your own messages are shown exactly as typed.
   **Where do I…?** Ask how to do something in the app ("where do I turn on push notifications?") and the coach answers
   in a few steps with a button that opens the right screen. When it can't see something, it tells you why and how to
-  fix it — e.g. "I can't see your nutrition yet" with a **Change what the coach can see** button (AI coach settings),
+  fix it — e.g. "I can't see your nutrition yet" with a **Change what the coach can see** button (Training assistant settings),
   or **Set your targets** when no protein target is set — and still helps with what it can see.
   **It can put things in the app — only when you tap:**
   - **Programs:** when it describes a program it offers to add it; you get **Add to my program — review**, preview
@@ -184,7 +196,7 @@ logging and manual targets only, no automatic prescriptions.
     buttons sit at the end of the message.
   Everything it suggests respects your allergies, diet, disliked foods, equipment and excluded exercises.
 - **Without an account** you can read what human and AI coaching involve and browse approved coaches' public listings;
-  requesting, messaging and the AI coach need an account. Unsent messages to your coach are kept as a draft on your
+  requesting, messaging and the training assistant need an account. Unsent messages to your coach are kept as a draft on your
   device.
 - **Become a coach**: *Coaching → Become a coach*. Save a draft, submit, and follow the review status. Qualification
   documents are only visible to you and the reviewers.
@@ -193,13 +205,13 @@ logging and manual targets only, no automatic prescriptions.
 
 **Turn them on:** Settings → Notifications → **Turn on notifications** (needs an account). Your phone asks for permission
 once. **On iPhone and iPad** notifications only work in the installed app: in Safari tap **Share → Add to Home Screen**,
-open LiftCircle from the Home Screen, then turn them on (see Install on your phone below). If you blocked them earlier,
-allow them again in your phone or browser settings (iPhone: Settings → Notifications → LiftCircle).
+open Hard Earned from the Home Screen, then turn them on (see Install on your phone below). If you blocked them earlier,
+allow them again in your phone or browser settings (iPhone: Settings → Notifications → Hard Earned).
 
 **What you can get** (each has its own switch):
 - **Workout reminders** on planned training days, about 2 hours before you usually start that session (or at noon the
   first time), or at a fixed time you choose. No reminder on rest days or once you've started or finished.
-- **Rest-over alerts** when the rest timer ends while LiftCircle is in the background ("Rest's up: Bench press set 3,
+- **Rest-over alerts** when the rest timer ends while Hard Earned is in the background ("Rest's up: Bench press set 3,
   60 kg × 8").
 - **Coaching messages**: "Your coach sent you a message" (never the text).
 - **Friends & social** (off by default): friend requests, likes and comments.

@@ -16,7 +16,7 @@ export interface SetupDetails {
 
 const SETUP_PREFIX = 'Training setup:';
 
-/** One readable line for the AI coach notes describing corrected training setup. */
+/** One readable line for the training assistant notes describing corrected training setup. */
 export function trainingSetupLine(d: Pick<SetupDetails, 'days' | 'sessionMinutes' | 'equipment'>): string {
   const parts: string[] = [];
   if (d.days != null) parts.push(`${d.days} training day${d.days === 1 ? '' : 's'} a week`);

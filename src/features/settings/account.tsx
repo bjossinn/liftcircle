@@ -84,7 +84,7 @@ export function SignOutButton() {
             <Button
               block
               onClick={async () => {
-                downloadText(`liftcircle-backup-${stamp()}.json`, JSON.stringify(await buildBackup(db), null, 2));
+                downloadText(`hard-earned-backup-${stamp()}.json`, JSON.stringify(await buildBackup(db), null, 2));
                 toast.show('Backup downloaded');
               }}
             >
@@ -95,7 +95,7 @@ export function SignOutButton() {
             label="Remove this account’s data from this device"
             description={
               unsynced > 0
-                ? 'Unsynced changes would be lost. Leave this off to keep them here — they’ll back up when you sign in again with the same account.'
+                ? 'Unsynced changes would be lost. Leave this off to keep them here. They’ll back up when you sign in again with the same account.'
                 : 'Recommended on shared devices. Signing in again downloads it from your account.'
             }
             checked={removeLocal}

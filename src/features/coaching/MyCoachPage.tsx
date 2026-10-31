@@ -50,7 +50,7 @@ export default function MyCoachPage() {
                 Look for a coach
               </Button>
               <Button icon={<Sparkles className="size-4" />} onClick={() => nav('/coaching/ai')}>
-                Try the AI coach
+                Try the training assistant
               </Button>
             </div>
           }
@@ -150,7 +150,7 @@ function ActiveCoach({ rel, onChanged }: { rel: CoachingRelationship; onChanged:
             <p className="text-sm text-muted">Your coach{rel.respondedAt ? ` since ${fmtDateTime(rel.respondedAt)}` : ''}</p>
             <div className="mt-1.5 flex gap-1.5 flex-wrap">
               <Badge tone="accent">Active</Badge>
-              {rel.coach.approved && !rel.coach.suspended && <Badge>Approved coach</Badge>}
+              {rel.coach.approved && !rel.coach.suspended && <Badge>Listed coach</Badge>}
             </div>
           </div>
         </div>
@@ -162,7 +162,7 @@ function ActiveCoach({ rel, onChanged }: { rel: CoachingRelationship; onChanged:
             New check-in
           </Button>
         </div>
-        {rel.coach.approved && <p className="text-xs text-muted mt-3">“Approved coach” means LiftCircle reviewed and approved this coach’s application.</p>}
+        {rel.coach.approved && <p className="text-xs text-muted mt-3">“Listed coach” means Hard Earned reviewed and approved this coach’s application.</p>}
       </Card>
 
       <SectionTitle id="sharing">What you share with {name}</SectionTitle>
@@ -226,7 +226,7 @@ function ActiveCoach({ rel, onChanged }: { rel: CoachingRelationship; onChanged:
         <div>
           <p className="text-sm">
             <span className="font-medium">Switch coach.</span> You can request another coach while this one is active. When a new coach accepts, your coaching with {name} ends
-            automatically — you have one primary coach at a time.
+            automatically: you have one primary coach at a time.
           </p>
           <Button className="mt-2" icon={<Repeat className="size-4" />} onClick={() => nav('/coaching/find')}>
             Find another coach
@@ -304,7 +304,7 @@ function CheckInList({ data, error, reload, unit, coachName, shared }: { data?: 
 function FeedbackList({ data, error, reload, sessionName }: { data?: CoachFeedback[]; error: string | null; reload: () => Promise<void>; sessionName: (id?: string | null) => string }) {
   if (error && !data) return <ErrorState title="Couldn’t load feedback" message={error} onRetry={reload} />;
   if (!data) return <Spinner label="Loading feedback" />;
-  if (!data.length) return <Card className="px-4 py-3 text-sm text-muted">No feedback yet. Your coach can comment on workouts you share — they can never change what you logged.</Card>;
+  if (!data.length) return <Card className="px-4 py-3 text-sm text-muted">No feedback yet. Your coach can comment on workouts you share. They can never change what you logged.</Card>;
   return (
     <ul className="flex flex-col gap-2">
       {[...data]
@@ -359,7 +359,7 @@ function PendingRequest({ rel, onChanged }: { rel: CoachingRelationship; onChang
         <Badge tone="info">Waiting</Badge>
       </div>
       <p className="text-sm text-muted mt-3">
-        Waiting for {name} to respond. Until they accept, they see only your intake and intro message — none of your records. Chat starts once they accept.
+        Waiting for {name} to respond. Until they accept, they see only your intake and intro message. None of your records. Chat starts once they accept.
       </p>
       {rel.coach.suspended && <Notice tone="warn" className="mt-2">This coach’s account is currently suspended, so they can’t respond right now.</Notice>}
       <details className="mt-3">
@@ -415,7 +415,7 @@ function TakeOverNotice({ activeRelationshipIds, ready }: { activeRelationshipId
   return (
     <Notice tone="accent" className="mb-3">
       <p>
-        Your plan “{plan.name}” was written by {plan.managedBy?.coachName ?? 'your coach'}, and coaching has ended. It stays active — keep following it as it is, or take it
+        Your plan “{plan.name}” was written by {plan.managedBy?.coachName ?? 'your coach'}, and coaching has ended. It stays active: keep following it as it is, or take it
         over so you can edit it yourself. Completed workouts don’t change either way.
       </p>
       <Button size="sm" variant="primary" className="mt-2" loading={busy} onClick={take}>

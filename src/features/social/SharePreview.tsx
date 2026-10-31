@@ -68,14 +68,14 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
     const r = await db.pendingPosts.get(postId);
     if (cancelled.current) return;
     if (!r) {
-      toast.show(audience === 'friends' ? 'Posted to your friends' : 'Posted — only you can see it', { tone: 'success' });
+      toast.show(audience === 'friends' ? 'Posted to your friends' : 'Posted: only you can see it', { tone: 'success' });
       setPhase('posted');
       onDone?.(postId);
     } else if (r.status === 'error') {
       setFailure(r.error ?? 'The upload didn’t finish.');
       setPhase('failed');
     } else {
-      toast.show('Saved. Waiting to upload — it will post automatically.', { tone: 'info' });
+      toast.show('Saved. Waiting to upload: it will post automatically.', { tone: 'info' });
       setPhase('queued');
       onDone?.(null);
     }
@@ -113,7 +113,7 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
     }
     if (!canUploadNow) {
       toast.show(
-        online ? 'Saved. Waiting to upload — it will post after you sign in again.' : 'Saved. Waiting to upload — it will post when you’re back online.',
+        online ? 'Saved. Waiting to upload, it will post after you sign in again.' : 'Saved. Waiting to upload, it will post when you’re back online.',
         { tone: 'info' },
       );
       setPhase('queued');
@@ -229,7 +229,7 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
         {phase === 'failed' && (
           <Notice tone="danger">
             <p className="flex items-center gap-2 font-medium">
-              <AlertTriangle className="size-4 text-danger" aria-hidden /> Upload failed — not posted
+              <AlertTriangle className="size-4 text-danger" aria-hidden /> Upload failed: not posted
             </p>
             {failure && <p className="mt-1 text-muted">{failure}</p>}
             <p className="mt-1 text-muted">Your workout is saved. The post is kept on this device so you can try again.</p>
@@ -261,7 +261,7 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
           </>
         )}
         {phase === 'posted' && <Notice tone="accent">Posted. You can see it in your feed.</Notice>}
-        {phase === 'queued' && <Notice>Saved on this device — waiting to upload. It isn’t visible to anyone yet.</Notice>}
+        {phase === 'queued' && <Notice>Saved on this device. Waiting to upload. It isn’t visible to anyone yet.</Notice>}
       </div>
     </div>
   );

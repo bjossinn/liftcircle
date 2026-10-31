@@ -137,7 +137,7 @@ export async function processJob(deps: PushDeps, job: DueJob): Promise<JobResult
   }
   if (!job.subscriptions.length) return { id: job.id, status: 'dropped' };
   // Every push shows a notification (iOS revokes permission for silent pushes): title is always present.
-  const payload = JSON.stringify({ title: job.payload.title || 'LiftCircle', body: job.payload.body ?? '', url: job.payload.url || '/', tag: job.payload.tag || job.kind });
+  const payload = JSON.stringify({ title: job.payload.title || 'Hard Earned', body: job.payload.body ?? '', url: job.payload.url || '/', tag: job.payload.tag || job.kind });
   let ok = 0;
   let gone = 0;
   for (const sub of job.subscriptions) {

@@ -53,7 +53,7 @@ export function ProgramEditor({
       {program.schedule.length === 0 && <p className="text-xs text-muted mt-2 px-1">Use “Days” on a session to place it in the week.</p>}
       {doubleBooked.length > 0 && (
         <Notice tone="warn" className="mt-2">
-          {doubleBooked.map((d) => WEEKDAY_SHORT[d]).join(', ')} {doubleBooked.length === 1 ? 'has' : 'have'} two sessions. Move one before sending — the plan allows one session per day.
+          {doubleBooked.map((d) => WEEKDAY_SHORT[d]).join(', ')} {doubleBooked.length === 1 ? 'has' : 'have'} two sessions. Move one before sending. The plan allows one session per day.
         </Notice>
       )}
 
@@ -143,7 +143,7 @@ function RescheduleForm({ program, onCancel, onApply }: { program: ProposedProgr
   const nameOf = (id: ID) => program.templates.find((t) => t.id === id)?.name ?? 'Session';
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-muted">Missed a session or the client’s week changed? Move sessions to other days, then send it as a revised proposal — the client accepts it before anything changes.</p>
+      <p className="text-sm text-muted">Missed a session or the client’s week changed? Move sessions to other days, then send it as a revised proposal. The client accepts it before anything changes.</p>
       <ul className="flex flex-col gap-2">
         {program.schedule.map((s, i) => (
           <li key={`${s.templateId}-${i}`} className="grid grid-cols-[1fr_9rem] items-center gap-3">

@@ -62,7 +62,7 @@ export default function CheckInPage() {
       setId(uuid());
       nav('/coaching/my');
     } catch (e) {
-      setError(coachingError(e, 'Your check-in wasn’t sent. Your answers are still here — try again.'));
+      setError(coachingError(e, 'Your check-in wasn’t sent. Your answers are still here. Try again.'));
     } finally {
       setBusy(false);
     }
@@ -90,7 +90,7 @@ export default function CheckInPage() {
         >
           {access === 'offline' && (
             <Notice tone="warn" className="mb-2">
-              You’re offline. Fill in your check-in now and send it when you’re back online — your answers stay on this screen.
+              You’re offline. Fill in your check-in now and send it when you’re back online. Your answers stay on this screen.
             </Notice>
           )}
           {r && !w.ok && (
@@ -144,7 +144,7 @@ export default function CheckInPage() {
             <Textarea label="Struggles" placeholder="Missed sessions, low energy, an exercise that didn’t feel right…" maxLength={1000} value={struggles} onChange={(e) => setStruggles(e.target.value)} />
             <Textarea label="Anything else for your coach" maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
-          <p className="text-xs text-muted mt-2">Describe how things feel — not a diagnosis. For pain that persists, see a qualified professional.</p>
+          <p className="text-xs text-muted mt-2">Describe how things feel, not a diagnosis. For pain that persists, see a qualified professional.</p>
           {error && (
             <p role="alert" className="text-sm text-danger mt-2">
               {error}
