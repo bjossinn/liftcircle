@@ -80,7 +80,7 @@ export interface MealPlanAction {
   id: string;
   weekStart: string;
   weekEnd: string;
-  days: { date: string; items: { slot: MealSlotName; recipeId: string; name: string; servings: number; extras?: { ingredientId: string; grams: number }[] }[] }[];
+  days: { date: string; items: { slot: MealSlotName; recipeId: string; name: string; servings: number; swaps?: { from: string; to: string }[]; extras?: { ingredientId: string; grams: number }[] }[] }[];
   /** Targets the plan was built for (informational; the app re-checks against the current targets). */
   targets: { proteinG: number; kcal: number | null };
   summary: string;
@@ -133,6 +133,8 @@ export interface RefIngredient {
   per100g: { kcal?: number; protein?: number; carbs?: number; fat?: number };
   allergens: string[];
   diet?: { vegetarian?: boolean; vegan?: boolean; dairyFree?: boolean; glutenFree?: boolean; pescatarian?: boolean };
+  /** Protein group for "proteins I like / not for me" (absent on non-protein foods). */
+  proteinGroup?: string;
 }
 
 export interface RefRecipe {
@@ -143,6 +145,7 @@ export interface RefRecipe {
   prepMinutes?: number;
   cookMinutes?: number;
   ingredients: { ingredientId: string; grams: number; optional?: boolean }[];
+  substitutions?: { ingredientId: string; alternatives: string[] }[];
 }
 
 /* ------------------------------------------------------------------ private payloads (subset) */
@@ -328,6 +331,9 @@ export interface UserFacts {
   dietTags: string[];
   dislikedIngredientIds: string[];
   maxCookMinutes: number | null;
+  /** Protein groups the user likes (prefer) and marked "not for me" (never suggest). A preference, not an allergy. */
+  proteinLiked?: string[];
+  proteinExcluded?: string[];
   activeProgram: null | {
     id: string;
     name: string;

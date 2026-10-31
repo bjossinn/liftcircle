@@ -14,7 +14,7 @@ const MIGRATIONS = import.meta.glob<string>('../../supabase/migrations/*.sql', {
 
 /** The recipe pack added in Nov 2026 starts at this recipe (the first 24 are the original starters). */
 const FIRST_NEW = RECIPES.findIndex((r) => r.id === 'skyr-oat-pancakes');
-const NEW_RECIPES = RECIPES.slice(FIRST_NEW);
+const NEW_RECIPES = RECIPES.slice(FIRST_NEW, 84);
 
 const proteinPerServing = (r: Recipe) => recipeNutrition(r).perServing.protein;
 /** Meals ≥ 30 g protein per serving, snacks ≥ 15 g. */
@@ -22,9 +22,9 @@ const isHighProtein = (r: Recipe) => proteinPerServing(r) >= (r.meal === 'snack'
 const has = (r: Recipe, t: DietTag) => satisfiesTag(recipeDietTags(r), t);
 
 describe('recipe catalogue', () => {
-  it('has the original 24 recipes plus 60 new ones', () => {
+  it('has the original 24 recipes plus the 60 of pack 2 first (pack 3 follows; see recipeCatalog.test.ts)', () => {
     expect(FIRST_NEW).toBe(24);
-    expect(RECIPES).toHaveLength(84);
+    expect(RECIPES.length).toBeGreaterThan(84);
     expect(NEW_RECIPES).toHaveLength(60);
   });
 
@@ -208,6 +208,17 @@ describe('backend reference data matches src/data', () => {
       for (const sql of migSql) expect(pruneList(sql, table)).toBeNull();
     });
   }
+
+  it('the recipe pack 3 migration (protein groups, ~190 new recipes) is additive and upserts every bundled row', () => {
+    const f = '20261104000001_recipe_pack_3.sql';
+    expect(migFiles).toContain(f);
+    const sql = migSql[migFiles.indexOf(f)];
+    expect(sql).not.toMatch(/^s*(delete|drop|truncate|alter)/im);
+    expect(sql.match(/^on conflict \(id\) do update set /gm)).toHaveLength(2);
+    expect(parseRefRows(sql, 'ref_recipes').size).toBe(RECIPES.length);
+    expect(parseRefRows(sql, 'ref_ingredients').size).toBe(INGREDIENTS.length);
+    expect((parseRefRows(sql, 'ref_ingredients').get('shrimp-cooked') as { proteinGroup?: string }).proteinGroup).toBe('prawns');
+  });
 
   it('the recipe-pack migration is additive and upserts', () => {
     const f = '20261103000001_more_recipes.sql';

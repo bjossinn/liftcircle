@@ -135,6 +135,8 @@ describe('RecipesPage', () => {
     expect(expected.length).toBeGreaterThan(20);
     expect(expected.length).toBeLessThan(RECIPES.length);
     await waitFor(() => expect(countText()).toBe(String(expected.length)));
+    // The list renders 60 at a time; open the rest.
+    for (let more = buttons().find((b) => /^Show more/.test(norm(b.textContent))); more; more = buttons().find((b) => /^Show more/.test(norm(b.textContent)))) click(more);
     const shown = [...document.querySelectorAll('a[href^="/nutrition/recipes/"]')].map((a) => decodeURIComponent(a.getAttribute('href')!.split('/').pop()!));
     expect(shown.sort()).toEqual(expected.map((r) => r.id).sort());
     for (const id of shown) expect(recipeMinutes(RECIPES_BY_ID.get(id)!)).toBeLessThanOrEqual(15);

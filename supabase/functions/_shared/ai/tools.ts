@@ -24,6 +24,9 @@ import { buildMealPlanAction, dietOk, explainNoRecipes, parseQuery, totalMinutes
 import type { NormProgram } from './validate.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { decideTarget, missingEquipment, normalizeProposedProgram, validateForUser, validateProposedProgram } from './validate.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { likedBonus, proteinFitSwaps } from '../nutrition/proteins.ts';
+import type { Ingredient, ProteinGroup, Recipe } from '../nutrition/types.ts';
 
 /** find_recipes → propose_meal_plan (→ one corrected attempt) → final text. */
 export const MAX_TOOL_ROUNDS = 4;
@@ -223,7 +226,7 @@ const DIET_FLAG: Record<string, keyof NonNullable<RefIngredient['diet']>> = {
   gluten_free: 'glutenFree',
 };
 
-export function recipeFits(recipe: RefRecipe, ing: Map<string, RefIngredient>, facts: UserFacts): { ok: boolean; omit: string[] } {
+export function recipeFits(recipe: RefRecipe, ing: Map<string, RefIngredient>, facts: UserFacts): { ok: boolean; omit: string[]; swaps?: { from: string; to: string }[] } {
   const allergens = new Set(facts.allergens);
   const disliked = new Set(facts.dislikedIngredientIds);
   const flags = facts.dietTags.map((t) => DIET_FLAG[t]).filter(Boolean);
@@ -237,13 +240,31 @@ export function recipeFits(recipe: RefRecipe, ing: Map<string, RefIngredient>, f
       else return { ok: false, omit };
     }
   }
+  // Proteins marked "not for me": the same rule as the app (main protein excluded → out; any other use needs an allowed swap).
+  if (facts.proteinExcluded?.length) {
+    const flagsOk = (i: RefIngredient) => !(i.allergens ?? []).some((a) => allergens.has(a)) && !disliked.has(i.id) && flags.every((f) => i.diet?.[f] === true);
+    const swaps = proteinFitSwaps(
+      recipe as unknown as Recipe,
+      facts.proteinExcluded as ProteinGroup[],
+      (i) => flagsOk(i as unknown as RefIngredient),
+      ing as unknown as Map<string, Ingredient>,
+    );
+    if (swaps === null) return { ok: false, omit };
+    if (swaps.length) return { ok: true, omit, swaps };
+  }
   return { ok: true, omit };
 }
 
-export function perServingMacros(recipe: RefRecipe, ing: Map<string, RefIngredient>, omitNames: string[] = []) {
+/** Recipe with a liked protein as its main protein or a featured one (same rule as the app's ranking). */
+export function likedRecipe(r: RefRecipe, ing: Map<string, RefIngredient>, facts: UserFacts): boolean {
+  return likedBonus(r as unknown as Recipe, facts.proteinLiked as ProteinGroup[], ing as unknown as Map<string, Ingredient>) > 0;
+}
+const LIKED_GRAMS = 8;
+
+export function perServingMacros(recipe: RefRecipe, ing: Map<string, RefIngredient>, omitNames: string[] = [], swaps: { from: string; to: string }[] = []) {
   const tot = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
   for (const ri of recipe.ingredients ?? []) {
-    const i = ing.get(ri.ingredientId);
+    const i = ing.get(swaps.find((s) => s.from === ri.ingredientId)?.to ?? ri.ingredientId);
     if (!i || omitNames.includes(i.name) || ri.optional) continue; // optional extras not counted
     const f = (ri.grams ?? 0) / 100;
     tot.kcal += (i.per100g.kcal ?? 0) * f;
@@ -269,17 +290,17 @@ async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Pr
   const max = Math.min(5, Math.max(1, typeof input.max_results === 'number' ? Math.round(input.max_results) : 3));
 
   // 1. The user's own constraints (allergens, diet, dislikes, cook time) — never relaxed.
-  const allowed: { r: RefRecipe; omit: string[]; macros: ReturnType<typeof perServingMacros>; minutes: number }[] = [];
+  const allowed: { r: RefRecipe; omit: string[]; swaps?: { from: string; to: string }[]; macros: ReturnType<typeof perServingMacros>; minutes: number; liked: boolean }[] = [];
   for (const r of recipes) {
     const minutes = totalMinutes(r);
     if (ctx.facts.maxCookMinutes != null && minutes > ctx.facts.maxCookMinutes) continue;
     const fit = recipeFits(r, ing, ctx.facts);
     if (!fit.ok) continue;
-    allowed.push({ r, omit: fit.omit, macros: perServingMacros(r, ing, fit.omit), minutes });
+    allowed.push({ r, omit: fit.omit, swaps: fit.swaps, macros: perServingMacros(r, ing, fit.omit, fit.swaps), minutes, liked: likedRecipe(r, ing, ctx.facts) });
   }
   if (!allowed.length) {
     const reason = explainNoRecipes(
-      { allergens: ctx.facts.allergens, dietTags: ctx.facts.dietTags, disliked: ctx.facts.dislikedIngredientIds, maxMinutes: ctx.facts.maxCookMinutes, meal: null },
+      { allergens: ctx.facts.allergens, dietTags: ctx.facts.dietTags, disliked: ctx.facts.dislikedIngredientIds, maxMinutes: ctx.facts.maxCookMinutes, meal: null, proteinExcluded: ctx.facts.proteinExcluded },
       recipes, ing, ctx.facts,
     );
     return { content: JSON.stringify({ results: [], reason, note: 'The user\'s own settings exclude every recipe. Explain this reason; don\'t invent recipes.' }) };
@@ -309,13 +330,19 @@ async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Pr
   const meals = (ctx.account?.profile?.diet?.mealsPerDay as number | undefined) ?? 3;
   const perMeal = ctx.nutrition?.proteinG ? ctx.nutrition.proteinG / Math.max(1, meals) : null;
   const vague = !intent.words.length || note != null;
+  // Liked proteins count as being LIKED_GRAMS closer to the target (vague searches) or rank first among equals (specific ones).
+  const likedBoost = (x: (typeof allowed)[number]) => (x.liked ? LIKED_GRAMS : 0);
   picked.sort((a, b) =>
     vague && perMeal != null && minP == null
-      ? Math.abs(a.macros.protein_g - perMeal) - Math.abs(b.macros.protein_g - perMeal) || a.r.id.localeCompare(b.r.id)
-      : b.macros.protein_g - a.macros.protein_g || a.r.id.localeCompare(b.r.id),
+      ? Math.abs(a.macros.protein_g - perMeal) - likedBoost(a) - (Math.abs(b.macros.protein_g - perMeal) - likedBoost(b)) || a.r.id.localeCompare(b.r.id)
+      : vague
+        ? b.macros.protein_g + likedBoost(b) - (a.macros.protein_g + likedBoost(a)) || a.r.id.localeCompare(b.r.id)
+        : b.macros.protein_g - a.macros.protein_g || a.r.id.localeCompare(b.r.id),
   );
   const shown = picked.slice(0, max).map((x) => ({
     id: x.r.id, name: x.r.name, meal: x.r.meal, total_minutes: x.minutes, per_serving: x.macros, ...(x.omit.length ? { omit_optional: x.omit } : {}),
+    ...(x.swaps?.length ? { made_with: x.swaps.map((s) => `${ing.get(s.to)?.name ?? s.to} instead of ${ing.get(s.from)?.name ?? s.from}`) } : {}),
+    ...(x.liked ? { uses_a_liked_protein: true } : {}),
   }));
   ctx.state.recipes = {
     kind: 'recipe_suggestions',
@@ -324,7 +351,7 @@ async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Pr
   };
   return {
     content: JSON.stringify({
-      note: 'Filtered for the user\'s allergens, diet and dislikes. Macros are per serving, computed from ingredient data (optional extras excluded).',
+      note: 'Filtered for the user\'s allergens, diet, dislikes and proteins marked "not for me" (made_with lists automatic swaps for those). Macros are per serving, computed from ingredient data (optional extras excluded).',
       ...(note ? { fallback: note } : {}),
       results: shown,
       shown_to_user: 'These appear as recipe cards under your reply (Open, Add to plan, Save). Link a recipe with [[open:/nutrition/recipes/<id>|Open recipe]]; never write out its ingredients or steps.',

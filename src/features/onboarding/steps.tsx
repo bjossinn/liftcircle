@@ -11,6 +11,7 @@ import { availableDayCount, effectiveLiftingDays, resolveSplit } from '@/domain/
 import { WEEKDAY_SHORT } from '@/lib/dates';
 import type { ActivityLevel, ActivityType, Allergen, DietTag, Equipment, Exercise, Experience, Goal, ID, LimitationArea, OnboardingAnswers, SplitKey } from '@/domain/types';
 import { ALL_GYM, ALLERGEN_LABELS, DIET_TAG_LABELS, isUnder18, LOCATION_PRESETS, type Draft } from './draft';
+import { ProteinPicker } from '@/features/nutrition/ProteinPicker';
 
 export interface StepProps {
   d: Draft;
@@ -534,6 +535,16 @@ export function NutritionStep({ d, set, errors }: StepProps) {
       <Field label="Allergies" hint="We leave these out of suggestions, but always check packaged-food labels — filtering can’t guarantee safety.">
         <ChipGroup label="Allergens" values={diet.allergens} onChange={(v: Allergen[]) => setDiet({ allergens: v })} options={(Object.keys(ALLERGEN_LABELS) as Allergen[]).map((k) => ({ value: k, label: ALLERGEN_LABELS[k] }))} />
       </Field>
+      <div className="flex flex-col gap-1.5" role="group" aria-labelledby="proteins-title">
+        <span id="proteins-title" className="text-sm font-medium text-ink">
+          Which proteins do you like?
+        </span>
+        <ProteinPicker
+          value={diet.proteinPrefs}
+          onChange={(proteinPrefs) => setDiet({ proteinPrefs })}
+          hint="Tap once to like, twice for “Not for me”, again to reset. Optional: skip it if you eat everything. Allergies go above."
+        />
+      </div>
       <Input
         label="Foods you dislike (optional)"
         value={disliked}

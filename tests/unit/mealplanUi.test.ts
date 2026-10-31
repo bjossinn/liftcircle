@@ -35,6 +35,12 @@ import { selectMeals, planPrefsFrom } from '@/domain/nutrition/mealplan';
 import { startOfWeek, todayISO } from '@/lib/dates';
 import type { AccountState, MealPlan } from '@/domain/types';
 import MealPlanPage from '@/features/nutrition/MealPlanPage';
+import { RECIPES as ALL_RECIPES } from '@/data/recipes';
+import { setNutritionCatalog } from '../../supabase/functions/_shared/nutrition/catalog';
+
+// These fixtures (and their exact numbers) were reviewed on the 84-recipe catalogue of packs 1–2, so the planner runs on that
+// catalogue here. The full catalogue (pack 3) is covered by recipeCatalog.test.ts and proteinPrefs.test.ts.
+setNutritionCatalog({ recipes: ALL_RECIPES.slice(0, 84) });
 
 const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
 let root: Root | null = null;

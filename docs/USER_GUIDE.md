@@ -76,12 +76,26 @@ Turn it on from the Nutrition tab: **protein only**, or protein + calories + mac
 starting point within a 1.6–2.2 g/kg range, not an exact requirement. Calorie estimates use the Mifflin–St Jeor
 equation plus an activity factor and a small goal adjustment, all shown and editable. Log food via quick entries,
 recipes, generic foods, your own foods, or saved meals; missing values are treated as *unknown*, not zero.
-**Recipes** (84, mostly simple everyday dishes — plenty of high-protein, vegetarian, vegan, dairy-free, gluten-free
-and no-cook options, plus a few 4-serving batch recipes) scale by servings and recalculate when you swap ingredients.
-Filter by meal, diet and **Quick (≤ 15 min)**. Each recipe page is a prep guide: time (prep + cook), a servings
+**Recipes** (275, mostly simple everyday dishes covering every protein — chicken, turkey, beef, pork, lamb, fish,
+seafood, eggs, dairy, tofu, beans, chickpeas and protein powders — with plenty of high-protein, vegetarian, vegan,
+dairy-free, gluten-free and no-cook options and 4-serving batch recipes) scale by servings and recalculate when you
+swap ingredients. Filter by meal, diet, protein and **Quick (≤ 15 min)**. The list loads 60 at a time (**Show more**). Each recipe page is a prep guide: time (prep + cook), a servings
 selector, macros per serving, an ingredient list you can tick off, numbered steps under **How to make it** that you can
 tick off too, substitutions and notes. The screen stays awake while a recipe is open (where the browser supports it).
 From there: **Add to meal plan…**, **Log this meal** and **Save to favourites**.
+**Proteins you like.** In setup, under **Plan preferences**, from the **Proteins** button on the meal plan and from the
+drumstick icon on Recipes, the same chip grid asks *Which proteins do you like?* Tap a protein once to **like** it
+(filled), twice for **Not for me** (crossed out), and a third time to go back to no preference. It's optional.
+- **Liked** proteins are picked more often and listed first, but other proteins still turn up for variety.
+- **Not for me** proteins never appear: not in meal plans, swaps, protein sides, the shopping list, recipe lists
+  (switch off **Hide proteins I've excluded** on Recipes to browse them anyway) or the AI coach's suggestions. If a
+  recipe only uses one as a side ingredient and has a substitute, it's made with the substitute instead (the recipe page
+  says so). A recipe built around it is left out.
+- This is a taste preference, separate from **allergies**, which stay a safety filter.
+- Changing proteins on the meal plan keeps your current plan and offers **Rebuild meal plan with these**.
+- If your choices leave very few recipes for a meal, the plan says so ("Only 3 dinners fit your choices…") instead of
+  quietly repeating them; allow one more protein or a longer cook time.
+
 **Meal plan** builds a week from your preferences and allergies and balances each day toward your protein target with
 portions and protein sides. If a day can't reach it within your restrictions, it shows the gap and practical changes
 (allergies are never relaxed); **Balance day** / **Balance all days** re-run it after your edits. In protein-only mode
