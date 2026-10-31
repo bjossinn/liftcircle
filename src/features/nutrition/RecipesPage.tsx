@@ -1,15 +1,32 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { ChevronLeft, Search, Star, Timer } from 'lucide-react';
-import { Button, Card, ChipGroup, EmptyState, IconButton, Input, Page, Segmented, Toggle, cx } from '@/components/ui';
+import { ChevronLeft, Drumstick, Search, Star, Timer } from 'lucide-react';
+import { Button, Card, ChipGroup, EmptyState, IconButton, Input, Page, Segmented, Sheet, Toggle, cx } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { useApp } from '@/state/app';
-import type { DietTag, MealSlot } from '@/domain/types';
+import type { DietTag, MealSlot, ProteinGroup, Recipe } from '@/domain/types';
 import { RECIPES } from '@/data/recipes';
 import {
-  ALLERGEN_LABELS, DIET_TAG_LABELS, MEAL_LABELS, MEAL_ORDER, QUICK_MINUTES, displayMacro, recipeMatches, recipeMinutes, recipeNutrition,
+  ALLERGEN_LABELS, DIET_TAG_LABELS, MEAL_LABELS, MEAL_ORDER, PROTEIN_GROUP_LABELS, PROTEIN_GROUPS, QUICK_MINUTES, displayMacro, featuredProteinGroups,
+  likedBonus, normalizeProteinPrefs, proteinListText, recipeMatches, recipeMinutes, recipeNutrition,
 } from '@/domain/nutrition/recipes';
 import { AllergenNote } from './shared';
+import { ProteinsForm } from './ProteinPicker';
+
+/** Per-recipe values the list needs, computed once (the catalogue is static), so filtering ~250 recipes stays instant. */
+let INDEX: Map<string, { kcal: number; protein: number; featured: ProteinGroup[] }> | null = null;
+function recipeIndex() {
+  INDEX ??= new Map(
+    RECIPES.map((r) => {
+      const n = recipeNutrition(r).perServing;
+      return [r.id, { kcal: n.kcal, protein: n.protein, featured: featuredProteinGroups(r) }];
+    }),
+  );
+  return INDEX;
+}
+/** Groups that some recipe features, in the standard order (the filter row offers only these). */
+const FILTER_PROTEINS = PROTEIN_GROUPS.filter((g) => RECIPES.some((r) => recipeIndex().get(r.id)!.featured.includes(g)));
+const PAGE = 60;
 
 const FILTER_TAGS: DietTag[] = ['vegetarian', 'vegan', 'pescatarian', 'dairy_free', 'gluten_free', 'high_protein'];
 
@@ -24,21 +41,33 @@ export default function RecipesPage() {
   const [hideAllergens, setHideAllergens] = useState(diet.allergens.length > 0);
   const [favOnly, setFavOnly] = useState(false);
   const [quick, setQuick] = useState(false);
+  const [proteins, setProteins] = useState<ProteinGroup[]>([]);
+  const [hideExcluded, setHideExcluded] = useState(true);
+  const [proteinsOpen, setProteinsOpen] = useState(false);
+  const [shown, setShown] = useState(PAGE);
   const favs = account.favorites.recipes;
+  const pp = useMemo(() => normalizeProteinPrefs(diet.proteinPrefs), [diet.proteinPrefs]);
 
-  const list = useMemo(
-    () =>
-      RECIPES.filter((r) =>
+  const list = useMemo(() => {
+    const idx = recipeIndex();
+    const out = RECIPES.filter(
+      (r) =>
+        (!favOnly || favs.includes(r.id)) &&
+        (!proteins.length || idx.get(r.id)!.featured.some((g) => proteins.includes(g))) &&
         recipeMatches(r, {
           query: q,
           meal: meal === 'all' ? undefined : meal,
           tags,
           excludeAllergens: hideAllergens ? diet.allergens : undefined,
           maxMinutes: quick ? QUICK_MINUTES : undefined,
+          excludeProteinGroups: hideExcluded ? pp.excluded : undefined,
         }),
-      ).filter((r) => !favOnly || favs.includes(r.id)),
-    [q, meal, tags, hideAllergens, diet.allergens, favOnly, favs, quick],
-  );
+    );
+    // Recipes with proteins you like come first (stable otherwise).
+    if (!pp.liked.length) return out;
+    const liked = (r: Recipe) => likedBonus(r, pp.liked);
+    return out.map((r, i) => ({ r, i, s: liked(r) })).sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.r);
+  }, [q, meal, tags, hideAllergens, diet.allergens, favOnly, favs, quick, proteins, hideExcluded, pp]);
 
   async function toggleFav(id: string) {
     try {
@@ -56,6 +85,8 @@ export default function RecipesPage() {
     setTags([]);
     setFavOnly(false);
     setQuick(false);
+    setProteins([]);
+    setShown(PAGE);
   };
   const chip = (on: boolean) =>
     cx(
@@ -66,6 +97,11 @@ export default function RecipesPage() {
   return (
     <Page
       title="Recipes"
+      actions={
+        <IconButton label="Your proteins" onClick={() => setProteinsOpen(true)}>
+          <Drumstick className="size-5" />
+        </IconButton>
+      }
       back={
         <IconButton label="Back" onClick={() => nav(-1)}>
           <ChevronLeft className="size-6" />
@@ -99,6 +135,23 @@ export default function RecipesPage() {
             <Timer className="size-4" aria-hidden /> Quick (≤ {QUICK_MINUTES} min)
           </button>
         </div>
+        <ChipGroup<ProteinGroup>
+          label="Protein filters"
+          values={proteins}
+          onChange={(v) => {
+            setProteins(v);
+            setShown(PAGE);
+          }}
+          options={FILTER_PROTEINS.filter((g) => !(hideExcluded && pp.excluded.includes(g))).map((g) => ({ value: g, label: PROTEIN_GROUP_LABELS[g] }))}
+        />
+        {pp.excluded.length > 0 && (
+          <Toggle
+            label="Hide proteins I've excluded"
+            description={`Not for me: ${proteinListText(pp.excluded)}`}
+            checked={hideExcluded}
+            onChange={setHideExcluded}
+          />
+        )}
         {diet.allergens.length > 0 && (
           <Toggle
             label="Hide recipes with my allergens"
@@ -126,8 +179,8 @@ export default function RecipesPage() {
           />
         ) : (
           <ul className="divide-y divide-line">
-            {list.map((r) => {
-              const n = recipeNutrition(r).perServing;
+            {list.slice(0, shown).map((r) => {
+              const n = recipeIndex().get(r.id)!;
               const fav = favs.includes(r.id);
               return (
                 <li key={r.id} className="flex items-center pr-1">
@@ -146,6 +199,14 @@ export default function RecipesPage() {
           </ul>
         )}
       </Card>
+      {list.length > shown && (
+        <div className="flex justify-center mt-3">
+          <Button onClick={() => setShown(shown + PAGE)}>Show more ({list.length - shown} left)</Button>
+        </div>
+      )}
+      <Sheet open={proteinsOpen} onClose={() => setProteinsOpen(false)} title="Proteins">
+        {proteinsOpen && <ProteinsForm hasPlan={false} busy={false} onRebuild={() => {}} onDone={() => setProteinsOpen(false)} />}
+      </Sheet>
     </Page>
   );
 }

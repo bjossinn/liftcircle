@@ -7,7 +7,7 @@
  * equivalent (skyr, oat drink, soy yogurt, stock) use typical label values of plain/unsweetened products.
  * Carbohydrate is USDA "carbohydrate by difference" (includes fibre). Brands vary: check your own labels.
  */
-import type { Allergen, ID, Ingredient } from '@/domain/types';
+import type { Allergen, ID, Ingredient, ProteinGroup } from '@/domain/types';
 
 type Diet = Ingredient['diet'];
 const PLANT: Diet = { vegetarian: true, vegan: true, dairyFree: true, glutenFree: true, pescatarian: true };
@@ -38,7 +38,7 @@ function ing(
   return { id, name, category, state, per100g: { kcal, protein, carbs, fat, ...(fiber != null ? { fiber } : {}) }, source, allergens, diet, units, costTier };
 }
 
-export const INGREDIENTS: Ingredient[] = [
+const INGREDIENT_LIST: Ingredient[] = [
   /* ---------------------------------------------------------- protein foods */
   ing('chicken-breast-raw', 'Chicken breast, skinless (raw)', 'protein', 'raw', [120, 22.5, 0, 2.62, 0],
     fdc('Chicken, broilers or fryers, breast, skinless, boneless, meat only, raw', 171077), MEAT, 2),
@@ -268,7 +268,114 @@ export const INGREDIENTS: Ingredient[] = [
     typ('Syrups, maple'), PLANT, 3, [], { tbsp: 20, tsp: 6.7 }),
   ing('cocoa-powder', 'Cocoa powder, unsweetened', 'condiment', 'as_sold', [228, 19.6, 57.9, 13.7, 37.0],
     typ('Cocoa, dry powder, unsweetened'), PLANT, 2, [], { tbsp: 5.4, tsp: 1.8 }),
+
+  /* ------------------------------------------- added Nov 2026 (recipe pack 3) */
+  // protein foods
+  ing('beef-steak-raw', 'Beef sirloin steak, lean (raw)', 'protein', 'raw', [142, 22.03, 0, 5.4, 0],
+    typ('Beef, top sirloin, steak, separable lean only, trimmed to 1/8" fat, choice, raw'), MEAT, 3),
+  ing('pork-loin-raw', 'Pork loin chop, boneless, lean (raw)', 'protein', 'raw', [143, 21.43, 0, 5.66, 0],
+    typ('Pork, fresh, loin, center loin (chops), boneless, separable lean only, raw'), MEAT, 2, [], { piece: 150 }),
+  ing('ham-sliced', 'Ham, sliced, lean (deli)', 'protein', 'as_sold', [107, 16.85, 1.93, 3.73, 0],
+    typ('Ham, sliced, pre-packaged, deli meat (96% fat free, water added)'), MEAT, 2, [], { slice: 15 }),
+  ing('lamb-leg-raw', 'Lamb leg steak, lean (raw)', 'protein', 'raw', [134, 20.56, 0, 5.25, 0],
+    typ('Lamb, leg, whole (shank and sirloin), separable lean only, trimmed to 1/4" fat, choice, raw'), MEAT, 3),
+  ing('turkey-breast-raw', 'Turkey breast, skinless (raw)', 'protein', 'raw', [114, 23.66, 0.14, 1.48, 0],
+    typ('Turkey, breast, meat only, raw'), MEAT, 2),
+  ing('saithe-raw', 'Saithe / pollock fillet (raw)', 'protein', 'raw', [92, 19.44, 0, 0.98, 0],
+    typ('Fish, pollock, Atlantic, raw'), FISH, 1, ['fish']),
+  ing('mackerel-canned', 'Mackerel, canned, drained', 'protein', 'as_sold', [156, 23.19, 0, 6.3, 0],
+    typ('Fish, mackerel, jack, canned, drained solids'), FISH, 1, ['fish'], { can: 125 }),
+  ing('mussels-cooked', 'Mussels, cooked (shelled, frozen)', 'protein', 'cooked', [172, 23.8, 7.39, 4.48, 0],
+    typ('Mollusks, mussel, blue, cooked, moist heat'), FISH, 2, ['shellfish']),
+  ing('squid-raw', 'Squid rings (raw)', 'protein', 'raw', [92, 15.58, 3.08, 1.38, 0],
+    typ('Mollusks, squid, mixed species, raw'), FISH, 2, ['shellfish']),
+  ing('whey-protein', 'Whey protein powder, unflavoured', 'protein', 'as_sold', [400, 78.0, 8.0, 6.0, 0],
+    label('whey protein concentrate powder, unflavoured (no USDA entry)'), DAIRY, 2, ['milk'], { tbsp: 8 }),
+  ing('pea-protein', 'Plant protein powder (pea), unflavoured', 'protein', 'as_sold', [380, 80.0, 4.0, 6.5, 1.0],
+    label('pea protein isolate powder, unflavoured (no USDA entry)'), PLANT, 2, [], { tbsp: 8 }),
+  // dairy
+  ing('ricotta', 'Ricotta, part-skim', 'dairy', 'as_sold', [138, 11.39, 5.14, 7.91, 0],
+    typ('Cheese, ricotta, part skim milk'), DAIRY, 2, ['milk'], { tbsp: 15 }),
+  // grains
+  ing('bulgur-dry', 'Bulgur wheat (dry)', 'grain', 'dry', [342, 12.29, 75.87, 1.33, 12.5],
+    typ('Bulgur, dry'), PLANT_GLUTEN, 1, ['wheat', 'gluten'], { cup: 140 }),
+  ing('egg-noodles-dry', 'Egg noodles (dry)', 'grain', 'dry', [384, 14.16, 71.27, 4.44, 3.3],
+    typ('Noodles, egg, dry, enriched'), { ...PLANT_GLUTEN, vegan: false }, 1, ['wheat', 'gluten', 'egg']),
+  // vegetables
+  ing('sweetcorn-canned', 'Sweetcorn, canned (drained)', 'vegetable', 'as_sold', [67, 2.29, 13.86, 1.22, 1.7],
+    typ('Corn, sweet, yellow, canned, whole kernel, drained solids'), PLANT, 1, [], { can: 200, cup: 165 }),
+  ing('rocket', 'Rocket (arugula)', 'vegetable', 'raw', [25, 2.58, 3.65, 0.66, 1.6],
+    typ('Arugula, raw'), PLANT, 2, [], { cup: 20 }),
+  ing('aubergine', 'Aubergine (eggplant)', 'vegetable', 'raw', [25, 0.98, 5.88, 0.18, 3.0],
+    typ('Eggplant, raw'), PLANT, 1, [], { piece: 450 }),
+  ing('leek', 'Leek', 'vegetable', 'raw', [61, 1.5, 14.15, 0.3, 1.8],
+    typ('Leeks, (bulb and lower leaf-portion), raw'), PLANT, 1, [], { piece: 90 }),
+  ing('kale', 'Kale', 'vegetable', 'raw', [35, 2.92, 4.42, 1.49, 4.1],
+    typ('Kale, raw'), PLANT, 2, [], { cup: 21 }),
+  // fruit
+  ing('mango', 'Mango (fresh or frozen)', 'fruit', 'raw', [60, 0.82, 14.98, 0.38, 1.6],
+    typ('Mangos, raw'), PLANT, 2, [], { cup: 165 }),
+  // pantry
+  ing('passata', 'Tomato passata', 'condiment', 'as_sold', [38, 1.65, 8.98, 0.21, 1.9],
+    typ('Tomato products, canned, puree, without salt added'), PLANT, 1, [], { cup: 250 }),
+  ing('coconut-milk-light', 'Coconut milk, light (canned)', 'condiment', 'as_sold', [73, 0.7, 2.6, 6.8, 0],
+    label('light coconut milk, canned (about 7% fat)'), PLANT, 2, [], { can: 400, cup: 240 }),
 ];
+
+/**
+ * Protein group of each protein food (for "proteins I like / not for me"). Milk and butter are deliberately not tagged:
+ * the dairy group means the protein-rich dairy foods (skyr, yogurt, cottage cheese, cheese); avoiding all milk is the
+ * dairy-free diet or the milk allergy. Peas and nuts are not tagged either.
+ */
+export const PROTEIN_GROUP_OF: Partial<Record<ID, ProteinGroup>> = {
+  'chicken-breast-raw': 'chicken',
+  'chicken-breast-cooked': 'chicken',
+  'chicken-thigh-raw': 'chicken',
+  'turkey-mince-raw': 'turkey',
+  'turkey-breast-raw': 'turkey',
+  'beef-mince-10-raw': 'beef',
+  'beef-steak-raw': 'beef',
+  'pork-tenderloin-raw': 'pork',
+  'pork-loin-raw': 'pork',
+  'ham-sliced': 'pork',
+  'lamb-mince-raw': 'lamb',
+  'lamb-leg-raw': 'lamb',
+  'cod-raw': 'white_fish',
+  'haddock-raw': 'white_fish',
+  'saithe-raw': 'white_fish',
+  'salmon-raw': 'oily_fish',
+  'smoked-salmon': 'oily_fish',
+  'sardines-canned': 'oily_fish',
+  'mackerel-canned': 'oily_fish',
+  'tuna-canned': 'tuna',
+  'shrimp-cooked': 'prawns',
+  'mussels-cooked': 'shellfish',
+  'squid-raw': 'shellfish',
+  egg: 'eggs',
+  'egg-white': 'eggs',
+  'skyr-plain': 'dairy',
+  'greek-yogurt-0': 'dairy',
+  'cottage-cheese': 'dairy',
+  gouda: 'dairy',
+  feta: 'dairy',
+  'mozzarella-light': 'dairy',
+  parmesan: 'dairy',
+  ricotta: 'dairy',
+  'tofu-firm': 'tofu_tempeh',
+  tempeh: 'tofu_tempeh',
+  'lentils-dry': 'beans_lentils',
+  'lentils-cooked': 'beans_lentils',
+  'black-beans-cooked': 'beans_lentils',
+  'kidney-beans-cooked': 'beans_lentils',
+  'white-beans-cooked': 'beans_lentils',
+  edamame: 'beans_lentils',
+  'chickpeas-cooked': 'chickpeas',
+  hummus: 'chickpeas',
+  'whey-protein': 'whey',
+  'pea-protein': 'plant_protein',
+};
+
+export const INGREDIENTS: Ingredient[] = INGREDIENT_LIST.map((i) => (PROTEIN_GROUP_OF[i.id] ? { ...i, proteinGroup: PROTEIN_GROUP_OF[i.id] } : i));
 
 /** Singular/plural nouns for ingredients measured in pieces, used for friendly quantities. */
 export const PIECE_LABELS: Partial<Record<ID, [string, string]>> = {
@@ -294,6 +401,9 @@ export const PIECE_LABELS: Partial<Record<ID, [string, string]>> = {
   'pita-wholewheat': ['pitta', 'pittas'],
   'spring-onion': ['spring onion', 'spring onions'],
   'mozzarella-light': ['ball', 'balls'],
+  'pork-loin-raw': ['chop', 'chops'],
+  aubergine: ['aubergine', 'aubergines'],
+  leek: ['leek', 'leeks'],
 };
 
 /**

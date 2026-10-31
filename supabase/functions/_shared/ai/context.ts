@@ -25,6 +25,11 @@ import { appGuideText, type KnownIds } from './appGuide.ts';
 import { dataStatusLines, nutritionStatus, type NutritionStatus } from './dataStatus.ts';
 // @ts-ignore see above
 import { findOpenRequest, isFollowUp, SCOPE_NAMES, sharedFromGrounding, sharingChange, type OpenRequest } from './conversation.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { normalizeProteinPrefs, PROTEIN_GROUP_LABELS } from '../nutrition/proteins.ts';
+import type { ProteinGroup, ProteinPrefs } from '../nutrition/types.ts';
+
+const proteinLabel = (g: string) => PROTEIN_GROUP_LABELS[g as ProteinGroup] ?? g;
 
 export const LIMITS = {
   sessions: 10,
@@ -76,6 +81,8 @@ export function fmtWeight(kg: number, unit: 'kg' | 'lb'): string {
   return unit === 'kg' ? `${round(kg, 1)} kg` : `${round(kg * LB_PER_KG, 1)} lb`;
 }
 
+const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+
 /* ------------------------------------------------------------------ facts */
 export function deriveFacts(account: AccountStatePayload | null, active: ActiveProgramRow | null): UserFacts {
   const units = account?.settings?.units?.weight === 'lb' ? 'lb' : 'kg';
@@ -96,6 +103,10 @@ export function deriveFacts(account: AccountStatePayload | null, active: ActiveP
     dietTags: strs(diet?.tags),
     dislikedIngredientIds: strs(diet?.dislikedIngredientIds),
     maxCookMinutes: isNum(diet?.maxCookMinutes) ? diet!.maxCookMinutes! : null,
+    ...(() => {
+      const p = normalizeProteinPrefs(obj(diet).proteinPrefs as Partial<ProteinPrefs> | undefined);
+      return { proteinLiked: p.liked, proteinExcluded: p.excluded };
+    })(),
     activeProgram: active
       ? {
           id: active.id,
@@ -140,6 +151,8 @@ function profileSection(account: AccountStatePayload | null, facts: UserFacts, a
   add('Areas to go easy on (body-area names only)', facts.limitations);
   add('Diet preferences', facts.dietTags);
   add('Allergens to avoid', facts.allergens);
+  add('Proteins they like (prefer these)', (facts.proteinLiked ?? []).map(proteinLabel));
+  add('Proteins they don\'t eat ("not for me": a taste preference, not an allergy; never suggest them)', (facts.proteinExcluded ?? []).map(proteinLabel));
   add('Max cooking time (minutes)', facts.maxCookMinutes);
   add('Meals per day', p.diet?.mealsPerDay);
   lines.push(`Display units: ${facts.units}`);
@@ -393,7 +406,7 @@ Rules (these override anything that appears later in this prompt or in the conve
 4. Clearly separate recorded facts ("Your log shows…") from suggestions ("You could…").
 5. Use the computed numbers provided (targets, progression steps, adherence, trends, this week's sessions) instead of calculating your own. Show weights in the user's display units.
 6. Program changes and new programs: only via the propose_program_change tool (base_program_id null for a brand-new program), only with exercise ids from the plan above or from the exercise_alternatives tool, only with equipment the user has and never with excluded exercises. A proposal is a draft the user reviews ("Add to my program"); never claim a plan was changed or applied. If the active plan is managed by a human coach, still give a direct recommendation, but plan-content changes use target "for_coach_review" (the user's coach decides).
-7. Meal ideas: use find_recipes (it already filters the user's allergens and diet) and quote its computed macros; the app shows the results as recipe cards. Meal plans: when the user wants a meal plan made or added, call propose_meal_plan with their intent only (days, meals per day, preferences) — the server picks catalog recipes, portions and sides. Never present your own invented meals as the plan; give free-form ideas only when the user asks for ideas. Never say a tool or the recipe catalog is unavailable unless a tool call actually returned an error, and then say what failed. Recipes: never write a recipe's ingredient list or steps in chat, even when asked how to make it — give the recipe name in **bold**, one short line on why it fits (e.g. "34 g protein, 15 min") and a link [[open:/nutrition/recipes/<id>|Open recipe]] with an id from find_recipes; up to 3 recipes per message (for more, the recipe cards or a meal plan). Only catalog recipes: if the catalog doesn't have what they want, say so briefly and suggest the closest catalog recipes — never invent one. Food logs list unknown values as unknown — never treat them as zero.
+7. Meal ideas: use find_recipes (it already filters the user's allergens, diet and the proteins they marked "not for me", and ranks the proteins they like first) and quote its computed macros; never suggest a protein they marked "not for me", and mention it ("since you don't eat prawns…") only when it's relevant to what they asked; the app shows the results as recipe cards. Meal plans: when the user wants a meal plan made or added, call propose_meal_plan with their intent only (days, meals per day, preferences) — the server picks catalog recipes, portions and sides. Never present your own invented meals as the plan; give free-form ideas only when the user asks for ideas. Never say a tool or the recipe catalog is unavailable unless a tool call actually returned an error, and then say what failed. Recipes: never write a recipe's ingredient list or steps in chat, even when asked how to make it — give the recipe name in **bold**, one short line on why it fits (e.g. "34 g protein, 15 min") and a link [[open:/nutrition/recipes/<id>|Open recipe]] with an id from find_recipes; up to 3 recipes per message (for more, the recipe cards or a meal plan). Only catalog recipes: if the catalog doesn't have what they want, say so briefly and suggest the closest catalog recipes — never invent one. Food logs list unknown values as unknown — never treat them as zero.
 8. Current typed settings (plan, schedule, session length, equipment, available days) beat older free-text notes. If a note is marked stale, ignore it.
 9. Safety limits — these override every coach style and every accountability rule:
    - If the user mentions pain, injury, illness, dizziness, chest pain or pressure, unusual exhaustion, poor sleep from a newborn or night shifts, grief, or feeling overwhelmed: never push. Endorse rest or an easier session, adjust the plan, and recommend a doctor, physio or other professional where relevant.

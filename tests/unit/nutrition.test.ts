@@ -280,9 +280,9 @@ describe('food log', () => {
 });
 
 describe('data integrity', () => {
-  it('has 84 complete recipes with resolvable ingredients', () => {
-    expect(RECIPES).toHaveLength(84);
-    expect(new Set(RECIPES.map((r) => r.id)).size).toBe(84);
+  it('has 275 complete recipes with resolvable ingredients', () => {
+    expect(RECIPES).toHaveLength(275);
+    expect(new Set(RECIPES.map((r) => r.id)).size).toBe(275);
     const counts = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
     let veg = 0;
     let df = 0;
@@ -303,7 +303,7 @@ describe('data integrity', () => {
       if (satisfiesTag(tags, 'vegetarian')) veg++;
       if (tags.includes('dairy_free')) df++;
     }
-    expect(counts).toEqual({ breakfast: 21, lunch: 21, dinner: 28, snack: 14 });
+    expect(counts).toEqual({ breakfast: 59, lunch: 75, dinner: 101, snack: 40 });
     expect(veg).toBeGreaterThanOrEqual(8);
     expect(df).toBeGreaterThanOrEqual(8);
   });

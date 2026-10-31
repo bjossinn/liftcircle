@@ -20,6 +20,9 @@ import { setNutritionCatalog } from '../nutrition/catalog.ts';
 import { generateMealPlan, planPrefsFrom, rankedCandidates, slotsForMeals, type PlanPrefs } from '../nutrition/mealplan.ts';
 // @ts-ignore see above
 import { ALLERGEN_LABELS, DIET_TAG_LABELS, ingredientAllowed, MEAL_LABELS, recipeMatches, recipeMinutes } from '../nutrition/recipes.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { ingredientFitsProteinPrefs, normalizeProteinPrefs, proteinListText } from '../nutrition/proteins.ts';
+import type { ProteinGroup, ProteinPrefs } from '../nutrition/types.ts';
 
 /* ------------------------------------------------------------------ text matching */
 export const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
@@ -113,6 +116,8 @@ export interface ConstraintSet {
   disliked: string[];
   maxMinutes: number | null;
   meal: string | null;
+  /** Protein groups marked "not for me". */
+  proteinExcluded?: string[];
 }
 const allergenLabel = (a: string) => (ALLERGEN_LABELS as Record<string, string>)[a]?.toLowerCase() ?? a;
 const dietLabel = (t: string) => (DIET_TAG_LABELS as Record<string, string>)[t] ?? t;
@@ -123,6 +128,7 @@ export function describeConstraints(c: ConstraintSet): string {
     ...c.dietTags.map(dietLabel),
     ...c.allergens.map((a) => `no ${allergenLabel(a)}`),
     ...(c.disliked.length ? [`${c.disliked.length} skipped ingredient${c.disliked.length === 1 ? '' : 's'}`] : []),
+    ...(c.proteinExcluded?.length ? [`no ${proteinListText(c.proteinExcluded as ProteinGroup[])}`] : []),
     ...(c.maxMinutes != null ? [`≤ ${c.maxMinutes} min`] : []),
     ...(c.meal ? [(MEAL_LABELS as Record<string, string>)[c.meal]?.toLowerCase() ?? c.meal] : []),
   ];
@@ -141,6 +147,7 @@ export function explainNoRecipes(c: ConstraintSet, recipes: RefRecipe[], ing: Ma
       return (r.ingredients ?? []).every((x) => {
         const i = ing.get(x.ingredientId);
         if (!i) return false;
+        if (!x.optional && i.proteinGroup && k.proteinExcluded?.includes(i.proteinGroup)) return false;
         const bad = (i.allergens ?? []).some((a) => k.allergens.includes(a)) || k.disliked.includes(i.id) ||
           k.dietTags.some((t) => DIET_FLAG[t] && i.diet?.[DIET_FLAG[t] as keyof NonNullable<RefIngredient['diet']>] !== true);
         return !bad || x.optional;
@@ -152,6 +159,7 @@ export function explainNoRecipes(c: ConstraintSet, recipes: RefRecipe[], ing: Ma
   for (const t of c.dietTags) if (fits({ ...c, dietTags: c.dietTags.filter((x) => x !== t) })) culprits.push(`the ${dietLabel(t).toLowerCase()} setting`);
   for (const a of c.allergens) if (fits({ ...c, allergens: c.allergens.filter((x) => x !== a) })) culprits.push(`avoiding ${allergenLabel(a)}`);
   if (c.disliked.length && fits({ ...c, disliked: [] })) culprits.push('the skipped ingredients');
+  if (c.proteinExcluded?.length && fits({ ...c, proteinExcluded: [] })) culprits.push('the proteins marked "not for me"');
   const combo = describeConstraints(c);
   return culprits.length
     ? `Nothing in the catalog fits ${combo}. It's ${culprits.slice(0, 3).join(' or ')} that rules everything out.`
@@ -200,6 +208,7 @@ export function prefsFromAccountPayload(account: AccountStatePayload | null): Pl
     maxCookMinutes: typeof d.maxCookMinutes === 'number' ? d.maxCookMinutes : 30,
     budget: (d as { budget?: DietPrefs['budget'] }).budget ?? 'any',
     mealsPerDay: typeof d.mealsPerDay === 'number' ? d.mealsPerDay : 3,
+    ...((d as { proteinPrefs?: unknown }).proteinPrefs ? { proteinPrefs: normalizeProteinPrefs((d as { proteinPrefs?: Partial<ProteinPrefs> }).proteinPrefs) } : {}),
   };
   const n = account?.nutrition;
   const mode = n?.mode === 'protein_only' || n?.mode === 'full' || n?.mode === 'manual' ? n.mode : 'none';
@@ -264,7 +273,7 @@ export function buildMealPlanAction(input: MealPlanIntent, ctx: MealPlanBuildCon
 
   // Every slot needs at least one recipe under the constraints; otherwise say which constraint is the blocker.
   const constraints: ConstraintSet = {
-    allergens: prefs.allergens, dietTags: prefs.tags, disliked: prefs.dislikedIngredientIds, maxMinutes: prefs.maxCookMinutes, meal: null,
+    allergens: prefs.allergens, dietTags: prefs.tags, disliked: prefs.dislikedIngredientIds, maxMinutes: prefs.maxCookMinutes, meal: null, proteinExcluded: prefs.proteinExcluded,
   };
   for (const slot of new Set(slotsForMeals(prefs.mealsPerDay))) {
     const { recipes: pool, relaxedTime } = rankedCandidates(slot, prefs, planCtx);
@@ -285,17 +294,18 @@ export function buildMealPlanAction(input: MealPlanIntent, ctx: MealPlanBuildCon
         recipeId: it.recipeId,
         name: recipeName.get(it.recipeId) ?? it.recipeId,
         servings: it.servings,
+        ...(it.swaps?.length ? { swaps: it.swaps.map((s) => ({ from: s.from, to: s.to })) } : {}),
         ...(it.extras?.length ? { extras: it.extras.map((e) => ({ ingredientId: e.ingredientId, grams: e.grams })) } : {}),
       })),
     }));
   // Belt and braces: everything in the plan must pass the user's filters (the planner never relaxes them).
   for (const d of days) for (const it of d.items) {
     const r = recipes.find((x) => x.id === it.recipeId);
-    if (!r || !recipeMatches(r, { excludeAllergens: prefs.allergens, tags: prefs.tags, dislikedIngredientIds: prefs.dislikedIngredientIds }, byId))
+    if (!r || !recipeMatches(r, { excludeAllergens: prefs.allergens, tags: prefs.tags, dislikedIngredientIds: prefs.dislikedIngredientIds, excludeProteinGroups: prefs.proteinExcluded }, byId))
       return { action: null, errors: ['The planner produced a meal that conflicts with the user\'s settings; nothing was offered.'], adjusted };
     for (const e of it.extras ?? []) {
       const i = byId.get(e.ingredientId);
-      if (!i || !ingredientAllowed(i, { tags: prefs.tags, allergens: prefs.allergens, disliked: prefs.dislikedIngredientIds }))
+      if (!i || !ingredientAllowed(i, { tags: prefs.tags, allergens: prefs.allergens, disliked: prefs.dislikedIngredientIds }) || !ingredientFitsProteinPrefs(i, prefs.proteinExcluded))
         return { action: null, errors: ['The planner produced a side that conflicts with the user\'s settings; nothing was offered.'], adjusted };
     }
   }

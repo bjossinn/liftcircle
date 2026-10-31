@@ -146,6 +146,7 @@ function DayView() {
             tags: diet.tags,
             allergens: diet.allergens,
             dislikedIngredientIds: diet.dislikedIngredientIds,
+            excludedProteins: diet.proteinPrefs?.excluded,
             remainingKcal: kcalGoal != null && totals.missing.kcal === 0 ? kcalGoal - totals.kcal : undefined,
           })
         : [],

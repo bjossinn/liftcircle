@@ -102,7 +102,7 @@ app ── functions.invoke('ai-coach') ─► verify JWT → settings (enabled,
 | Category (scope) | Content |
 |---|---|
 | always | Fixed rules; the user's AI coach notes (`ai_settings.profile_notes`, user-editable, ≤ 4000 chars); up to the last 20 AI messages created **after** the last scope change (each ≤ 1500 chars, ≤ 12k chars total); the new message. |
-| `profile` (default on) | Goal, experience, activity level, training days / available weekdays / session length / location, equipment, excluded exercises, limitation **areas** (names only), diet tags, allergens, max cook time, meals per day, units. |
+| `profile` (default on) | Goal, experience, activity level, training days / available weekdays / session length / location, equipment, excluded exercises, limitation **areas** (names only), diet tags, allergens, proteins they like and proteins marked "not for me" (0.9.0), max cook time, meals per day, units. |
 | `training` (default on) | Active plan (sessions, prescriptions, baseline schedule, frequency, session time, managed-by), **this week** in the user's time zone and week start (planned sessions with dates and status incl. skips/moves, completed workouts this week, sessions left, free dates), last ≤ 10 completed workouts (date, name, duration, top set per exercise, discomfort flags), 28-day adherence, double-progression steps computed by the app's rule, up to 5 goals. |
 | `measurements` (default off) | Bodyweight entries of the last 120 days summarized (latest, change over ≥ 3 weeks, last 8 entries). |
 | `nutrition` (default off) | Stored targets (computed in the app by `computeNutritionTargets`) or "targets disabled" (under 18 / individualized), last 7 days of food-log totals with unknown ≠ zero. |
@@ -324,6 +324,18 @@ the default and re-export them; only the shopping list stays app-only.
 - **Server fallback:** if the user asks for a meal plan to be made/added — or answers a blocked meal-plan request with
   "ok / try now" — and the model doesn't call the tool, the server builds the plan itself and replaces the text with a
   one-line summary (`ai_reply_replaced`, reason `meal_plan_fallback`). Invented meals are never presented as the plan.
+
+**Protein preferences (0.9.0).** `deriveFacts` reads `profile.diet.proteinPrefs` (`{ liked, excluded }` protein groups,
+normalised; missing = none) into `facts.proteinLiked` / `facts.proteinExcluded`, and the profile section lists them, the
+exclusions worded as a taste preference ("not an allergy; never suggest them"). The prompt tells the model to mention an
+exclusion ("since you don't eat prawns…") only when it's relevant.
+- `find_recipes`: `recipeFits` applies the app's rule (`proteinFitSwaps` in `_shared/nutrition/proteins.ts`): a recipe whose
+  main protein is excluded is dropped; any other excluded ingredient needs an allowed substitute, reported in the result
+  as `made_with`. Liked proteins (`likedBonus`) rank higher (`uses_a_liked_protein`). `explainNoRecipes` names "the
+  proteins marked not for me" when they empty the catalogue.
+- `propose_meal_plan`: `prefsFromAccountPayload` passes `proteinPrefs` to the shared planner, which filters recipes,
+  automatic swaps and protein sides and ranks liked proteins; plan items carry the `swaps`. The belt-and-braces check
+  also rejects excluded proteins. The app re-derives the swaps from current settings when it previews or applies a plan.
 
 **find_recipes.** Matching is case- and accent-insensitive, covers ingredient names and synonyms (fish → cod/salmon/
 tuna, yoghurt → yogurt/skyr, …), and reads tags (high protein, vegetarian, vegan, dairy-free, gluten-free, quick) and

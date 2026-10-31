@@ -3,15 +3,13 @@
  * lack each field so the UI can say "at least …".
  */
 import type {
-  Allergen, CustomFood, DietTag, FoodLogEntry, ID, Ingredient, MealSlot, NutritionTargets, Recipe, SyncFields,
-} from '@/domain/types';
+  Allergen, CustomFood, DietTag, FoodLogEntry, ID, Ingredient, MealSlot, NutritionTargets, Recipe, SyncFields, ProteinGroup } from '@/domain/types';
 import { INGREDIENTS, PIECE_LABELS } from '@/data/ingredients';
 import { RECIPES } from '@/data/recipes';
 import { round } from '@/domain/units';
 import {
   formatFraction, ingredientAllowed, macrosForGrams, MEAL_ORDER, recipeMatches, recipeNutrition, roundMacros,
-  type IngredientIndex, type Swap,
-} from './recipes';
+  type IngredientIndex, type Swap, ingredientFitsProteinPrefs } from './recipes';
 
 export type MacroKey = 'kcal' | 'protein' | 'carbs' | 'fat';
 export const MACRO_KEYS: MacroKey[] = ['kcal', 'protein', 'carbs', 'fat'];
@@ -168,7 +166,7 @@ export interface GapSuggestion {
  */
 export function proteinGapSuggestions(
   gapG: number,
-  opts: { tags?: DietTag[]; allergens?: Allergen[]; dislikedIngredientIds?: ID[]; remainingKcal?: number; ingredients?: Ingredient[]; recipes?: Recipe[]; limit?: number } = {},
+  opts: { tags?: DietTag[]; allergens?: Allergen[]; dislikedIngredientIds?: ID[]; excludedProteins?: ProteinGroup[]; remainingKcal?: number; ingredients?: Ingredient[]; recipes?: Recipe[]; limit?: number } = {},
 ): GapSuggestion[] {
   if (!(gapG > 0)) return [];
   const limit = opts.limit ?? 4;
@@ -179,7 +177,7 @@ export function proteinGapSuggestions(
     const p = ing.per100g;
     const readyToEat = ing.state === 'cooked' || ing.state === 'as_sold' || ing.id === 'egg';
     if (!readyToEat || p.protein < 8 || p.kcal <= 0 || (p.protein * 4) / p.kcal < 0.3) continue;
-    if (!ingredientAllowed(ing, filter)) continue;
+    if (!ingredientAllowed(ing, filter) || !ingredientFitsProteinPrefs(ing, opts.excludedProteins)) continue;
     let grams = (want / p.protein) * 100;
     let amount: string;
     const piece = ing.units?.piece;
@@ -199,7 +197,7 @@ export function proteinGapSuggestions(
   foods.sort((a, b) => b.protein / Math.max(1, b.kcal) - a.protein / Math.max(1, a.kcal) || a.name.localeCompare(b.name));
   const recipes: GapSuggestion[] = [];
   for (const r of opts.recipes ?? RECIPES) {
-    if (!recipeMatches(r, { tags: opts.tags, excludeAllergens: opts.allergens, dislikedIngredientIds: opts.dislikedIngredientIds })) continue;
+    if (!recipeMatches(r, { tags: opts.tags, excludeAllergens: opts.allergens, dislikedIngredientIds: opts.dislikedIngredientIds, excludeProteinGroups: opts.excludedProteins })) continue;
     const ps = recipeNutrition(r, { servings: 1 }).perServing;
     if (ps.protein < 15) continue;
     if (opts.remainingKcal != null && ps.kcal > Math.max(opts.remainingKcal, 0) + 50) continue;

@@ -17,7 +17,7 @@ import { INGREDIENTS_BY_ID } from '@/data/ingredients';
 import { RECIPES_BY_ID } from '@/data/recipes';
 import {
   ALLERGEN_LABELS, DIET_TAG_LABELS, MEAL_LABELS, MEAL_ORDER, displayMacro, formatGrams, recipeAllergens, recipeDietTags, recipeMinutes,
-  recipeNutrition, scaleRecipe, substitutesFor, type Swap,
+  recipeNutrition, scaleRecipe, allowedSubstitutes, ingredientAllowed, mainProteinGroup, normalizeProteinPrefs, PROTEIN_GROUP_LABELS, proteinFitSwaps, proteinListText, recipeProteinGroups, type Swap,
 } from '@/domain/nutrition/recipes';
 import { entryFromRecipe } from '@/domain/nutrition/log';
 import { holdWakeLock } from '@/features/train/feedback';
@@ -77,7 +77,14 @@ function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
   const { account, updateAccount } = useApp();
   const toast = useToast();
   const [servings, setServings] = useState(recipe.servings);
-  const [swaps, setSwaps] = useState<Swap[]>([]);
+  const diet = account.profile.diet;
+  const excluded = useMemo(() => normalizeProteinPrefs(diet.proteinPrefs).excluded, [diet.proteinPrefs]);
+  // Proteins marked "not for me" are swapped for an allowed substitute up front (the same swap the meal planner makes).
+  const autoSwaps = useMemo(
+    () => proteinFitSwaps(recipe, excluded, (i) => ingredientAllowed(i, { tags: diet.tags.filter((t) => t !== 'high_protein'), allergens: diet.allergens, disliked: diet.dislikedIngredientIds })) ?? [],
+    [recipe, excluded, diet],
+  );
+  const [swaps, setSwaps] = useState<Swap[]>(autoSwaps);
   const [swapFor, setSwapFor] = useState<ID | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
@@ -94,6 +101,11 @@ function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
   const allergens = recipeAllergens(recipe, swaps);
   const tags = recipeDietTags(recipe, swaps);
   const clash = allergens.filter((a) => account.profile.diet.allergens.includes(a));
+  const proteinClash = excluded.filter((g) => recipeProteinGroups(recipe, swaps).includes(g));
+  const mainExcluded = (() => {
+    const g = mainProteinGroup(recipe);
+    return g && excluded.includes(g) ? g : null;
+  })();
   const ps = nutrition.perServing;
   const ingName = (id: ID) => INGREDIENTS_BY_ID.get(id)?.name.toLowerCase() ?? id;
 
@@ -139,6 +151,19 @@ function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
       {clash.length > 0 && (
         <Notice tone="danger" className="mt-3">
           Contains {clash.map((a) => ALLERGEN_LABELS[a].toLowerCase()).join(', ')}, which {clash.length === 1 ? 'is' : 'are'} in your allergy settings. Try a swap below, or choose another recipe.
+        </Notice>
+      )}
+
+      {proteinClash.length > 0 && (
+        <Notice tone="warn" className="mt-3">
+          {mainExcluded
+            ? `This recipe is built around ${PROTEIN_GROUP_LABELS[mainExcluded].toLowerCase()}, which you marked Not for me.`
+            : `Uses ${proteinListText(proteinClash)}, which you marked Not for me. Try a swap below.`}
+        </Notice>
+      )}
+      {autoSwaps.length > 0 && proteinClash.length === 0 && (
+        <Notice className="mt-3">
+          Made with {autoSwaps.map((s) => `${ingName(s.to)} instead of ${ingName(s.from)}`).join(', ')}, because of your protein choices.
         </Notice>
       )}
 
@@ -204,7 +229,7 @@ function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
           <ul className="divide-y divide-line">
             {scaled.ingredients.map((r) => {
               const original = r.swappedFrom ?? r.ingredientId;
-              const subs = substitutesFor(recipe, original);
+              const subs = allowedSubstitutes(recipe, original, excluded);
               const name = r.ingredient?.name.toLowerCase() ?? r.ingredientId;
               return (
                 <TickRow
@@ -310,7 +335,7 @@ function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
           <SwapChooser
             original={swapFor}
             current={swaps.find((s) => s.from === swapFor)?.to ?? swapFor}
-            options={substitutesFor(recipe, swapFor)}
+            options={allowedSubstitutes(recipe, swapFor, excluded)}
             onPick={(to) => {
               setSwap(swapFor, to);
               setSwapFor(null);

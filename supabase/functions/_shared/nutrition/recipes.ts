@@ -3,9 +3,13 @@
  * Recipe nutrition, portion scaling, substitutions and allergen/diet derivation — computed from ingredients.
  * Pure functions; no React or persistence.
  */
-import type { Allergen, DietTag, ID, Ingredient, Macros, MealSlot, Recipe, RecipeIngredient } from './types.ts';
+import type { Allergen, DietTag, ID, Ingredient, Macros, MealSlot, ProteinGroup, Recipe, RecipeIngredient } from './types.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { catalog } from './catalog.ts';
+// @ts-ignore see above
+import { proteinFitSwaps } from './proteins.ts';
+// @ts-ignore see above
+export * from './proteins.ts';
 
 const round = (n: number, decimals = 2) => {
   const f = 10 ** decimals;
@@ -311,6 +315,8 @@ export interface RecipeFilter {
   excludeAllergens?: Allergen[];
   dislikedIngredientIds?: ID[];
   maxMinutes?: number;
+  /** Protein groups marked "not for me": the recipe must fit them (possibly via an automatic swap, see proteinFitSwaps). */
+  excludeProteinGroups?: ProteinGroup[];
 }
 
 export function recipeMatches(recipe: Recipe, f: RecipeFilter, byId: IngredientIndex = catalog().byId): boolean {
@@ -332,7 +338,19 @@ export function recipeMatches(recipe: Recipe, f: RecipeFilter, byId: IngredientI
     const tags = recipeDietTags(recipe, [], byId);
     if (!f.tags.every((t) => satisfiesTag(tags, t))) return false;
   }
+  if (f.excludeProteinGroups?.length) {
+    const allowed = (ing: Ingredient) => ingredientAllowed(ing, { tags: f.tags, allergens: f.excludeAllergens, disliked: f.dislikedIngredientIds });
+    if (proteinFitSwaps(recipe, f.excludeProteinGroups, allowed, byId) === null) return false;
+  }
   return true;
+}
+
+/** Substitutes offered for an ingredient, without protein groups the user marked "not for me". */
+export function allowedSubstitutes(recipe: Recipe, ingredientId: ID, excluded: ProteinGroup[] = [], byId: IngredientIndex = catalog().byId): ID[] {
+  return substitutesFor(recipe, ingredientId).filter((id) => {
+    const g = byId.get(id)?.proteinGroup;
+    return !g || !excluded.includes(g);
+  });
 }
 
 /** Ingredient passes a user's diet tags, allergens and dislikes. */

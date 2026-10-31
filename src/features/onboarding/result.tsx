@@ -13,6 +13,7 @@ import type { Exercise, ID, ProgramVersion, SessionTemplate, SplitKey } from '@/
 import { PlanLegend, SessionCard, WeekStrip, WhyItFits } from '@/features/program/parts';
 import { ALLERGEN_LABELS, DIET_TAG_LABELS, isUnder18, type Draft, type StepKey } from './draft';
 import { ACTIVITY_LEVELS, ACTIVITY_OPTIONS, EXPERIENCE_OPTIONS, GOAL_OPTIONS, LOCATION_LABELS, ManualTargets, SplitPicker } from './steps';
+import { proteinPrefsSummary } from '@/features/nutrition/ProteinPicker';
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -116,6 +117,7 @@ export function ReviewStep({ d, byId, onEdit }: { d: Draft; byId: Map<ID, Exerci
         <ReviewSection title="Food preferences" step="nutrition" onEdit={onEdit}>
           <Row label="Diet">{a.diet.tags.length ? a.diet.tags.map((t) => DIET_TAG_LABELS[t]).join(', ') : none}</Row>
           <Row label="Allergies">{a.diet.allergens.length ? a.diet.allergens.map((t) => ALLERGEN_LABELS[t]).join(', ') : none}</Row>
+          {proteinPrefsSummary(a.diet.proteinPrefs) && <Row label="Proteins">{proteinPrefsSummary(a.diet.proteinPrefs)}</Row>}
           <Row label="Dislikes">{a.diet.dislikedIngredientIds.length ? a.diet.dislikedIngredientIds.join(', ') : none}</Row>
           <Row label="Cooking">up to {a.diet.maxCookMinutes} min · {a.diet.mealsPerDay} meals/day</Row>
           {a.individualizedNutrition && <Row label="Targets">Manual only (individual advice)</Row>}
