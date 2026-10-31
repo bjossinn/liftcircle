@@ -20,6 +20,18 @@ around 2–3 keeps sessions productive without grinding.
 **First sessions:** if you didn't enter a comfortable known weight, exercises say *Calibrate* — start light and add
 small jumps until a set feels like 2–3 reps left in the tank, then log that as your starting load.
 
+## Looks & celebrations
+
+The first time you open the app it asks you to **Pick your look**: **Midnight** (dark graphite with a green glow),
+**Daylight** (warm and bright), or **Match my phone** (follows your phone's light or dark mode). Tap a card to try it;
+it changes straight away. You can switch anytime in **Settings → Appearance**. Your choice is saved with your settings,
+so signing in on another phone keeps it.
+
+A few small moments are celebrated: a burst of confetti when you set a **new personal record** and when you
+**finish a workout**, and a **streak flame** on Today for each week in a row in which you did every planned session.
+Turn them off in **Settings → Workouts & rest timer → Celebrations**. With your phone's "reduce motion" setting on,
+there's no confetti or animation at all.
+
 ## Logging a workout
 
 - **Start:** Today → *Start workout*, or Train → start any program session, a saved template, *Repeat a workout*, or *Empty workout*.

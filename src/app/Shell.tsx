@@ -12,10 +12,13 @@ import { SyncRunner, SyncStatusBanner } from '@/sync/SyncStatus';
 import { PendingPostsRunner } from '@/social/pendingPosts';
 import { GuestImportPrompt } from '@/features/auth/GuestImportPrompt';
 import { usePushScheduler } from '@/pwa/pushScheduler';
+import { shouldShowThemePicker, themePickedOnDevice } from '@/theme/theme';
 
 // The demo module bundles the program generator and the exercise catalogue to seed sample data;
 // load it only when the demo is actually open so it stays out of the startup bundle.
 const DemoBanner = lazy(() => import('@/features/settings/demo').then((m) => ({ default: m.DemoBanner })));
+// First launch only, so it stays out of the startup bundle too.
+const ThemePicker = lazy(() => import('@/theme/ThemePicker').then((m) => ({ default: m.ThemePicker })));
 
 const TABS = [
   { to: '/', label: 'Today', icon: Home, end: true },
@@ -31,9 +34,20 @@ const FULLSCREEN = [/^\/train\/session\//, /^\/onboarding/, /^\/auth/, /^\/coach
 
 export function Shell() {
   const { pathname } = useLocation();
-  const { online, db } = useApp();
+  const { online, db, account, accountReady } = useApp();
   const health = useHealth();
   const fullscreen = FULLSCREEN.some((r) => r.test(pathname));
+  const [pickedNow, setPickedNow] = useState(false);
+  const showPicker =
+    !pickedNow &&
+    shouldShowThemePicker({ pickedOnDevice: themePickedOnDevice(), accountReady, accountTheme: account.settings.theme, isDemo: db.isDemo, path: pathname });
+  if (showPicker) {
+    return (
+      <Suspense fallback={<div className="min-h-dvh bg-bg" />}>
+        <ThemePicker onDone={() => setPickedNow(true)} />
+      </Suspense>
+    );
+  }
   return (
     <div className="min-h-dvh flex flex-col pl-safe pr-safe">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:p-2 focus:bg-surface">
@@ -88,12 +102,17 @@ function TabBar() {
                 clsx('flex flex-col items-center justify-center gap-0.5 min-h-14 text-[11px] font-medium', isActive ? 'text-accent' : 'text-muted hover:text-ink')
               }
             >
-              <span className="relative">
-                <t.icon className="size-[22px]" aria-hidden />
-                {t.to === '/coaching' && coachingUnread > 0 && <span className="absolute -top-0.5 -right-1 size-2 rounded-full bg-accent" aria-hidden />}
-              </span>
-              {t.label}
-              {t.to === '/coaching' && coachingUnread > 0 && <span className="sr-only">, {coachingUnread} unread</span>}
+              {({ isActive }) => (
+                <>
+                  <span className={clsx('relative flex items-center justify-center h-7 w-12 rounded-full transition-colors', isActive && 'bg-accent-soft')}>
+                    {/* Remounts when the tab becomes active, so the icon bounces once (styles.css → .tab-bounce). */}
+                    <t.icon key={isActive ? 'on' : 'off'} className={clsx('size-[22px]', isActive && 'tab-bounce')} aria-hidden />
+                    {t.to === '/coaching' && coachingUnread > 0 && <span className="absolute top-0 right-2 size-2 rounded-full bg-accent" aria-hidden />}
+                  </span>
+                  {t.label}
+                  {t.to === '/coaching' && coachingUnread > 0 && <span className="sr-only">, {coachingUnread} unread</span>}
+                </>
+              )}
             </NavLink>
           </li>
         ))}

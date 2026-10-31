@@ -60,7 +60,7 @@ function TickRow({ checked, onChange, label, children, action }: { checked: bool
           aria-hidden
           className={cx(
             'mt-0.5 shrink-0 size-6 rounded-md border-2 flex items-center justify-center peer-focus-visible:ring-2 peer-focus-visible:ring-accent',
-            checked ? 'bg-accent border-accent text-white' : 'border-line',
+            checked ? 'bg-accent border-accent text-accent-ink' : 'border-line',
           )}
         >
           {checked && <Check className="size-4" />}

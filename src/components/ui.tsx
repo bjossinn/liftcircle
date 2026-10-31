@@ -57,7 +57,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={clsx(
-        'inline-flex items-center justify-center select-none transition-colors disabled:opacity-50 disabled:pointer-events-none',
+        'pressable inline-flex items-center justify-center select-none disabled:opacity-50 disabled:pointer-events-none',
         variants[variant],
         sizes[size],
         block && 'w-full',
@@ -80,7 +80,7 @@ export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTM
         aria-label={label}
         title={label}
         className={clsx(
-          'inline-flex items-center justify-center rounded-xl text-ink hover:bg-surface-2 disabled:opacity-40 transition-colors',
+          'pressable inline-flex items-center justify-center rounded-xl text-ink hover:bg-surface-2 disabled:opacity-40',
           size === 'md' ? 'size-11' : `size-9 ${hit.all4}`,
           className,
         )}
@@ -93,9 +93,10 @@ export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTM
 );
 
 /* ----------------------------------------------------------------- Card */
-export function Card({ className, children, as: As = 'div', ...rest }: { className?: string; children: ReactNode; as?: 'div' | 'section' | 'article' | 'li' } & Record<string, unknown>) {
+/** `tint` adds a calm colour wash (summary cards); a card with onClick presses down slightly. */
+export function Card({ className, children, as: As = 'div', tint, ...rest }: { className?: string; children: ReactNode; as?: 'div' | 'section' | 'article' | 'li'; tint?: 'accent' | '2' | 'celebrate' | 'streak' } & Record<string, unknown>) {
   return (
-    <As className={clsx('rounded-2xl bg-surface border border-line', className)} {...rest}>
+    <As className={clsx('rounded-2xl bg-surface border border-line card-shadow', tint && `tint-${tint}`, typeof rest.onClick === 'function' && 'pressable cursor-pointer', className)} {...rest}>
       {children}
     </As>
   );
@@ -331,7 +332,7 @@ export function ChipGroup<T extends string | number>({ values, onChange, options
             aria-checked={on}
             onClick={() => onChange(single ? [o.value] : on ? values.filter((v) => v !== o.value) : [...values, o.value])}
             className={clsx(
-              'min-h-10 px-3.5 rounded-full border text-sm transition-colors',
+              'pressable min-h-10 px-3.5 rounded-full border text-sm',
               hit.y2,
               on ? 'bg-accent-soft border-accent text-accent font-medium' : 'border-line text-ink hover:bg-surface-2',
             )}
@@ -354,11 +355,12 @@ export function Spinner({ label = 'Loading' }: { label?: string }) {
   );
 }
 
-export function EmptyState({ icon, title, body, action }: { icon?: ReactNode; title: string; body?: ReactNode; action?: ReactNode }) {
+/** `illustration` (src/components/illustrations.tsx) replaces the small icon tile with a friendly drawing. */
+export function EmptyState({ icon, illustration, title, body, action }: { icon?: ReactNode; illustration?: ReactNode; title: string; body?: ReactNode; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center text-center px-6 py-10 gap-3">
-      {icon && <div className="size-12 rounded-2xl bg-surface-2 flex items-center justify-center text-accent">{icon}</div>}
-      <h3 className="text-base font-semibold">{title}</h3>
+      {illustration ? <div className="w-36 max-w-[60%]">{illustration}</div> : icon && <div className="size-12 rounded-2xl bg-accent-soft flex items-center justify-center text-accent">{icon}</div>}
+      <h3 className="text-lg font-bold">{title}</h3>
       {body && <p className="text-sm text-muted max-w-xs">{body}</p>}
       {action}
     </div>
@@ -409,6 +411,8 @@ function useKeyboardInset(active: boolean): number {
   return inset;
 }
 
+const SHEET_CLOSE_MS = 240;
+
 /**
  * Bottom sheet on phones / centered dialog on larger screens, built on <dialog>
  * for native focus trapping, Escape handling and focus return on close.
@@ -419,11 +423,19 @@ export function Sheet({ open, onClose, title, children, footer, wide }: { open: 
   const kb = useKeyboardInset(open);
   // Ignore insets too small to be a keyboard (browser toolbars collapsing etc.).
   const inset = kb > 80 ? kb : 0;
+  // Keep the content for the closing slide-down (styles.css → dialog.sheet), then unmount it.
+  const [mounted, setMounted] = useState(open);
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
     if (open && !d.open) d.showModal();
     if (!open && d.open) d.close();
+    if (open) {
+      setMounted(true);
+      return;
+    }
+    const t = setTimeout(() => setMounted(false), SHEET_CLOSE_MS);
+    return () => clearTimeout(t);
   }, [open]);
   const maxH = inset ? `calc(92dvh - ${inset}px)` : undefined;
   return (
@@ -440,15 +452,15 @@ export function Sheet({ open, onClose, title, children, footer, wide }: { open: 
       }}
       style={inset ? { marginBottom: inset, maxHeight: maxH } : undefined}
       className={clsx(
-        'm-0 mt-auto sm:m-auto w-full max-w-none sm:max-w-lg bg-surface text-ink border border-line p-0',
+        'sheet m-0 mt-auto sm:m-auto w-full max-w-none sm:max-w-lg bg-surface text-ink border border-line p-0',
         'rounded-t-3xl sm:rounded-3xl max-h-[92dvh] backdrop:backdrop-blur-[1px]',
         wide && 'sm:max-w-2xl',
       )}
     >
-      {open && (
+      {(open || mounted) && (
         <div className="flex flex-col max-h-[92dvh]" style={maxH ? { maxHeight: maxH } : undefined}>
           <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-2">
-            <h2 id={titleId} className="text-lg font-semibold min-w-0 break-words">
+            <h2 id={titleId} className="font-display text-lg font-bold min-w-0 break-words">
               {title}
             </h2>
             <IconButton label="Close" onClick={onClose} size="sm" className="shrink-0">
@@ -502,7 +514,7 @@ export function Page({ title, back, actions, children, className }: { title?: Re
       {(title || actions || back) && (
         <header className="flex items-center gap-2 pt-3 pb-2 min-h-14">
           {back}
-          {title && <h1 className="text-2xl font-bold tracking-tight flex-1 min-w-0 truncate">{title}</h1>}
+          {title && <h1 className="text-[26px] font-extrabold tracking-tight flex-1 min-w-0 truncate">{title}</h1>}
           {actions && <div className="flex items-center gap-1 ml-auto">{actions}</div>}
         </header>
       )}
@@ -522,7 +534,7 @@ export function ListRow({ title, subtitle, left, right, onClick, href, className
       {right && <div className="shrink-0 text-muted">{right}</div>}
     </>
   );
-  const cls = clsx('flex items-center gap-3 w-full px-4 py-3 min-h-14 hover:bg-surface-2 transition-colors', className);
+  const cls = clsx('flex items-center gap-3 w-full px-4 py-3 min-h-14 hover:bg-surface-2 transition-colors', (href || onClick) && 'pressable', className);
   if (href)
     return (
       <a href={href} className={cls}>

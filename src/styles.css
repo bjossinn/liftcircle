@@ -1,6 +1,12 @@
 @import 'tailwindcss';
 
-/* Theme tokens. Dark graphite is the default; light theme via [data-theme='light']. */
+/*
+ * Theme tokens. Two themes: Midnight (dark graphite + green, data-theme="dark") and Daylight (warm off-white +
+ * teal-green, data-theme="light"). The stored setting keeps the values 'dark' | 'light' | 'system'
+ * (src/theme/theme.ts); the names exist only in the UI. tests/unit/themeContrast.test.ts parses this file and checks
+ * every text/UI pair the components use for WCAG AA, so change values here and run it.
+ * [data-theme] also works on any element: the theme picker and the Settings previews render real tokens that way.
+ */
 :root,
 [data-theme='dark'] {
   --c-bg: #101215;
@@ -10,39 +16,77 @@
   --c-border: #2e343b;
   --c-text: #eef1ef;
   --c-muted: #9aa3a0;
-  --c-faint: #868f8c;
+  --c-faint: #8d9693;
   --c-input-border: #6b747b;
   --c-accent: #4fbf7f;
   --c-accent-strong: #67d394;
   --c-accent-ink: #07140c;
   --c-accent-soft: rgba(79, 191, 127, 0.14);
+  /* Supporting accents: nutrition and highlights, records, streaks. */
+  --c-accent-2: #9aa8ff;
+  --c-accent-2-soft: rgba(154, 168, 255, 0.14);
+  --c-celebrate: #f5c451;
+  --c-celebrate-soft: rgba(245, 196, 81, 0.16);
+  --c-streak: #ff9a66;
+  --c-streak-soft: rgba(255, 154, 102, 0.14);
   --c-danger: #f07167;
   --c-danger-soft: rgba(240, 113, 103, 0.14);
   --c-warn: #e6b450;
   --c-warn-soft: rgba(230, 180, 80, 0.14);
   --c-info: #6fa8dc;
+  /* Card depth and calm colour washes for summary cards. */
+  --c-card-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 1px 2px rgba(0, 0, 0, 0.35);
+  --c-tint-accent: linear-gradient(150deg, rgba(79, 191, 127, 0.12), rgba(79, 191, 127, 0) 62%);
+  --c-tint-2: linear-gradient(150deg, rgba(154, 168, 255, 0.12), rgba(154, 168, 255, 0) 62%);
+  --c-tint-celebrate: linear-gradient(150deg, rgba(245, 196, 81, 0.14), rgba(245, 196, 81, 0) 62%);
+  --c-tint-streak: linear-gradient(150deg, rgba(255, 154, 102, 0.14), rgba(255, 154, 102, 0) 62%);
+  --c-backdrop: rgba(0, 0, 0, 0.55);
   color-scheme: dark;
 }
 [data-theme='light'] {
-  --c-bg: #f4f6f5;
-  --c-surface: #ffffff;
-  --c-surface-2: #eef1ef;
-  --c-surface-3: #e2e7e4;
-  --c-border: #d3dad6;
-  --c-text: #131715;
-  --c-muted: #56605b;
-  --c-faint: #646d68;
-  --c-input-border: #7d8782;
-  --c-accent: #167343;
-  --c-accent-strong: #115c35;
+  --c-bg: #faf6ef;
+  --c-surface: #fffdf9;
+  --c-surface-2: #f4eee4;
+  --c-surface-3: #ebe3d6;
+  --c-border: #e4dccf;
+  --c-text: #1f1b16;
+  --c-muted: #5b544b;
+  --c-faint: #655e55;
+  --c-input-border: #857c70;
+  --c-accent: #08705a;
+  --c-accent-strong: #065c4a;
   --c-accent-ink: #ffffff;
-  --c-accent-soft: rgba(22, 115, 67, 0.12);
-  --c-danger: #c2362b;
-  --c-danger-soft: rgba(194, 54, 43, 0.1);
-  --c-warn: #855c00;
-  --c-warn-soft: rgba(154, 106, 0, 0.1);
-  --c-info: #2a6aa8;
+  --c-accent-soft: rgba(8, 112, 90, 0.12);
+  --c-accent-2: #6448d0;
+  --c-accent-2-soft: rgba(100, 72, 208, 0.1);
+  --c-celebrate: #8f5b00;
+  --c-celebrate-soft: rgba(232, 163, 23, 0.18);
+  --c-streak: #ab3809;
+  --c-streak-soft: rgba(234, 88, 12, 0.12);
+  --c-danger: #b8352a;
+  --c-danger-soft: rgba(184, 53, 42, 0.1);
+  --c-warn: #835500;
+  --c-warn-soft: rgba(194, 128, 0, 0.12);
+  --c-info: #22609f;
+  --c-card-shadow: 0 1px 2px rgba(74, 52, 20, 0.06), 0 6px 18px -8px rgba(74, 52, 20, 0.12);
+  --c-tint-accent: linear-gradient(150deg, rgba(8, 112, 90, 0.09), rgba(8, 112, 90, 0) 62%);
+  --c-tint-2: linear-gradient(150deg, rgba(100, 72, 208, 0.08), rgba(100, 72, 208, 0) 62%);
+  --c-tint-celebrate: linear-gradient(150deg, rgba(232, 163, 23, 0.14), rgba(232, 163, 23, 0) 62%);
+  --c-tint-streak: linear-gradient(150deg, rgba(234, 88, 12, 0.1), rgba(234, 88, 12, 0) 62%);
+  --c-backdrop: rgba(40, 30, 15, 0.35);
   color-scheme: light;
+}
+
+/* Display font: Nunito (SIL OFL 1.1, see src/assets/fonts/Nunito-OFL.txt), a self-hosted Latin subset that covers
+   Icelandic. Only headings use it. The browser fetches it on first use (font-display: swap), so it isn't part of
+   the startup bundle. Body text stays on the system UI font. */
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 1000;
+  src: url('./assets/fonts/nunito-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @theme inline {
@@ -59,12 +103,24 @@
   --color-accent-strong: var(--c-accent-strong);
   --color-accent-ink: var(--c-accent-ink);
   --color-accent-soft: var(--c-accent-soft);
+  --color-accent-2: var(--c-accent-2);
+  --color-accent-2-soft: var(--c-accent-2-soft);
+  --color-celebrate: var(--c-celebrate);
+  --color-celebrate-soft: var(--c-celebrate-soft);
+  --color-streak: var(--c-streak);
+  --color-streak-soft: var(--c-streak-soft);
   --color-danger: var(--c-danger);
   --color-danger-soft: var(--c-danger-soft);
   --color-warn: var(--c-warn);
   --color-warn-soft: var(--c-warn-soft);
   --color-info: var(--c-info);
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Nunito', ui-rounded, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Slightly rounder than Tailwind's defaults (lg 8 → 10, xl 12 → 14, 2xl 16 → 20, 3xl 24 → 28 px). */
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.75rem;
 }
 
 html,
@@ -84,6 +140,10 @@ body {
   outline: 2px solid var(--c-accent);
   outline-offset: 2px;
   border-radius: 6px;
+}
+/* A heading that receives focus programmatically (e.g. the picker title on open) for screen readers only. */
+.no-focus-ring:focus-visible {
+  outline: none;
 }
 input[type='number']::-webkit-outer-spin-button,
 input[type='number']::-webkit-inner-spin-button {
@@ -109,7 +169,28 @@ input[type='number'] {
   padding-right: env(safe-area-inset-right);
 }
 dialog::backdrop {
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--c-backdrop);
+}
+h1,
+h3,
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+.card-shadow {
+  box-shadow: var(--c-card-shadow);
+}
+.tint-accent {
+  background-image: var(--c-tint-accent);
+}
+.tint-2 {
+  background-image: var(--c-tint-2);
+}
+.tint-celebrate {
+  background-image: var(--c-tint-celebrate);
+}
+.tint-streak {
+  background-image: var(--c-tint-streak);
 }
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -140,4 +221,106 @@ dialog::backdrop {
   .coach-pop {
     animation: none;
   }
+}
+
+/*
+ * Micro-interactions, all ≤ 300 ms. The global prefers-reduced-motion rule above cuts every animation and
+ * transition to ~0, so none of these need their own reduced-motion branch.
+ */
+/* Buttons, rows and tappable cards press down slightly. */
+.pressable {
+  transition: transform 120ms ease-out, background-color 150ms, color 150ms, border-color 150ms;
+}
+.pressable:active:not(:disabled) {
+  transform: scale(0.97);
+}
+/* The set ✓ pops when a set is completed. */
+@keyframes set-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.22);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.set-pop {
+  animation: set-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* Tab icons bounce once when their tab becomes active. */
+@keyframes tab-bounce {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  35% {
+    transform: translateY(-3px) scale(1.12);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+.tab-bounce {
+  animation: tab-bounce 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* Rest-timer ring: the arc eases between ticks instead of jumping. */
+.ring-arc {
+  transition: stroke-dashoffset 1s linear, stroke 200ms;
+}
+/* Sheets slide up and fade in. On close, allow-discrete keeps the dialog visible while it animates out. */
+dialog.sheet {
+  transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease-out, overlay 240ms allow-discrete, display 240ms allow-discrete;
+  transform: translateY(24px);
+  opacity: 0;
+}
+dialog.sheet[open] {
+  transform: none;
+  opacity: 1;
+}
+@starting-style {
+  dialog.sheet[open] {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+dialog.sheet::backdrop {
+  transition: opacity 240ms ease-out, overlay 240ms allow-discrete, display 240ms allow-discrete;
+  opacity: 0;
+}
+dialog.sheet[open]::backdrop {
+  opacity: 1;
+}
+@starting-style {
+  dialog.sheet[open]::backdrop {
+    opacity: 0;
+  }
+}
+/* Theme switch cross-fade: src/theme/theme.ts adds .theme-fade to <html> for 300 ms. */
+html.theme-fade,
+html.theme-fade *,
+html.theme-fade *::before,
+html.theme-fade *::after {
+  transition: background-color 280ms ease, color 280ms ease, border-color 280ms ease, fill 280ms ease, stroke 280ms ease !important;
+}
+/* The streak flame on Today breathes slowly. Decorative only. */
+@keyframes flame {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+  50% {
+    transform: scale(1.08) rotate(-3deg);
+  }
+}
+.flame {
+  animation: flame 2.4s ease-in-out infinite;
+  transform-origin: 50% 80%;
+}
+/* Celebration canvas (src/components/celebrate.ts) sits above everything and never takes taps. */
+.celebrate-canvas {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
 }

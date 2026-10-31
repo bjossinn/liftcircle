@@ -20,6 +20,7 @@ import {
   rankedCandidates, removePlanItem, replacePlanDay, swapMeal, updatePlanItem, type PlanDayStatus, type PlanPrefs,
 } from '@/domain/nutrition/mealplan';
 import { AllergenNote, prefsFromAccount, useWeekPlan } from './shared';
+import { NoMealPlanArt } from '@/components/illustrations';
 
 const VARIANT_KEY = 'nutrition:planVariant';
 
@@ -201,7 +202,7 @@ export default function MealPlanPage() {
       ) : plan === null ? (
         <Card>
           <EmptyState
-            icon={<Shuffle className="size-6" />}
+            illustration={<NoMealPlanArt />}
             title="No plan for this week"
             body={<PrefsSummary diet={account.profile.diet} />}
             action={

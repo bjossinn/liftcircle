@@ -2,7 +2,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Dumbbell, LineChart as LineChartIcon, Plus } from 'lucide-react';
+import { Dumbbell, Plus } from 'lucide-react';
 import { Button, Card, EmptyState, Page, SectionTitle, Segmented, Spinner } from '@/components/ui';
 import { TopActions } from '@/app/TopActions';
 import { useApp } from '@/state/app';
@@ -12,6 +12,7 @@ import { completedSessions, observations } from '@/domain/stats';
 import { adherence } from '@/domain/program/schedule';
 import { addDays, formatDate, startOfWeek, todayISO } from '@/lib/dates';
 import { ConsistencySection } from './ConsistencySection';
+import { NoWorkoutsArt } from '@/components/illustrations';
 import { ExerciseSection } from './ExerciseSection';
 import { VolumeSection } from './VolumeSection';
 import { CardioSection } from './CardioSection';
@@ -146,7 +147,7 @@ export default function ProgressPage() {
       {nothing ? (
         <Card className="mt-4">
           <EmptyState
-            icon={<LineChartIcon className="size-6" />}
+            illustration={<NoWorkoutsArt />}
             title="Your progress starts with one session"
             body="Charts, records and observations are built only from what you log — nothing is estimated in advance."
             action={

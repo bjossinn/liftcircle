@@ -11,6 +11,8 @@ import { useToast } from '@/components/toast';
 import { BRAND } from '@/config/brand';
 import { PushSection } from './PushSection';
 import { UpdateCheckRow } from './UpdateCheckRow';
+import { ThemeOptions } from '@/theme/ThemeOptions';
+import { effectiveThemeChoice, setDeviceThemeChoice } from '@/theme/theme';
 
 export default function SettingsPage() {
   const nav = useNavigate();
@@ -83,6 +85,19 @@ export default function SettingsPage() {
         />
       </Card>
 
+      <SectionTitle id="appearance-title">Appearance</SectionTitle>
+      <Card className="p-3">
+        <ThemeOptions
+          layout="compact"
+          labelledBy="appearance-title"
+          value={effectiveThemeChoice(s.theme)}
+          onChange={(v) => {
+            setDeviceThemeChoice(v);
+            void set((x) => ({ ...x, theme: v }));
+          }}
+        />
+      </Card>
+
       <SectionTitle>Units & display</SectionTitle>
       <Card className="p-4 space-y-4">
         <div className="space-y-1.5">
@@ -98,10 +113,6 @@ export default function SettingsPage() {
           <Segmented label="Distance unit" value={s.units.distance} onChange={(v) => set((x) => ({ ...x, units: { ...x.units, distance: v } }))} options={[{ value: 'km', label: 'Kilometres' }, { value: 'mi', label: 'Miles' }]} />
         </div>
         <p className="text-xs text-muted">Changing units only changes how numbers are shown. Your recorded values stay exactly as logged.</p>
-        <div className="space-y-1.5">
-          <span className="text-sm font-medium">Theme</span>
-          <Segmented label="Theme" value={s.theme} onChange={(v) => set((x) => ({ ...x, theme: v }))} options={[{ value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }, { value: 'system', label: 'System' }]} />
-        </div>
         <div className="grid grid-cols-2 gap-3">
           <Select label="Week starts on" value={s.weekStart} onChange={(e) => set((x) => ({ ...x, weekStart: Number(e.target.value) as 0 | 1 }))}>
             <option value={1}>Monday</option>
@@ -137,6 +148,12 @@ export default function SettingsPage() {
           description="A short line from your coach when you finish a set or your rest ends, in your coach style. Works offline."
           checked={s.workout.coachCheers !== false}
           onChange={(v) => set((x) => ({ ...x, workout: { ...x.workout, coachCheers: v } }))}
+        />
+        <Toggle
+          label="Celebrations"
+          description="A little confetti for new records and finished workouts, and a streak flame on Today."
+          checked={s.workout.celebrations !== false}
+          onChange={(v) => set((x) => ({ ...x, workout: { ...x.workout, celebrations: v } }))}
         />
         <Toggle label="Show reps-in-reserve column" description="Optional: how many more reps you could have done." checked={s.workout.showRir} onChange={(v) => set((x) => ({ ...x, workout: { ...x.workout, showRir: v } }))} />
         <p className="text-xs text-muted py-3">Web apps can’t always sound alarms while the phone is locked or the app is in the background. The timer always shows the correct time when you come back.</p>

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Award, CheckCircle2, Clock, Dumbbell, Layers, Repeat } from 'lucide-react';
@@ -13,6 +13,10 @@ import { formatDate, formatDuration, formatMinutes } from '@/lib/dates';
 import { activityLabel, paceOrSpeed } from '@/domain/activities';
 import { SharePreview } from '@/features/social/SharePreview';
 import { formatLoggedSet } from '@/features/exercises/useExerciseData';
+import { celebrateOnce } from '@/components/celebrate';
+
+/** Only a workout finished in the last few minutes gets confetti; reopening an old summary stays calm. */
+const JUST_FINISHED_MS = 5 * 60 * 1000;
 
 export default function SummaryPage() {
   const { id = '' } = useParams();
@@ -32,6 +36,12 @@ function WorkoutSummary({ id }: { id: string }) {
     const others = history.filter((s) => s.id !== session.id && s.startedAt < session.startedAt);
     return { summary: summarizeSession(session, byId), records: detectRecords(session, others, byId, unit) };
   }, [session, history, byId, unit]);
+  const celebrations = account.settings.workout.celebrations !== false;
+  const recordCount = data?.records.length ?? -1;
+  useEffect(() => {
+    if (!celebrations || recordCount < 0 || !session?.endedAt || Date.now() - session.endedAt > JUST_FINISHED_MS) return;
+    celebrateOnce(`workout:${session.id}`, { intensity: recordCount > 0 ? 'big' : 'small' });
+  }, [celebrations, recordCount, session?.id, session?.endedAt]);
 
   if (session === undefined || history === undefined) return <Spinner />;
   if (!session || session.deletedAt) return <EmptyState title="Workout not found" action={<Button onClick={() => nav('/')}>Home</Button>} />;
@@ -42,12 +52,13 @@ function WorkoutSummary({ id }: { id: string }) {
 
   return (
     <Page title="Workout complete">
-      <Card className="p-5">
+      <Card className="p-5" tint="accent">
         <div className="flex items-center gap-2 text-accent">
           <CheckCircle2 className="size-5" aria-hidden />
           <span className="font-semibold">{session.name}</span>
         </div>
         <p className="text-sm text-muted mt-0.5">{formatDate(session.date, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+        <p className="font-display text-lg font-bold mt-2">{records.length > 0 ? 'Nicely done, and new records too!' : 'Nicely done. Another one in the books.'}</p>
         <div className="grid grid-cols-3 gap-3 mt-4">
           <Stat label="Duration" value={formatDuration(summary.durationSec)} />
           <Stat label="Working sets" value={summary.workingSets} sub={summary.warmupSets ? `+${summary.warmupSets} warm-up` : undefined} />
@@ -66,10 +77,12 @@ function WorkoutSummary({ id }: { id: string }) {
       {records.length > 0 && (
         <>
           <SectionTitle>New records</SectionTitle>
-          <Card className="p-4 space-y-2">
+          <Card className="p-4 space-y-2" tint="celebrate">
             {records.map((r, i) => (
               <div key={i} className="flex items-center gap-3">
-                <Award className="size-5 text-warn shrink-0" aria-hidden />
+                <span className="size-8 rounded-full bg-celebrate-soft text-celebrate flex items-center justify-center shrink-0">
+                  <Award className="size-4" aria-hidden />
+                </span>
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{byId.get(r.exerciseId)?.name}</div>
                   <div className="text-xs text-muted">{r.label}</div>

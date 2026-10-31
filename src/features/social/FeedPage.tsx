@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Plus, RefreshCw, UserPlus, Users } from 'lucide-react';
+import { Plus, RefreshCw, UserPlus } from 'lucide-react';
 import { Button, EmptyState, ErrorState, IconButton, Notice, Page, SectionTitle, Spinner, cx } from '@/components/ui';
 import { TopActions } from '@/app/TopActions';
 import { socialApi } from '@/backend/social';
@@ -9,6 +9,7 @@ import { AccessNotice, useSocialAccess } from './common';
 import { PendingPostCard, PostCard } from './PostCard';
 import { PAGE_SIZE, recalledScroll, rememberScroll, usePostList } from './usePostList';
 import { useMyProfile } from './useMyProfile';
+import { NoFriendsArt } from '@/components/illustrations';
 
 export default function FeedPage() {
   usePendingPostsRunner();
@@ -115,7 +116,7 @@ export default function FeedPage() {
           {list.status === 'error' && <ErrorState title="Couldn’t load the feed" message={list.error ?? undefined} onRetry={() => void list.refresh('initial')} />}
           {list.status === 'ready' && list.items.length === 0 && (
             <EmptyState
-              icon={<Users className="size-6" aria-hidden />}
+              illustration={<NoFriendsArt />}
               title="Your feed is quiet"
               body="Share a workout, or add friends to see what they’re up to."
               action={

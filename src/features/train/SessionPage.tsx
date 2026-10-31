@@ -26,7 +26,8 @@ import { useSubstitutionConstraints } from './hooks';
 import { suggestionFor } from '@/domain/program/session';
 import { beep, holdWakeLock, primeAudio, vibrate } from './feedback';
 import { maybeAutoShare } from '@/social/autoShare';
-import { cheerForSet, restOverCheer } from '@/domain/coachCheers';
+import { cheerForSet, recordForSet, restOverCheer } from '@/domain/coachCheers';
+import { celebrate } from '@/components/celebrate';
 import type { ToastOptions } from '@/components/toast';
 import { cancelRestPush, useRestPush } from '@/pwa/pushScheduler';
 
@@ -239,6 +240,12 @@ export default function SessionPage() {
       }
       showErrors(null);
       if (outcome !== 'done') return; // undo: quiet
+      // A new personal record gets one small confetti burst (Settings → Celebrations; never with reduced motion).
+      if (settings.workout.celebrations !== false) {
+        void db.sessions.get(session.id).then((latest) => {
+          if (latest && recordForSet(latest, se.id, set.id, history ?? [], byId, settings.units.weight)) celebrate();
+        });
+      }
       const undo = { label: 'Undo', onClick: () => void update((s) => ops.skipRest(ops.toggleSetComplete(s, se.id, set.id, Date.now()).session)) };
       if (!cheers) {
         toast.show('Set logged', { action: undo, duration: 3000 });
@@ -896,7 +903,8 @@ export function SetRow(props: {
               set.completed ? 'bg-accent text-accent-ink border-accent' : props.isNext ? 'border-accent bg-surface-2 text-accent' : 'border-line bg-surface-2 text-muted hover:text-ink',
             )}
           >
-            <Check className="size-5" strokeWidth={3} />
+            {/* Remounts on completion so the ✓ pops (styles.css → .set-pop). */}
+            <Check key={set.completed ? 'done' : 'todo'} className={clsx('size-5', set.completed && 'set-pop')} strokeWidth={3} />
           </button>
         </div>
       </div>
@@ -1000,7 +1008,7 @@ function RestBar({ session, settings, update, now }: { session: WorkoutSession; 
         <div className="h-full bg-accent transition-[width] duration-200" style={{ width: `${pct}%` }} />
       </div>
       <div className="mx-auto max-w-2xl flex items-center gap-1 px-3 py-2">
-        <Timer className={clsx('size-5 shrink-0', over ? 'text-accent' : 'text-muted')} aria-hidden />
+        <RestRing pct={over ? 100 : pct} over={over} />
         <div className="flex-1 min-w-0" role="timer" aria-live="off" aria-label={over ? 'Rest finished' : `Rest ${formatDuration(remaining / 1000)} remaining`}>
           <div className="text-2xl font-bold tabular leading-none">{over ? 'Go!' : formatDuration(Math.ceil(remaining / 1000))}</div>
           <div className="text-[11px] text-muted">{paused ? 'Rest paused' : over ? 'Rest finished' : 'Rest'}</div>
@@ -1026,6 +1034,21 @@ function RestBar({ session, settings, update, now }: { session: WorkoutSession; 
         </IconButton>
       </div>
     </div>
+  );
+}
+
+/** Progress ring around the timer icon; the arc eases between ticks (styles.css → .ring-arc). Decorative. */
+function RestRing({ pct, over }: { pct: number; over: boolean }) {
+  const r = 16;
+  const c = 2 * Math.PI * r;
+  return (
+    <span className="relative size-10 shrink-0 flex items-center justify-center" aria-hidden>
+      <svg viewBox="0 0 40 40" className="absolute inset-0 -rotate-90">
+        <circle cx="20" cy="20" r={r} fill="none" strokeWidth="3.5" className="stroke-surface-3" />
+        <circle cx="20" cy="20" r={r} fill="none" strokeWidth="3.5" strokeLinecap="round" className={clsx('ring-arc', over ? 'stroke-accent' : 'stroke-accent/80')} strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} />
+      </svg>
+      <Timer className={clsx('size-4', over ? 'text-accent set-pop' : 'text-muted')} />
+    </span>
   );
 }
 

@@ -19,7 +19,7 @@ export function NutritionTodayCard() {
   const t = account.nutrition;
   const hasTargets = t.proteinG != null || (t.mode !== 'protein_only' && t.calories != null);
   return (
-    <Card as="section" className="p-4" aria-labelledby="today-nutrition">
+    <Card as="section" className="p-4" tint="2" aria-labelledby="today-nutrition">
       <div className="flex items-center justify-between gap-2 mb-3">
         <h2 id="today-nutrition" className="flex items-center gap-2 font-semibold">
           <Utensils className="size-4 text-accent" aria-hidden /> Nutrition

@@ -38,6 +38,7 @@ import { useExercises } from '@/data/catalog';
 import type { LiftDb } from '@/db/db';
 import type { ActivityLog, CoachStyle, Exercise, ID, ISODate, Program, WeightUnit, WorkoutSession } from '@/domain/types';
 import { AiBadge, AiGuest, AiUnavailable, availabilityCopy, BackButton, ShareButton, ShareWithCoachDialog } from './ai/parts';
+import { EmptyChatArt } from '@/components/illustrations';
 
 export default function AiChatPage() {
   const nav = useNavigate();
@@ -349,6 +350,9 @@ function Chat({
           <>
             {conversation.length === 0 && settings && (
               <>
+                <div className="w-32 mx-auto mb-3">
+                  <EmptyChatArt />
+                </div>
                 <WelcomeMessage
                   settings={settings}
                   goal={account.profile.goal}

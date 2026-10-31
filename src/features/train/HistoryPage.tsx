@@ -10,6 +10,7 @@ import { addDays, formatDate, formatMinutes, startOfWeek, todayISO, WEEKDAY_SHOR
 import { activityLabel } from '@/domain/activities';
 import { formatDistance } from '@/domain/units';
 import { sessionDurationSec } from '@/domain/stats';
+import { NoWorkoutsArt } from '@/components/illustrations';
 
 type Kind = 'all' | 'workouts' | 'activities';
 interface Item {
@@ -175,7 +176,7 @@ export default function HistoryPage() {
       </div>
 
       {items.length === 0 ? (
-        <EmptyState icon={<Dumbbell className="size-6" />} title="No history yet" body="Finished workouts and logged activities show up here." action={<Button variant="primary" onClick={() => nav('/train')}>Start training</Button>} />
+        <EmptyState illustration={<NoWorkoutsArt />} title="No workouts yet" body="Your first one is the hardest. Finished workouts and activities will collect here." action={<Button variant="primary" onClick={() => nav('/train')}>Start training</Button>} />
       ) : filtered.length === 0 ? (
         <EmptyState title="No matches" body="Try another search or filter." />
       ) : (

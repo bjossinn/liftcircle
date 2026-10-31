@@ -6,7 +6,7 @@ export const BRAND = {
   name: 'LiftCircle',
   shortName: 'LiftCircle',
   description: 'Workout tracker, training programs, nutrition targets and a friends feed.',
-  themeColor: '#16191d',
+  themeColor: '#101215',
   backgroundColor: '#101215',
   accent: '#4fbf7f',
 } as const;

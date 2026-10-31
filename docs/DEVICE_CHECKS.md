@@ -48,6 +48,17 @@ use a fresh profile or clear the site's data. Tick each item, and write down the
 20. Android: Settings → Apps → Chrome → Storage → clear the site's data while the app is closed. On reopen, a guest starts empty and a signed-in user's data comes back from sync after signing in.
 21. As a guest with at least one finished workout, the notice "Your workouts are only on this device…" may appear on browsers that don't grant persistent storage. "Back up or protect your data" opens Settings → Data, and dismissing the notice is remembered.
 
+### Themes (0.8.0)
+- First launch on a fresh install shows **Pick your look**; tapping Midnight/Daylight changes the whole screen and
+  the status bar colour at once; Continue leads into the welcome; it doesn't come back after closing and reopening.
+- Match system follows the phone switching light/dark while the app is open (iOS Control Centre, Android quick
+  settings) and after reopening, with no flash of the wrong theme on launch.
+- The installed Home Screen app's status bar matches the theme (black-translucent on iOS; theme-color on Android).
+- VoiceOver/TalkBack read the picker as a radio group named "Pick your look" with three options and their
+  descriptions; the previews are not read out.
+- Confetti on a new record and on finishing a workout; none with Reduce Motion on, none after turning
+  Settings → Celebrations off.
+
 ### Accessibility on device
 22. VoiceOver (iOS) and TalkBack (Android):
     - The tab names are read, plus "N unread" on Coaching.
