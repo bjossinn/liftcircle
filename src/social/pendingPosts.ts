@@ -331,6 +331,6 @@ export function PendingPostsRunner(): null {
 /** Status line for UI. Never implies the post is visible to anyone. */
 export function pendingStatusLabel(p: Pick<PendingPost, 'status'>): string {
   if (p.status === 'uploading') return 'Uploading…';
-  if (p.status === 'error') return 'Upload failed — Retry';
+  if (p.status === 'error') return 'Upload failed: Retry';
   return 'Waiting to upload';
 }

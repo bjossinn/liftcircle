@@ -117,7 +117,7 @@ function FriendsContent({ meId }: { meId: string }) {
           size="sm"
           className="mt-2"
           icon={<Share2 className="size-4" />}
-          onClick={() => void shareLink(`${publicAppUrl.replace(/\/$/, '')}/u/${encodeURIComponent(me.profile!.username)}`, `${me.profile!.displayName} on LiftCircle`, toast)}
+          onClick={() => void shareLink(`${publicAppUrl.replace(/\/$/, '')}/u/${encodeURIComponent(me.profile!.username)}`, `${me.profile!.displayName} on Hard Earned`, toast)}
         >
           Share my profile link
         </Button>
@@ -314,7 +314,7 @@ function FindByUsername({ meId, onChanged }: { meId: string; onChanged: () => vo
       {searching && <Spinner label="Searching" />}
       {result === 'none' && (
         <p className="text-sm text-muted mt-3" role="status">
-          No one found with the username @{normalized}. Usernames are exact — check the spelling.
+          No one found with the username @{normalized}. Usernames are exact: check the spelling.
         </p>
       )}
       {result === 'self' && (

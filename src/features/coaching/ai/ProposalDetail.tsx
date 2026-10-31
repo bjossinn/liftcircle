@@ -70,7 +70,7 @@ export function ProposalDetail({
         return;
       }
       setConfirm(null);
-      toast.show(res.recorded ? 'Your plan was updated' : 'Your plan was updated on this device. The AI coach will be told when you’re back online.', { tone: res.recorded ? 'success' : 'warn' });
+      toast.show(res.recorded ? 'Your plan was updated' : 'Your plan was updated on this device. The training assistant will be told when you’re back online.', { tone: res.recorded ? 'success' : 'warn' });
       onChanged({ ...p, status: 'accepted', appliedProgramId: res.program.id, appliedVersion: res.program.currentVersion, respondedAt: new Date().toISOString() });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Couldn’t apply this suggestion.');
@@ -86,7 +86,7 @@ export function ProposalDetail({
       // The plan gets a new self-managed version, so this suggestion becomes out of date (stale) by design.
       await switchToSelfManaged(live, db);
       setConfirm(null);
-      toast.show('Your plan is now self-managed. Ask the AI coach for an updated suggestion.', { tone: 'success' });
+      toast.show('Your plan is now self-managed. Ask the training assistant for an updated suggestion.', { tone: 'success' });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Couldn’t switch your plan.');
     } finally {
@@ -131,7 +131,7 @@ export function ProposalDetail({
             <p className="text-sm text-muted mt-1 whitespace-pre-wrap break-words">{p.message}</p>
           </div>
         )}
-        <p className="text-[11px] text-faint mt-3">Written by an AI. It’s a suggestion — check it fits you before applying.</p>
+        <p className="text-[11px] text-faint mt-3">Written by an AI. It’s a suggestion: check it fits you before applying.</p>
       </Card>
 
       {/* state-specific actions */}
@@ -206,7 +206,7 @@ export function ProposalDetail({
       )}
       {reviewOnly && (
         <Notice tone="info">
-          <p>This suggestion was written for your coach to review. Your plan isn’t coach-managed any more, so ask the AI coach for a version you can apply.</p>
+          <p>This suggestion was written for your coach to review. Your plan isn’t coach-managed any more, so ask the training assistant for a version you can apply.</p>
           <Button size="sm" variant="primary" className="mt-2" icon={<RefreshCw className="size-4" />} onClick={() => void askForUpdate()}>
             Ask for an updated one
           </Button>

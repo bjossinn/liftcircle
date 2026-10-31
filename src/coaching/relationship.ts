@@ -25,7 +25,7 @@ export function relationshipWritable(rel: Pick<CoachingRelationship, 'status' | 
       ok: false,
       reason: rel.viewerIsCoach ? 'Your coach account is suspended, so messaging is paused.' : 'Your coach’s account is currently suspended, so messaging is paused.',
     };
-  if (!rel.coach.approved) return { ok: false, reason: 'This coach is no longer approved on LiftCircle, so messaging is paused.' };
+  if (!rel.coach.approved) return { ok: false, reason: 'This coach is no longer approved on Hard Earned, so messaging is paused.' };
   return { ok: true };
 }
 

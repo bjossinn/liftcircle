@@ -20,7 +20,7 @@ export default function ApplyPage() {
   const nav = useNavigate();
   const { access } = useCoachingAccess();
   const profile = useLoad(() => coachingApi.getMyCoachProfile(), [], { enabled: access === 'ok', fallback: 'Couldn’t load your application.' });
-  const title = profile.data?.status === 'approved' ? 'Coach profile' : 'Become a coach';
+  const title = profile.data?.status === 'approved' ? 'Coach profile' : 'Apply to be listed';
   return (
     <Page
       title={title}
@@ -248,7 +248,7 @@ function ApplyForm({ initial }: { initial: CoachProfile | null }) {
       </Select>
 
       <SectionTitle>Business location</SectionTitle>
-      <p className="text-sm text-muted px-1 mb-3">Where you’re based as a coach — a town or region, or your gym’s town. Never enter your home address; it’s shown on your public profile.</p>
+      <p className="text-sm text-muted px-1 mb-3">Where you’re based as a coach. A town or region, or your gym’s town. Never enter your home address; it’s shown on your public profile.</p>
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="City or town" value={form.city} maxLength={LIMITS.place} onChange={(e) => set('city', e.target.value)} error={err('city')} />

@@ -149,7 +149,7 @@ export default function ProgressPage() {
           <EmptyState
             illustration={<NoWorkoutsArt />}
             title="Your progress starts with one session"
-            body="Charts, records and observations are built only from what you log — nothing is estimated in advance."
+            body="Charts, records and observations are built only from what you log. Nothing is estimated in advance."
             action={
               <div className="flex flex-col gap-2 w-full max-w-xs">
                 <Button variant="primary" icon={<Dumbbell className="size-4" />} onClick={() => nav('/train')}>Log your first workout</Button>
@@ -165,7 +165,7 @@ export default function ProgressPage() {
             <ul className="flex flex-col gap-1.5 text-sm">
               {obs.map((o) => (
                 <li key={o} className="flex gap-2">
-                  <span className="mt-2 size-1.5 rounded-full bg-accent shrink-0" aria-hidden />
+                  <span className="mt-2 size-1.5 rounded-full bg-ember shrink-0" aria-hidden />
                   <span>{o}</span>
                 </li>
               ))}

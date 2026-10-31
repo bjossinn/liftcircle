@@ -97,7 +97,7 @@ export default function FoodLogPage() {
             value={date}
             max={today}
             onChange={(e) => e.target.value && set({ date: e.target.value })}
-            className="min-h-11 flex-1 rounded-xl bg-surface-2 border border-line px-3 text-[16px] text-ink focus:border-accent focus:outline-none"
+            className="min-h-11 flex-1 rounded-xl bg-field border border-line-input px-3 text-[16px] text-ink focus:border-accent"
           />
         </div>
         <Segmented label="Meal" value={meal} onChange={(m) => set({ meal: m })} options={MEAL_ORDER.map((m) => ({ value: m, label: MEAL_LABELS[m] }))} />

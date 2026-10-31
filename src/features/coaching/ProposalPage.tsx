@@ -56,7 +56,7 @@ export default function ProposalPage() {
 
   const askRevision = () => {
     if (!p?.relationshipId) return;
-    const draft = `Hi! My plan changed since you wrote “${p.program.name}” (revision ${p.revision}). Could you send me a revised version?`;
+    const draft = `Hi, my plan changed since you wrote “${p.program.name}” (revision ${p.revision}). Could you send me a revised version?`;
     nav(`/coaching/messages/${p.relationshipId}?draft=${encodeURIComponent(draft)}`);
   };
 
@@ -87,7 +87,7 @@ export default function ProposalPage() {
       }
       const appliedTo = { programId: r.program.id, version: r.program.currentVersion };
       await setPendingNotify(db, p.id, appliedTo);
-      if (!r.alreadyApplied) toast.show(r.createdNew ? 'New plan is now active in Train.' : 'Your plan was updated — the change applies to your next sessions.', { tone: 'success' });
+      if (!r.alreadyApplied) toast.show(r.createdNew ? 'New plan is now active in Train.' : 'Your plan was updated. The change applies to your next sessions.', { tone: 'success' });
       await notify(p, appliedTo);
     } catch (e) {
       toast.show(e instanceof Error ? e.message : 'Couldn’t save the plan on this device.', { tone: 'error' });
@@ -242,7 +242,7 @@ export default function ProposalPage() {
         <ConfirmDialog
           open={declineOpen}
           title="Decline this proposal?"
-          body={`Your current plan stays as it is. ${p.authorKind === 'coach' ? `${coachName} will see that you declined — you can message them about what you’d like changed.` : ''}`}
+          body={`Your current plan stays as it is. ${p.authorKind === 'coach' ? `${coachName} will see that you declined. You can message them about what you’d like changed.` : ''}`}
           confirmLabel="Decline"
           busy={busy === 'decline'}
           onCancel={() => setDeclineOpen(false)}

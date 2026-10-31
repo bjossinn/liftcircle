@@ -336,7 +336,7 @@ export function FindContent() {
               !formPoint
                 ? 'To filter by distance, use your location or pick a suggested place.'
                 : distanceAvailable === false
-                  ? 'Distance search isn’t available — showing matches by place.'
+                  ? 'Distance search isn’t available. Showing matches by place.'
                   : distanceAvailable == null
                     ? 'Search once to check whether distance filtering is available.'
                     : undefined
@@ -356,7 +356,7 @@ export function FindContent() {
         </Button>
       </form>
 
-      <p className="text-xs text-muted mt-3 px-1">Every coach listed here has been approved by the LiftCircle team. Approval isn’t a check of qualifications unless a profile says a qualification was reviewed.</p>
+      <p className="text-xs text-muted mt-3 px-1">Every coach listed here has been approved by the Hard Earned team. Approval isn’t a check of qualifications unless a profile says a qualification was reviewed.</p>
 
       <div aria-live="polite" className="sr-only">
         {results && !loading ? `${results.items.length} coach${results.items.length === 1 ? '' : 'es'} found` : ''}
@@ -400,7 +400,7 @@ export function FindContent() {
       ) : (
         <>
           {appliedPoint && results.distanceAvailable === false && (
-            <Notice className="mt-4">Distance search isn’t available — showing matches by place.</Notice>
+            <Notice className="mt-4">Distance search isn’t available. Showing matches by place.</Notice>
           )}
           {split.local.length > 0 && (
             <section aria-labelledby="near-heading">

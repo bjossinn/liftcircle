@@ -113,7 +113,7 @@ describe('coach message outbox', () => {
     expect(api.coachingApi.sendMessage).not.toHaveBeenCalled();
     const row = await db.coachOutbox.get('m1');
     expect(row?.status).toBe('queued');
-    expect(outboxStatusLabel(row!, false)).toBe('Queued — will send when you’re back online');
+    expect(outboxStatusLabel(row!, false)).toBe('Queued: will send when you’re back online');
 
     onLine = true;
     await processCoachOutbox(db, { accountId: db.accountKey });
@@ -145,7 +145,7 @@ describe('coach message outbox', () => {
     await processCoachOutbox(db, { accountId: db.accountKey });
     const failed = await db.coachOutbox.get('m2');
     expect(failed?.status).toBe('failed');
-    expect(outboxStatusLabel(failed!, true)).toBe('Failed — Retry');
+    expect(outboxStatusLabel(failed!, true)).toBe('Failed: Retry');
 
     await retryCoachMessage('m2', db, db.accountKey);
     expect(api.coachingApi.sendMessage).toHaveBeenCalledTimes(2);

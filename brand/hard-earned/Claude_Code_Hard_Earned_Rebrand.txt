@@ -1,0 +1,114 @@
+Implement the complete visual rebrand of the existing LiftCircle application as HARD EARNED.
+
+This is an implementation task. Inspect the real repository, make the changes, verify the resulting application, and leave a useful handoff. Do not stop after producing a proposal or a list of recommendations. Work within the existing architecture and preserve the product's functioning features and saved data.
+
+The user explicitly requires replacing ALL LiftCircle references with the new name. This is a complete rename across the project, not only a logo or colour change. The acceptance target is zero current user-facing old-brand references. Any necessary compatibility, historical, or deployment-dependent reference must be precisely documented; silent exceptions are not acceptable.
+
+1. Source of truth and approved identity
+
+Read the supplied brand-kit files before changing the interface. They may be attached individually or extracted together in a brand-kit directory; locate that directory rather than assuming they are in the application root. The following paths are relative to the brand-kit directory:
+
+./Hard_Earned_Brand_Guide.txt
+./assets/asset-manifest.json
+./assets/hard-earned-icon-1024.png — approved original 1024px app icon
+./hard-earned-tokens.css — complete semantic token reference
+./contrast-matrix.json — verified foreground/background combinations
+
+Use the manifest to locate the other prepared asset variants. If the kit is supplied as an archive, extract it into a suitable local working directory and retain the original assets.
+
+Brand name: HARD EARNED in the wordmark; Hard Earned in normal prose.
+Primary motto: Your work, made visible.
+Supporting line: Every set adds up.
+Core palette: charcoal #17191B, chalk #F3EFE7, and vivid ember #FF694F. The approved accent is vivid ember, not a muted burnt orange. The supplied semantic token specification determines exact roles, theme variants, supporting colours, and accessible combinations. Use charcoal labels on ember-filled controls: this pairing is approximately 6.20:1. Chalk labels on ember are only approximately 2.48:1 and must not be used. Use #A93623 for light-theme text links as specified in the tokens; retain the approved ember for its designated brand and filled-control roles.
+
+Use the APPROVED ORIGINAL logo from the first set of ten concepts: the off-white dumbbell with four plate shapes, reading subtly as an H, and the vivid ember #FF694F folded detail at the upper right. This is not the earlier joined HE monogram, tally symbol, staircase, or any of the later alternate H/dumbbell concepts. Use the supplied approved files rather than selecting a similar-looking asset. Do not redesign, redraw, reinterpret, or replace the approved symbol. If the asset is genuinely missing, identify that specific missing input; do not fabricate a substitute and call it approved.
+
+The voice is confident, concise, specific, and encouraging. Celebrate training and progress. Use the motto selectively on appropriate brand surfaces; functional controls must retain clear action labels. Do not add motivational filler to every screen.
+
+2. Inspect the application before editing
+
+Read repository instructions, package scripts, documentation, and existing handoff files. Identify the framework, styling system, component library, navigation, state management, authentication, persistence, charting, tests, build targets, and deployment configuration. Use the repository's established tools and conventions.
+
+Inventory actual routes and reusable components. Determine which onboarding, workout logging, exercise, weight tracking, progress, AI coach, coach/client, community, administrative, account, authentication, billing, and public landing surfaces really exist. Do not invent missing features or assume that a proposed feature has shipped.
+
+Run the available baseline checks and inspect representative screens before making changes. Record existing failures separately from regressions. Inspect the working tree and preserve unrelated user changes. Use a safe branch or equivalent isolated workflow when appropriate; do not reset or discard existing work.
+
+Perform a whole-repository rename audit with rg, covering LiftCircle, Liftcircle, liftcircle, Lift Circle, lift-circle, lift_circle, and other discovered case or separator variants. For example, use a case-insensitive expression such as lift[[:space:]_-]*circle, supplemented by exact searches where necessary. Include project source, hidden project configuration, translations, public assets and filenames, manifests, package display metadata, tests, templates, documentation, reports, and build configuration. Document exclusions for VCS internals, vendored dependencies, and generated caches; do not exclude owned application code or content merely because it is inconvenient to update.
+
+Record baseline match and affected-file counts, with the counting method. Classify each occurrence before editing: current visible branding, safe internal brand-derived name, integration setting, historical record, or persisted-data identifier. Rename brand-derived components, variables, CSS selectors, local filenames/directories, asset references, display names, and build labels when all consumers can be updated safely. A blind global replacement is prohibited, but preserving every internal old-brand name by default is also prohibited.
+
+3. Implement one coherent design system
+
+Create or update centrally defined semantic tokens in the application's existing styling system. Cover page background, elevated surfaces, primary and muted text, borders, accent actions, hover/pressed/selected/disabled states, links, focus rings, overlays, charts, and success/warning/error/information states. Components should reference semantic roles rather than independently selecting raw colours.
+
+Integrate the complete supplied semantic token specification, including all theme, interaction, status, and chart roles; do not implement only the three core colours. Follow defined values exactly. Adapt the reference CSS into the actual framework's theme system or equivalent native token objects when necessary, preserving the roles and values. For a necessary unspecified role, choose a compatible accessible value and record the decision. Preserve clear semantic distinctions; an error and a successful workout must not become indistinguishable because both use ember.
+
+Apply the identity consistently to buttons, cards, navigation, tabs, inputs, selects, checkboxes, switches, sliders, badges, tables, menus, dialogs, drawers, popovers, tooltips, notifications, charts, loading indicators, empty states, and error states. Account for portals and third-party component overrides so they do not retain the old palette.
+
+Keep the app practical during a workout: clear numbers, readable labels, obvious selected states, and short paths to primary actions. Apply product usability targets of at least 48 CSS px in each dimension for workout touch controls, or the native platform equivalent, and at least 56 CSS px high for set rows. Allow rows to grow for text wrapping and maintain separation between adjacent actions. These dimensions are product design targets; assess accessibility requirements separately. Use restrained depth and the approved typography and geometry. Avoid glossy effects, heavy gradients, unnecessary animation, and decorative elements that obscure information.
+
+Rebrand existing dark and light themes consistently and retain the user's theme preference. Follow any additional theme requirements in the supplied guide. Do not add an unrelated theme-switching feature just to demonstrate colours. Audit system-theme behaviour where supported.
+
+4. Cover every real user-facing surface
+
+Update the app shell, desktop and mobile navigation, header, footer, login and registration, password reset, verification, onboarding, home/dashboard, workout creation and editing, active sessions, exercise selection, exercise details, sets/reps/weights, rest timers, history, progress charts, records, body metrics, settings, account management, and all associated dialogs and states that exist.
+
+Apply the same treatment to existing AI coach conversations, coach discovery, coach applications, client management, assigned plans, community content, administrator tools, approval queues, and billing displays. Preserve role-based access and clearly distinguish real data, loading states, empty states, and unavailable services.
+
+Update existing public pages, help content, transactional and notification templates, browser/application/window titles, descriptions, Open Graph and social metadata, PWA/manifest labels, installation text, accessible names, image alt text, icon references, localization strings, onboarding text, AI system prompts and greetings, loading/splash branding, package display metadata, and generated report headers. Check all supported languages, not only English. Update user-visible export names, CSV/PDF filenames and headings, share text, download names, and email subjects/signatures wherever the old brand is generated by the application. Search and visually inspect assets that may contain baked-in lettering; source-code searches alone cannot verify images.
+
+Update templates locally; do not send emails, notifications, invitations, or messages. Rename product branding in templates without automatically replacing real sender/recipient email addresses, legal company identities, receipt issuer details, or live URL destinations. Record those operational values for deployment review. Historical customer content and immutable historical records must not be rewritten merely because they mention the old name.
+
+Remove obsolete logos from the active interface and update references, alt text, and image dimensions. Keep historical changelog entries historically accurate. Describe intentionally retained technical names in the audit instead of disguising them as missed branding.
+
+5. Logo, favicon, installation, and platform assets
+
+Inspect the supplied asset package and prefer its prepared variants. The supplied exports are ready-to-use raster assets; they are not a vector master or a complete native adaptive-icon layer package. Distinguish an in-app logo, which needs surrounding clear space, from a full-bleed application icon, whose background reaches every canvas edge. Do not bake a pale presentation canvas, device mockup, border, slogan, or wordmark into the app icon.
+
+Keep the approved symbol's proportions and colours. Use high-quality resizing when deriving smaller raster assets; retain source resolution and preserve transparency where intended. Do not turn a low-resolution bitmap into a purported vector master.
+
+Update the favicon, browser icon references, Apple touch icon, PWA manifest, and existing install assets. Supply appropriate 192px and 512px PWA variants and dedicated maskable variants where applicable. Maskable assets need the symbol inside the platform safe region while the background remains full bleed. Do not mistake symbol safety padding for an outer white margin. Keep regular and maskable icon purposes accurate.
+
+Use the correct source artwork for native app-icon and splash pipelines only if those targets already exist in the repository. Follow their actual asset catalog/build requirements. Generate additional resolutions or foreground/background adaptive layers only when the real stack requires them; preserve the approved mark, use adequate source quality, and validate the masks. If a faithful required layer cannot be derived from the supplied raster files, report the missing asset instead of fabricating an approved replacement. Preserve native package and application identifiers. Do not claim native support, native adaptive-layer readiness, or store readiness for a web-only project.
+
+Update cache revisions or asset hashes through the existing service-worker/build mechanism so previously installed users can receive the new branding. Preserve offline workouts, queued writes, saved preferences, and application data. Never solve stale branding by clearing all storage, deleting databases, or indiscriminately unregistering service workers.
+
+6. Preserve product behaviour and compatibility
+
+This rebrand does not authorise a major rewrite, execution of a production data migration, a new business model, or a new feature set. Preserve workout calculations, exercise identifiers, saved routines, history, units, timers, validations, analytics semantics, exports, permissions, and integrations.
+
+Identify every old-brand occurrence in API paths, database schemas, storage keys, authentication settings, OAuth configuration, environment variables, billing product IDs, webhook identities, domains, routes, bundle IDs, package IDs, and external service identifiers. Handle durable identifiers through compatible migrations or aliases where authorised and necessary, preserving existing accounts, sessions, saved data, integrations, and installed-app continuity. Never blindly rename them or treat the absence of an immediate error as proof of compatibility. Rename safe local identifiers now; document each durable identifier that must remain, its reason, and its migration or deployment requirement.
+
+Do not automatically change public domains, live sender/recipient email addresses, legal company identifiers, external authentication settings, or remote billing configuration. Update display labels and link text to Hard Earned while retaining functional destinations until replacements are explicitly configured. Any old-brand name still visible because of an unresolved external dependency is a reported blocker, not a silent exception or a completed rename. Treat URLs in outgoing templates as real integration destinations, not decorative strings to replace.
+
+For AI coaching, update brand references without weakening existing behavioural instructions or changing supported capabilities. Preserve honest loading/error/connection states, the actual available conversation context, and any existing safeguards against invented user records or completed actions. Do not make claims that a coach, plan, or integration is connected when it is not.
+
+For onboarding, preserve answers and their downstream meaning. Do not silently change workout-day calculations, split recommendations, exercise selection, or full-body/upper/lower logic as part of styling. Record pre-existing functional problems separately. Fix a functional issue only when your branding changes caused it or it blocks the changed interface from working; explain any such fix explicitly.
+
+7. Accessibility and responsive verification
+
+Check actual rendered foreground/background combinations against contrast-matrix.json, including subdued text, accent buttons, form borders, selected controls, charts, and disabled states. Meet applicable contrast requirements, using 4.5:1 for normal text and 3:1 for large text and necessary interface graphics as baseline checks. Confirm that ember-filled controls use charcoal labels, light-theme links use their specified #A93623 token, and opacity or overlays have not invalidated the documented ratios. Chalk-on-ember labels are explicitly disallowed.
+
+Maintain visible keyboard focus, meaningful accessible names, labelled inputs, error associations, logical focus order, keyboard operation, and focus handling inside dialogs. Do not rely on colour alone to communicate chart series or status. Respect reduced-motion settings where motion exists.
+
+Verify narrow mobile, typical phone, tablet, and desktop layouts; browser zoom; long exercise names; large values; and scrolling panels. Ensure navigation, keyboards, sticky controls, and bottom bars do not cover workout actions. Check both light and dark appearances wherever supported.
+
+8. Run meaningful checks and document evidence
+
+Run the repository's build, type-check, lint, and relevant existing tests. Use its browser-test tools when available. Avoid introducing a large new testing framework solely for a visual rebrand. Add or update tests only for concrete risks, changed contracts, or required project gates.
+
+Exercise the core real flows: entry/authentication, onboarding, starting a workout, recording and editing a set, timer interaction, saving and reopening history, progress views, settings/theme persistence, and existing role-specific screens. Confirm that reloads and navigation preserve data. Verify offline/cache behaviour if the application supports it. Use local or provided test data; do not mutate real customer records or initiate charges.
+
+Capture actual screenshots of representative screens in dark and light themes where supported, including mobile and desktop, an active workout, progress charts, forms, a modal, and representative loading/error/empty states. Include relevant coach/client/admin surfaces when present and accessible. If a theme, role, credential, external integration, or runtime is unavailable, state that limitation and the unverified scope plainly. Never present mock screenshots as implemented screens or claim an unrun check passed.
+
+Repeat the same whole-repository searches after implementation and inspect rebuilt application output, installed-app labels, and generated exports. Resolve every accidental current user-facing match. Produce an exact remaining-reference allowlist containing the path and line/key or asset location, old value, category, justification, user-visible impact, and removal/migration requirement. Limit it to genuinely necessary compatibility, historical, or deployment-dependent cases. A match cannot be excused simply by calling it technical. Inspect obsolete assets, image lettering, broken references, generated filenames, inconsistent colours, and stale installed-app labels as well.
+
+9. Leave a complete handoff
+
+Update the existing CHANGELOG and HANDOFF files using their established structure, or create clearly named equivalents if absent. Record the reason for the rebrand, changed areas, asset source, token decisions, preserved technical identifiers, cache handling, checks performed, known limitations, and next steps. Append useful dated entries without erasing prior work.
+
+Create BRAND_AUDIT.md with the real screen/component inventory, branding coverage, before/after rename counts, changed-file list, precise remaining-reference allowlist, unsupported areas, and unresolved issues. Report counts separately for current user-facing matches, compatibility matches, historical matches, and deployment-dependent matches; define whether the totals count occurrences or matching lines, and do not estimate. Create VERIFICATION_REPORT.md with exact commands and results, baseline versus new failures, exercised flows, screenshot paths, responsive/theme coverage, and limitations. Keep reports concise, factual, and useful to the next developer.
+
+Finish with a clear implementation summary: what changed, where the approved assets and tokens live, what was verified, the measured number of old-brand references replaced and files changed, exact remaining counts and reasons, any blockers, and links or paths to the reports and screenshots. Explicitly state whether zero current user-facing LiftCircle references was achieved. Distinguish completed work from recommendations and do not claim the rename complete if visible old branding remains.
+
+Proceed autonomously with reversible local repository edits, asset integration, routine design decisions, and local verification; do not ask for additional permission for work already authorised by this prompt. Leave the implementation concrete and reviewable. Do not deploy, publish, submit an app-store release, execute production data migrations, change live domains, modify remote integration settings, or send external communications. If completion requires any such production or external action, prepare and document the necessary change, report the exact blocked scope and required configuration, and finish all unaffected local work. Do not silently execute the external action or pretend that it was completed.

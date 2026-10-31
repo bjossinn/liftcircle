@@ -1,5 +1,5 @@
 /**
- * AI coach v4 server logic — MOCKED provider (injected fetch) and in-memory data accessor:
+ * training assistant v4 server logic — MOCKED provider (injected fetch) and in-memory data accessor:
  *  - answer length/format rules reach the prompt for every coach style; tidyReply keeps Markdown markers;
  *  - missing-data rules (sharing vs setup, both, partial help) with in-app links;
  *  - [[open:…]] links validated before storing;
@@ -153,9 +153,9 @@ describe('MOCKED ai-coach v4: shorter, formatted answers', () => {
 
 /* ================================================================== missing data */
 describe('MOCKED ai-coach v4: missing-data rules', () => {
-  it('nutrition not shared → sharing hint with the AI coach settings link (and no nutrition values)', async () => {
+  it('nutrition not shared → sharing hint with the training assistant settings link (and no nutrition values)', async () => {
     const ctx = await ctxFor(data({ scopes: { ...ALL, nutrition: false } }));
-    expect(ctx.system).toMatch(/Nutrition: NOT shared with you\. Say "I can't see your nutrition yet\. You can share it under AI coach settings\."/);
+    expect(ctx.system).toMatch(/Nutrition: NOT shared with you\. Say "I can't see your nutrition yet\. You can share it under training assistant settings\."/);
     expect(ctx.system).toContain('[[open:/coaching/ai/settings|Change what the coach can see]]');
     expect(ctx.system).not.toMatch(/protein 150 g\/day/);
     expect(mealPlanBlocker(ctx.nutrition)).toMatch(/isn't shared/);
@@ -181,7 +181,7 @@ describe('MOCKED ai-coach v4: missing-data rules', () => {
     d.account!.nutrition = { mode: 'none' };
     const ctx = await ctxFor(d);
     const line = ctx.system.split('\n').find((l) => l.startsWith('- Nutrition:'))!;
-    expect(line.indexOf('AI coach settings')).toBeLessThan(line.indexOf('Set your targets'));
+    expect(line.indexOf('Training assistant settings')).toBeLessThan(line.indexOf('Set your targets'));
     expect(line).toMatch(/mention it second/);
   });
 
@@ -201,7 +201,7 @@ describe('MOCKED ai-coach v4: missing-data rules', () => {
   it('the app guide is in the prompt', async () => {
     const ctx = await ctxFor(data());
     expect(ctx.system).toMatch(/App guide \(path — what you do there/);
-    expect(ctx.system).toMatch(/- \/coaching\/ai\/settings — AI coach settings: what the AI can see/);
+    expect(ctx.system).toMatch(/- \/coaching\/ai\/settings — Training assistant settings: what the AI can see/);
   });
 });
 

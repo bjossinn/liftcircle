@@ -32,7 +32,7 @@ export default function DataPage() {
 
   const exportJson = async () => {
     try {
-      downloadText(`liftcircle-backup-${stamp()}.json`, JSON.stringify(await buildBackup(db), null, 2));
+      downloadText(`hard-earned-backup-${stamp()}.json`, JSON.stringify(await buildBackup(db), null, 2));
       toast.show('Backup downloaded', { tone: 'success' });
     } catch (e) {
       toast.show((e as Error).message, { tone: 'error' });
@@ -41,7 +41,7 @@ export default function DataPage() {
   const exportCsv = async (kind: 'workouts' | 'measurements' | 'activities') => {
     const text =
       kind === 'workouts' ? workoutsCsv(await db.sessions.toArray(), byId) : kind === 'measurements' ? measurementsCsv(await db.measurements.toArray()) : activitiesCsv(await db.activities.toArray());
-    downloadText(`liftcircle-${kind}-${stamp()}.csv`, text, 'text/csv');
+    downloadText(`hard-earned-${kind}-${stamp()}.csv`, text, 'text/csv');
   };
 
   return (
@@ -262,7 +262,7 @@ function RestoreSection() {
             <div className="rounded-xl border border-line p-3 space-y-3">
               <p className="text-sm font-medium">{ENTITY_LABELS.account_state}</p>
               {SINGLETON_PARTS.filter((x) => preview.singleton!.differs[x.key]).length === 0 ? (
-                <p className="text-xs text-muted">Same as on this device — nothing to change.</p>
+                <p className="text-xs text-muted">Same as on this device. Nothing to change.</p>
               ) : (
                 SINGLETON_PARTS.filter((x) => preview.singleton!.differs[x.key]).map((x) => (
                   <div key={x.key} className="space-y-1.5">
@@ -329,8 +329,8 @@ function SyncSection() {
     idle: 'Up to date',
     syncing: 'Syncing…',
     offline: 'Waiting for connection',
-    paused_auth: 'Paused — sign in again',
-    error: 'Having trouble — will retry',
+    paused_auth: 'Paused: sign in again',
+    error: 'Having trouble: will retry',
   };
   return (
     <>
@@ -359,7 +359,7 @@ function SyncSection() {
       </Card>
       {conflicts.length > 0 && (
         <Card className="p-4 mt-3 space-y-4">
-          <p className="text-sm">These were changed on more than one device. Nothing has been lost — choose what to keep.</p>
+          <p className="text-sm">These were changed on more than one device. Nothing has been lost. Choose what to keep.</p>
           {conflicts.map((c) => (
             <ConflictRow key={c.id} c={c} />
           ))}
@@ -375,7 +375,7 @@ function describe(rec: unknown): string {
   const parts = [r.name, (r as { template?: { name?: string } }).template?.name, r.date, r.kind, r.type].filter((x) => typeof x === 'string') as string[];
   const exercises = Array.isArray(r.exercises) ? `${(r.exercises as { sets: { completed?: boolean }[] }[]).reduce((n, e) => n + e.sets.filter((s) => s.completed).length, 0)} completed sets` : null;
   const when = typeof r.updatedAt === 'number' ? `edited ${new Date(r.updatedAt).toLocaleString()}` : null;
-  return [parts.slice(0, 2).join(' · '), exercises, when].filter(Boolean).join(' — ') || 'Record';
+  return [parts.slice(0, 2).join(' · '), exercises, when].filter(Boolean).join(': ') || 'Record';
 }
 
 function ConflictRow({ c }: { c: SyncConflict & { remoteDeleted?: boolean } }) {

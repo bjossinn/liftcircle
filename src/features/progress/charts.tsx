@@ -1,11 +1,18 @@
-/* Shared chart plumbing for Progress: theme-token colours, accessible figure wrapper, tooltip. */
+/*
+ * Shared chart plumbing for Progress: theme-token colours, accessible figure wrapper, tooltip. Series follow the Hard
+ * Earned chart roles (--c-chart-1…5): each has its own colour, marker shape and line style, so identity never relies
+ * on colour alone.
+ */
 import { useEffect, useState, type ReactNode } from 'react';
 import type { TooltipPayloadEntry } from 'recharts';
 import { formatDate } from '@/lib/dates';
 import type { ISODate } from '@/domain/types';
 
 export interface ChartColors {
+  /** Series 1 (the main series). */
   accent: string;
+  /** Series 1–5 colours (--c-chart-1…5). */
+  series: [string, string, string, string, string];
   accentSoft: string;
   info: string;
   warn: string;
@@ -19,16 +26,20 @@ export interface ChartColors {
 }
 
 function readColors(): ChartColors {
+  // Hard Earned dark-theme values, used only where CSS variables can't be read (tests, SSR).
   const fallback: ChartColors = {
-    accent: '#4fbf7f', accentSoft: 'rgba(79,191,127,0.14)', info: '#6fa8dc', warn: '#e6b450', danger: '#f07167', text: '#eef1ef', muted: '#9aa3a0', faint: '#6c7572', line: '#2e343b', surface: '#171a1e', surface3: '#282d33',
+    accent: '#ff694f', series: ['#ff694f', '#aee9dd', '#89bfff', '#c5a7f2', '#e9c16c'], accentSoft: '#392b29', info: '#aee9dd', warn: '#e9c16c', danger: '#ff9c91', text: '#f3efe7', muted: '#b7babb', faint: '#939a9d', line: '#3d4448', surface: '#202326', surface3: '#2d3135',
   };
   if (typeof document === 'undefined') return fallback;
   const cs = getComputedStyle(document.documentElement);
   const v = (name: string, fb: string) => cs.getPropertyValue(name).trim() || fb;
+  const series = fallback.series.map((fb, i) => v(`--c-chart-${i + 1}`, fb)) as ChartColors['series'];
   return {
-    accent: v('--c-accent', fallback.accent),
+    accent: series[0],
+    series,
     accentSoft: v('--c-accent-soft', fallback.accentSoft),
-    info: v('--c-info', fallback.info),
+    // "info" is the second data series in the charts (not the information status colour).
+    info: series[1],
     warn: v('--c-warn', fallback.warn),
     danger: v('--c-danger', fallback.danger),
     text: v('--c-text', fallback.text),
@@ -139,16 +150,59 @@ export function ChartTip({ active, payload, label, labelFmt, valueFmt }: {
   );
 }
 
-/** Small inline legend; identity never relies on colour alone (names are always shown). */
-export function Legend({ items }: { items: { label: string; color: string; dashed?: boolean }[] }) {
+/** Visible cue per series (brand guide): 1 circle/solid, 2 square/dashed, 3 triangle/dotted, 4 diamond/dash-dot, 5 plus/long dash. */
+export const SERIES: { shape: MarkerShape; dash?: string }[] = [
+  { shape: 'circle' },
+  { shape: 'square', dash: '8 4' },
+  { shape: 'triangle', dash: '2 4' },
+  { shape: 'diamond', dash: '8 3 2 3' },
+  { shape: 'plus', dash: '12 5' },
+];
+export type MarkerShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'plus';
+
+/** One marker, centred on (cx, cy). The outline in the surface colour keeps adjacent marks apart. */
+export function Marker({ shape, cx, cy, r = 4, fill, stroke }: { shape: MarkerShape; cx: number; cy: number; r?: number; fill: string; stroke?: string }) {
+  const sw = stroke ? 1.5 : 0;
+  switch (shape) {
+    case 'square':
+      return <rect x={cx - r} y={cy - r} width={r * 2} height={r * 2} fill={fill} stroke={stroke} strokeWidth={sw} />;
+    case 'triangle':
+      return <path d={`M${cx} ${cy - r - 1}L${cx + r + 1} ${cy + r}L${cx - r - 1} ${cy + r}Z`} fill={fill} stroke={stroke} strokeWidth={sw} />;
+    case 'diamond':
+      return <path d={`M${cx} ${cy - r - 1}L${cx + r + 1} ${cy}L${cx} ${cy + r + 1}L${cx - r - 1} ${cy}Z`} fill={fill} stroke={stroke} strokeWidth={sw} />;
+    case 'plus':
+      return <path d={`M${cx - r} ${cy}H${cx + r}M${cx} ${cy - r}V${cy + r}`} stroke={fill} strokeWidth={2.5} strokeLinecap="round" />;
+    default:
+      return <circle cx={cx} cy={cy} r={r} fill={fill} stroke={stroke} strokeWidth={sw} />;
+  }
+}
+
+/** Recharts line props for series i: colour, line style and its marker shape as the dot. */
+export function seriesLine(i: number, c: ChartColors) {
+  const s = SERIES[i];
+  const color = c.series[i];
+  const dot = (p: { cx?: number; cy?: number; index?: number }) =>
+    p.cx == null || p.cy == null ? <g key={p.index} /> : <Marker key={p.index} shape={s.shape} cx={p.cx} cy={p.cy} fill={color} stroke={c.surface} />;
+  return { stroke: color, strokeDasharray: s.dash, dot, activeDot: { r: 6, fill: color, stroke: c.surface } };
+}
+
+/** Small inline legend; identity never relies on colour alone (names, line styles and marker shapes are shown). */
+export function Legend({ items }: { items: { label: string; color: string; dashed?: boolean; series?: number }[] }) {
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-1 px-1 mb-1 text-xs text-muted" aria-hidden>
-      {items.map((i) => (
-        <li key={i.label} className="flex items-center gap-1.5">
-          <span className="inline-block w-4 h-0.5 rounded" style={{ background: i.dashed ? 'transparent' : i.color, borderTop: i.dashed ? `2px dashed ${i.color}` : undefined }} />
-          {i.label}
-        </li>
-      ))}
+      {items.map((i) => {
+        const s = i.series != null ? SERIES[i.series] : undefined;
+        const dash = s ? s.dash : i.dashed ? '4 3' : undefined;
+        return (
+          <li key={i.label} className="flex items-center gap-1.5">
+            <svg width="22" height="10" viewBox="0 0 22 10" className="shrink-0">
+              <line x1="1" y1="5" x2="21" y2="5" stroke={i.color} strokeWidth="2" strokeDasharray={dash} />
+              {s && <Marker shape={s.shape} cx={11} cy={5} r={3} fill={i.color} />}
+            </svg>
+            {i.label}
+          </li>
+        );
+      })}
     </ul>
   );
 }

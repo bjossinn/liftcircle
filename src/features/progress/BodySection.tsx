@@ -9,7 +9,7 @@ import { rollingAverage } from '@/domain/stats';
 import { cmToIn, fromKg, inToCm, round, toKg } from '@/domain/units';
 import type { Measurement, MeasurementKind } from '@/domain/types';
 import { formatDate } from '@/lib/dates';
-import { ChartFigure, ChartTip, Legend, axisProps, chartAnimation, shortDate, useChartColors } from './charts';
+import { ChartFigure, ChartTip, Legend, axisProps, chartAnimation, seriesLine, shortDate, useChartColors } from './charts';
 import type { ProgressData } from './shared';
 
 const KINDS: { value: MeasurementKind; label: string }[] = [
@@ -90,7 +90,7 @@ export function BodySection({ d, today }: { d: ProgressData; today: string }) {
         await saveRecord('measurements', { ...editing, date, value: canonical, entered, note: note.trim() || undefined }, db);
       }
       setEditing(null);
-      toast.show(`${kindLabel(kind)} saved`, { tone: 'success' });
+      toast.show(isBw ? 'Weight entry saved.' : `${kindLabel(kind)} saved`, { tone: 'success' });
     } catch (e) {
       toast.show(e instanceof StorageWriteError ? e.message : 'Couldn’t save the entry', { tone: 'error' });
     } finally {
@@ -136,15 +136,15 @@ export function BodySection({ d, today }: { d: ProgressData; today: string }) {
       {all.length === 0 ? (
         <EmptyState
           icon={<Scale className="size-6" />}
-          title={`No ${kindLabel(kind).toLowerCase()} entries yet`}
-          body={isBw ? 'Weigh in at a similar time of day; a 7-day average smooths out day-to-day changes.' : 'Measurements are optional. Other members never see them; a coach or the AI coach only does if you choose to share measurements.'}
+          title={isBw ? 'Add a weight entry to start your history.' : `No ${kindLabel(kind).toLowerCase()} entries yet`}
+          body={isBw ? 'Weigh in at a similar time of day; a 7-day average smooths out day-to-day changes.' : 'Measurements are optional. Other members never see them; a coach or the training assistant only does if you choose to share measurements.'}
           action={<Button onClick={openNew}>Add {kindLabel(kind).toLowerCase()}</Button>}
         />
       ) : (
         <>
           {chartData.length > 0 ? (
             <div>
-              {isBw && <Legend items={[{ label: 'Entries', color: c.faint }, { label: '7-day average', color: c.accent }]} />}
+              {isBw && <Legend items={[{ label: 'Entries', color: c.series[1], series: 1 }, { label: '7-day average', color: c.series[0], series: 0 }]} />}
               <ChartFigure
                 title={`${kindLabel(kind)} (${u.unit})`}
                 summary={summary}
@@ -156,8 +156,8 @@ export function BodySection({ d, today }: { d: ProgressData; today: string }) {
                     <XAxis dataKey="date" tickFormatter={shortDate} {...axisProps(c)} interval="preserveStartEnd" minTickGap={16} />
                     <YAxis {...axisProps(c)} domain={['auto', 'auto']} width={52} />
                     <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => `${v} ${u.unit}`} />} />
-                    <Line dataKey="value" name="Entry" stroke={isBw ? 'transparent' : c.accent} strokeWidth={2} dot={{ r: 4, fill: isBw ? c.faint : c.accent, stroke: c.surface, strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={chartAnimation()} />
-                    {isBw && <Line type="monotone" dataKey="avg" name="7-day average" stroke={c.accent} strokeWidth={2} dot={false} isAnimationActive={chartAnimation()} />}
+                    <Line dataKey="value" name="Entry" strokeWidth={2} isAnimationActive={chartAnimation()} {...seriesLine(isBw ? 1 : 0, c)} stroke={isBw ? 'transparent' : c.series[0]} />
+                    {isBw && <Line type="monotone" dataKey="avg" name="7-day average" strokeWidth={2} isAnimationActive={chartAnimation()} {...seriesLine(0, c)} dot={false} />}
                   </ComposedChart>
                 </ResponsiveContainer>
               </ChartFigure>

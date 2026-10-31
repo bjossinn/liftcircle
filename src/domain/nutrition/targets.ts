@@ -165,7 +165,7 @@ export function computeNutritionTargets(input: TargetInput): { targets: Nutritio
 
   if (input.individualizedNutrition) {
     explanation.push(
-      'You told us your nutrition needs individual guidance (for example pregnancy, breastfeeding or a medical condition), so LiftCircle does not generate targets.',
+      'You told us your nutrition needs individual guidance (for example pregnancy, breastfeeding or a medical condition), so Hard Earned does not generate targets.',
       'You can still log food and set your own targets, ideally with your healthcare professional or a registered dietitian.',
     );
     return { targets: { ...base, mode: 'manual', autoDisabledReason: 'individualized' }, explanation, warnings };

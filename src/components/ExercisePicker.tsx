@@ -26,7 +26,7 @@ function ChipSelect<T extends string>({ label, anyLabel, value, options, onChang
         value={value ?? ''}
         onChange={(e) => onChange((e.target.value || undefined) as T | undefined)}
         className={cx(
-          'appearance-none min-h-11 rounded-full border pl-3.5 pr-8 text-sm transition-colors focus:outline-none focus-visible:border-accent',
+          'appearance-none min-h-11 rounded-full border pl-3.5 pr-8 text-sm transition-colors focus-visible:border-accent',
           active ? 'bg-accent-soft border-accent text-accent font-medium' : 'bg-surface-2 border-line text-ink',
         )}
       >
@@ -200,7 +200,7 @@ function PickerBody({ onClose, onPick, suggestIds, excludeIds, fits, fitsNote, o
           <EmptyState
             icon={<Search className="size-5" />}
             title="No matching exercises"
-            body={allowCustom ? 'Try a different word or clear the filters — or add it as your own exercise.' : 'Try a different word or clear the filters.'}
+            body={allowCustom ? 'Try a different word or clear the filters, or add it as your own exercise.' : 'Try a different word or clear the filters.'}
             action={
               allowCustom ? (
                 <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>

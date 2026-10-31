@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import clsx from 'clsx';
-import { Activity, CalendarClock, Check, ChevronRight, Dumbbell, Flame, Play, Plus, Sparkles, Timer } from 'lucide-react';
+import { Activity, CalendarClock, Check, ChevronRight, Dumbbell, Flame, Play, Plus, Timer } from 'lucide-react';
 import { useApp } from '@/state/app';
 import { Badge, Button, Card, ConfirmDialog, Page, ProgressBar, SectionTitle, Spinner } from '@/components/ui';
 import { TopActions } from '@/app/TopActions';
@@ -12,6 +12,7 @@ import { saveRecord } from '@/db/repo';
 import { NutritionTodayCard } from '@/features/nutrition/NutritionTodayCard';
 import { useToast } from '@/components/toast';
 import { BRAND } from '@/config/brand';
+import { BrandMoment } from '@/components/BrandMark';
 import { PlanOwnerBadge } from '@/features/program/PlanOwner';
 import { useExercises } from '@/data/catalog';
 import { plannedWeekStreak } from '@/domain/program/streak';
@@ -99,11 +100,8 @@ export default function TodayPage() {
 
       {isNew && !active && (
         <Card className="p-5 space-y-3" tint="accent">
-          <div className="flex items-center gap-2 text-accent">
-            <Sparkles className="size-5" aria-hidden />
-            <span className="font-semibold">Welcome to {BRAND.name}</span>
-          </div>
-          <p className="text-[15px]">Answer a few quick questions and get a starting program that fits your days, equipment and time. Or just start logging. Every rep counts.</p>
+          <BrandMoment title={`Welcome to ${BRAND.name}`} />
+          <p className="text-[15px]">Let’s set up your training. Answer a few questions for a starting program that fits your days, equipment and time, or start logging straight away.</p>
           <div className="flex flex-col gap-2">
             <Button variant="primary" size="lg" onClick={() => nav('/onboarding')}>
               Set up my plan
@@ -124,7 +122,7 @@ export default function TodayPage() {
             <div className="text-xs text-muted">Workout in progress</div>
           </div>
           <Button variant="primary" onClick={() => nav(`/train/session/${active.id}`)}>
-            Resume
+            Continue workout
           </Button>
         </Card>
       )}
@@ -162,7 +160,7 @@ export default function TodayPage() {
                 {next.template.kind === 'lifting' || next.template.exercises.length > 0 ? 'Start workout' : 'Log this activity'}
               </Button>
               {next.date !== today && (
-                <p className="text-xs text-muted mt-2 text-center">You can start it early — it’ll count for this planned session.</p>
+                <p className="text-xs text-muted mt-2 text-center">You can start it early. It’ll count for this planned session.</p>
               )}
             </Card>
           ) : (
@@ -223,7 +221,7 @@ export default function TodayPage() {
                 <span
                   className={clsx(
                     'size-9 rounded-full flex items-center justify-center text-xs',
-                    done ? 'bg-accent text-accent-ink' : planned ? 'border-2 border-dashed border-accent/60' : 'bg-surface-2',
+                    done ? 'bg-success text-bg' : planned ? 'border-2 border-dashed border-accent/60' : 'bg-surface-2',
                     d === today && !done && 'ring-2 ring-accent/50',
                   )}
                 >
@@ -278,7 +276,7 @@ export default function TodayPage() {
           onClick={async () => {
             if (!missedAction || !program) return;
             await saveRecord('programs', skipPlanned(program, missedAction.date, missedAction.template.id), db);
-            toast.show('Skipped — your plan continues as scheduled.');
+            toast.show('Skipped: your plan continues as scheduled.');
             setMissedAction(null);
           }}
         >

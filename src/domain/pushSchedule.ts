@@ -128,14 +128,14 @@ export function reminderTime(i: ReminderTimeInput): string {
 
 /* ------------------------------------------------------------------ texts (coach style) */
 export function reminderText(name: string, style: CoachStyle = 'balanced'): string {
-  if (style === 'supportive') return `${name} today, whenever you’re ready. 🙂`;
-  if (style === 'strict') return `${name} today. No excuses, let’s go. 💪`;
-  return `${name} today. Ready? 💪`;
+  if (style === 'supportive') return `${name} today, whenever you’re ready.`;
+  if (style === 'strict') return `${name} today. Start with the first exercise.`;
+  return `${name} today. Ready for a session?`;
 }
 export function missedText(name: string, style: CoachStyle = 'balanced'): string {
-  if (style === 'supportive') return `${name} didn’t happen yesterday, and that’s okay. A short session today still counts.`;
-  if (style === 'strict') return `You missed ${name} yesterday. Let’s get it done today. No excuses, 20 minutes counts.`;
-  return `You missed ${name} yesterday. Can you fit it in today? Even 20 minutes counts.`;
+  if (style === 'supportive') return `${name} is still open from yesterday, and that’s okay. A short session today still counts.`;
+  if (style === 'strict') return `${name} is still open from yesterday. Do the first two exercises today: 20 minutes counts.`;
+  return `${name} is still open from yesterday. Can you fit it in today? Even 20 minutes counts.`;
 }
 export function restText(exerciseName: string, setNumber: number, detail: string): string {
   return `Rest’s up: ${exerciseName} set ${setNumber}${detail ? `, ${detail}` : ''}`;
@@ -183,7 +183,7 @@ export function workoutReminderJobs(i: PlanJobsInput): ScheduledJob[] {
     const at = zonedToUtc(it.date, reminderTime({ templateId: it.template.id, sessions: i.sessions, prefs: i.prefs }), tz);
     if (at.getTime() <= i.now.getTime()) continue;
     seen.add(it.date);
-    out.push({ dedupeKey: `reminder:${it.date}`, fireAt: at.toISOString(), payload: { title: 'LiftCircle', body: reminderText(it.template.name, i.style), url: '/', tag: 'workout' } });
+    out.push({ dedupeKey: `reminder:${it.date}`, fireAt: at.toISOString(), payload: { title: 'Hard Earned', body: reminderText(it.template.name, i.style), url: '/', tag: 'workout' } });
   }
   return out;
 }
@@ -210,7 +210,7 @@ export function missedNudgeJobs(i: PlanJobsInput): ScheduledJob[] {
     const at = zonedToUtc(nudgeDay, reminderTime({ templateId: it.template.id, sessions: i.sessions, prefs: i.prefs }), tz);
     if (at.getTime() <= i.now.getTime()) continue;
     seen.add(it.date);
-    out.push({ dedupeKey: `nudge:${it.date}`, fireAt: at.toISOString(), payload: { title: 'LiftCircle', body: missedText(it.template.name, i.style), url: '/', tag: 'workout' } });
+    out.push({ dedupeKey: `nudge:${it.date}`, fireAt: at.toISOString(), payload: { title: 'Hard Earned', body: missedText(it.template.name, i.style), url: '/', tag: 'workout' } });
   }
   // At most one nudge per calendar day.
   const perDay = new Map<string, ScheduledJob>();
@@ -230,6 +230,6 @@ export function restAlertJob(session: WorkoutSession, byId: Map<ID, Exercise>, u
   return {
     dedupeKey: `rest:${session.id}`,
     fireAt: new Date(endsAt).toISOString(),
-    payload: { title: 'LiftCircle', body: restText(n.exerciseName, n.number, n.detail), url: `/train/session/${session.id}`, tag: 'rest' },
+    payload: { title: 'Hard Earned', body: restText(n.exerciseName, n.number, n.detail), url: `/train/session/${session.id}`, tag: 'rest' },
   };
 }

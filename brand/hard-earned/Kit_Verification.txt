@@ -1,0 +1,19 @@
+HARD EARNED BRAND KIT VERIFICATION
+31 October 2026
+
+DOCUMENT
+16 pages. DOCX rendered to PDF with the document rendering workflow. Every rendered page was visually inspected. A cover rule was removed and typography-page spacing improved; those changed pages were rerendered and reinspected. All other page images were unchanged in the final render. No clipped text, table overflow or unresolved footer collisions remained.
+
+ICON EXPORTS
+Eight PNG exports verified for full decoding, dimensions, channel mode, sRGB profile, opaque edges, file size and SHA-256 integrity. The source raster is preserved byte-for-byte in assets/source/. Export only: proportional resizing and file encoding, with no creative alterations.
+
+The 512px Play Store PNG is 197854 bytes, RGBA with all alpha values 255, and sRGB. The maskable essential off-white dumbbell has a conservative pixel-corner radius of 203.364px, below the 204.8px central safe radius. The nonessential orange corner may be clipped. See assets/asset-manifest.json for exact measurements and methods.
+
+COLOUR SYSTEM
+172 evaluated foreground/background pair/use entries. 152 approved uses, all passing assigned contrast targets. Six decorative-only entries, nine light fills requiring the supplied boundary treatment, and five explicitly rejected uses are separately labelled. Calculations use full-precision sRGB relative luminance; display ratios are rounded. CSS theme values match the palette report.
+
+HANDOFF
+All files named in the Claude Code prompt are present at their documented kit-relative paths. The prompt requires a complete current-product LiftCircle rename and an exact residual-reference audit, protects data and integrations, and distinguishes local implementation from production actions.
+
+LIMITS
+This verifies the guide, supplied assets and design calculations. It does not verify an implementation inside the actual app. No application repository was changed, no product workflow was tested, and no deployment, store submission or external message was sent. UI examples are static illustrations with example data. Native adaptive layers, Icon Composer appearances and font binaries are not included.

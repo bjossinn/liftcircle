@@ -301,7 +301,7 @@ function BulletBlock({ title, items, tone }: { title: string; items: string[]; t
       <ul className="flex flex-col gap-1">
         {items.map((c) => (
           <li key={c} className="flex gap-2">
-            <span className={tone === 'warn' ? 'mt-2.5 size-1.5 shrink-0 rounded-full bg-warn' : 'mt-2.5 size-1.5 shrink-0 rounded-full bg-accent'} aria-hidden />
+            <span className={tone === 'warn' ? 'mt-2.5 size-1.5 shrink-0 rounded-full bg-warn' : 'mt-2.5 size-1.5 shrink-0 rounded-full bg-ember'} aria-hidden />
             <span>{c}</span>
           </li>
         ))}

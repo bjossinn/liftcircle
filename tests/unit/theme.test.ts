@@ -67,11 +67,11 @@ describe('effective theme', () => {
     expect(effectiveThemeChoice(undefined)).toBe('light');
   });
 
-  it('Match system follows the phone; names map from the stored values', () => {
+  it('Match my phone follows the phone; names map from the stored values', () => {
     expect(resolveTheme('system', true)).toBe('light');
     expect(resolveTheme('system', false)).toBe('dark');
     expect(resolveTheme('dark', true)).toBe('dark');
-    expect([themeLabel('dark'), themeLabel('light'), themeLabel('system')]).toEqual(['Midnight', 'Daylight', 'Match system']);
+    expect([themeLabel('dark'), themeLabel('light'), themeLabel('system')]).toEqual(['Dark', 'Light', 'Match my phone']);
   });
 });
 

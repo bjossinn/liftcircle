@@ -275,7 +275,7 @@ async function buildPlan(db: LiftDb, backup: ValidatedBackup, opts: ImportOption
     }
 
     if (row.adjusted) row.notes.push(entity === 'sessions' ? `${row.adjusted} in-progress workout${row.adjusted === 1 ? '' : 's'} skipped because a workout is already in progress here.` : `${row.adjusted} program${row.adjusted === 1 ? '' : 's'} added as inactive because another program is active.`);
-    if (row.deletedHere) row.notes.push(`${row.deletedHere} deleted on this device — not restored.`);
+    if (row.deletedHere) row.notes.push(`${row.deletedHere} deleted on this device, not restored.`);
     rows.push(row);
     if (take) {
       result.byEntity[entity] = counts;

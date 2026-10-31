@@ -179,9 +179,9 @@ export function suggestNext(
 
   if (!h.length) {
     if (ex.tracking === 'duration' || ex.tracking === 'distance_time')
-      return { action: 'calibrate', loadKg: null, ...range, durationSec: rx.durationSec, reason: 'First time: do what feels comfortable and log it — we’ll build from there.' };
+      return { action: 'calibrate', loadKg: null, ...range, durationSec: rx.durationSec, reason: 'First time: do what feels comfortable and log it. We’ll build from there.' };
     if (ex.tracking === 'reps')
-      return { action: 'calibrate', loadKg: null, ...range, reason: `First time: stop each set with about ${rx.targetRir} reps left in the tank and log your reps — we’ll build from there.` };
+      return { action: 'calibrate', loadKg: null, ...range, reason: `First time: stop each set with about ${rx.targetRir} reps left in the tank and log your reps. We’ll build from there.` };
     return {
       action: 'calibrate',
       loadKg: null,
@@ -227,7 +227,7 @@ export function suggestNext(
     case 'bodyweight_plus': {
       const weighted = ex.tracking === 'bodyweight_plus';
       if (!weighted && (lastLoad == null || lastLoad <= 0)) {
-        return { action: 'calibrate', loadKg: null, ...range, reason: 'No load logged last time — pick a weight that leaves about 2–3 reps in the tank and log it.' };
+        return { action: 'calibrate', loadKg: null, ...range, reason: 'No load logged last time. Pick a weight that leaves about 2–3 reps in the tank and log it.' };
       }
       const L = lastLoad ?? 0;
       const top0 = allTop(h0, rx, L, ex);
@@ -245,7 +245,7 @@ export function suggestNext(
         };
       }
       if (top0)
-        return { action: 'hold', loadKg: L, ...range, targetReps: rx.repMax, reason: 'Top of the range on every set — repeat this load once more to confirm, then we’ll suggest an increase.' };
+        return { action: 'hold', loadKg: L, ...range, targetReps: rx.repMax, reason: 'Top of the range on every set. Repeat this load once more to confirm, then we’ll suggest an increase.' };
       if (allSetsDone && minReps >= rx.repMin)
         return {
           action: 'add_reps',
@@ -268,7 +268,7 @@ export function suggestNext(
           targetReps: rx.repMax,
           hint: 'harder_variation',
           alternativeIds: ex.substitutions.slice(0, 4),
-          reason: `You’ve reached ${rx.repMax} reps on every set twice. Ready for a harder variation or a little added load — or keep adding reps if you prefer.`,
+          reason: `You’ve reached ${rx.repMax} reps on every set twice. Ready for a harder variation or a little added load, or keep adding reps if you prefer.`,
         };
       return {
         action: 'add_reps',
@@ -281,7 +281,7 @@ export function suggestNext(
 
     case 'assisted': {
       if (lastLoad == null)
-        return { action: 'calibrate', loadKg: null, ...range, reason: 'Log the assistance you use — enough that sets end with about 2–3 reps left in the tank.' };
+        return { action: 'calibrate', loadKg: null, ...range, reason: 'Log the assistance you use. Enough that sets end with about 2–3 reps left in the tank.' };
       const L = lastLoad;
       const top0 = allTop(h0, rx, L, ex, true);
       const top1 = h[1] ? allTop(h[1], rx, L, ex, true) : false;
@@ -297,7 +297,7 @@ export function suggestNext(
             hint: 'unassisted',
             effortBasis,
             alternativeIds: ex.substitutions.slice(0, 4),
-            reason: 'You’ve outgrown the assistance — try the unassisted version (or the lightest band) and aim for the bottom of the range.',
+            reason: 'You’ve outgrown the assistance. Try the unassisted version (or the lightest band) and aim for the bottom of the range.',
           };
         return {
           action: 'reduce_assistance',
@@ -305,7 +305,7 @@ export function suggestNext(
           ...range,
           targetReps: rx.repMin,
           effortBasis,
-          reason: `Top of the range twice with ${fmt(L)} assistance${effortText(effortBasis, rx)}. Use less assistance (${fmt(next)}) and aim for ${rx.repMin} reps — less help is progress.`,
+          reason: `Top of the range twice with ${fmt(L)} assistance${effortText(effortBasis, rx)}. Use less assistance (${fmt(next)}) and aim for ${rx.repMin} reps. Less help is progress.`,
         };
       }
       if (allSetsDone && minReps >= rx.repMin)
@@ -323,7 +323,7 @@ export function suggestNext(
       const done1 = h[1] ? workingSets(h[1], ex).length >= rx.sets : false;
       if (allSetsDone && done1) {
         const next = Math.round((avgDist * 1.1) / 10) * 10;
-        return { action: 'increase_distance', loadKg: lastLoad, ...range, distanceM: Math.max(next, avgDist + 10), reason: 'Completed twice — add about 10 % distance while keeping the same comfortable effort.' };
+        return { action: 'increase_distance', loadKg: lastLoad, ...range, distanceM: Math.max(next, avgDist + 10), reason: 'Completed twice: add about 10 % distance while keeping the same comfortable effort.' };
       }
       return { action: 'hold', loadKg: lastLoad, ...range, distanceM: Math.round(avgDist), reason: 'Keep the same distance until it feels comfortable on every set.' };
     }
@@ -333,8 +333,8 @@ export function suggestNext(
 /** Honest wording about the effort a suggestion rests on. */
 function effortText(basis: EffortBasis, rx: ProgressionRx): string {
   if (basis === 'recorded') return ' at the target effort';
-  if (basis === 'partial') return ` (effort was logged for only some sets — increase only if they felt like about ${rx.targetRir} reps left in the tank)`;
-  return ` (effort wasn’t logged, so this is based on reps and load only — increase only if those sets felt like about ${rx.targetRir} reps left in the tank)`;
+  if (basis === 'partial') return ` (effort was logged for only some sets. Increase only if they felt like about ${rx.targetRir} reps left in the tank)`;
+  return ` (effort wasn’t logged, so this is based on reps and load only. Increase only if those sets felt like about ${rx.targetRir} reps left in the tank)`;
 }
 
 function durationRule(h: SessionExercise[], rx: ProgressionRx, action: 'increase_duration', ex?: Exercise): Suggestion {
@@ -350,7 +350,7 @@ function durationRule(h: SessionExercise[], rx: ProgressionRx, action: 'increase
     const step = Math.max(5, Math.round((target * 0.1) / 5) * 5);
     return { action, loadKg: null, ...range, durationSec: target + step, reason: `You held ${target} s on every set twice. Try ${target + step} s.` };
   }
-  return { action: 'hold', loadKg: null, ...range, durationSec: target || undefined, reason: target ? `Aim for ${target} s on every set with good form.` : 'Keep logging your times — we’ll build from there.' };
+  return { action: 'hold', loadKg: null, ...range, durationSec: target || undefined, reason: target ? `Aim for ${target} s on every set with good form.` : 'Keep logging your times. We’ll build from there.' };
 }
 
 /** Comparable history for one exercise: completed sessions, newest first, one entry per session. */

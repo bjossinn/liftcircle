@@ -179,7 +179,7 @@ function LibraryEmpty({ tab, searching, onCreate, onClear }: { tab: Tab; searchi
       <EmptyState
         icon={<Dumbbell className="size-5" />}
         title="No custom exercises"
-        body="Add a movement that isn’t in the library — it works everywhere the built-in exercises do."
+        body="Add a movement that isn’t in the library. It works everywhere the built-in exercises do."
         action={
           <Button variant="primary" icon={<Plus className="size-4" />} onClick={onCreate}>
             New custom exercise

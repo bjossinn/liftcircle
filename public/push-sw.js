@@ -1,10 +1,10 @@
-/* LiftCircle push handlers, loaded into the generated Workbox service worker via workbox.importScripts
+/* Hard Earned push handlers, loaded into the generated Workbox service worker via workbox.importScripts
  * (vite.config.ts). Adds no caching or routes: the SW still only precaches the build and serves the navigation
  * fallback, and Supabase paths are never cached.
  *
  * push              → ALWAYS shows a notification (iOS revokes permission for silent pushes). Payload JSON:
  *                     { title, body, url, tag }. Same tag = a newer notification replaces the older one.
- * notificationclick → focuses an open LiftCircle window (navigating it to the url) or opens the url.
+ * notificationclick → focuses an open Hard Earned window (navigating it to the url) or opens the url.
  * pushsubscriptionchange → re-subscribes with the same key and tells open windows, which upload the new
  *                     subscription; otherwise the app refreshes it on its next start.
  */
@@ -24,7 +24,7 @@
     }
     var url = typeof data.url === 'string' && data.url.charAt(0) === '/' && data.url.charAt(1) !== '/' ? data.url : '/';
     return {
-      title: typeof data.title === 'string' && data.title ? data.title.slice(0, 80) : 'LiftCircle',
+      title: typeof data.title === 'string' && data.title ? data.title.slice(0, 80) : 'Hard Earned',
       body: typeof data.body === 'string' ? data.body.slice(0, 200) : '',
       url: url,
       tag: typeof data.tag === 'string' && data.tag ? data.tag.slice(0, 40) : 'liftcircle',
@@ -37,8 +37,8 @@
       body: p.body,
       tag: p.tag,
       renotify: true,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
+      icon: '/icons/hard-earned-pwa-192.png',
+      badge: '/icons/hard-earned-pwa-192.png',
       data: { url: p.url },
     });
   };

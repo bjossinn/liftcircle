@@ -45,7 +45,7 @@ export function CoachingAccessNotice({ access, what = 'Coaching' }: { access: Ex
         <EmptyState
           icon={<HeartHandshake className="size-6" aria-hidden />}
           title="Coaching needs an account"
-          body="Working with a coach is part of the account-based version of LiftCircle. Your workouts, programs and nutrition keep working on this device."
+          body="Working with a coach is part of the account-based version of Hard Earned. Your workouts, programs and nutrition keep working on this device."
         />
       );
     case 'guest':
@@ -368,7 +368,7 @@ export function ReportCoachingSheet({ open, onClose, relationshipId, messageId, 
     setError(null);
     try {
       await coachingApi.reportCoachingContent({ relationshipId, messageId, reason, details: details.trim() || undefined });
-      toast.show('Thanks — your report was sent to our moderators.', { tone: 'success' });
+      toast.show('Thanks: your report was sent to our moderators.', { tone: 'success' });
       close();
     } catch (e) {
       setError(coachingError(e, 'Your report couldn’t be sent. Please try again.'));
@@ -392,7 +392,7 @@ export function ReportCoachingSheet({ open, onClose, relationshipId, messageId, 
         </>
       }
     >
-      <p className="text-sm text-muted mb-3">Reports are private and go to LiftCircle moderators. The other person isn’t told who reported them.</p>
+      <p className="text-sm text-muted mb-3">Reports are private and go to Hard Earned moderators. The other person isn’t told who reported them.</p>
       <ChipGroup single label="Reason" values={reason ? [reason] : []} onChange={(v) => setReason(v[0] ?? null)} options={REASONS} />
       <Textarea className="mt-4" label="Details (optional)" maxLength={500} value={details} onChange={(e) => setDetails(e.target.value)} />
       {error && (

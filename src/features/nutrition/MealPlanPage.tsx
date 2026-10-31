@@ -31,7 +31,7 @@ export default function MealPlanPage() {
   const toast = useToast();
   const today = todayISO(account.settings.timeZone);
   const thisWeek = startOfWeek(today, account.settings.weekStart);
-  // ?week=YYYY-MM-DD (e.g. from the AI coach's "Customize first") opens that week.
+  // ?week=YYYY-MM-DD (e.g. from the training assistant's "Customize first") opens that week.
   const [params] = useSearchParams();
   const [weekStart, setWeekStart] = useState(() => {
     const w = params.get('week');
@@ -251,7 +251,7 @@ export default function MealPlanPage() {
             </Notice>
           ))}
           <div className="flex gap-2">
-            <Link to={`/nutrition/shopping?week=${weekStart}`} className="flex-1 inline-flex items-center justify-center gap-2 min-h-11 rounded-xl bg-accent text-accent-ink font-semibold px-4">
+            <Link to={`/nutrition/shopping?week=${weekStart}`} className="flex-1 inline-flex items-center justify-center gap-2 min-h-11 rounded-xl ember-fill font-semibold px-4">
               <ShoppingCart className="size-4" aria-hidden /> Shopping list
             </Link>
             <IconButton label="Proteins" className="border border-line" onClick={() => setProteinsOpen(true)}>
@@ -680,7 +680,7 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
           placeholder="Search ingredients"
           value={dislikeQuery}
           onChange={(e) => setDislikeQuery(e.target.value)}
-          className="w-full min-h-11 rounded-xl bg-surface-2 border border-line px-3 text-[16px] text-ink placeholder:text-faint focus:border-accent focus:outline-none"
+          className="w-full min-h-11 rounded-xl bg-field border border-line-input px-3 text-[16px] text-ink placeholder:text-faint focus:border-accent"
         />
         {dislikeMatches.length > 0 && (
           <ul className="rounded-xl border border-line divide-y divide-line">

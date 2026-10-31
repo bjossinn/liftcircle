@@ -11,7 +11,7 @@ use a fresh profile or clear the site's data. Tick each item, and write down the
 ### Install
 1. Open the site in Safari (iOS) / Chrome (Android). Wait for the "Ready to work offline" toast. It must appear only once, on the first visit.
 2. Android: open Settings → Install app, and accept the browser prompt. iOS: Share → Add to Home Screen (the Install page shows these steps).
-3. Launch from the home-screen icon. Check that it opens **standalone** (no browser address bar) and that the icon, the name "LiftCircle" and the dark splash/background colour are correct.
+3. Launch from the home-screen icon. Check that it opens **standalone** (no browser address bar) and that the icon, the name "Hard Earned" and the dark splash/background colour are correct.
 4. Check the status bar and notch area: the top content isn't hidden under the notch or Dynamic Island. The tab bar and Resume bar sit above the home indicator, with no overlap.
 5. Open a deep link (for example `/train/exercises`) from another app, such as Notes. It should open the right screen.
 
@@ -43,20 +43,28 @@ use a fresh profile or clear the site's data. Tick each item, and write down the
 
 ### Storage and private mode
 19. iOS Safari **private** tab and Firefox **private** window:
-    - The app either works, or shows "This browser isn't letting LiftCircle save on this device".
+    - The app either works, or shows "This browser isn't letting Hard Earned save on this device".
     - It must never get stuck on an endless "Loading…".
 20. Android: Settings → Apps → Chrome → Storage → clear the site's data while the app is closed. On reopen, a guest starts empty and a signed-in user's data comes back from sync after signing in.
 21. As a guest with at least one finished workout, the notice "Your workouts are only on this device…" may appear on browsers that don't grant persistent storage. "Back up or protect your data" opens Settings → Data, and dismissing the notice is remembered.
 
-### Themes (0.8.0)
-- First launch on a fresh install shows **Pick your look**; tapping Midnight/Daylight changes the whole screen and
+### Hard Earned brand (1.0.0)
+- The installed app's name and icon change to Hard Earned after the update applies (Android: the launcher may take a
+  moment). **iOS only refreshes a Home Screen icon and name when the app is removed and added again.**
+- The maskable icon looks right under round and squircle masks on Android (the orange corner may be clipped).
+- Ember buttons have charcoal labels and a visible charcoal outline in the light theme; keyboard focus shows a 3 px
+  outline away from the control; disabled buttons are solid grey, not faded.
+- Inter and Barlow Semi Condensed render Æfing, Þyngd, Endurtekningar and "102,5 kg" correctly.
+
+### Themes (0.8.0, renamed in 1.0.0)
+- First launch on a fresh install shows **Pick your look**; tapping Dark/Light changes the whole screen and
   the status bar colour at once; Continue leads into the welcome; it doesn't come back after closing and reopening.
-- Match system follows the phone switching light/dark while the app is open (iOS Control Centre, Android quick
+- Match my phone follows the phone switching light/dark while the app is open (iOS Control Centre, Android quick
   settings) and after reopening, with no flash of the wrong theme on launch.
 - The installed Home Screen app's status bar matches the theme (black-translucent on iOS; theme-color on Android).
 - VoiceOver/TalkBack read the picker as a radio group named "Pick your look" with three options and their
   descriptions; the previews are not read out.
-- Confetti on a new record and on finishing a workout; none with Reduce Motion on, none after turning
+- A brief celebration on a new record and on finishing a workout; none with Reduce Motion on, none after turning
   Settings → Celebrations off.
 
 ### Accessibility on device
@@ -114,7 +122,7 @@ These headers take effect on the next Netlify deploy. Netlify Drop also reads `_
 - The file also sets `Strict-Transport-Security`, `Cross-Origin-Opener-Policy: same-origin` (sign-in uses redirects, not popups), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy` and `Permissions-Policy` (camera/geolocation self, no microphone).
 - **How it was verified:** the production build was served with exactly these headers by a small static server, in Connected mode, with the Supabase origin mocked. Both guest and signed-in sessions visited 16 routes and started a workout. The results:
   - There were 0 unexpected violations.
-  - Storage signed-URL images, blob: and data: images, and Edge Function calls (including the AI coach) loaded.
+  - Storage signed-URL images, blob: and data: images, and Edge Function calls (including the training assistant) loaded.
   - The service worker registered.
   - Requests to other origins and `eval` were blocked.
 - **Still to do after deploying:** check the live site's response headers and open sign-in, a photo post, coach photos and the AI chat with DevTools open. Any `Refused to …` console message is a CSP gap.

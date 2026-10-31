@@ -70,7 +70,7 @@ export default function CoachDashboardPage() {
   );
 
   return (
-    <Page title="Coach dashboard" back={<BackButton to="/coaching" />}>
+    <Page title="Your coaching workspace" back={<BackButton to="/coaching" />}>
       {!ok ? (
         <CoachingAccessNotice access={access} what="The coach dashboard" />
       ) : !approved ? (
@@ -115,7 +115,7 @@ export default function CoachDashboardPage() {
                       title={`${nameOf(p.relationshipId)}: ${p.program.name}`}
                       subtitle={
                         p.status === 'declined'
-                          ? `Declined ${fmtDateTime(p.respondedAt)} — consider a revision`
+                          ? `Declined ${fmtDateTime(p.respondedAt)}: consider a revision`
                           : p.status === 'draft'
                             ? 'Draft not sent yet'
                             : p.status === 'invalid'
@@ -133,7 +133,7 @@ export default function CoachDashboardPage() {
 
           <SectionTitle>Clients ({active.length})</SectionTitle>
           {active.length === 0 ? (
-            <EmptyState icon={<Users className="size-6" aria-hidden />} title="No active clients yet" body="When you accept a request, the client appears here. Clients choose what they share with you." />
+            <EmptyState icon={<Users className="size-6" aria-hidden />} title="Your clients will appear here once they’re connected." body="When you accept a request, the client appears here. Clients choose what they share with you." />
           ) : (
             <ul className="flex flex-col gap-2">
               {active.map((r) => (
@@ -182,7 +182,7 @@ function RequestCard({ rel, onDone }: { rel: CoachingRelationship; onDone: () =>
         <Inbox className="size-5 text-muted" aria-hidden />
       </div>
       <IntakeSummary intake={rel.intake} intro={rel.introMessage} />
-      <p className="text-xs text-muted mt-3">Until you accept, you see only this intake and intro message — none of their records.</p>
+      <p className="text-xs text-muted mt-3">Until you accept, you see only this intake and intro message. None of their records.</p>
       <div className="flex gap-2 mt-3">
         <Button variant="ghost" icon={<X className="size-4" />} onClick={() => setMode('decline')}>
           Decline
@@ -254,7 +254,7 @@ function CoachTemplates({ clients }: { clients: CoachingRelationship[] }) {
       >
         Your session templates
       </SectionTitle>
-      <p className="text-xs text-muted px-1 mb-2">Reusable sessions from your own template library. Edit them here, then duplicate one into a client’s program — the client gets a copy, never a link.</p>
+      <p className="text-xs text-muted px-1 mb-2">Reusable sessions from your own template library. Edit them here, then duplicate one into a client’s program. The client gets a copy, never a link.</p>
       {rows === undefined ? (
         <Spinner label="Loading templates" />
       ) : templates.length === 0 ? (

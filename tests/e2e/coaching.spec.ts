@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { completeOnboarding } from './helpers';
 
-// This build has no backend configured (personal/offline version). Coaching and the AI coach must say so
+// This build has no backend configured (personal/offline version). Coaching and the training assistant must say so
 // truthfully, never pretend to work, and leave the tracker fully usable (requirements §10 items 11–12).
-test('coaching and AI coach show truthful unavailable states and the tracker keeps working', async ({ page }) => {
+test('coaching and training assistant show truthful unavailable states and the tracker keeps working', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await completeOnboarding(page);
@@ -13,7 +13,7 @@ test('coaching and AI coach show truthful unavailable states and the tracker kee
   await expect(page.getByText('Coaching needs the online version')).toBeVisible();
 
   await page.goto('/coaching/ai');
-  await expect(page.getByText('AI coach isn’t set up on this server yet')).toBeVisible();
+  await expect(page.getByText('The training assistant isn’t set up on this server yet')).toBeVisible();
   await expect(page.getByRole('textbox')).toHaveCount(0); // no composer that could never send
 
   for (const path of ['/coaching/find', '/coaching/my', '/coaching/dashboard', '/coaching/admin', '/coaching/admin/reports']) {

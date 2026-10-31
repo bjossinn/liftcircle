@@ -42,7 +42,7 @@ export function AccessNotice({ access, what = 'The feed', guestTitle }: { access
         <EmptyState
           icon={<Users className="size-6" aria-hidden />}
           title="Sharing needs an account"
-          body="Friends, the feed and photo posts are part of the account-based version of LiftCircle. Everything else — workouts, programs, nutrition and progress — works fully on this device."
+          body="Friends, the feed and photo posts are part of the account-based version of Hard Earned. Everything else, workouts, programs, nutrition and progress, works fully on this device."
         />
       );
     case 'guest':
@@ -171,7 +171,7 @@ export function SnapshotView({ snapshot, className }: { snapshot: WorkoutSnapsho
               <span className="font-medium">{e.name}</span>
               {e.sets && e.sets.length > 0 && (
                 <span className="text-muted">
-                  {' — '}
+                  {': '}
                   {e.sets
                     .map((s) => [s.weight, s.reps != null ? `${s.weight ? '× ' : ''}${s.reps}${s.weight ? '' : ' reps'}` : null, s.duration].filter(Boolean).join(' '))
                     .join(', ')}
@@ -229,7 +229,7 @@ export function ReportSheet({ open, onClose, target, what }: { open: boolean; on
     setError(null);
     try {
       await socialApi.report({ ...target, reason, details: details.trim() || undefined });
-      toast.show('Thanks — your report was sent to our moderators.', { tone: 'success' });
+      toast.show('Thanks: your report was sent to our moderators.', { tone: 'success' });
       close();
     } catch (e) {
       setError(friendlyError(e, 'Your report couldn’t be sent. Please try again.'));

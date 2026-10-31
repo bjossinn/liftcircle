@@ -88,7 +88,7 @@ function CoachProfile({ coachId, meId }: { coachId: string; meId: string | undef
       <div className="mt-4 flex flex-col gap-2">
         {block ? (
           <>
-            <button type="button" disabled aria-describedby="request-blocked" className="w-full min-h-14 rounded-2xl bg-accent text-accent-ink font-semibold opacity-50">
+            <button type="button" disabled aria-describedby="request-blocked" className="w-full min-h-14 rounded-xl bg-disabled text-disabled-ink font-semibold cursor-not-allowed">
               Request coaching
             </button>
             <p id="request-blocked" className="text-sm text-muted">
@@ -106,7 +106,7 @@ function CoachProfile({ coachId, meId }: { coachId: string; meId: string | undef
         ) : (
           <Link
             to={`/coaching/request/${encodeURIComponent(c.userId)}`}
-            className="w-full min-h-14 rounded-2xl bg-accent text-accent-ink hover:bg-accent-strong font-semibold inline-flex items-center justify-center"
+            className="w-full min-h-14 rounded-xl ember-fill font-semibold inline-flex items-center justify-center"
           >
             Request coaching
           </Link>

@@ -1,5 +1,5 @@
 /**
- * AI coach nutrition actions on the device (pure): a suggested meal plan ("Add to my meal plan") and recipe cards.
+ * training assistant nutrition actions on the device (pure): a suggested meal plan ("Add to my meal plan") and recipe cards.
  * Shapes mirror supabase/functions/_shared/ai/types.ts (MealPlanAction, RecipeSuggestionsAction); the server validated
  * recipe ids, allergens/diet/dislikes and ranges, and the app re-checks against the current catalog here.
  *

@@ -28,7 +28,7 @@ export function MiniToday({ theme, large }: { theme: ResolvedTheme; large?: bool
             <div className={clsx('text-muted', large ? 'text-[10px]' : 'hidden')}>Today · 55 min</div>
           </div>
         </div>
-        <div className={clsx('rounded-md bg-accent text-accent-ink font-semibold text-center', large ? 'mt-2 py-1.5 text-[11px]' : 'mt-1 py-0.5 text-[7px]')}>Start workout</div>
+        <div className={clsx('rounded-md bg-ember text-accent-ink font-semibold text-center', large ? 'mt-2 py-1.5 text-[11px]' : 'mt-1 py-0.5 text-[7px]')}>Start workout</div>
       </div>
       <div className={clsx('grid grid-cols-2', large ? 'gap-2' : 'gap-1')}>
         <div className={clsx('rounded-lg bg-surface border border-line tint-2', large ? 'p-2' : 'p-1')}>
@@ -61,7 +61,7 @@ function SplitPreview({ large }: { large?: boolean }) {
  * `layout="cards"`: the picker (two big cards plus a smaller "Match my phone" row). `layout="compact"`: Settings.
  */
 export function ThemeOptions({
-  value, onChange, layout, systemLabel = 'Match system', labelledBy, systemTheme,
+  value, onChange, layout, systemLabel = 'Match my phone', labelledBy, systemTheme,
 }: {
   value: ThemeChoice;
   onChange: (t: ThemeChoice) => void;
@@ -103,7 +103,7 @@ export function ThemeOptions({
     >
       {children}
       {value === o.value && (
-        <span className="absolute top-2 right-2 size-6 rounded-full bg-accent text-accent-ink flex items-center justify-center shadow">
+        <span className="absolute top-2 right-2 size-6 rounded-full bg-ember text-accent-ink flex items-center justify-center shadow">
           <Check className="size-4" strokeWidth={3} aria-hidden />
         </span>
       )}

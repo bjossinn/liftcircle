@@ -230,7 +230,7 @@ export default function MessagesPage() {
         )}
         {convo.error && convo.messages?.length ? (
           <p role="status" className="mx-4 mt-2 text-xs text-muted">
-            Couldn’t refresh messages — retrying automatically.
+            Couldn’t refresh messages: retrying automatically.
           </p>
         ) : null}
         {convo.messages === undefined ? (
@@ -238,7 +238,7 @@ export default function MessagesPage() {
         ) : convo.error && !convo.messages.length && !outbox.length ? (
           <ErrorState title="Couldn’t load messages" message={convo.error} onRetry={convo.refresh} />
         ) : rows.length === 0 ? (
-          <EmptyState title="No messages yet" body={rel.viewerIsCoach ? `Say hello to ${other?.name}.` : `Say hello to ${other?.name} — share how training is going or ask a question.`} />
+          <EmptyState title="No messages yet" body={rel.viewerIsCoach ? `Say hello to ${other?.name}.` : `Say hello to ${other?.name}. Share how training is going or ask a question.`} />
         ) : (
           <ol className="flex flex-col gap-1 px-3 py-3" aria-label="Messages">
             {rows.map((r, i) => {
@@ -287,7 +287,7 @@ export default function MessagesPage() {
       <div ref={listRef} className="flex-1 overflow-y-auto" aria-live="polite" aria-relevant="additions">
         {relFromCache && relError && (
           <p className="px-4 pt-2 text-xs text-muted" role="status">
-            Showing saved details — couldn’t check the latest status.
+            Showing saved details: couldn’t check the latest status.
           </p>
         )}
         {content}
@@ -344,10 +344,10 @@ export default function MessagesPage() {
                 maxLength={MESSAGE_MAX}
                 rows={1}
                 placeholder={online ? 'Message' : 'Message (sends when you’re back online)'}
-                className="w-full min-h-11 max-h-40 resize-none rounded-xl bg-surface-2 border border-line px-3 py-2.5 text-[16px] text-ink placeholder:text-faint focus:border-accent focus:outline-none [field-sizing:content]"
+                className="w-full min-h-11 max-h-40 resize-none rounded-xl bg-field border border-line-input px-3 py-2.5 text-[16px] text-ink placeholder:text-faint focus:border-accent [field-sizing:content]"
               />
             </label>
-            <IconButton label="Send message" type="submit" className="bg-accent text-accent-ink hover:bg-accent-strong" disabled={(!body.trim() && photos.length === 0) || preparing > 0}>
+            <IconButton label="Send message" type="submit" className="ember-fill" disabled={(!body.trim() && photos.length === 0) || preparing > 0}>
               <Send className="size-5" />
             </IconButton>
           </div>
@@ -436,7 +436,7 @@ function UnsentDraft({ body, photoCount, onDiscard }: { body: string; photoCount
                 await navigator.clipboard.writeText(body);
                 toast.show('Draft copied', { tone: 'success' });
               } catch {
-                toast.show('Couldn’t copy automatically — select the text and copy it.', { tone: 'warn' });
+                toast.show('Couldn’t copy automatically: select the text and copy it.', { tone: 'warn' });
               }
             }}
           >
@@ -472,7 +472,7 @@ function dayLabel(iso: string, tz: string) {
 function ServerBubble({ m, mine, tz, selected, onSelect, onReport }: { m: CoachMessage; mine: boolean; tz: string; selected: boolean; onSelect: () => void; onReport: () => void }) {
   const inner = (
     <>
-      {m.sharedFromAi && <span className="block text-[11px] font-medium text-info mb-1">Shared from the AI coach</span>}
+      {m.sharedFromAi && <span className="block text-[11px] font-medium text-info mb-1">Shared from the training assistant</span>}
       {m.media.length > 0 && <MediaGrid media={m.media} />}
       {m.body && <span className="block whitespace-pre-wrap break-words text-[15px]">{m.body}</span>}
     </>
@@ -539,7 +539,7 @@ function OutboxBubble({ item, tz, online, accountId }: { item: CoachOutboxItem; 
       await navigator.clipboard.writeText(item.body);
       toast.show('Message copied', { tone: 'success' });
     } catch {
-      toast.show('Couldn’t copy automatically — select the text and copy it.', { tone: 'warn' });
+      toast.show('Couldn’t copy automatically: select the text and copy it.', { tone: 'warn' });
     }
   };
   return (

@@ -204,7 +204,7 @@ describe('health banner', () => {
     expect(text()).toBe('');
     await act(async () => void health.reportStorageError(Object.assign(new Error('IndexedDB API missing'), { name: 'MissingAPIError' })));
     await flush();
-    expect(el.querySelector('[role="alert"]')?.textContent).toMatch(/isn’t letting LiftCircle save on this device/);
+    expect(el.querySelector('[role="alert"]')?.textContent).toMatch(/isn’t letting Hard Earned save on this device/);
   });
 
   it('shows a dismissible notice when offline mode could not be set up', async () => {

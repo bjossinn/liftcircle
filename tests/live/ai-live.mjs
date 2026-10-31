@@ -165,7 +165,7 @@ console.log(`action: ${mp.body.reply.action?.kind ?? 'none'} (${mp.body.reply.ac
 const CHANGED = '2026-10-28T11:00:00Z';
 const blocked = [
   { id: '00000000-0000-4000-8000-0000000b0001', role: 'user', content: 'make a meal plan for the week and add it', createdAt: '2026-10-28T10:00:00Z' },
-  { id: '00000000-0000-4000-8000-0000000b0002', role: 'assistant', content: 'I can’t see your nutrition yet. You can share it under AI coach settings.\n[[open:/coaching/ai/settings|Change what the coach can see]]', createdAt: '2026-10-28T10:00:05Z', grounding: ['Profile & preferences', '1 recent workout'] },
+  { id: '00000000-0000-4000-8000-0000000b0002', role: 'assistant', content: 'I can’t see your nutrition yet. You can share it under training assistant settings.\n[[open:/coaching/ai/settings|Change what the coach can see]]', createdAt: '2026-10-28T10:00:05Z', grounding: ['Profile & preferences', '1 recent workout'] },
 ];
 const resume = await handleAiCoach(
   { db: mealDb({ settings: { scopesChangedAt: CHANGED }, getHistory: async (_u, after) => blocked.filter((m) => !after || m.createdAt > after) }), env: (k) => process.env[k], fetch: globalThis.fetch, now: liveNow, log: () => {} },

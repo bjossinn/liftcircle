@@ -22,9 +22,9 @@ export type MediaErrorCode = 'too_large' | 'unsupported' | 'too_many_pixels' | '
 
 const MESSAGES: Record<MediaErrorCode, string> = {
   too_large: 'This photo is larger than 25 MB. Try a smaller one.',
-  unsupported: 'This format isn’t supported on this device — try JPEG or PNG.',
+  unsupported: 'This format isn’t supported on this device. Try JPEG or PNG.',
   too_many_pixels: 'This photo is too large (over 50 megapixels). Try a smaller one.',
-  decode_failed: 'This photo couldn’t be read. It may be damaged — try another one.',
+  decode_failed: 'This photo couldn’t be read. It may be damaged. Try another one.',
   encode_failed: 'This photo couldn’t be prepared on this device. Try another one.',
   metadata: 'This photo couldn’t be cleaned of location data, so it wasn’t added.',
   empty: 'This file is empty.',

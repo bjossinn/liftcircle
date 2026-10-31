@@ -12,6 +12,7 @@ import { WEEKDAY_SHORT } from '@/lib/dates';
 import type { ActivityLevel, ActivityType, Allergen, DietTag, Equipment, Exercise, Experience, Goal, ID, LimitationArea, OnboardingAnswers, SplitKey } from '@/domain/types';
 import { ALL_GYM, ALLERGEN_LABELS, DIET_TAG_LABELS, isUnder18, LOCATION_PRESETS, type Draft } from './draft';
 import { ProteinPicker } from '@/features/nutrition/ProteinPicker';
+import { BrandMoment } from '@/components/BrandMark';
 
 export interface StepProps {
   d: Draft;
@@ -34,7 +35,7 @@ export function OptionCard({ selected, onClick, title, body, role = 'radio' }: {
         selected ? 'border-accent bg-accent-soft' : 'border-line bg-surface hover:bg-surface-2',
       )}
     >
-      <span className={cx('mt-0.5 size-5 shrink-0 rounded-full border flex items-center justify-center', selected ? 'bg-accent border-accent text-accent-ink' : 'border-line')}>
+      <span className={cx('mt-0.5 size-5 shrink-0 rounded-full border flex items-center justify-center', selected ? 'bg-ember border-edge text-accent-ink' : 'border-line')}>
         {selected && <Check className="size-3.5" aria-hidden />}
       </span>
       <span className="min-w-0">
@@ -63,7 +64,7 @@ export const GOAL_OPTIONS: { value: Goal; title: string; body: string }[] = [
   { value: 'strength', title: 'Improve strength', body: 'Lift heavier on the main lifts.' },
   { value: 'lose_fat', title: 'Lose fat', body: 'Keep muscle while losing fat; lifting plus easy activity.' },
   { value: 'general_fitness', title: 'General fitness', body: 'Feel fitter and stronger for everyday life.' },
-  { value: 'endurance', title: 'Improve endurance', body: 'Run, ride, swim or row further — with supporting strength.' },
+  { value: 'endurance', title: 'Improve endurance', body: 'Run, ride, swim or row further, with supporting strength.' },
 ];
 export const EXPERIENCE_OPTIONS: { value: Experience; title: string; body: string }[] = [
   { value: 'new', title: 'New to lifting', body: 'Little or no regular strength training.' },
@@ -98,7 +99,9 @@ export const LOCATION_LABELS: Record<OnboardingAnswers['location'], string> = { 
 export function WelcomeStep({ d, setDraft }: StepProps) {
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-muted">A few quick questions (about 3 minutes) and we’ll suggest a starting program you can edit. You can skip anything optional and change it all later.</p>
+      <BrandMoment />
+      <p className="text-[15px] font-medium">Let’s set up your training.</p>
+      <p className="text-muted -mt-2">A few quick questions (about 3 minutes) and we’ll suggest a starting program you can edit. You can skip anything optional and change it all later.</p>
       <OptionCard
         selected={d.mode === 'plan'}
         onClick={() => setDraft((x) => ({ ...x, mode: 'plan' }))}
@@ -141,12 +144,12 @@ export function BodyStep({ d, set, errors }: StepProps) {
     <div className="flex flex-col gap-5">
       <WhyWeAsk>
         <strong className="font-medium">Why we ask:</strong> age, weight and height are used to estimate nutrition targets (protein and, if you want it, calories). They’re never shown on your social profile or to other members,
-        are only shared with a coach or the AI coach if you choose to, and are never used to guess starting weights. Not interested in nutrition? Skip this step.
+        are only shared with a coach or the training assistant if you choose to, and are never used to guess starting weights. Not interested in nutrition? Skip this step.
       </WhyWeAsk>
       <NumberInput label="Age (optional)" decimals={false} value={a.age ?? null} onChange={(v) => set({ age: v ?? undefined })} error={errors.age} suffix="years" />
       {isUnder18(a) && (
         <Notice tone="warn">
-          Because you’re under 18, we won’t create calorie or weight-loss targets. You’ll get a conservative training plan and can set your own nutrition targets — a doctor, coach or dietitian can help.
+          Because you’re under 18, we won’t create calorie or weight-loss targets. You’ll get a conservative training plan and can set your own nutrition targets. A doctor, coach or dietitian can help.
         </Notice>
       )}
       <NumberInput label="Current weight (optional)" value={weightIn(a.weightKg, unit)} onChange={(v) => set({ weightKg: weightOut(v, unit) })} error={errors.weightKg} suffix={unit} />
@@ -274,7 +277,7 @@ export function ScheduleStep({ d, set, errors }: StepProps) {
       </Field>
       {a.liftingDaysPerWeek > 0 && <SplitPicker a={a} onSelect={(splitPreference) => set({ splitPreference })} />}
       {beginner && a.liftingDaysPerWeek >= 5 && a.goal !== 'endurance' && (
-        <Notice tone="warn">For newer lifters, 3–4 lifting days usually gives great progress with easier recovery. You can keep {a.liftingDaysPerWeek} — we’ll explain the trade-offs.</Notice>
+        <Notice tone="warn">For newer lifters, 3–4 lifting days usually gives great progress with easier recovery. You can keep {a.liftingDaysPerWeek}. We’ll explain the trade-offs.</Notice>
       )}
       <Field label="Days you could train" error={errors.availableWeekdays}>
         <ChipGroup
@@ -350,7 +353,7 @@ export function SplitPicker({ a, onSelect, showTitle = true }: { a: OnboardingAn
       <p className="text-xs text-muted">
         {res.options.length === 1
           ? `With ${lifting} lifting day${lifting === 1 ? '' : 's'}, this is the structure that fits. More lifting days unlock other splits.`
-          : `Structures that fit ${lifting} lifting day${lifting === 1 ? '' : 's'}${a.goal === 'endurance' ? ' alongside your endurance sessions' : ''}. Experience changes exercise choice, sets and effort — not which splits you can pick.`}
+          : `Structures that fit ${lifting} lifting day${lifting === 1 ? '' : 's'}${a.goal === 'endurance' ? ' alongside your endurance sessions' : ''}. Experience changes exercise choice, sets and effort, not which splits you can pick.`}
       </p>
     </div>
   );
@@ -371,7 +374,7 @@ export function EquipmentStep({ d, set }: StepProps) {
       <Field label="Equipment you have" hint="Bodyweight exercises are always included. We only pick exercises you can do with what’s selected.">
         <ChipGroup label="Equipment" values={a.equipment} onChange={(v: Equipment[]) => set({ equipment: v })} options={ALL_GYM.map((e) => ({ value: e, label: EQUIPMENT_LABELS[e] }))} />
       </Field>
-      {a.equipment.length === 0 && <Notice>Bodyweight only — great. Adding resistance bands or a pull-up bar widens the exercise choice a lot.</Notice>}
+      {a.equipment.length === 0 && <Notice>Bodyweight only: great. Adding resistance bands or a pull-up bar widens the exercise choice a lot.</Notice>}
     </div>
   );
 }
@@ -475,7 +478,7 @@ export function LimitsStep({ d, set }: StepProps) {
   return (
     <div className="flex flex-col gap-5">
       <Notice>
-        This isn’t a diagnosis or medical advice. Telling us an area just means we’ll avoid exercises that commonly load it and suggest alternatives. If something hurts, stop — and if pain persists, see a qualified professional.
+        This isn’t a diagnosis or medical advice. Telling us an area just means we’ll avoid exercises that commonly load it and suggest alternatives. If something hurts, stop, and if pain persists, see a qualified professional.
       </Notice>
       <Field label="Areas to go easy on (optional)">
         <ChipGroup
@@ -532,7 +535,7 @@ export function NutritionStep({ d, set, errors }: StepProps) {
       <Field label="Dietary preferences">
         <ChipGroup label="Diet preferences" values={diet.tags} onChange={(v: DietTag[]) => setDiet({ tags: v })} options={(Object.keys(DIET_TAG_LABELS) as DietTag[]).map((k) => ({ value: k, label: DIET_TAG_LABELS[k] }))} />
       </Field>
-      <Field label="Allergies" hint="We leave these out of suggestions, but always check packaged-food labels — filtering can’t guarantee safety.">
+      <Field label="Allergies" hint="We leave these out of suggestions, but always check packaged-food labels. Filtering can’t guarantee safety.">
         <ChipGroup label="Allergens" values={diet.allergens} onChange={(v: Allergen[]) => setDiet({ allergens: v })} options={(Object.keys(ALLERGEN_LABELS) as Allergen[]).map((k) => ({ value: k, label: ALLERGEN_LABELS[k] }))} />
       </Field>
       <div className="flex flex-col gap-1.5" role="group" aria-labelledby="proteins-title">
@@ -593,7 +596,7 @@ export function NutritionStep({ d, set, errors }: StepProps) {
           checked={!!a.individualizedNutrition}
           onChange={(v) => set({ individualizedNutrition: v })}
           label="I’m pregnant or breastfeeding, or have a condition that needs individual nutrition advice"
-          description="We’ll skip generated targets — you can still log food and enter targets from your healthcare professional."
+          description="We’ll skip generated targets. You can still log food and enter targets from your healthcare professional."
         />
       </Card>
     </div>
@@ -629,7 +632,7 @@ export function ManualTargets({ d, setDraft }: Pick<StepProps, 'd' | 'setDraft'>
       <NumberInput label="Calories" suffix="kcal" decimals={false} min={0} max={8000} value={n.manualCalories ?? null} onChange={(v) => setN({ manualCalories: v })} />
       <NumberInput label="Carbs (optional)" suffix="g" decimals={false} min={0} max={1500} value={n.manualCarbs ?? null} onChange={(v) => setN({ manualCarbs: v })} />
       <NumberInput label="Fat (optional)" suffix="g" decimals={false} min={0} max={500} value={n.manualFat ?? null} onChange={(v) => setN({ manualFat: v })} />
-      <p className="col-span-2 text-xs text-muted">Leave any of these empty — missing targets are simply not shown.</p>
+      <p className="col-span-2 text-xs text-muted">Leave any of these empty. Missing targets are simply not shown.</p>
     </div>
   );
 }

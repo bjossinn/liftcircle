@@ -1,4 +1,4 @@
-/** Shared building blocks for the AI coach screens. */
+/** Shared building blocks for the training assistant screens. */
 import { useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { authHref } from '@/features/auth/authReturn';
@@ -40,24 +40,24 @@ export function AiBadge({ children = 'AI' }: { children?: ReactNode }) {
 
 const UNAVAILABLE_COPY: Record<Extract<AiAvailability, { available: false }>['reason'], { title: string; body: string }> = {
   not_configured: {
-    title: 'AI coach isn’t set up on this server yet',
+    title: 'The training assistant isn’t set up on this server yet',
     body: `Whoever runs this ${BRAND.name} server hasn’t connected an AI provider. Your workouts, plan, nutrition and coaching all keep working as usual.`,
   },
   backend_missing: {
-    title: 'AI coach isn’t set up on this server yet',
-    body: `This ${BRAND.name} server doesn’t offer the AI coach. Your workouts, plan, nutrition and coaching all keep working as usual.`,
+    title: 'The training assistant isn’t set up on this server yet',
+    body: `This ${BRAND.name} server doesn’t offer the training assistant. Your workouts, plan, nutrition and coaching all keep working as usual.`,
   },
   provider_down: {
-    title: 'The AI coach is temporarily unavailable',
-    body: 'The AI service isn’t responding right now. Please try again in a little while — everything else keeps working.',
+    title: 'The training assistant is temporarily unavailable',
+    body: 'The AI service isn’t responding right now. Please try again in a little while. Everything else keeps working.',
   },
   offline: {
     title: 'You’re offline',
-    body: 'The AI coach needs an internet connection. Your workouts and plan keep working offline.',
+    body: 'The training assistant needs an internet connection. Your workouts and plan keep working offline.',
   },
   disabled: {
-    title: 'The AI coach is turned off',
-    body: 'Turn it on in AI coach settings whenever you like.',
+    title: 'The training assistant is turned off',
+    body: 'Turn it on in training assistant settings whenever you like.',
   },
 };
 
@@ -89,8 +89,8 @@ export function AiGuest() {
   return (
     <EmptyState
       icon={<LogIn className="size-6" />}
-      title="Sign in to use the AI coach"
-      body="The AI coach runs on the server and keeps your conversation in your account, so it needs you to be signed in."
+      title="Sign in to use the training assistant"
+      body="The training assistant runs on the server and keeps your conversation in your account, so it needs you to be signed in."
       action={
         <Button variant="primary" onClick={() => nav(authHref('signup', pathname))}>
           Sign in or create an account
@@ -105,7 +105,7 @@ export function CoachStylePicker({ value, onChange, disabled }: { value: CoachSt
   const info = COACH_STYLE_INFO.find((s) => s.key === value) ?? COACH_STYLE_INFO[1];
   return (
     <div className={disabled ? 'opacity-60 pointer-events-none' : undefined} aria-disabled={disabled || undefined}>
-      <Segmented<CoachStyle> label="Coach style" value={value} onChange={onChange} options={COACH_STYLE_INFO.map((s) => ({ value: s.key, label: s.title }))} />
+      <Segmented<CoachStyle> label="Assistant style" value={value} onChange={onChange} options={COACH_STYLE_INFO.map((s) => ({ value: s.key, label: s.title }))} />
       <p className="text-sm text-muted mt-2" aria-live="polite">
         {info.body}
       </p>
@@ -176,7 +176,7 @@ export function RetentionExplainer({ provider }: { provider?: string }) {
  * Explicit confirm before sending AI text into the human-coach conversation.
  * The message id is created once per dialog so a retry can't send it twice.
  */
-export function ShareWithCoachDialog({ open, text, relationship, onClose, what = 'this AI coach message' }: { open: boolean; text: string; relationship: CoachingRelationship; onClose: () => void; what?: string }) {
+export function ShareWithCoachDialog({ open, text, relationship, onClose, what = 'this training assistant message' }: { open: boolean; text: string; relationship: CoachingRelationship; onClose: () => void; what?: string }) {
   const toast = useToast();
   const [id] = useState(() => uuid());
   const [busy, setBusy] = useState(false);
@@ -208,7 +208,7 @@ export function ShareWithCoachDialog({ open, text, relationship, onClose, what =
       onConfirm={share}
       body={
         <>
-          Only {what} is sent to {coachName} in your coaching messages, marked as coming from the AI coach. The rest of your AI conversation stays private.
+          Only {what} is sent to {coachName} in your coaching messages, marked as coming from the training assistant. The rest of your AI conversation stays private.
         </>
       }
     >

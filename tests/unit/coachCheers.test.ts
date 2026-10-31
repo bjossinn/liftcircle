@@ -95,11 +95,11 @@ describe('cheerForSet: situation from the set just logged', () => {
     expect(c.line).toContain('Barbell back squat');
   });
 
-  it('last set of the workout → "Last one done, finish strong!"', () => {
+  it('last set of the workout → "Last one done, finish strong."', () => {
     const s = session([ex('e1', 'barbell-bench-press', [set('w', { type: 'warmup', weightKg: 20 }), set('a', { completed: true }), set('b', { completed: true })])]);
     const c = cheer(s, 'e1', 'b')!;
     expect(c.situation).toBe('last_set_workout');
-    expect(c.line).toBe('Last one done, finish strong!');
+    expect(c.line).toBe('Last one done, finish strong.');
     for (const st of STYLES) expect(CHEER_LINES.last_set_workout[st]).toContain(cheer(s, 'e1', 'b', st)!.line);
   });
 
@@ -130,7 +130,7 @@ describe('cheerForSet: situation from the set just logged', () => {
 });
 
 describe('rest over: names the next set', () => {
-  it('"Rest’s up, Barbell bench press set 2: 60 kg × 8. Let’s go!" — the rested-for exercise first', () => {
+  it('"Rest’s up, Barbell bench press set 2: 60 kg × 8. Let’s go." — the rested-for exercise first', () => {
     const s = session(
       [
         ex('e1', 'barbell-bench-press', [set('w', { type: 'warmup', weightKg: 20, completed: true }), set('a', { completed: true }), set('b'), set('c')]),
@@ -138,7 +138,7 @@ describe('rest over: names the next set', () => {
       ],
       { rest: { endsAt: 1, durationMs: 90_000, forExerciseId: 'e1' } },
     );
-    expect(restOverCheer(s, byId, 'kg', 'balanced', null, () => 0)!.line).toBe('Rest’s up, Barbell bench press set 2: 60 kg × 8. Let’s go!');
+    expect(restOverCheer(s, byId, 'kg', 'balanced', null, () => 0)!.line).toBe('Rest’s up, Barbell bench press set 2: 60 kg × 8. Let’s go.');
     expect(nextSet(s, byId, 'kg', 'e2')!.label).toBe('Barbell back squat set 1: 60 kg × 8');
   });
 

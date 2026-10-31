@@ -101,26 +101,26 @@ describe('first-launch theme picker', () => {
     expect(document.activeElement).toBe(heading);
     const group = el.querySelector('[role="radiogroup"]')!;
     expect(group.getAttribute('aria-labelledby')).toBe(heading.id);
-    expect([...group.querySelectorAll('[role="radio"]')].map((r) => r.getAttribute('aria-label'))).toEqual(['Midnight', 'Daylight', 'Match my phone']);
+    expect([...group.querySelectorAll('[role="radio"]')].map((r) => r.getAttribute('aria-label'))).toEqual(['Dark', 'Light', 'Match my phone']);
     // Each option is described too, and its preview is hidden from screen readers.
-    expect(document.getElementById(radio(/^Daylight/).getAttribute('aria-describedby')!)?.textContent).toBe('Warm and bright');
-    expect(radio(/^Daylight/).querySelector('[data-theme="light"]')?.getAttribute('aria-hidden')).toBe('true');
+    expect(document.getElementById(radio(/^Light/).getAttribute('aria-describedby')!)?.textContent).toBe('Chalk with ember accents');
+    expect(radio(/^Light/).querySelector('[data-theme="light"]')?.getAttribute('aria-hidden')).toBe('true');
     // Default: Match my phone, and it's the only tab stop.
     expect(radio(/Match my phone/).getAttribute('aria-checked')).toBe('true');
     expect(radio(/Match my phone/).tabIndex).toBe(0);
-    expect(radio(/^Midnight/).tabIndex).toBe(-1);
+    expect(radio(/^Dark/).tabIndex).toBe(-1);
     expect(el.textContent).toContain('You can change this anytime in Settings → Appearance.');
 
-    // Tapping Daylight applies it to the whole page immediately.
-    await act(async () => radio(/^Daylight/).click());
+    // Tapping Light applies it to the whole page immediately.
+    await act(async () => radio(/^Light/).click());
     expect(document.documentElement.dataset.theme).toBe('light');
-    expect(radio(/^Daylight/).getAttribute('aria-checked')).toBe('true');
+    expect(radio(/^Light/).getAttribute('aria-checked')).toBe('true');
     // Arrow keys move like native radios (and apply as they go).
-    await act(async () => radio(/^Daylight/).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })));
-    expect(radio(/^Midnight/).getAttribute('aria-checked')).toBe('true');
+    await act(async () => radio(/^Light/).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })));
+    expect(radio(/^Dark/).getAttribute('aria-checked')).toBe('true');
     expect(document.documentElement.dataset.theme).toBe('dark');
-    expect(document.activeElement).toBe(radio(/^Midnight/));
-    await act(async () => radio(/^Daylight/).click());
+    expect(document.activeElement).toBe(radio(/^Dark/));
+    await act(async () => radio(/^Light/).click());
     // Nothing is saved until Continue (closing the app now would show the picker again).
     expect(localStorage.getItem('lc-theme-picked')).toBeNull();
 
@@ -135,7 +135,7 @@ describe('first-launch theme picker', () => {
     await waitFor(() => expect(el.querySelector('#appearance-title')).toBeTruthy());
     const appearance = el.querySelector('[role="radiogroup"][aria-labelledby="appearance-title"]')!;
     const checked = [...appearance.querySelectorAll('[role="radio"]')].find((r) => r.getAttribute('aria-checked') === 'true');
-    expect(checked?.getAttribute('aria-label')).toBe('Daylight');
+    expect(checked?.getAttribute('aria-label')).toBe('Light');
 
     // Refresh: not shown again.
     await act(async () => root.unmount());

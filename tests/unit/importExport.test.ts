@@ -47,7 +47,7 @@ describe('backup validation (before anything is written)', () => {
     fails('', /empty/);
     const good = env({ measurements: [weight('m1', 80)] });
     fails(good.slice(0, good.length - 20), /incomplete/);
-    fails('{"a":1}', /doesn’t look like a LiftCircle backup/);
+    fails('{"a":1}', /doesn’t look like a Hard Earned backup/);
   });
 
   it('rejects newer backup versions and invalid envelopes', () => {

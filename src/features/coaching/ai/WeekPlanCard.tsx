@@ -70,7 +70,7 @@ export function WeekPlanCard({
       <ol className="text-sm space-y-0.5 list-decimal pl-5">
         {plan.sessions.map((s) => (
           <li key={`${s.templateId}-${s.date}`}>
-            <span className="font-medium">{s.name}</span> — {d(s.date)}
+            <span className="font-medium">{s.name}</span>: {d(s.date)}
           </li>
         ))}
       </ol>
@@ -92,7 +92,7 @@ export function WeekPlanCard({
         </p>
       ))}
       <p className="text-xs text-muted mt-1.5">
-        Your plan itself doesn’t change — the usual schedule returns next week.{coach ? ' Only the days change; your coach’s sessions stay as they are.' : ''}
+        Your plan itself doesn’t change. The usual schedule returns next week.{coach ? ' Only the days change; your coach’s sessions stay as they are.' : ''}
       </p>
       <div className="mt-2">
         {state === 'available' && (

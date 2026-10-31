@@ -238,7 +238,7 @@ export default function OnboardingPage() {
         settings: { ...acc.settings, units: a.units, nutritionEnabled: a.wantsNutrition },
         nutrition: targets ?? acc.nutrition,
       }));
-      toast.show('Your program is ready', { tone: 'success' });
+      toast.show('You’re ready to log your first workout.', { tone: 'success' });
       await finish('/');
     } catch (e) {
       finished.current = false;
@@ -265,7 +265,7 @@ export default function OnboardingPage() {
         schedule: days.map((weekday, i) => ({ weekday, templateId: templates[i % templates.length].id })),
         weeks: 8,
         reviewWeek: 8,
-        rationale: ['You chose to set up your own program. Add exercises to each session — every change is saved as a version you can restore.'],
+        rationale: ['You chose to set up your own program. Add exercises to each session. Every change is saved as a version you can restore.'],
         warnings: [],
       };
       await deactivateOthers();
@@ -276,7 +276,7 @@ export default function OnboardingPage() {
         settings: { ...acc.settings, units: a.units, nutritionEnabled: a.wantsNutrition },
         nutrition: a.wantsNutrition ? manualTargets(draft, null, null) : acc.nutrition,
       }));
-      toast.show('Program created — add your exercises', { tone: 'success' });
+      toast.show('Program created: add your exercises', { tone: 'success' });
       await finish('/train/program');
     } catch (e) {
       finished.current = false;
@@ -314,7 +314,7 @@ export default function OnboardingPage() {
 
       <div className="flex-1 px-4 pb-32">
         <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-bold tracking-tight mt-4 mb-4 focus:outline-none">
-          {step === 'welcome' ? 'Let’s set up LiftCircle' : STEP_TITLES[step]}
+          {step === 'welcome' ? 'Welcome to Hard Earned' : STEP_TITLES[step]}
         </h1>
         {hasErrors && (
           <Notice tone="danger" className="mb-4">
@@ -336,7 +336,7 @@ export default function OnboardingPage() {
             onShuffle={() => {
               const prev = { variant: draft.variant, version: draft.version, versionKey: draft.versionKey, regen: draft.regen };
               setDraft((d) => ({ ...d, variant: d.variant + 1, version: null, versionKey: null, regen: {} }));
-              toast.show('Exercises shuffled — same split', { action: { label: 'Undo', onClick: () => setDraft((d) => ({ ...d, ...prev })) } });
+              toast.show('Exercises shuffled: same split', { action: { label: 'Undo', onClick: () => setDraft((d) => ({ ...d, ...prev })) } });
             }}
             onSplit={(key: SplitKey) => {
               const prev = { splitPreference: draft.a.splitPreference, variant: draft.variant, version: draft.version, versionKey: draft.versionKey, regen: draft.regen };

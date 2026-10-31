@@ -1,9 +1,9 @@
 /**
- * /coaching/ai/setup — short AI coach enrollment:
+ * /coaching/ai/setup — short training assistant enrollment:
  *  1. what it does / doesn't do  2. review & correct details the app already has (only ask what's missing)
  *  3. choose data categories      4. explicit consent → aiApi.saveSettings({ enabled, scopes, acceptConsent }).
  * Profile corrections are written to the account (same fields onboarding uses). Training-setup corrections
- * (days, session length, equipment) are not program edits, so they're stored in the user-visible AI coach notes.
+ * (days, session length, equipment) are not program edits, so they're stored in the user-visible training assistant notes.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
@@ -89,25 +89,25 @@ export default function AiSetupPage() {
 
   if (boot.phase === 'loading')
     return (
-      <Page title="Set up AI coach" back={back}>
+      <Page title="Set up the training assistant" back={back}>
         <Spinner label="Loading" />
       </Page>
     );
   if (boot.phase === 'guest')
     return (
-      <Page title="Set up AI coach" back={back}>
+      <Page title="Set up the training assistant" back={back}>
         <AiGuest />
       </Page>
     );
   if (isHardUnavailable(boot.availability) || (!boot.availability.available && boot.availability.reason === 'offline'))
     return (
-      <Page title="Set up AI coach" back={back}>
+      <Page title="Set up the training assistant" back={back}>
         <AiUnavailable reason={(boot.availability as { reason: 'offline' | 'not_configured' | 'backend_missing' }).reason} onRetry={() => void reload()} />
       </Page>
     );
   if (!details || !original)
     return (
-      <Page title="Set up AI coach" back={back}>
+      <Page title="Set up the training assistant" back={back}>
         <Spinner label="Loading your details" />
       </Page>
     );
@@ -144,7 +144,7 @@ export default function AiSetupPage() {
       }
       const saved = await aiApi.saveSettings({ enabled: true, paused: false, scopes, profileNotes: finalNotes, coachStyle, acceptConsent: true, provider: providerId });
       setSettings(saved);
-      toast.show('Your AI coach is on', { tone: 'success' });
+      toast.show('Your training assistant is on', { tone: 'success' });
       nav('/coaching/ai', { replace: true });
     } catch (e) {
       setError(classifyAiError(e).message);
@@ -156,7 +156,7 @@ export default function AiSetupPage() {
   const next = () => setStep((s) => Math.min(3, s + 1) as StepIdx);
 
   return (
-    <Page title="Set up AI coach" back={stepBack}>
+    <Page title="Set up the training assistant" back={stepBack}>
       <div className="mb-4">
         <p className="text-xs text-muted mb-1.5">
           Step {step + 1} of {STEPS.length} · {STEPS[step]}
@@ -173,13 +173,13 @@ export default function AiSetupPage() {
         <section aria-labelledby="ai-about" className="space-y-4">
           {reconsent && (
             <Notice tone="warn">
-              The AI coach now uses {provider} instead of the provider you agreed to before. Nothing has been sent to {provider} yet — review what would be
+              The training assistant now uses {provider} instead of the provider you agreed to before. Nothing has been sent to {provider} yet. Review what would be
               sent and agree again to keep using it.
             </Notice>
           )}
           {alreadyOn && (
             <Notice tone="accent" className="flex items-center gap-3">
-              <span className="flex-1">Your AI coach is already on. You can review your choices here.</span>
+              <span className="flex-1">Your training assistant is already on. You can review your choices here.</span>
               <Button size="sm" variant="primary" onClick={() => nav('/coaching/ai')}>
                 Open chat
               </Button>
@@ -190,7 +190,7 @@ export default function AiSetupPage() {
               <Sparkles className="size-6" aria-hidden />
             </div>
             <h2 id="ai-about" className="text-lg font-semibold">
-              An AI coach for everyday questions
+              The training assistant for everyday questions
             </h2>
           </div>
           <Card className="p-4">
@@ -201,7 +201,7 @@ export default function AiSetupPage() {
                 'Helps with missed sessions, schedule changes, exercise swaps and progression',
                 'Reviews your recent progress when you ask for a check-in review',
                 'Suggests meal ideas that fit your protein target (if you share nutrition)',
-                'Drafts plan changes for you to review — nothing changes unless you apply it',
+                'Drafts plan changes for you to review. Nothing changes unless you apply it',
               ].map((t) => (
                 <Li key={t} ok>
                   {t}
@@ -213,7 +213,7 @@ export default function AiSetupPage() {
             <h3 className="font-semibold mb-2">What it doesn’t do</h3>
             <ul className="space-y-2 text-sm">
               {[
-                'Give medical advice or diagnose pain, injuries or conditions — see a health professional for those',
+                'Give medical advice or diagnose pain, injuries or conditions. See a health professional for those',
                 'Change your plan on its own, or replace a plan your human coach manages',
                 'Read your conversations with a human coach. Human coaches are separate people you find under “Look for a coach”',
               ].map((t) => (
@@ -279,7 +279,7 @@ export default function AiSetupPage() {
             )}
             <DetailRow label="Areas to go easy on" value={details.limitations.length ? details.limitations.map((l) => LIMITATION_LABELS[l]).join(', ') : 'None'}>
               <ChipGroup label="Areas to go easy on" values={details.limitations} onChange={(v: LimitationArea[]) => set({ limitations: v })} options={keys(LIMITATION_LABELS).map((k) => ({ value: k, label: LIMITATION_LABELS[k] }))} />
-              <p className="text-xs text-muted mt-2">Only the body-area names are used — never a diagnosis.</p>
+              <p className="text-xs text-muted mt-2">Only the body-area names are used. Never a diagnosis.</p>
             </DetailRow>
             <DetailRow label="Diet" value={details.dietTags.length ? details.dietTags.map((t) => DIET_TAG_LABELS[t]).join(', ') : 'No preferences'}>
               <ChipGroup label="Diet preferences" values={details.dietTags} onChange={(v: DietTag[]) => set({ dietTags: v })} options={keys(DIET_TAG_LABELS).map((k) => ({ value: k, label: DIET_TAG_LABELS[k] }))} />
@@ -290,12 +290,12 @@ export default function AiSetupPage() {
           </Card>
           {setupLine && (
             <Notice>
-              Your plan itself isn’t changed. This line will be saved in your AI coach notes: <span className="text-ink">“{setupLine}”</span>
+              Your plan itself isn’t changed. This line will be saved in your training assistant notes: <span className="text-ink">“{setupLine}”</span>
             </Notice>
           )}
           {profileChanged && <p className="text-xs text-muted px-1">Goal, experience, areas and diet changes are saved to your profile and used across the app.</p>}
           <Textarea
-            label="Notes for your AI coach (optional)"
+            label="Notes for your training assistant (optional)"
             hint="Anything else it should know, e.g. “I train before work” or “I prefer dumbbells”. You can view, edit or clear these at any time."
             value={notes}
             maxLength={AI_NOTES_MAX}
@@ -311,7 +311,7 @@ export default function AiSetupPage() {
         <section aria-labelledby="ai-data" className="space-y-3">
           <div>
             <h2 id="ai-data" className="text-lg font-semibold">
-              Choose what the AI coach may use
+              Choose what the training assistant may use
             </h2>
             <p className="text-sm text-muted mt-1">It only uses the categories you switch on. You can change this later in settings.</p>
           </div>
@@ -319,7 +319,7 @@ export default function AiSetupPage() {
             <ScopeToggles value={scopes} onChange={setScopes} />
           </Card>
           <Card className="p-4">
-            <h3 className="font-semibold mb-2">Coach style</h3>
+            <h3 className="font-semibold mb-2">Assistant style</h3>
             <CoachStylePicker value={coachStyle} onChange={setCoachStyle} />
           </Card>
           <Card className="p-4">
@@ -350,12 +350,12 @@ export default function AiSetupPage() {
                 </li>
               ))}
             </ul>
-            <p className="text-xs text-muted mt-3">Plus your messages and AI coach notes. They’re sent from the server to {provider === 'the AI provider' ? provider : `${provider}, the AI provider,`} only when you ask something.</p>
+            <p className="text-xs text-muted mt-3">Plus your messages and training assistant notes. They’re sent from the server to {provider === 'the AI provider' ? provider : `${provider}, the AI provider,`} only when you ask something.</p>
           </Card>
           <label className="flex items-start gap-3 rounded-2xl border border-line bg-surface px-4 py-3 min-h-14 cursor-pointer">
             <input type="checkbox" className="mt-1 size-5 accent-accent shrink-0" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
             <span className="text-sm">
-              I understand the AI coach gives general fitness guidance, not medical advice, and I agree that the data I selected is sent from the server to{' '}
+              I understand the training assistant gives general fitness guidance, not medical advice, and I agree that the data I selected is sent from the server to{' '}
               {provider} to generate replies.
             </span>
           </label>
@@ -365,7 +365,7 @@ export default function AiSetupPage() {
             </Notice>
           )}
           <Button variant="primary" size="lg" block disabled={!consent} loading={saving} onClick={() => void enable()} icon={<CheckCircle2 className="size-5" />}>
-            Turn on AI coach
+            Turn on training assistant
           </Button>
           <p className="text-xs text-muted text-center">You can pause or turn it off at any time.</p>
         </section>

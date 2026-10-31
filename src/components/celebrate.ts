@@ -1,13 +1,13 @@
 /**
- * A short confetti burst for a new personal record and a finished workout. Plain canvas, no library (~1 KB).
- * Used sparingly:
+ * A brief, restrained burst for a real new personal record and a finished workout (Hard Earned: subtle and short).
+ * Plain canvas, no library (~1 KB). Used sparingly:
  * - at most one burst at a time (a second call while one is running is ignored);
  * - never with prefers-reduced-motion;
  * - callers check Settings → Workout → "Celebrations" (settings.workout.celebrations !== false).
- * Colours come from the current theme's tokens, so it matches Midnight and Daylight. The canvas is aria-hidden and
+ * Colours come from the current theme's tokens (ember, the text colour, gold). The canvas is aria-hidden and
  * never takes taps; the screen's own text says what happened.
  */
-const DURATION_MS = 1400;
+const DURATION_MS = 900;
 let running = false;
 
 export function reducedMotion(): boolean {
@@ -38,18 +38,18 @@ export function celebrate(opts: { intensity?: 'small' | 'big' } = {}): boolean {
   ctx.scale(dpr, dpr);
 
   const css = getComputedStyle(document.documentElement);
-  const colors = ['--c-accent', '--c-accent-2', '--c-celebrate', '--c-streak'].map((v) => css.getPropertyValue(v).trim() || '#4fbf7f');
-  const count = opts.intensity === 'big' ? 110 : 60;
+  const colors = ['--c-ember', '--c-text', '--c-celebrate'].map((v) => css.getPropertyValue(v).trim() || '#ff694f');
+  const count = opts.intensity === 'big' ? 36 : 20;
   const originY = h * 0.35;
   const parts = Array.from({ length: count }, (_, i) => {
-    const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.9;
-    const speed = 6 + Math.random() * 7;
+    const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.7;
+    const speed = 4 + Math.random() * 4;
     return {
       x: w / 2 + (Math.random() - 0.5) * 40,
       y: originY,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      size: 5 + Math.random() * 5,
+      size: 4 + Math.random() * 3,
       rot: Math.random() * Math.PI,
       vr: (Math.random() - 0.5) * 0.3,
       color: colors[i % colors.length],

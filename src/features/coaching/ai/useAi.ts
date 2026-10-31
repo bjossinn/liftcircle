@@ -1,4 +1,4 @@
-/** Loading AI coach availability/settings and the user's active human coach (if any). */
+/** Loading training assistant availability/settings and the user's active human coach (if any). */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { aiApi } from '@/backend/ai';
 import { coachingApi } from '@/backend/coaching';

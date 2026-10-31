@@ -1,5 +1,5 @@
 /**
- * App-rendered AI coach welcome (pure builder) and the client parser for stored this-week plans.
+ * App-rendered training assistant welcome (pure builder) and the client parser for stored this-week plans.
  * No AI provider involved (the welcome is deterministic by design).
  */
 import { describe, expect, it, vi } from 'vitest';
@@ -32,7 +32,7 @@ describe('buildWelcome (deterministic, permitted facts only)', () => {
   it('states plan, frequency and this week’s real status', () => {
     const p = plan();
     const w = buildWelcome({ scopes: ALL, goal: 'strength', program: p, sessions: [done(p, 'A', '2026-10-26')], today: WED, weekStart: 1 });
-    expect(w.lines).toEqual(['Goal: strength. You’re on “Full body 3x” — 3 sessions a week (Mon, Wed, Fri).', 'This week: 1 of 3 done (Full body A, Mon). Next: Full body B, today.']);
+    expect(w.lines).toEqual(['Goal: strength. You’re on “Full body 3x”: 3 sessions a week (Mon, Wed, Fri).', 'This week: 1 of 3 done (Full body A, Mon). Next: Full body B, today.']);
     const words = [w.greeting, ...w.lines, w.closing].join(' ').split(/\s+/).length;
     expect(words).toBeLessThanOrEqual(60); // brief
   });
@@ -51,7 +51,7 @@ describe('buildWelcome (deterministic, permitted facts only)', () => {
   });
 
   it('no active plan / profile not shared', () => {
-    expect(buildWelcome({ scopes: ALL, goal: 'lose_fat', program: null, sessions: [], today: WED, weekStart: 1 }).lines).toEqual(['Your goal: lose fat. You don’t have an active plan yet — I can help you pick a starting point.']);
+    expect(buildWelcome({ scopes: ALL, goal: 'lose_fat', program: null, sessions: [], today: WED, weekStart: 1 }).lines).toEqual(['Your goal: lose fat. You don’t have an active plan yet. I can help you pick a starting point.']);
     const w = buildWelcome({ scopes: { ...ALL, profile: false }, goal: 'lose_fat', program: plan(), sessions: [], today: WED, weekStart: 1 });
     expect(JSON.stringify(w)).not.toMatch(/lose fat/i);
   });
@@ -83,12 +83,12 @@ const bench = (p: Program, date: string, kg: number, reps: number, startedAt: nu
 describe('buildWelcome v3: time of day, name, today, missed session, PR', () => {
   it('greets by time of day and first name (Profile shared only); never says the name when Profile is off', () => {
     const base = { scopes: ALL, program: plan(), sessions: [], today: WED, weekStart: 1 as const, displayName: 'Sam Smith' };
-    expect(buildWelcome({ ...base, hour: 7 }).greeting).toBe('Good morning, Sam!');
-    expect(buildWelcome({ ...base, hour: 13 }).greeting).toBe('Good afternoon, Sam!');
-    expect(buildWelcome({ ...base, hour: 21 }).greeting).toBe('Good evening, Sam!');
-    expect(buildWelcome({ ...base, hour: 2 }).greeting).toBe('Good evening, Sam!');
-    expect(buildWelcome({ ...base, scopes: { ...ALL, profile: false }, hour: 7 }).greeting).toBe('Good morning!');
-    expect(buildWelcome({ ...base, displayName: 'sam@example.com', hour: 7 }).greeting).toBe('Good morning!');
+    expect(buildWelcome({ ...base, hour: 7 }).greeting).toBe('Good morning, Sam.');
+    expect(buildWelcome({ ...base, hour: 13 }).greeting).toBe('Good afternoon, Sam.');
+    expect(buildWelcome({ ...base, hour: 21 }).greeting).toBe('Good evening, Sam.');
+    expect(buildWelcome({ ...base, hour: 2 }).greeting).toBe('Good evening, Sam.');
+    expect(buildWelcome({ ...base, scopes: { ...ALL, profile: false }, hour: 7 }).greeting).toBe('Good morning.');
+    expect(buildWelcome({ ...base, displayName: 'sam@example.com', hour: 7 }).greeting).toBe('Good morning.');
     expect(timeOfDay(undefined)).toBeNull();
     expect(firstName('  Anna  Lee ')).toBe('Anna');
   });
@@ -107,7 +107,7 @@ describe('buildWelcome v3: time of day, name, today, missed session, PR', () => 
     expect(rest.closing).toBe('Enjoy the rest day.');
     expect(JSON.stringify(rest)).not.toMatch(/didn’t happen|excuses|skip/i);
     const doneToday = buildWelcome({ scopes: ALL, program: p, sessions: [done(p, 'A', '2026-10-26'), done(p, 'B', WED)], today: WED, weekStart: 1 });
-    expect(doneToday.closing).toBe('Today’s session is done — nice work!');
+    expect(doneToday.closing).toBe('Today’s session is done. Nice work.');
   });
 
   it('missed session yesterday: a check-in, firmer in Strict, kind in Supportive', () => {
@@ -116,8 +116,8 @@ describe('buildWelcome v3: time of day, name, today, missed session, PR', () => 
     const line = (style: 'supportive' | 'balanced' | 'strict') =>
       buildWelcome({ scopes: ALL, program: p, sessions: [done(p, 'A', '2026-10-26')], today: thu, weekStart: 1, style }).lines.find((l) => /yesterday/.test(l));
     expect(line('balanced')).toBe('Full body B didn’t happen yesterday. Everything okay? We can still fit it in this week.');
-    expect(line('strict')).toBe('Full body B was planned yesterday and didn’t happen. No excuses today — let’s make it count.');
-    expect(line('supportive')).toBe('I noticed Full body B didn’t happen yesterday — no stress. How are you feeling?');
+    expect(line('strict')).toBe('Full body B was planned yesterday and is still open. Do it today: start with the first two exercises.');
+    expect(line('supportive')).toBe('I noticed Full body B didn’t happen yesterday. No stress. How are you feeling?');
     // Monday missed, seen on a Monday-start week's Tuesday? No: yesterday was trained → no check-in.
     expect(buildWelcome({ scopes: ALL, program: p, sessions: [done(p, 'A', '2026-10-26')], today: '2026-10-27', weekStart: 1 }).lines.some((l) => /yesterday/.test(l))).toBe(false);
     // Training not shared → nothing about yesterday.
@@ -130,7 +130,7 @@ describe('buildWelcome v3: time of day, name, today, missed session, PR', () => 
     const record = recentRecord(sessions, byId, 'kg', '2026-10-27');
     expect(record?.label).toMatch(/Barbell bench press: heaviest set 62\.5 kg × 8/);
     const w = buildWelcome({ scopes: ALL, program: p, sessions, today: '2026-10-27', weekStart: 1, record });
-    expect(w.lines).toContain(`Congrats on your new record — ${record!.label}!`);
+    expect(w.lines).toContain(`New record: ${record!.label}.`);
     expect(recentRecord(sessions, byId, 'kg', '2026-10-30')).toBeNull(); // older than 3 days
     expect(recentRecord(sessions.slice(1), byId, 'kg', '2026-10-27')).toBeNull(); // first-ever session is a baseline
   });

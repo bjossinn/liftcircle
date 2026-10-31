@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { CheckCircle2, ChevronLeft, MoreVertical, PlusSquare, Share } from 'lucide-react';
 import { Button, Card, IconButton, Notice, Page, SectionTitle } from '@/components/ui';
 import { BRAND } from '@/config/brand';
+import { BrandMoment } from '@/components/BrandMark';
 import { clearInstallPrompt, getInstallPrompt, isStandalone, onInstallChange } from '@/pwa/install';
 
 function platform(): 'ios' | 'android' | 'other' {
@@ -36,6 +37,9 @@ export default function InstallPage() {
         </IconButton>
       }
     >
+      <div className="mb-4">
+        <BrandMoment size={64} />
+      </div>
       {installed ? (
         <Card className="p-5 flex items-center gap-3">
           <CheckCircle2 className="size-6 text-accent" aria-hidden />

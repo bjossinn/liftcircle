@@ -1,5 +1,5 @@
 /**
- * Safe Markdown subset for AI coach messages and "Why this?" text (only in the lazy AI chat chunk).
+ * Safe Markdown subset for training assistant messages and "Why this?" text (only in the lazy AI chat chunk).
  *
  * Supported: paragraphs and line breaks, **bold**, *italic* / _italic_, ~~strike~~, `inline code`, bulleted and
  * numbered lists (one nesting level), blockquotes, headings (shown as a bold line) and https:// links (new tab,

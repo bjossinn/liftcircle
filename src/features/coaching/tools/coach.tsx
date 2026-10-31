@@ -26,7 +26,7 @@ export function useCoachStatus(enabled: boolean) {
 }
 
 const APP_STATUS: Record<CoachProfile['status'], string> = {
-  draft: 'Your application is a draft — finish and submit it for review.',
+  draft: 'Your application is a draft. Finish and submit it for review.',
   submitted: 'Your application is with our reviewers.',
   changes_requested: 'Reviewers asked for changes to your application.',
   approved: 'Approved',
@@ -56,10 +56,10 @@ export function CoachGate({ state, profile, error, reload }: { state: CoachState
     return (
       <EmptyState
         title="Coach tools are for approved coaches"
-        body="Apply to become a coach. Once LiftCircle approves your application you can accept clients, build programs and message them."
+        body="Apply to become a coach. Once Hard Earned approves your application you can accept clients, build programs and message them."
         action={
           <Button variant="primary" onClick={() => nav('/coaching/apply')}>
-            Become a coach
+            Apply to be listed
           </Button>
         }
       />

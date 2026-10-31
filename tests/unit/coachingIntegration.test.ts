@@ -251,7 +251,7 @@ describe('coaching notifications', () => {
 
 describe('plan owner label', () => {
   it('describes coach and AI plans and stays silent for self-managed ones', () => {
-    expect(planOwnerText({ managedBy: { kind: 'coach', coachName: 'Ada' } })).toBe('Managed by your coach, Ada');
+    expect(planOwnerText({ managedBy: { kind: 'coach', coachName: 'Ada' } })).toBe('Assigned by Ada');
     expect(planOwnerText({ managedBy: { kind: 'ai' } })).toMatch(/AI-suggested/);
     expect(planOwnerText({ managedBy: { kind: 'self' } })).toBeNull();
     expect(planOwnerText({})).toBeNull();

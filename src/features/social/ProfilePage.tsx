@@ -137,7 +137,7 @@ function MyProfile({ meId }: { meId: string }) {
           <Button icon={<Pencil className="size-4" />} onClick={() => nav('/profile/edit')}>
             Edit profile
           </Button>
-          <Button icon={<Share2 className="size-4" />} onClick={() => void shareLink(profileUrl(profile.username), `${profile.displayName} on LiftCircle`, toast)}>
+          <Button icon={<Share2 className="size-4" />} onClick={() => void shareLink(profileUrl(profile.username), `${profile.displayName} on Hard Earned`, toast)}>
             Share profile link
           </Button>
           <Button icon={<Users className="size-4" />} onClick={() => nav('/friends')}>
@@ -203,7 +203,7 @@ function OtherProfile({ username, meId }: { username: string; meId: string }) {
   if (error) return <ErrorState title="Couldn’t load this profile" message={error} onRetry={load} />;
   if (data === undefined) return <Spinner label="Loading profile" />;
   if (data === null)
-    return <EmptyState title="Profile not found" body={`There’s no one we can show you with the username @${username}. Check the spelling — usernames are exact.`} action={<Button onClick={() => nav('/friends')}>Find friends</Button>} />;
+    return <EmptyState title="Profile not found" body={`There’s no one we can show you with the username @${username}. Check the spelling: usernames are exact.`} action={<Button onClick={() => nav('/friends')}>Find friends</Button>} />;
 
   const { profile, relation, requestId } = data;
   const name = profile.displayName || `@${profile.username}`;
@@ -305,7 +305,7 @@ function OtherProfile({ username, meId }: { username: string; meId: string }) {
       <Sheet open={dialog === 'menu'} onClose={() => setDialog(null)} title={name}>
         <ul className="flex flex-col">
           <li>
-            <button type="button" className="flex items-center gap-3 w-full min-h-12 px-2 rounded-xl hover:bg-surface-2" onClick={() => void shareLink(profileUrl(profile.username), `${name} on LiftCircle`, toast).then(() => setDialog(null))}>
+            <button type="button" className="flex items-center gap-3 w-full min-h-12 px-2 rounded-xl hover:bg-surface-2" onClick={() => void shareLink(profileUrl(profile.username), `${name} on Hard Earned`, toast).then(() => setDialog(null))}>
               <Share2 className="size-5" aria-hidden /> Share profile link
             </button>
           </li>

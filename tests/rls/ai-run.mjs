@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AI coach database authorization tests: `node tests/rls/ai-run.mjs`
+ * training assistant database authorization tests: `node tests/rls/ai-run.mjs`
  *
  * Same approach as tests/rls/run.mjs: a throwaway PostgreSQL 16 cluster, tests/rls/supabase-stub.sql,
  * then EVERY migration in supabase/migrations applied in order as the non-superuser `postgres` role, and

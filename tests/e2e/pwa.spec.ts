@@ -6,13 +6,13 @@ test('manifest, icons and service worker are valid', async ({ page, request }) =
   const res = await request.get(href!);
   expect(res.ok()).toBe(true);
   const m = await res.json();
-  expect(m).toMatchObject({ id: '/', start_url: '/', scope: '/', display: 'standalone', name: 'LiftCircle', short_name: 'LiftCircle' });
+  expect(m).toMatchObject({ id: '/', start_url: '/', scope: '/', display: 'standalone', name: 'Hard Earned', short_name: 'Hard Earned' });
   expect(m.theme_color).toBeTruthy();
   expect(m.background_color).toBeTruthy();
   const sizes = m.icons.map((i: { sizes: string; purpose?: string }) => `${i.sizes}:${i.purpose ?? 'any'}`);
   expect(sizes).toEqual(expect.arrayContaining(['192x192:any', '512x512:any', '512x512:maskable']));
   for (const i of m.icons) expect((await request.get(i.src)).headers()['content-type']).toContain('image/png');
-  expect((await request.get('/icons/apple-touch-icon.png')).ok()).toBe(true);
+  expect((await request.get('/icons/apple-touch-icon-180.png')).ok()).toBe(true);
   const reg = await page.evaluate(async () => (await navigator.serviceWorker.ready).active?.scriptURL);
   expect(reg).toMatch(/sw\.js$/);
 });
@@ -24,7 +24,7 @@ test('a previously loaded build opens offline and navigates between screens', as
   });
   await page.reload(); // now controlled by the SW
   await context.setOffline(true);
-  for (const [path, heading] of [['/train', 'Train'], ['/progress', 'Progress'], ['/nutrition', 'Nutrition'], ['/train/exercises', 'Exercises'], ['/onboarding', 'Let’s set up LiftCircle']] as const) {
+  for (const [path, heading] of [['/train', 'Train'], ['/progress', 'Progress'], ['/nutrition', 'Nutrition'], ['/train/exercises', 'Exercises'], ['/onboarding', 'Welcome to Hard Earned']] as const) {
     await page.goto(path);
     await expect(page.getByRole('heading', { name: heading }).first()).toBeVisible();
   }
@@ -74,7 +74,7 @@ test('a browser that blocks IndexedDB gets a clear explanation instead of an end
     Object.defineProperty(window, 'indexedDB', { value: undefined, configurable: true });
   });
   await page.goto('/train');
-  await expect(page.getByRole('alert')).toContainText('isn’t letting LiftCircle save on this device');
+  await expect(page.getByRole('alert')).toContainText('isn’t letting Hard Earned save on this device');
   // navigation still works
   await page.getByRole('link', { name: 'Progress' }).click();
   await expect(page).toHaveURL(/\/progress/);

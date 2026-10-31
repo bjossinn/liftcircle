@@ -60,7 +60,7 @@ function TickRow({ checked, onChange, label, children, action }: { checked: bool
           aria-hidden
           className={cx(
             'mt-0.5 shrink-0 size-6 rounded-md border-2 flex items-center justify-center peer-focus-visible:ring-2 peer-focus-visible:ring-accent',
-            checked ? 'bg-accent border-accent text-accent-ink' : 'border-line',
+            checked ? 'bg-ember border-edge text-accent-ink' : 'border-line',
           )}
         >
           {checked && <Check className="size-4" />}
@@ -436,7 +436,7 @@ function LogSheet({ open, onClose, recipeId, swaps }: { open: boolean; onClose: 
               value={date}
               max={today}
               onChange={(e) => e.target.value && setDate(e.target.value)}
-              className="min-h-11 rounded-xl bg-surface-2 border border-line px-3 text-[16px] text-ink focus:border-accent focus:outline-none"
+              className="min-h-11 rounded-xl bg-field border border-line-input px-3 text-[16px] text-ink focus:border-accent"
             />
           </div>
           <Select label="Meal" value={meal} onChange={(e) => setMeal(e.target.value as MealSlot)}>

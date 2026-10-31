@@ -1,0 +1,534 @@
+HARD EARNED
+BRAND GUIDE
+Version 1.0 | 31 October 2026
+Your work, made visible.
+
+
+BRAND FOUNDATION
+
+Hard Earned is a fitness, workout and weight tracking app built around consistency and earned progress. It gives the work someone puts into training a clear, useful record. The experience should make the next action obvious and the history easy to understand.
+
+The brand in one view
+
+Element | Decision
+Public name | Hard Earned
+Wordmark | HARD EARNED
+Primary line | Your work, made visible.
+Product descriptor | Workout and weight tracker
+Brand promise | Make the work easier to record, understand and build on.
+Personality | Steady, capable, encouraging and precise.
+Visual identity | The original H-like dumbbell on charcoal, with a vivid ember corner detail.
+
+Positioning
+
+For people who want a clearer picture of their training, Hard Earned turns logged workouts and weight entries into a history they can use. Its identity respects effort; its experience helps people record a session, review what happened and keep going.
+
+What the name means
+
+Hard Earned recognizes the time and attention a person gives to training. It does not ask people to earn their worth, food, rest or belonging. The name already carries intensity, so the interface should feel composed and welcoming. A first workout deserves the same clear experience as a long training history.
+
+Who it serves
+
+Welcome new lifters, experienced trainees, people returning after a break and people fitting exercise around a busy life. Support varied goals without assuming weight loss, competition, daily training or public sharing. Human coach and client areas should follow the same principles when those features are present.
+
+Four product principles
+
+• Make the next action clear. Logging should require little explanation.
+• Show useful evidence. Describe progress using the data actually recorded.
+• Respect the routine. Rest, adjusted plans and returning after a gap belong in training.
+• Let the work lead. Use restrained visuals and specific language.
+
+
+THE LOGO AND APP ICON
+
+The approved mark is the first concept from the original ten-logo exploration: a horizontal off-white dumbbell with two tall inner plates and two shorter outer plates. The shaft and tall plates form a subtle H. A small vivid ember folded-corner detail sits at the upper right of the charcoal field.
+
+Full bleed background and internal space
+
+The app icon background must reach every edge of the square. Remove the surrounding presentation canvas, captions and transparent outer margin. Keep space between the dumbbell and the icon edges so the symbol remains clear after platform masking. Full bleed describes the background, not a symbol stretched to the edges.
+
+The corrected supplied master is an opaque, square raster. Its corners are not pre-rounded. Google Play applies its own masking and shadow; the store asset should remain a full square. Apple and native launchers should receive assets through the project’s supported icon pipeline. [1, 2]
+
+Asset roles
+
+Asset | Use
+1024 × 1024 PNG | Flattened default icon master for the app asset pipeline.
+512 × 512 Play Store PNG | 32-bit sRGB PNG with opaque alpha; under 1024 KB. [2]
+512 and 192 px PWA PNGs | Standard web app install icons with purpose any.
+512 px maskable PNG | Separate manifest entry with purpose maskable; essential mark checked against the central safe circle. [3]
+180 px Apple touch icon | Web app touch icon. Native assets use the native build pipeline.
+32 and 16 px favicons | Browser tab sizes; verify visual recognition at actual size.
+
+A PWA maskable icon protects essential artwork inside a central circle with radius 40% of the icon width. The orange corner is secondary and may be clipped by a platform mask. Native Android adaptive foreground/background layers have their own requirements and are not supplied as finished layers in this kit. [3]
+
+Logo use beyond launchers
+
+Keep a clear area around the mark at least equal to one tall inner plate’s width when it appears beside other content. This is a brand layout rule, not extra blank pixels to add around a launcher image. Use a single mark, preserve its proportions, and keep it separate from the tagline. The symbol contains no lettering.
+
+Do not replace the approved mark with a joined HE monogram, tally, staircase, arrow or a newly drawn H. Do not stretch, add glossy depth, use a decorative border or put the full app name inside the icon. For a future monochrome vector, preserve the same four-plate silhouette and review the result at small sizes. The supplied logo files are raster assets, not editable vector artwork.
+
+
+COLOUR DIRECTION IN THE APP
+
+Charcoal, chalk and vivid ember are the core identity. Dark is the flagship presentation. If the product already offers light mode, keep it and make it feel like the same brand. Preserve the person’s saved theme preference.
+
+Colour | Hex | Primary role
+Charcoal | #17191B | App canvas, ink on orange, icon background
+Chalk | #F3EFE7 | Main dark-theme text, light-theme canvas
+Ember | #FF694F | Primary actions and focused progress emphasis
+
+Use large areas of neutral colour and reserve ember for the next action, selected navigation and a small number of meaningful highlights. An approximate 80–90% neutral visual balance is a composition guide, not a pixel quota. A screen with many orange controls loses hierarchy.
+
+[Illustration: Illustrative UI only. Example data shows how the same brand works in dark and light modes; this is not a screenshot of the current app.]
+
+A practical screen recipe
+
+Use a charcoal canvas, slightly lighter cards, chalk headings, legible grey supporting text and one prominent ember primary action. Keep input boundaries visible. In light mode, use a chalk canvas, white cards, charcoal text and the same ember action with a charcoal outline. Use dark ember ink for orange links on light surfaces.
+
+The canonical accent is the original vivid ember #FF694F. The later muted burnt-orange exploration is not part of this identity. Keep semantic success, warning, error and information colours available for their specific meanings.
+
+
+SEMANTIC COLOUR TOKENS
+
+Implement roles centrally and map existing components to them. The supplied hard-earned-tokens.css includes these roles, states, chart aliases, sizing and scoped example components. Adapt the tokens to the actual framework instead of scattering hex values through pages.
+
+Role | Dark flagship | Light option
+Canvas | #17191B | #F3EFE7
+Surface | #202326 | #FFFFFF
+Raised surface | #2A2E31 | #E6E2DB
+Input background | #17191B | #FFFFFF
+Primary text | #F3EFE7 | #17191B
+Supporting text | #B7BABB | #50595E
+Muted text and placeholders | #939A9D | #59636A
+Decorative divider | #3D4448 | #D1CCC4
+Control boundary | #7E888D | #6C767C
+Primary accent | #FF694F | #FF694F
+Accent text and icons | #FF806B | #A93623
+Selected background | #392B29 | #F8DBD4
+Focus outline | #AEE9DD | #086966
+Success | #7FD4AB | #1E704F
+Error | #FF9C91 | #B32F2F
+Warning | #E9C16C | #79520A
+Information | #9CCCF5 | #185D91
+
+Rules that preserve clarity
+
+• Use primary text for exercise names, entered values and important totals. Keep supporting and muted text fully opaque.
+• Use the subtle divider only for decoration or grouping already clear from layout. Use the control boundary where the border identifies an input or selectable control.
+• Use success for saved or completed states, error for failures and invalid fields, warning for needed attention, and information for neutral guidance. Pair every status colour with visible words or a recognisable icon.
+• In light mode, use #A93623 for accent text and meaningful icons. Raw #FF694F is too light for these roles on the specified light surfaces.
+
+This palette is a design specification with measured solid-colour pairs. It is not a claim that an uninspected app meets every accessibility requirement. Check real rendered screens, including overlays and third-party components. [4, 5]
+
+
+INTERACTION STATES AND CONTRAST
+
+State | Fill or foreground | Label and treatment
+Primary default | #FF694F | Charcoal #17191B label
+Primary hover | #FF806B | Same charcoal label
+Primary pressed | #E9563D | Same charcoal label
+Disabled dark | #303438 | Label #9DA4A8, full opacity
+Disabled light | #E1DDD6 | Label #555E64, full opacity
+Destructive dark | #FF9C91 | Charcoal label; destructive action wording
+Destructive light | #B32F2F | White label; destructive action wording
+Keyboard focus | Theme focus colour | 3 px external outline, 3 px offset
+
+Primary buttons use a 2 px charcoal outline, which makes the vivid fill’s boundary clear in light mode. Secondary buttons use a neutral fill, primary text and a functional border. Selected controls use a tinted surface, accent-ink boundary and a check, radio mark or explicit selected label.
+
+Measured combinations
+
+Foreground and background | Ratio | Decision
+Chalk on charcoal | 15.37:1 | Approved normal text
+Charcoal on ember | 6.20:1 | Primary button label
+Charcoal on hover ember | 7.18:1 | Approved hover label
+Charcoal on pressed ember | 4.92:1 | Approved pressed label
+Dark muted text on raised surface | 4.79:1 | Approved metadata
+Light muted text on raised surface | 4.76:1 | Approved metadata
+Dark ember ink on light raised surface | 5.02:1 | Approved light-mode link
+Chalk on vivid ember | 2.48:1 | Do not use for functional text
+
+Ratios were computed from opaque sRGB values using WCAG relative luminance. The accompanying matrix evaluates 172 pair/use entries: 152 approved uses all pass their assigned thresholds; the other entries identify decorative uses, light fills needing a boundary, and rejected uses. Values above are rounded for display only. [6]
+
+Normal text needs 4.5:1 under WCAG AA; qualifying large text needs 3:1. Required control/state cues and meaningful graphics need 3:1 against adjacent colours. Decorative borders have different roles from functional boundaries. This system generally keeps functional text above 4.5:1 regardless of size. [4, 5]
+
+Do not dim an entire disabled control with opacity. Explain a disabled action when the cause is unclear. Keep focus visible, unclipped and clear of sticky controls; the 3 px treatment is a product design choice, not a claim that WCAG AA prescribes that dimension. [7]
+
+
+TYPOGRAPHY AND LAYOUT
+
+Type system
+
+Use Inter for functional UI, exercise names and numbers. Use Barlow Semi Condensed 700 for major brand headings and the wordmark when a second family is justified. All-Inter is an approved practical fallback. Keep body copy at normal width and reserve all caps for the wordmark or occasional short category labels.
+
+Role | Size and line height | Weight
+Body and exercise name | 16 / 24 px | 400–500
+Button and field label | 16 / 20–24 px | 600
+Supporting text | 14 / 20 px | 400–500
+Screen heading | 28 / about 32 px | 700
+Primary workout statistic | 40 / 44 px | 700, tabular numerals
+Campaign heading | 40–64 px / 1.05–1.1 | 700
+
+These sizes are visual references at a 16 px default root. Implement scalable units and allow user text enlargement. Enable lining, tabular numerals for timers, sets and tables so values remain aligned. Show the unit beside the value. Inter supports tabular number features; both recommended font projects publish SIL Open Font License 1.1 terms. [8, 9]
+
+Self-host fonts, retain their licences and use a system sans-serif fallback. Font binaries are not bundled. Verify glyph coverage, including Æfing, Þyngd, Endurtekningar and 102,5 kg.
+
+Spacing and shapes
+
+Use a 4 px grid: 4, 8, 12, 16, 20, 24, 32, 40, 48 and 64. Start with 16–20 px mobile side padding, 20–24 px section gaps and 12–16 px inside cards. App layouts need comfortable padding.
+
+Element | Design target
+Small radius | 8 px
+Control radius | 12 px
+Card radius | 16 px
+Dialog radius | 24 px
+Workout target box | At least 48 × 48 CSS px
+Set row | At least 56 px high
+
+The 48 px target is a chosen product standard. WCAG 2.2 AA uses a 24 × 24 CSS px target criterion with specific spacing and other exceptions. Give weight, reps and completion separate touch areas. [10]
+
+Depth and motion
+
+Use restrained shadows, 120 ms state-colour changes and 160–200 ms panel transitions. Keep focus immediate. Respect reduced motion and make completion clear after animation ends. Avoid bouncing totals, glossy gradients and texture behind data. [11]
+
+
+APPLYING THE BRAND TO COMPONENTS
+
+Component | Treatment
+Navigation | Neutral background; selected item uses accent ink plus a shape, indicator or label state. Keep inactive labels readable.
+Primary action | One dominant action per section. Ember fill, charcoal label, explicit verb such as Log set or Save workout.
+Cards | Charcoal surface in dark mode, white in light. Use a heading, useful spacing and a subtle divider. Do not make every panel orange.
+Inputs | Persistent labels, clear units, readable entered values, visible boundaries, specific validation. Avoid placeholder-only labels.
+Workout rows | Align weight, reps and completion. Keep units visible, preserve entered values, and make editing a completed set understandable.
+Dialogs and sheets | Clear title, concise consequence, obvious primary and secondary actions. Keep keyboard focus within active modal behaviour.
+Feedback | Brief acknowledgement of the actual result. Saved means persisted in the location claimed; distinguish local save from completed sync.
+Badges and chips | Short labels with semantic meaning. Do not make every numeric improvement a reward badge.
+
+Charts and progress
+
+A simple trend uses one ember series in dark mode or dark ember ink in light mode. Label the metric, unit, time range and comparison. Keep exercise load distinct from body weight. A larger or smaller body-weight value is not automatically better; describe the change neutrally and respect the person’s goal.
+
+Series | Dark | Light | Visible cue
+1 | #FF694F | #A93623 | Circle, solid
+2 | #AEE9DD | #1D6A63 | Square, dashed
+3 | #89BFFF | #245C99 | Triangle, dotted
+4 | #C5A7F2 | #78409A | Diamond, dash-dot
+5 | #E9C16C | #79520A | Plus, long dash
+
+Keep series mappings consistent. Use visible labels, markers and line styles, with a data list or table for exact values. Use a clear plot-background gap or outline between adjacent filled marks. The supplied checks compare each series with its plot background, not every series with every other series. Colour alone must not carry selection, status or progress meaning. [12]
+
+Imagery
+
+Prefer actual product screens and honest training context. If photography is used, favour natural lighting, varied experience levels and ordinary training spaces. Avoid physique promises, aggressive stock poses and busy imagery behind controls. The icon remains the single visual signature; repeated dumbbell decorations add little value.
+
+
+VOICE AND LANGUAGE
+
+Write like a helpful training partner who respects the person’s time. Be clear before being motivational. Use concrete verbs and acknowledge the event that actually happened. The product should sound steady during a good session, a difficult session and a return after a break.
+
+Principle | Use | Avoid
+Clear | Log your first workout. | Unlock your ultimate potential.
+Specific | Workout saved. | You destroyed that workout!
+Supportive | Ready for your next session? | You fell behind.
+Useful | Compare with your last session. | Next-level insights.
+Honest | We couldn’t save this workout. Try again. | An unexplained Oops!
+Respectful | Choose your weekly schedule. | No excuses.
+
+Operating rules
+
+• Keep action labels plain: Save, Edit, Continue, Log workout and Review history.
+• Use the primary motto at selected brand moments, not beneath every card.
+• Mention a personal record only when a defined comparison supports it.
+• Avoid punishment, pain worship, food guilt, body insults and claims that rest erases progress.
+• Use sentence case and restrained punctuation. Avoid em dashes in brand copy and unnecessary exclamation marks.
+• Do not promise coaches, integrations, automated feedback or offline behaviour that the current product does not provide.
+
+Product vocabulary
+
+Term | Meaning
+Workout | A training session
+Exercise | An individual movement
+Set | A recorded group of repetitions or exercise effort
+Rep | A repetition
+Weight lifted | The exercise load; label kg or lb
+Body weight | A person’s weight entry; distinguish it from load
+Training assistant | An AI feature, when present
+Coach | A human role, when present
+
+Localization
+
+Keep Hard Earned unchanged across languages. Use the approved English brand line until another version has been deliberately approved. Translate interface actions naturally and maintain a shared glossary. For Icelandic, examples include Skrá æfingu, Æfingasaga, Vista breytingar and Hætta við. Have locale copy reviewed where terms could confuse a session with a movement.
+
+Localize dates, decimals, plurals and unit labels. Respect kg/lb settings and existing conversion logic. Make room for longer labels and larger text. Avoid the Icelandic word sameinar in marketing copy. Keep all user-facing strings in the project’s localization system where one exists.
+
+
+MOTTOS AND MESSAGE HIERARCHY
+
+Primary brand line
+
+Your work, made visible.
+
+This is the permanent line. It links the emotional meaning of effort with the practical job of a tracker. Use it on the website hero, store artwork, a welcome brand moment and the brand guide. Preserve its comma and period. It does not belong inside the app icon.
+
+Supporting lines
+
+Line | Best placement
+Every set adds up. | Workout history, occasional saved-session encouragement, campaigns about consistency.
+Built by showing up. | Brand storytelling, selected campaigns and merchandise. Do not attach it to guilt-based inactivity alerts.
+
+Additional campaign options
+
+Line | Meaning
+Good work deserves a record. | A direct connection between effort and tracking.
+Put your progress on record. | An invitation to start logging.
+Train today. Build on it. | Continuity from one session to the next.
+See what you’ve built. | A prompt to review history.
+Your effort tells a story. | A reflective brand moment.
+Progress has a history. | A statement about accumulated work.
+Keep a record. Keep building. | A practical campaign call to action.
+
+Use one main line per placement. Supporting lines are alternatives for a specific context, not a collection of permanent slogans. Do not place multiple mottos around the logo or rotate them randomly in core workflows.
+
+Messaging order
+
+Lead with the person’s task: record a workout, review a session or understand a change. Follow with the practical benefit: a clear history to build on. Use a short emotional line only where it adds meaning. Evidence should come from the product and the person’s recorded data.
+
+Example campaign pairing
+
+Headline: Every set adds up.
+
+Body: Keep the sessions that felt strong, the ones that needed adjusting, and everything in between. A clear training history gives you something practical to build on.
+
+Action: Start tracking
+
+
+DESCRIPTIONS AND MARKETING COPY
+
+Product descriptor
+
+Workout and weight tracker.
+
+One sentence
+
+Hard Earned helps you track workouts, log your weight and see the work behind your progress.
+
+Short description
+
+Track workouts and weight. Build a record of the work you put in.
+
+Standard description
+
+Hard Earned is a workout and weight tracker built around consistency. Log your training, record your weight and review your progress over time. Whether you’re starting out or returning to a routine, keep a clear history of the work you put in and something useful to build on.
+
+Long description
+
+Your training deserves a record.
+
+Hard Earned helps you track workouts, log weight entries and look back at the work you’ve done. Keep your training in one clear history so each session has context and your next step is easier to see.
+
+Some weeks feel straightforward. Others need a different plan. Your record can hold the sessions that felt strong, the ones you adjusted and the weeks you returned. Progress is something you look at over time, in the context of your own goals.
+
+Start with today’s workout or your first weight entry. Keep building a record that belongs to you.
+
+Your work, made visible.
+
+Website hero
+
+Headline: Your work, made visible.
+
+Body: Track your workouts, log your weight and build a training history you can use. One session at a time.
+
+Primary action: Start tracking. Secondary action: See how it works, only when it leads to a useful demonstration.
+
+About paragraph
+
+Hard Earned is built around a straightforward idea: the work you put into training deserves a clear record. We want tracking to feel useful, whether you’re learning your first exercises or working toward a long-held goal. The name recognizes effort. The product makes that effort easier to understand, with clear actions, helpful context and room for a routine that fits your life.
+
+Social bio
+
+Workout and weight tracking for the work you put in. Your work, made visible.
+
+Publishing rule: these descriptions reflect the requested workout and weight tracking product. Confirm the actual release supports each claim. Keep claims about coaching, AI, personal records, community, sync and integrations out of core copy unless the feature is present and verified. Do not publish placeholders or invented links.
+
+
+CORE INTERFACE COPY
+
+Placement | Recommended wording
+Welcome | Welcome to Hard Earned
+Welcome support | Let’s set up your training.
+Goal question | What would you like to work toward?
+Availability | How many days would you like to train each week?
+Experience | How familiar are you with strength training?
+Setup complete | You’re ready to log your first workout.
+Empty workout history | Your training history starts with your first workout.
+Empty history action | Log a workout
+Workout completion | Workout saved.
+Optional encouragement | Every set adds up.
+Unfinished workout | Continue workout
+Return after an absence | Ready for your next session?
+Weight entry saved | Weight entry saved.
+Empty weight history | Add a weight entry to start your history.
+Save failure | We couldn’t save this workout. Try again.
+Delete title | Delete this workout?
+Delete explanation | This removes the workout and its recorded sets.
+Delete actions | Keep workout / Delete workout
+
+Context makes the copy true
+
+Show “Workout saved” only when the application has actually completed the save it promises. If offline persistence exists, distinguish “Saved on this device” from “Synced.” Do not promise that input is safe unless it is. Offer Undo only when deletion is reversible.
+
+Do not judge weight changes as good or bad by default. Use neutral wording such as “Change since your last entry” with the measured value and date. Do not imply that a day without a log is a failed day.
+
+Notifications when implemented
+
+Workout reminder: “Your workout reminder. Ready for a session?” Use only for a schedule the person has enabled. A quiet reminder is enough; avoid guilt or repeated demands.
+
+Saved summary: “Your workout is saved. Review the session when you’re ready.” Send only if this event and notification type exist. Brand the sender and title consistently, but keep the message useful.
+
+Accessibility labels should identify the action and object, such as “Edit bench press set 2.” A generic “button” label or an unexplained colour name is insufficient. Keep screen-reader names and visible wording aligned.
+
+
+COACHING AND FEATURE DEPENDENT COPY
+
+This chapter supplies naming and tone for features only if the repository contains them. It does not authorize new product features, new subscriptions, a new coach marketplace or altered training logic.
+
+AI assistance
+
+Use Training assistant for AI. Reserve Coach for a human. Keep that distinction visible. A branded assistant can be calm, context-aware and concise without presenting its suggestions as instructions from a human trainer.
+
+When current onboarding answers are available to the assistant, use them instead of asking the person to repeat goals, experience and weekly availability. Lead with a concrete suggestion and a short reason. If essential information is missing, ask one useful question. Preserve existing approved training and safety behaviour during the rebrand.
+
+Opening pattern: “Hi [name]. Based on your [number]-day schedule, here’s a suggested plan for this week: [short plan].” Use this only after the system has actually read the schedule and produced a compatible suggestion. Never ship the bracketed placeholders.
+
+Suggested actions: “Adjust the plan” and “Explain this choice.” Do not promise diagnosis, injury treatment, form assessment or live feedback unless a real, supported service provides it.
+
+Human coaches and clients
+
+Placement | Recommended wording
+Workspace | Your coaching workspace
+Empty client list | Your clients will appear here once they’re connected.
+Application action | Apply to be listed
+Application received | Application received. You’ll see its status here.
+Directory status | Listed coach
+Client plan | Your training plan
+Attribution | Assigned by [coach name]
+Completion action | Finish workout
+Session note | How did this session feel?
+Discovery action | Find a coach
+
+Use status and timing copy that reflects the real process. Do not imply verified qualifications simply because a coach is listed. Do not invent review times, new clients, unread messages or availability.
+
+Feature sentences to add only after verification
+
+• Personal records: “Review recorded bests for supported exercises and metrics.”
+• Coach plans: “Follow workouts assigned by your coach and record how each session went.”
+• AI assistance: “Ask the training assistant for help planning your next session.”
+• Community: “Choose which training updates to share with other members.”
+
+Keep these sentences separate from core descriptions until the product audit confirms them. Product claims, assistant behaviour and visual branding should agree.
+
+
+COMPLETE NAME REPLACEMENT
+
+Replace every current LiftCircle brand reference with Hard Earned. This includes hidden product surfaces as well as the main interface. The completion standard is zero unresolved current user-facing references to the old brand.
+
+Audit every surface that exists
+
+• Navigation, authentication, dashboard, workouts, weight tracking, history, settings, onboarding, empty/loading/error states, dialogs and account areas.
+• Human coach, client and admin views; AI names, system instructions, greetings, examples and canned responses.
+• Browser title, page metadata, structured data, Open Graph and social cards, favicons, touch icons, PWA name and short_name, install banners and launch screens.
+• Notifications, push payload templates, transactional email content and sender display names, export headings, generated filenames and downloadable reports.
+• All locale files, accessibility labels, image alt text, screenshots and text baked into image assets.
+• Native display names, store-listing content tracked in the repo, documentation, examples, tests, fixtures, package descriptions and active design assets.
+
+Search thoroughly
+
+Use a case-insensitive search for joined, spaced, hyphenated, underscored and casing variants: LiftCircle, Lift Circle, liftcircle, lift-circle and lift_circle. A useful ripgrep pattern is lift[[:space:]_-]*circle. Include appropriate hidden configuration and inspect filenames, not only text contents. Exclude .git, dependencies and generated caches from the main source scan; review build outputs separately if applicable.
+
+Define the scan scope and counting method before editing. Record baseline occurrences and matching files, then use the same scope after the work. Inspect image assets visually because a text search cannot read all embedded branding.
+
+Protect continuity during the rename
+
+Rename safe internal symbols and file names with their imports and references. Preserve stored workouts, account identities, authentication, billing, saved settings, local/offline data and live integration contracts. A display name can change without changing an immutable bundle ID, production project ID or database key.
+
+Where an old technical key needs to change, implement and verify a backward-compatible migration. Do not guess replacement domains, support addresses, OAuth callbacks, credentials or legal entity names. Change display text and owned assets now; record exact external changes still required. An unresolved visible old sender or domain remains an explicit launch blocker, not a silent exception.
+
+Residual reference register
+
+Every remaining match needs a file or system location, classification, reason, visible impact and migration requirement. Only exact compatibility references or deliberate historical records belong on the allowlist. Do not rewrite immutable user content or Git history. Avoid broad exclusions that hide current branding.
+
+A transitional “LiftCircle is now Hard Earned” announcement is optional and must be deliberately approved for a defined placement and duration. It is not default ongoing product copy.
+
+
+IMPLEMENTATION AND RELEASE REVIEW
+
+Use the included Claude Code prompt
+
+Extract this kit beside the existing project or attach the files to Claude Code. Start with Claude_Code_Hard_Earned_Rebrand.txt. The prompt instructs Claude to inspect the real repository, apply the identity across existing surfaces, preserve behaviour and verify the result. It is an implementation request, not a request for another brand proposal.
+
+File | Purpose
+Hard_Earned_Brand_Guide.pdf | Readable visual reference
+Hard_Earned_Brand_Guide.docx | Editable guide
+Hard_Earned_Brand_Guide.txt | Complete machine-readable guide
+Claude_Code_Hard_Earned_Rebrand.txt | Repository implementation prompt
+hard-earned-tokens.css | Semantic tokens and scoped examples
+contrast-matrix.json | Measured colour pair/use checks
+compute-contrast.py | Reproduces the contrast report
+assets/asset-manifest.json | Exact icon export specifications
+assets/*.png | Full-bleed raster exports
+
+Acceptance criteria
+
+• All current product surfaces show Hard Earned, with no unexplained old-brand references. Remaining compatibility/history references are exact and documented.
+• Actual routes and states use the shared colour roles, including chart, input, error, disabled, hover, pressed and focus states. Preserve existing light/dark preference behaviour.
+• The supplied original icon is used. Browser/install/store/native assets match their target format and are checked at small sizes and under relevant masks.
+• Workout, weight, onboarding, sign-in and any existing coach/client workflows still behave as before. Stored data and technical integrations retain continuity.
+• Copy is concise and honest. Feature claims match the implementation, AI is labelled as AI, and body-weight changes are described neutrally.
+• Meaningful checks cover build/type/lint gates already present, affected workflows, responsive layouts, keyboard focus, contrast, text scaling, reduced motion and icon caching.
+• The handoff contains changed files, completed checks, screenshots of actual affected screens, exact residual references and unresolved release dependencies.
+
+What the kit has verified
+
+The supplied colour pair report was calculated and checked, the corrected raster icon was exported for the listed sizes, and this guide was rendered for visual inspection. These are asset and design checks. The actual application repository has not been modified, tested or deployed as part of creating this kit.
+
+Scope boundaries
+
+Use the rebrand to improve visual consistency, naming and copy. Keep existing navigation, database semantics, programme generation, subscriptions and integrations intact unless a concrete compatibility change is required. Do not introduce a new backend, framework, chart library or product feature merely to restyle the app. Production deployment, store submission, external sender/domain changes and data migrations require the project’s normal release process.
+
+
+SOURCES AND SPECIFICATION NOTES
+
+Version 1.0 · 31 October 2026. Brand decisions and copy in this guide are proposed specifications for Hard Earned. Platform and accessibility guidance is based on the primary sources below. Recheck platform tooling when preparing a release.
+
+Platform icon references
+
+[1] Apple Developer. Configuring your app icon using an asset catalog. Use the project’s supported Xcode or Icon Composer workflow and current appearance requirements. https://developer.apple.com/documentation/xcode/configuring-your-app-icon
+
+[2] Android Developers. Google Play icon design specifications. Full-square 512 px, 32-bit PNG, sRGB, maximum 1024 KB; store masking and shadows are applied by Google Play. https://developer.android.com/distribute/google-play/resources/icon-design-specifications
+
+[3] W3C. Web Application Manifest, maskable icons. Central safe circle radius is two fifths of the minimum dimension. https://www.w3.org/TR/appmanifest/#icon-masks
+
+Accessibility references
+
+[4] W3C. Understanding SC 1.4.3 Contrast Minimum. https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
+
+[5] W3C. Understanding SC 1.4.11 Non-text Contrast. https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html
+
+[6] W3C. WCAG 2.2 definitions of relative luminance and contrast ratio. https://www.w3.org/TR/WCAG22/#dfn-relative-luminance
+
+[7] W3C. Focus Visible and Focus Not Obscured Minimum. https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html and https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html
+
+[10] W3C. Understanding SC 2.5.8 Target Size Minimum. https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html
+
+[11] W3C. Technique C39, using prefers-reduced-motion. https://www.w3.org/WAI/WCAG22/Techniques/css/C39
+
+[12] W3C. Understanding SC 1.4.1 Use of Color. https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html
+
+Typeface references
+
+[8] Inter official project and licence. https://rsms.me/inter/ and https://github.com/rsms/inter/blob/master/LICENSE.txt
+
+[9] Barlow author repository and licence. https://github.com/jpt/barlow and https://github.com/jpt/barlow/blob/main/OFL.txt
+
+How to interpret the checks
+
+Contrast calculations use solid sRGB foreground and background values at full opacity. There are 172 evaluated pair/use entries, not 172 distinct colour pairs. Passing the selected pairs does not audit every real rendered screen or establish whole-app accessibility conformance. App integration must also provide semantics, keyboard support, meaningful labels, correct state handling and readable responsive layouts.

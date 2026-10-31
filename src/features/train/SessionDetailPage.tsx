@@ -192,8 +192,9 @@ export default function SessionDetailPage() {
         open={del}
         danger
         title="Delete this workout?"
-        body="It will be removed from your history, charts and records on all your devices."
-        confirmLabel="Delete"
+        body="This removes the workout and its recorded sets from your history, charts and records on all your devices."
+        confirmLabel="Delete workout"
+        cancelLabel="Keep workout"
         onCancel={() => setDel(false)}
         onConfirm={async () => {
           if (posts.length && delPosts && auth.status === 'signed_in') {
@@ -250,7 +251,7 @@ function EditSetRow({ set, label, ex, unit, sessionId, onChange, onDelete }: { s
           <X className="size-4" />
         </IconButton>
       </div>
-      {issue && <p className="pl-10 text-xs text-warn">Not counted — {issue.charAt(0).toLowerCase() + issue.slice(1)}</p>}
+      {issue && <p className="pl-10 text-xs text-warn">Not counted: {issue.charAt(0).toLowerCase() + issue.slice(1)}</p>}
     </div>
   );
 }

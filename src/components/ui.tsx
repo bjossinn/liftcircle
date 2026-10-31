@@ -1,13 +1,14 @@
 /**
  * Shared accessible UI primitives. Every feature uses these so the app reads as one system.
- * Conventions: touch targets ≥ 44px, visible focus, labels on every input.
+ * Conventions: touch targets ≥ 44px, visible focus, labels on every input. Colours come from the Hard Earned tokens in
+ * src/styles.css: one ember primary action per section (charcoal label, 2 px charcoal outline), solid disabled states.
  */
 import clsx from 'clsx';
 import {
   forwardRef, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode,
   type SelectHTMLAttributes, type TextareaHTMLAttributes,
 } from 'react';
-import { AlertTriangle, Loader2, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, RefreshCw, X } from 'lucide-react';
 
 export { clsx as cx };
 
@@ -34,17 +35,17 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   block?: boolean;
 }
 const variants: Record<Variant, string> = {
-  primary: 'bg-accent text-accent-ink hover:bg-accent-strong font-semibold',
-  secondary: 'bg-surface-2 text-ink hover:bg-surface-3 border border-line',
-  outline: 'border border-line text-ink hover:bg-surface-2',
+  primary: 'ember-fill font-semibold',
+  secondary: 'bg-surface-2 text-ink hover:bg-surface-3 border border-line-input',
+  outline: 'border border-line-input text-ink hover:bg-surface-2',
   ghost: 'text-ink hover:bg-surface-2',
-  // hover text uses the page background colour: white on the dark theme's light red was 2.9:1
-  danger: 'bg-danger-soft text-danger hover:bg-danger hover:text-bg border border-danger/30',
+  // Kit destructive fill: charcoal label in dark, white in light. Pair it with destructive wording.
+  danger: 'danger-fill font-semibold',
 };
 const sizes: Record<Size, string> = {
   sm: `min-h-9 px-3 text-sm rounded-lg gap-1.5 ${hit.y4}`,
   md: 'min-h-11 px-4 text-[15px] rounded-xl gap-2',
-  lg: 'min-h-14 px-5 text-base rounded-2xl gap-2',
+  lg: 'min-h-14 px-5 text-base rounded-xl gap-2',
 };
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = 'secondary', size = 'md', loading, icon, block, className, children, disabled, type = 'button', ...rest },
@@ -57,7 +58,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={clsx(
-        'pressable inline-flex items-center justify-center select-none disabled:opacity-50 disabled:pointer-events-none',
+        'pressable solid-disabled inline-flex items-center justify-center select-none disabled:pointer-events-none',
         variants[variant],
         sizes[size],
         block && 'w-full',
@@ -80,7 +81,7 @@ export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTM
         aria-label={label}
         title={label}
         className={clsx(
-          'pressable inline-flex items-center justify-center rounded-xl text-ink hover:bg-surface-2 disabled:opacity-40',
+          'pressable inline-flex items-center justify-center rounded-xl text-ink hover:bg-surface-2 disabled:text-disabled-ink disabled:hover:bg-transparent',
           size === 'md' ? 'size-11' : `size-9 ${hit.all4}`,
           className,
         )}
@@ -143,7 +144,7 @@ export function Field({ label, hint, error, children, htmlFor, className }: { la
 }
 
 const inputBase =
-  'w-full min-h-11 rounded-xl bg-surface-2 border border-line-input px-3 text-[16px] text-ink placeholder:text-faint focus:border-accent focus:outline-none aria-[invalid=true]:border-danger';
+  'w-full min-h-11 rounded-xl bg-field border border-line-input px-3 text-[16px] text-ink placeholder:text-faint hover:border-muted focus:border-accent aria-[invalid=true]:border-danger disabled:bg-disabled disabled:text-disabled-ink disabled:border-disabled';
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { label?: ReactNode; hint?: ReactNode; error?: string | null; suffix?: ReactNode }>(
   function Input({ label, hint, error, suffix, className, id, ...rest }, ref) {
@@ -286,9 +287,9 @@ export function Toggle({ checked, onChange, label, description, disabled }: { ch
         aria-checked={checked}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={clsx('shrink-0 h-7 w-12 rounded-full transition-colors disabled:opacity-50', hit.sw, checked ? 'bg-accent' : 'bg-surface-3 border border-line')}
+        className={clsx('shrink-0 h-7 w-12 rounded-full transition-colors duration-[120ms] border solid-disabled', hit.sw, checked ? 'bg-ember border-edge' : 'bg-surface-3 border-line-input')}
       >
-        <span className={clsx('absolute left-0 top-0.5 size-6 rounded-full bg-white shadow transition-transform', checked ? 'translate-x-5.5' : 'translate-x-0.5')} />
+        <span className={clsx('absolute left-0 top-0.5 size-6 rounded-full shadow transition-transform duration-[120ms]', checked ? 'translate-x-5.5 bg-accent-ink' : 'translate-x-0.5 bg-ink')} />
       </button>
     </div>
   );
@@ -306,9 +307,9 @@ export function Segmented<T extends string | number>({ value, onChange, options,
           aria-checked={o.value === value}
           onClick={() => onChange(o.value)}
           className={clsx(
-            'flex-1 rounded-lg px-2 font-medium transition-colors',
+            'flex-1 rounded-lg px-2 font-medium transition-colors duration-[120ms]',
             size === 'md' ? `min-h-9 text-sm ${hit.y4}` : `min-h-8 text-xs ${hit.y6}`,
-            o.value === value ? 'bg-surface-3 text-ink shadow-sm' : 'text-muted hover:text-ink',
+            o.value === value ? 'bg-accent-soft text-ink font-semibold shadow-[inset_0_0_0_1.5px_var(--c-accent)]' : 'text-muted hover:text-ink',
           )}
         >
           {o.label}
@@ -332,11 +333,12 @@ export function ChipGroup<T extends string | number>({ values, onChange, options
             aria-checked={on}
             onClick={() => onChange(single ? [o.value] : on ? values.filter((v) => v !== o.value) : [...values, o.value])}
             className={clsx(
-              'pressable min-h-10 px-3.5 rounded-full border text-sm',
+              'pressable min-h-10 px-3.5 rounded-full border text-sm inline-flex items-center gap-1.5',
               hit.y2,
-              on ? 'bg-accent-soft border-accent text-accent font-medium' : 'border-line text-ink hover:bg-surface-2',
+              on ? 'bg-accent-soft border-accent text-ink font-medium' : 'border-line-input text-ink hover:bg-surface-2',
             )}
           >
+            {on && <Check className="size-3.5 text-accent shrink-0" aria-hidden />}
             {o.label}
           </button>
         );
@@ -383,7 +385,7 @@ export function ErrorState({ title = 'Something went wrong', message, onRetry }:
 }
 
 export function Notice({ tone = 'info', children, className }: { tone?: 'info' | 'warn' | 'danger' | 'accent'; children: ReactNode; className?: string }) {
-  const t = { info: 'bg-surface-2 text-ink', warn: 'bg-warn-soft text-ink border-warn/30', danger: 'bg-danger-soft text-ink border-danger/30', accent: 'bg-accent-soft text-ink border-accent/30' };
+  const t = { info: 'bg-surface-2 text-ink', warn: 'bg-warn-soft text-ink border-warn/30', danger: 'bg-danger-soft text-ink border-danger/30', accent: 'bg-success-soft text-ink border-success/40' };
   return <div className={clsx('rounded-xl border border-line px-3.5 py-3 text-sm', t[tone], className)}>{children}</div>;
 }
 
@@ -411,7 +413,7 @@ function useKeyboardInset(active: boolean): number {
   return inset;
 }
 
-const SHEET_CLOSE_MS = 240;
+const SHEET_CLOSE_MS = 200;
 
 /**
  * Bottom sheet on phones / centered dialog on larger screens, built on <dialog>
@@ -484,7 +486,7 @@ export function Sheet({ open, onClose, title, children, footer, wide }: { open: 
   );
 }
 
-export function ConfirmDialog({ open, title, body, confirmLabel = 'Confirm', danger, onConfirm, onCancel, busy, children }: { open: boolean; title: string; body?: ReactNode; confirmLabel?: string; danger?: boolean; onConfirm: () => void; onCancel: () => void; busy?: boolean; children?: ReactNode }) {
+export function ConfirmDialog({ open, title, body, confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger, onConfirm, onCancel, busy, children }: { open: boolean; title: string; body?: ReactNode; confirmLabel?: string; cancelLabel?: string; danger?: boolean; onConfirm: () => void; onCancel: () => void; busy?: boolean; children?: ReactNode }) {
   return (
     <Sheet
       open={open}
@@ -493,7 +495,7 @@ export function ConfirmDialog({ open, title, body, confirmLabel = 'Confirm', dan
       footer={
         <>
           <Button variant="ghost" onClick={onCancel}>
-            Cancel
+            {cancelLabel}
           </Button>
           <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={busy}>
             {confirmLabel}
@@ -514,7 +516,7 @@ export function Page({ title, back, actions, children, className }: { title?: Re
       {(title || actions || back) && (
         <header className="flex items-center gap-2 pt-3 pb-2 min-h-14">
           {back}
-          {title && <h1 className="text-[26px] font-extrabold tracking-tight flex-1 min-w-0 truncate">{title}</h1>}
+          {title && <h1 className="text-[28px] leading-8 flex-1 min-w-0 truncate">{title}</h1>}
           {actions && <div className="flex items-center gap-1 ml-auto">{actions}</div>}
         </header>
       )}
@@ -564,7 +566,7 @@ export function ProgressBar({ value, max, label, tone = 'accent' }: { value: num
   const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
   return (
     <div role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={max} aria-valuenow={value} className="h-2 rounded-full bg-surface-3 overflow-hidden">
-      <div className={clsx('h-full rounded-full transition-[width]', tone === 'accent' ? 'bg-accent' : 'bg-warn')} style={{ width: `${pct}%` }} />
+      <div className={clsx('h-full rounded-full transition-[width] duration-200', tone === 'accent' ? 'bg-ember' : 'bg-warn')} style={{ width: `${pct}%` }} />
     </div>
   );
 }

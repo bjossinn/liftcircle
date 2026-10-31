@@ -1,0 +1,399 @@
+{
+  "brand": "Hard Earned",
+  "generated_date": "2026-10-31",
+  "operation": "Mechanical proportional Lanczos3 resizing, sRGB conversion/profile embedding and requested RGB/RGBA channel encoding only. No crop, artwork repaint, repositioning or creative modification.",
+  "exporter": {
+    "sharp": "0.35.5",
+    "libvips": "8.18.7"
+  },
+  "source": {
+    "file": "assets/source/hard-earned-approved-master.png",
+    "width": 1254,
+    "height": 1254,
+    "native_mode": "RGB",
+    "icc_present": false,
+    "color_interpretation": "Untagged RGB source interpreted as sRGB",
+    "physical_bytes": 1126644,
+    "sha256": "8ffa2ba3ebedf2301ea57ae15ac1ea79b04c5977b554d62c1beb518a6d9d9e15",
+    "preserved_byte_for_byte": true,
+    "safe_zone": {
+      "method": "Bright neutral pixel mask: min(R,G,B)>=60 and max(R,G,B)-min(R,G,B)<=50; detects essential off-white dumbbell including neutral antialiasing; excludes saturated orange decorative corner.",
+      "essential_pixel_count": 247799,
+      "essential_bbox_inclusive": [
+        154,
+        399,
+        1100,
+        881
+      ],
+      "maximum_pixel_centre_radius_px": 496.8083131349555,
+      "conservative_pixel_corner_radius_px": 497.4384384021806,
+      "conservative_radius_fraction_of_side": 0.39668137033666717,
+      "safe_circle_radius_px": 501.6,
+      "conservative_margin_px": 4.1615615978194,
+      "passes_safe_circle": true,
+      "extreme_pixel": {
+        "x": 1099,
+        "y": 780,
+        "rgb": [
+          73,
+          73,
+          70
+        ]
+      },
+      "decorative_accent_policy": "The orange upper-right corner is nonessential and may be clipped by launcher masks. The off-white dumbbell remains the recognisable mark."
+    }
+  },
+  "exports": [
+    {
+      "file": "assets/hard-earned-icon-1024.png",
+      "role": "Opaque 1024px master / store submission source",
+      "category": "master",
+      "width": 1024,
+      "height": 1024,
+      "format": "png",
+      "colorspace": "srgb",
+      "png_mode": "RGB",
+      "bit_depth": 8,
+      "png_color_type": 2,
+      "icc_profile": {
+        "present": true,
+        "bytes": 480,
+        "target": "sRGB"
+      },
+      "alpha": {
+        "channel_present": false,
+        "all_pixels_opaque": true,
+        "min": 255,
+        "max": 255
+      },
+      "physical_bytes": 578806,
+      "sha256": "c895fa2c7fd08616b93dddeb9217fae8fffca5574c57b43494b6323081798624",
+      "full_bleed": {
+        "all_edge_pixels_opaque": true,
+        "edge_pixels_checked": 4092,
+        "edge_rgb_min": 16,
+        "edge_rgb_max": 23,
+        "light_edge_pixels": 0,
+        "no_light_frame": true,
+        "dark_field_pixels_by_edge": {
+          "top": 1024,
+          "bottom": 1024,
+          "left": 1024,
+          "right": 1024
+        },
+        "dark_field_present_on_all_four_edges": true
+      }
+    },
+    {
+      "file": "assets/hard-earned-play-store-512.png",
+      "role": "Play Store high-resolution icon; opaque RGBA",
+      "category": "play-store",
+      "width": 512,
+      "height": 512,
+      "format": "png",
+      "colorspace": "srgb",
+      "png_mode": "RGBA",
+      "bit_depth": 8,
+      "png_color_type": 6,
+      "icc_profile": {
+        "present": true,
+        "bytes": 480,
+        "target": "sRGB"
+      },
+      "alpha": {
+        "channel_present": true,
+        "all_pixels_opaque": true,
+        "min": 255,
+        "max": 255
+      },
+      "physical_bytes": 197854,
+      "sha256": "6a58efa9e35dc8557338e34982a2abe69ac10c720461118505bcc83a32143f7d",
+      "full_bleed": {
+        "all_edge_pixels_opaque": true,
+        "edge_pixels_checked": 2044,
+        "edge_rgb_min": 17,
+        "edge_rgb_max": 22,
+        "light_edge_pixels": 0,
+        "no_light_frame": true,
+        "dark_field_pixels_by_edge": {
+          "top": 512,
+          "bottom": 512,
+          "left": 512,
+          "right": 512
+        },
+        "dark_field_present_on_all_four_edges": true
+      },
+      "byte_limit": 1048576,
+      "below_1024_KiB": true
+    },
+    {
+      "file": "assets/hard-earned-pwa-512.png",
+      "role": "PWA icon, purpose any",
+      "category": "pwa-any",
+      "width": 512,
+      "height": 512,
+      "format": "png",
+      "colorspace": "srgb",
+      "png_mode": "RGB",
+      "bit_depth": 8,
+      "png_color_type": 2,
+      "icc_profile": {
+        "present": true,
+        "bytes": 480,
+        "target": "sRGB"
+      },
+      "alpha": {
+        "channel_present": false,
+        "all_pixels_opaque": true,
+        "min": 255,
+        "max": 255
+      },
+      "physical_bytes": 176934,
+      "sha256": "9e6ac03b4cc0f14da33bb51d1949fd16b0d3e94afe4d9a9da993bffadcbe7444",
+      "full_bleed": {
+        "all_edge_pixels_opaque": true,
+        "edge_pixels_checked": 2044,
+        "edge_rgb_min": 17,
+        "edge_rgb_max": 22,
+        "light_edge_pixels": 0,
+        "no_light_frame": true,
+        "dark_field_pixels_by_edge": {
+          "top": 512,
+          "bottom": 512,
+          "left": 512,
+          "right": 512
+        },
+        "dark_field_present_on_all_four_edges": true
+      }
+    },
+    {
+      "file": "assets/hard-earned-pwa-192.png",
+      "role": "PWA icon, purpose any",
+      "category": "pwa-any",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "colorspace": "srgb",
+      "png_mode": "RGB",
+      "bit_depth": 8,
+      "png_color_type": 2,
+      "icc_profile": {
+        "present": true,
+        "bytes": 480,
+        "target": "sRGB"
+      },
+      "alpha": {
+        "channel_present": false,
+        "all_pixels_opaque": true,
+        "min": 255,
+        "max": 255
+      },
+      "physical_bytes": 22468,
+      "sha256": "e8b28e2fbc5705c6370adbc6d4c0cfe68aaeac276e3cc0d897b95e22c275be45",
+      "full_bleed": {
+        "all_edge_pixels_opaque": true,
+        "edge_pixels_checked": 764,
+        "edge_rgb_min": 17,
+        "edge_rgb_max": 21,
+        "light_edge_pixels": 0,
+        "no_light_frame": true,
+        "dark_field_pixels_by_edge": {
+          "top": 192,
+          "bottom": 192,
+          "left": 192,
+          "right": 192
+        },
+        "dark_field_present_on_all_four_edges": true
+      }
+    },
+    {
+      "file": "assets/hard-earned-maskable-512.png",
+      "role": "PWA maskable icon; off-white mark within central safe circle",
+      "category": "pwa-maskable",
+      "width": 512,
+      "height": 512,
+      "format": "png",
+      "colorspace": "srgb",
+      "png_mode": "RGB",
+      "bit_depth": 8,
+      "png_color_type": 2,
+      "icc_profile": {
+        "present": true,
+        "bytes": 480,
+        "target": "sRGB"
+      },
+      "alpha": {
+        "channel_present": false,
+        "all_pixels_opaque": true,
+        "min": 255,
+        "max": 255
+      },
+      "physical_bytes": 176934,
+      "sha256": "9e6ac03b4cc0f14da33bb51d1949fd16b0d3e94afe4d9a9da993bffadcbe7444",
+      "full_bleed": {
+        "all_edge_pixels_opaque": true,
+        "edge_pixels_checked": 2044,
+        "edge_rgb_min": 17,
+        "edge_rgb_max": 22,
+        "light_edge_pixels": 0,
+        "no_light_frame": true,
+        "dark_field_pixels_by_edge": {
+          "top": 512,
+          "bottom": 512,
+          "left": 512,
+          "right": 512
+        },
+        "dark_field_present_on_all_four_edges": true
+      },
+      "maskable_safe_zone": {
+        "method": "Bright neutral pixel mask: min(R,G,B)>=60 and max(R,G,B)-min(R,G,B)<=50; detects essential off-white dumbbell including neutral antialiasing; excludes saturated orange decorative corner.",
+        "essential_pixel_count": 41777,
+        "essential_bbox_inclusive": [
+          63,
+          163,
+          449,
+          359
+        ],
+        "maximum_pixel_centre_radius_px": 202.73751502866952,
+        "conservative_pixel_corner_radius_px": 203.364205306637,
+        "conservative_radius_fraction_of_side": 0.39719571348952537,
+        "safe_circle_radius_px": 204.8,
+        "conservative_margin_px": 1.4357946933630217,
+        "passes_safe_circle": true,
+        "extreme_pixel": {
+          "x": 449,
+          "y": 316,
+          "rgb": [
+            86,
+            87,
+            87
+          ]
+        },
+        "decorative_accent_policy": "The orange upper-right corner is nonessential and may be clipped by launcher masks. The off-white dumbbell remains the recognisable mark."
+      }
+    },
+    {
+      "file": "assets/apple-touch-icon-180.png",
+      "role": "Apple touch web icon",
+      "category": "apple-touch",
+      "width": 180,
+      "height": 180,
+      "format": "png",
+      "colorspace": "srgb",
+      "png_mode": "RGB",
+      "bit_depth": 8,
+      "png_color_type": 2,
+      "icc_profile": {
+        "present": true,
+        "bytes": 480,
+        "target": "sRGB"
+      },
+      "alpha": {
+        "channel_present": false,
+        "all_pixels_opaque": true,
+        "min": 255,
+        "max": 255
+      },
+      "physical_bytes": 20097,
+      "sha256": "942eb2f734b2010702adfe4e0427d530c309750419df99342245b2e871e9ffc4",
+      "full_bleed": {
+        "all_edge_pixels_opaque": true,
+        "edge_pixels_checked": 716,
+        "edge_rgb_min": 17,
+        "edge_rgb_max": 21,
+        "light_edge_pixels": 0,
+        "no_light_frame": true,
+        "dark_field_pixels_by_edge": {
+          "top": 180,
+          "bottom": 180,
+          "left": 180,
+          "right": 180
+        },
+        "dark_field_present_on_all_four_edges": true
+      }
+    },
+    {
+      "file": "assets/favicon-32.png",
+      "role": "Browser favicon PNG, 32px",
+      "category": "favicon",
+      "width": 32,
+      "height": 32,
+      "format": "png",
+      "colorspace": "srgb",
+      "png_mode": "RGB",
+      "bit_depth": 8,
+      "png_color_type": 2,
+      "icc_profile": {
+        "present": true,
+        "bytes": 480,
+        "target": "sRGB"
+      },
+      "alpha": {
+        "channel_present": false,
+        "all_pixels_opaque": true,
+        "min": 255,
+        "max": 255
+      },
+      "physical_bytes": 1564,
+      "sha256": "cf89f8993c66cf49292c4d7c73a55d7cab1fc6be1147f2c22e62336bda87c38d",
+      "full_bleed": {
+        "all_edge_pixels_opaque": true,
+        "edge_pixels_checked": 124,
+        "edge_rgb_min": 3,
+        "edge_rgb_max": 21,
+        "light_edge_pixels": 0,
+        "no_light_frame": true,
+        "dark_field_pixels_by_edge": {
+          "top": 32,
+          "bottom": 32,
+          "left": 32,
+          "right": 32
+        },
+        "dark_field_present_on_all_four_edges": true
+      }
+    },
+    {
+      "file": "assets/favicon-16.png",
+      "role": "Browser favicon PNG, 16px",
+      "category": "favicon",
+      "width": 16,
+      "height": 16,
+      "format": "png",
+      "colorspace": "srgb",
+      "png_mode": "RGB",
+      "bit_depth": 8,
+      "png_color_type": 2,
+      "icc_profile": {
+        "present": true,
+        "bytes": 480,
+        "target": "sRGB"
+      },
+      "alpha": {
+        "channel_present": false,
+        "all_pixels_opaque": true,
+        "min": 255,
+        "max": 255
+      },
+      "physical_bytes": 939,
+      "sha256": "75f4d1580d228def60b95bea9dfd79223bdc5f455c06d9e5fdae884c2b12503f",
+      "full_bleed": {
+        "all_edge_pixels_opaque": true,
+        "edge_pixels_checked": 60,
+        "edge_rgb_min": 13,
+        "edge_rgb_max": 103,
+        "light_edge_pixels": 0,
+        "no_light_frame": true,
+        "dark_field_pixels_by_edge": {
+          "top": 16,
+          "bottom": 16,
+          "left": 16,
+          "right": 14
+        },
+        "dark_field_present_on_all_four_edges": true
+      }
+    }
+  ],
+  "native_adaptive_layers_caveat": "These are flattened raster exports. The maskable web icon is not a native Android adaptive-icon foreground/background layer set or a themed monochrome layer; create those separate native assets if required by the target implementation. The Apple touch PNG is a web icon, not a complete native iOS asset catalog.",
+  "maskable_policy": "Only the off-white dumbbell is essential. The orange decorative corner may be clipped by platform masks. Safe-circle verification uses a 40%-of-side radius and a conservative pixel-corner bound.",
+  "qa_note": "All export edge pixels are opaque, the dark field remains visible on all four edges, and no transparent padding, baked app-tile rounding or light frame was added. At 16px, normal Lanczos downsampling mixes a little orange into two right-edge pixels; this is preserved rather than retouched."
+}

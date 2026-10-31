@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * LiftCircle — authorization checks against a DEPLOYED Supabase project over HTTPS
+ * Hard Earned — authorization checks against a DEPLOYED Supabase project over HTTPS
  * (PostgREST tables + RPCs, Storage, Edge Functions). See tests/live/README.md for setup.
  *
  *   node tests/live/backend-live.mjs                 # read env, run everything that has credentials

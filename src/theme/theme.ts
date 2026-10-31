@@ -1,8 +1,8 @@
 /**
- * Themes: Midnight and Daylight, plus "Match system".
+ * Themes: Hard Earned dark (the flagship) and light, plus "Match my phone".
  *
  * The stored setting (Settings.theme, synced with the account) keeps its original values, so older app versions
- * and existing accounts need no migration: 'dark' = Midnight, 'light' = Daylight, 'system' = Match system.
+ * and existing accounts need no migration: 'dark' = Dark, 'light' = Light, 'system' = Match my phone.
  * `theme` is optional since 0.8.0. A missing value means "not chosen yet": new accounts start without one, and the
  * first-launch picker (ThemePicker.tsx) asks for it.
  *
@@ -16,14 +16,14 @@ export type ThemeChoice = NonNullable<Settings['theme']>;
 export type ResolvedTheme = 'dark' | 'light';
 
 export const THEME_OPTIONS: { value: ThemeChoice; label: string; description: string }[] = [
-  { value: 'dark', label: 'Midnight', description: 'Dark graphite with a green glow' },
-  { value: 'light', label: 'Daylight', description: 'Warm and bright' },
-  { value: 'system', label: 'Match system', description: 'Follows your phone’s light or dark mode' },
+  { value: 'dark', label: 'Dark', description: 'Charcoal with ember accents' },
+  { value: 'light', label: 'Light', description: 'Chalk with ember accents' },
+  { value: 'system', label: 'Match my phone', description: 'Follows your phone’s light or dark mode' },
 ];
-export const themeLabel = (t: ThemeChoice) => THEME_OPTIONS.find((o) => o.value === t)?.label ?? 'Midnight';
+export const themeLabel = (t: ThemeChoice) => THEME_OPTIONS.find((o) => o.value === t)?.label ?? 'Dark';
 
 /** Status-bar / PWA theme-color per theme. Equal to each theme's --c-bg (checked in themeContrast.test.ts). */
-export const THEME_META_COLOR: Record<ResolvedTheme, string> = { dark: '#101215', light: '#faf6ef' };
+export const THEME_META_COLOR: Record<ResolvedTheme, string> = { dark: '#17191b', light: '#f3efe7' };
 
 const CHOICE_KEY = 'lc-theme-choice';
 const APPLIED_KEY = 'lc-theme-applied';
@@ -83,7 +83,7 @@ export function applyTheme(resolved: ResolvedTheme, opts: { fade?: boolean } = {
   if (opts.fade) {
     root.classList.add('theme-fade');
     clearTimeout(fadeTimer);
-    fadeTimer = setTimeout(() => root.classList.remove('theme-fade'), 300);
+    fadeTimer = setTimeout(() => root.classList.remove('theme-fade'), 220);
   }
   root.dataset.theme = resolved;
   ls.set(APPLIED_KEY, resolved);

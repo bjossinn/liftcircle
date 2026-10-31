@@ -42,7 +42,7 @@ export function ReviewStep({ d, byId, onEdit }: { d: Draft; byId: Map<ID, Exerci
   const a = d.a;
   const split = resolveSplit(a, effectiveLiftingDays(a));
   const u = a.units;
-  const none = <span className="text-faint">—</span>;
+  const none = <span className="text-faint">–</span>;
   const names = (ids: ID[]) => (ids.length ? ids.map((id) => byId.get(id)?.name ?? id).join(', ') : none);
   return (
     <div className="flex flex-col gap-3">
@@ -103,7 +103,7 @@ export function ReviewStep({ d, byId, onEdit }: { d: Draft; byId: Map<ID, Exerci
             ? Object.entries(a.knownLoads ?? {})
                 .map(([id, kg]) => `${byId.get(id)?.name ?? id} ${formatWeight(kg, u.weight)}`)
                 .join(', ')
-            : 'None — calibration sessions'}
+            : 'None: calibration sessions'}
         </Row>
       </ReviewSection>
       <ReviewSection title="Go easy on" step="limits" onEdit={onEdit}>
@@ -235,7 +235,7 @@ export function ResultStep({
       <Sheet open={splitOpen} onClose={() => setSplitOpen(false)} title="Change split">
         {splitOpen && (
           <div className="flex flex-col gap-3">
-            <p className="text-sm text-muted">Pick how your {split.liftingDays} lifting sessions are organised. Changing the split rebuilds the sessions (edits to the current ones are replaced — you can undo).</p>
+            <p className="text-sm text-muted">Pick how your {split.liftingDays} lifting sessions are organised. Changing the split rebuilds the sessions (edits to the current ones are replaced. You can undo).</p>
             <SplitPicker
               a={a}
               showTitle={false}
@@ -261,7 +261,7 @@ export function ResultStep({
             {nutrition && !d.nutri.manual && !disabled && (
               <>
                 <div className="grid grid-cols-2 gap-3">
-                  <TargetStat label="Protein" value={nutrition.targets.proteinG != null ? `${nutrition.targets.proteinG} g` : '—'} />
+                  <TargetStat label="Protein" value={nutrition.targets.proteinG != null ? `${nutrition.targets.proteinG} g` : '–'} />
                   {nutrition.targets.calories != null && <TargetStat label="Calories" value={`${nutrition.targets.calories} kcal`} />}
                   {nutrition.targets.carbsG != null && <TargetStat label="Carbs" value={`${nutrition.targets.carbsG} g`} />}
                   {nutrition.targets.fatG != null && <TargetStat label="Fat" value={`${nutrition.targets.fatG} g`} />}

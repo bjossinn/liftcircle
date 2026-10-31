@@ -129,7 +129,7 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
 
       {rel.status === 'requested' && (
         <Notice className="mt-3">
-          This is a pending request — you see only the intake and intro message.{' '}
+          This is a pending request. You see only the intake and intro message.{' '}
           <button type="button" className="underline font-medium" onClick={() => nav('/coaching/dashboard')}>
             Respond from your dashboard
           </button>
@@ -159,7 +159,7 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
                           <p className="font-medium">{tr.activeProgram.name}</p>
                           <p className="text-sm text-muted">
                             Version {tr.activeProgram.currentVersion} · managed by{' '}
-                            {tr.activeProgram.managedBy === 'coach' ? 'a coach' : tr.activeProgram.managedBy === 'ai' ? 'the AI coach' : who}
+                            {tr.activeProgram.managedBy === 'coach' ? 'a coach' : tr.activeProgram.managedBy === 'ai' ? 'the training assistant' : who}
                           </p>
                         </>
                       ) : (
@@ -167,7 +167,7 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
                       )}
                       <div className="grid grid-cols-2 gap-3 mt-3">
                         <Stat label="Completed (28 days)" value={tr.completedLast28} />
-                        <Stat label="Planned (28 days)" value={tr.plannedLast28 ?? '—'} />
+                        <Stat label="Planned (28 days)" value={tr.plannedLast28 ?? '–'} />
                       </div>
                       <div className="mt-2">
                         <TrainingSummary training={tr} who={who} />
@@ -251,7 +251,7 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
                                 title={formatDate(n.date)}
                                 right={
                                   <span className="tabular text-ink text-sm">
-                                    {n.protein != null ? `${Math.round(n.protein)} g protein` : '—'}
+                                    {n.protein != null ? `${Math.round(n.protein)} g protein` : '–'}
                                     {n.kcal != null ? ` · ${Math.round(n.kcal)} kcal` : ''}
                                   </span>
                                 }

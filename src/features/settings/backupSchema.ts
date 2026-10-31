@@ -1,5 +1,5 @@
 /**
- * Validation of LiftCircle backup files (format 'liftcircle-backup', version 1).
+ * Validation of Hard Earned backup files (format 'liftcircle-backup', version 1).
  *
  * Everything here is pure (no Dexie, no network) and runs BEFORE any local data is touched.
  * Rules:
@@ -392,7 +392,7 @@ function safeJsonParse(textIn: string): unknown {
 
 /* ---------------------------------------------------------------- entry points */
 export function parseBackupText(textIn: string): ValidatedBackup {
-  if (textIn.length > MAX_BACKUP_BYTES) throw new BackupValidationError('This file is too large to be a LiftCircle backup.');
+  if (textIn.length > MAX_BACKUP_BYTES) throw new BackupValidationError('This file is too large to be a Hard Earned backup.');
   const trimmed = textIn.trim();
   if (!trimmed) throw new BackupValidationError('This file is empty.');
   let json: unknown;
@@ -401,14 +401,14 @@ export function parseBackupText(textIn: string): ValidatedBackup {
   } catch (e) {
     const msg = e instanceof Error ? e.message : '';
     const truncated = trimmed.startsWith('{') && (/end of (json )?input|unterminated|unexpected end/i.test(msg) || !trimmed.endsWith('}'));
-    throw new BackupValidationError(truncated ? 'This backup file looks incomplete (it may have been cut off while downloading or copying). Nothing was imported.' : 'This file isn’t valid JSON, so it can’t be a LiftCircle backup.');
+    throw new BackupValidationError(truncated ? 'This backup file looks incomplete (it may have been cut off while downloading or copying). Nothing was imported.' : 'This file isn’t valid JSON, so it can’t be a Hard Earned backup.');
   }
   return validateBackupObject(json);
 }
 
 export function validateBackupObject(json: unknown): ValidatedBackup {
   const head = z.looseObject({ format: z.literal(BACKUP_FORMAT) }).safeParse(json);
-  if (!head.success) throw new BackupValidationError('This doesn’t look like a LiftCircle backup file.');
+  if (!head.success) throw new BackupValidationError('This doesn’t look like a Hard Earned backup file.');
   const v = (json as { version?: unknown }).version;
   if (typeof v === 'number' && Number.isInteger(v) && v > BACKUP_VERSION) {
     throw new BackupValidationError(`This backup was made by a newer version of the app (backup format ${v}; this app reads up to ${BACKUP_VERSION}). Update the app and try again. Nothing was imported.`);

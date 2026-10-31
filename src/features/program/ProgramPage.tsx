@@ -74,12 +74,12 @@ export default function ProgramPage() {
         schedule: [],
         weeks: 8,
         reviewWeek: 8,
-        rationale: ['You built this program yourself. Add sessions, exercises and days — every change is saved as a new version you can restore.'],
+        rationale: ['You built this program yourself. Add sessions, exercises and days. Every change is saved as a new version you can restore.'],
         warnings: [],
       };
       for (const p of alive(programs ?? []).filter((x) => x.active)) await saveRecord('programs', { ...p, active: false }, db);
       await saveRecord('programs', createProgram(null, v, today, 'My program', 'manual'), db);
-      toast.show('Program created — add exercises to your first session.', { tone: 'success' });
+      toast.show('Program created: add exercises to your first session.', { tone: 'success' });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create the program.');
     } finally {
@@ -94,7 +94,7 @@ export default function ProgramPage() {
         <EmptyState
           icon={<CalendarRange className="size-6" />}
           title="No active program"
-          body="Answer a few questions and we’ll suggest a starting plan you can edit — or build your own routine from scratch."
+          body="Answer a few questions and we’ll suggest a starting plan you can edit, or build your own routine from scratch."
           action={
             <div className="flex flex-col gap-2 w-full max-w-xs">
               <Button variant="primary" icon={<Sparkles className="size-4" />} onClick={() => nav('/onboarding')}>
@@ -136,7 +136,7 @@ export default function ProgramPage() {
     const n = (regenCount[t.id] ?? 0) + 1;
     setRegenCount({ ...regenCount, [t.id]: n });
     const next = regenerateTemplates(v, [t.id], answers, catalog, n);
-    void commit({ templates: next.templates }, next.reason, `Shuffled exercises in ${t.name} — same split; older versions stay in history`);
+    void commit({ templates: next.templates }, next.reason, `Shuffled exercises in ${t.name}. Same split; older versions stay in history`);
   };
   const duplicate = async (t: SessionTemplate) => {
     try {
@@ -224,7 +224,7 @@ export default function ProgramPage() {
         </div>
         {week >= v.reviewWeek && (
           <Notice tone="accent" className="mt-3">
-            It’s review time. How did the block go? Keep what worked, adjust days or swap exercises —{' '}
+            It’s review time. How did the block go? Keep what worked, adjust days or swap exercises,{' '}
             <button type="button" className="underline font-medium" onClick={() => nav('/onboarding')}>
               or get a fresh suggestion
             </button>
@@ -272,7 +272,7 @@ export default function ProgramPage() {
           />
         ))}
         {v.templates.length === 0 && (
-          <EmptyState title="No sessions yet" body="Add a session and choose its exercises — a custom split from scratch." action={<Button onClick={addSession}>Add session</Button>} />
+          <EmptyState title="No sessions yet" body="Add a session and choose its exercises. A custom split from scratch." action={<Button onClick={addSession}>Add session</Button>} />
         )}
       </div>
 

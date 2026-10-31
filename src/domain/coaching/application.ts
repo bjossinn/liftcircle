@@ -199,7 +199,7 @@ const areaSchema = z
   .superRefine((a, ctx) => {
     if (a.kind === 'city' && !t(a.city)) ctx.addIssue({ code: 'custom', path: ['city'], message: 'Add the city or town.' });
     if (a.kind === 'region' && !t(a.region)) ctx.addIssue({ code: 'custom', path: ['region'], message: 'Add the region.' });
-    if ((a.lat == null) !== (a.lng == null)) ctx.addIssue({ code: 'custom', path: ['lat'], message: 'Map position is incomplete — look the place up again.' });
+    if ((a.lat == null) !== (a.lng == null)) ctx.addIssue({ code: 'custom', path: ['lat'], message: 'Map position is incomplete. Look the place up again.' });
   });
 
 const qualSchema = z.object({

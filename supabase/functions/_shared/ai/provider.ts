@@ -2,7 +2,7 @@
  * AI provider client (pure: fetch, sleep and clock are injected). Two providers, one internal format:
  *  - anthropic: POST {baseUrl}/v1/messages with x-api-key + anthropic-version (the internal format IS this wire format)
  *  - openai:    POST {baseUrl}/v1/chat/completions with a Bearer key; requests/responses are translated in ./openai.ts
- * The rest of the AI coach (context, tools, validation, storage) only ever sees the internal format.
+ * The rest of the training assistant (context, tools, validation, storage) only ever sees the internal format.
  *
  * Each attempt has its own AbortController
  * timeout; transient failures (429, 5xx incl. 529 overloaded, network errors) are retried at most
@@ -73,7 +73,7 @@ export class AiUnavailableError extends Error {
     readonly kind: 'timeout' | 'http' | 'network' | 'bad_response' | 'deadline' | 'quota',
     readonly status?: number,
   ) {
-    super(reason === 'not_configured' ? 'The AI coach is not configured on the server.' : 'The AI coach is unavailable right now.');
+    super(reason === 'not_configured' ? 'The training assistant is not configured on the server.' : 'The training assistant is unavailable right now.');
     this.name = 'AiUnavailableError';
   }
 }

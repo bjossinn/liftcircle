@@ -224,7 +224,7 @@ function NotificationList() {
                     </span>
                     {unread && (
                       <>
-                        <span className="size-2 rounded-full bg-accent shrink-0" aria-hidden />
+                        <span className="size-2 rounded-full bg-ember shrink-0" aria-hidden />
                         <span className="sr-only">New</span>
                       </>
                     )}

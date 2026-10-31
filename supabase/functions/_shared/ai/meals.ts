@@ -1,5 +1,5 @@
 /**
- * Meal helpers for the AI coach tools (pure apart from injected catalogs):
+ * Meal helpers for the training assistant tools (pure apart from injected catalogs):
  *  - searchRecipes: tolerant find_recipes matching (case/accent-insensitive, ingredient names, tags, meal type,
  *    synonyms) with a "best fits for your targets" fallback; empty only when the user's own constraints exclude
  *    everything, and then it names the constraint(s);

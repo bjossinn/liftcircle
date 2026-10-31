@@ -157,7 +157,7 @@ function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; 
       />
 
       <SectionTitle>About your training</SectionTitle>
-      <p className="text-sm text-muted px-1 mb-2">Filled in from your profile and program. Edit anything, or remove what you’d rather not share — only what’s kept is sent.</p>
+      <p className="text-sm text-muted px-1 mb-2">Filled in from your profile and program. Edit anything, or remove what you’d rather not share. Only what’s kept is sent.</p>
       <Card className="divide-y divide-line">
         <IntakeRow label="Main goal" k="goal" draft={draft} keep={keep} summary={draft.goal ? GOAL_LABELS[draft.goal] : null}>
           <Select aria-label="Main goal" value={draft.goal ?? ''} onChange={(e) => set('goal', (e.target.value || undefined) as Goal | undefined)}>
@@ -211,7 +211,7 @@ function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; 
           draft={draft}
           keep={keep}
           summary={draft.limitations?.length ? draft.limitations.map((l) => LIMITATION_LABELS[l]).join(', ') : null}
-          help="Body areas only — no medical details are shared. Tell the coach more in your message if you want to."
+          help="Body areas only: no medical details are shared. Tell the coach more in your message if you want to."
         >
           <ChipGroup<LimitationArea>
             label="Areas to be careful with"
@@ -234,7 +234,7 @@ function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; 
           <Textarea aria-label="Anything else for the coach" value={draft.notes ?? ''} maxLength={NOTES_MAX} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value, kept: { ...d.kept, notes: e.target.value.trim().length > 0 } }))} placeholder="Schedule constraints, preferences…" className="min-h-20" />
         </IntakeRow>
       </Card>
-      {Object.keys(sent).length === 0 && <p className="text-xs text-muted px-1 mt-2">No training details will be sent — just your message.</p>}
+      {Object.keys(sent).length === 0 && <p className="text-xs text-muted px-1 mt-2">No training details will be sent. Just your message.</p>}
 
       <SectionTitle>What this coach can see once they accept</SectionTitle>
       <Card className="px-4 py-1 divide-y divide-line">

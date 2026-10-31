@@ -1,5 +1,5 @@
 /**
- * OpenAI Chat Completions adapter. Pure translation between the AI coach's internal message format
+ * OpenAI Chat Completions adapter. Pure translation between the training assistant's internal message format
  * (Anthropic-style content blocks: text / tool_use / tool_result) and the OpenAI wire format:
  *
  *   system prompt               → { role: 'system' }

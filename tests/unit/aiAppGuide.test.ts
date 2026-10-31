@@ -1,5 +1,5 @@
 /**
- * App guide for the AI coach (supabase/functions/_shared/ai/appGuide.ts): every route in src/app/routes.tsx is either
+ * App guide for the training assistant (supabase/functions/_shared/ai/appGuide.ts): every route in src/app/routes.tsx is either
  * in the guide or explicitly ignored, and [[open:/path|Label]] links are validated (server) and extracted (app).
  */
 import { describe, expect, it } from 'vitest';

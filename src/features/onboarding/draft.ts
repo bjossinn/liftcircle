@@ -128,9 +128,9 @@ export const STEP_TITLES: Record<StepKey, string> = {
   welcome: 'Welcome',
   about: 'About you',
   body: 'Body details',
-  goal: 'Your goal',
-  experience: 'Experience',
-  schedule: 'Your week',
+  goal: 'What would you like to work toward?',
+  experience: 'How familiar are you with strength training?',
+  schedule: 'How many days would you like to train each week?',
   equipment: 'Equipment',
   exercises: 'Activities & exercises',
   limits: 'Anything to go easy on?',
@@ -148,10 +148,10 @@ const GOALS = ['build_muscle', 'strength', 'lose_fat', 'general_fitness', 'endur
 const ENDURANCE_ACTIVITIES = ['run', 'cycle', 'swim', 'row', 'hike', 'walk'] as const satisfies readonly ActivityType[];
 
 const aboutSchema = z.object({
-  displayName: z.string().trim().min(1, 'Enter a name — a nickname is fine.').max(40, 'Keep it under 40 characters.'),
+  displayName: z.string().trim().min(1, 'Enter a name: a nickname is fine.').max(40, 'Keep it under 40 characters.'),
 });
 const bodySchema = z.object({
-  age: z.number().int('Use whole years.').min(13, 'LiftCircle is for ages 13 and up.').max(100, 'Please check your age.').optional(),
+  age: z.number().int('Use whole years.').min(13, 'Hard Earned is for ages 13 and up.').max(100, 'Please check your age.').optional(),
   weightKg: z.number().min(30, 'Please check your weight.').max(300, 'Please check your weight.').optional(),
   heightCm: z.number().min(120, 'Please check your height.').max(230, 'Please check your height.').optional(),
 });
@@ -179,7 +179,7 @@ const scheduleSchema = z
   })
   .superRefine((v, ctx) => {
     if (v.liftingDaysPerWeek > v.totalDaysPerWeek)
-      ctx.addIssue({ code: 'custom', path: ['liftingDaysPerWeek'], message: 'Lifting days are part of your total active days — raise the total or lower lifting days.' });
+      ctx.addIssue({ code: 'custom', path: ['liftingDaysPerWeek'], message: 'Lifting days are part of your total active days. Raise the total or lower lifting days.' });
     if (v.availableWeekdays.length < v.totalDaysPerWeek)
       ctx.addIssue({ code: 'custom', path: ['availableWeekdays'], message: `Pick at least ${v.totalDaysPerWeek} available days, or lower your total days.` });
     if (v.preferredLiftingWeekdays.some((d) => !v.availableWeekdays.includes(d)))

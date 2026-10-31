@@ -18,7 +18,7 @@ import pkg from './package.json' with { type: 'json' };
 function cspInlineScriptCheck(): Plugin {
   let outDir = 'dist';
   return {
-    name: 'liftcircle-csp-inline-script-check',
+    name: 'hard-earned-csp-inline-script-check',
     apply: 'build',
     configResolved(c) {
       outDir = path.resolve(c.root, c.build.outDir);
@@ -52,7 +52,7 @@ export default defineConfig({
       // update when no workout is active (see src/pwa/update.ts).
       registerType: 'prompt',
       injectRegister: false,
-      includeAssets: ['icons/apple-touch-icon.png', 'icons/favicon.svg'],
+      includeAssets: ['icons/apple-touch-icon-180.png', 'icons/favicon-16.png', 'icons/favicon-32.png'],
       manifest: {
         id: '/',
         name: BRAND.name,
@@ -66,9 +66,10 @@ export default defineConfig({
         background_color: BRAND.backgroundColor,
         categories: ['health', 'fitness', 'lifestyle'],
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-          { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          // The approved Hard Earned exports (brand/hard-earned/assets), copied unchanged by scripts/copy-brand-icons.mjs.
+          { src: '/icons/hard-earned-pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/hard-earned-pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icons/hard-earned-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {

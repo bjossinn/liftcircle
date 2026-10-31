@@ -75,7 +75,7 @@ function Application({ coachId }: { coachId: string }) {
       app.reload();
     } catch (e) {
       // The server checks the current status; a stale view gets a readable error and a refresh.
-      setActionError(coachingError(e, 'That action couldn’t be completed. The application may have changed — refresh and try again.'));
+      setActionError(coachingError(e, 'That action couldn’t be completed. The application may have changed. Refresh and try again.'));
     } finally {
       setBusy(false);
     }
@@ -98,7 +98,7 @@ function Application({ coachId }: { coachId: string }) {
         </div>
       )}
       {p.status === 'changes_requested' && <p className="text-xs text-muted mt-2 px-1">Waiting for the applicant to update and resubmit.</p>}
-      {p.status === 'draft' && <p className="text-xs text-muted mt-2 px-1">Not submitted yet — nothing to review.</p>}
+      {p.status === 'draft' && <p className="text-xs text-muted mt-2 px-1">Not submitted yet: nothing to review.</p>}
       {p.status === 'rejected' && !p.suspended && <p className="text-xs text-muted mt-2 px-1">The applicant can edit and resubmit.</p>}
       {p.latestFeedback && (
         <Notice className="mt-3">

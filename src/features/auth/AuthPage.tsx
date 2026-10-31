@@ -92,7 +92,7 @@ export default function AuthPage() {
         form: /invalid login/i.test(msg)
           ? 'Email or password is incorrect.'
           : /not confirmed/i.test(msg)
-            ? 'Please confirm your email first — check your inbox for the link.'
+            ? 'Please confirm your email first. Check your inbox for the link.'
             : /rate|too many/i.test(msg)
               ? 'Too many attempts. Please wait a minute and try again.'
               : msg,

@@ -1,9 +1,9 @@
 /**
  * Why data is missing, computed by the server (pure). The system prompt gets one line per gap with the exact fix and
  * an in-app link ([[open:/path|label]], validated later by appGuide.validateOpenLinks), so the model can say e.g.
- * "I can't see your nutrition yet. You can share it under AI coach settings." instead of guessing.
+ * "I can't see your nutrition yet. You can share it under training assistant settings." instead of guessing.
  *
- * Order per category: sharing first (the AI coach settings), then setup in the app (Settings toggle, targets,
+ * Order per category: sharing first (the training assistant settings), then setup in the app (Settings toggle, targets,
  * program, logs). For categories that aren't shared only setup *status* is used (on/off, set/not set) — never values.
  */
 import type { AccountStatePayload, AiScopes } from './types.ts';
@@ -41,7 +41,7 @@ export function nutritionStatus(account: AccountStatePayload | null, shared: boo
 
 /** Plain reason a meal plan can't be built right now (null = it can). Used by propose_meal_plan and the prompt. */
 export function mealPlanBlocker(s: NutritionStatus): string | null {
-  if (!s.shared) return `Nutrition isn't shared with the AI coach. Tell the user they can share it under AI coach settings ${SHARE_LINK}.`;
+  if (!s.shared) return `Nutrition isn't shared with the training assistant. Tell the user they can share it under training assistant settings ${SHARE_LINK}.`;
   if (s.enabled === false) return 'Nutrition features are turned off in the app. Tell the user to turn on "Nutrition features" in Settings → Plan & nutrition [[open:/settings|Open Settings]].';
   if (s.autoDisabled) return 'Automatic nutrition targets are turned off for this user (under 18 or individualized guidance). Do not build a target-based meal plan; suggest a doctor or registered dietitian.';
   if (s.proteinG == null) return 'No protein target is set. Tell the user to set targets first [[open:/nutrition/targets|Set your targets]].';
@@ -59,7 +59,7 @@ export interface DataStatusInput {
 
 export function dataStatusLines(i: DataStatusInput): string[] {
   const lines: string[] = [];
-  const share = (what: string, fix: string) => lines.push(`- ${what}: NOT shared with you. Say "I can't see your ${fix} yet. You can share it under AI coach settings." and include ${SHARE_LINK}.`);
+  const share = (what: string, fix: string) => lines.push(`- ${what}: NOT shared with you. Say "I can't see your ${fix} yet. You can share it under training assistant settings." and include ${SHARE_LINK}.`);
   if (!i.scopes.profile) share('Profile & preferences (goal, equipment, diet, allergies)', 'profile and preferences');
   if (!i.scopes.training) share('Training (plan, workouts, records)', 'training');
   else {
@@ -76,7 +76,7 @@ export function dataStatusLines(i: DataStatusInput): string[] {
   else if (n.proteinG == null) setup.push('no nutrition targets are set [[open:/nutrition/targets|Set your targets]]');
   if (!n.shared) {
     lines.push(
-      `- Nutrition: NOT shared with you. Say "I can't see your nutrition yet. You can share it under AI coach settings." and include ${SHARE_LINK}.` +
+      `- Nutrition: NOT shared with you. Say "I can't see your nutrition yet. You can share it under training assistant settings." and include ${SHARE_LINK}.` +
         (setup.length ? ` After that, setup is also needed: ${setup.join('; ')} — mention it second.` : ''),
     );
   } else {

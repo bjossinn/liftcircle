@@ -1,5 +1,5 @@
 /**
- * Coaching + AI coach contract shared by the client and the Supabase implementation.
+ * Coaching + training assistant contract shared by the client and the Supabase implementation.
  * Implementations: src/backend/coaching.ts (CoachingApi), src/backend/ai.ts (AiApi).
  * Server: supabase/migrations/2026102900000{1..}_*.sql, supabase/functions/{ai-coach,geocode,finalize-coach-media}.
  * Spec of tables/RPCs/states: docs/COACHING_INTERFACES.md.

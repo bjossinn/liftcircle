@@ -15,7 +15,7 @@ import { SharePreview } from '@/features/social/SharePreview';
 import { formatLoggedSet } from '@/features/exercises/useExerciseData';
 import { celebrateOnce } from '@/components/celebrate';
 
-/** Only a workout finished in the last few minutes gets confetti; reopening an old summary stays calm. */
+/** Only a workout finished in the last few minutes gets the brief celebration; reopening an old summary stays calm. */
 const JUST_FINISHED_MS = 5 * 60 * 1000;
 
 export default function SummaryPage() {
@@ -58,7 +58,7 @@ function WorkoutSummary({ id }: { id: string }) {
           <span className="font-semibold">{session.name}</span>
         </div>
         <p className="text-sm text-muted mt-0.5">{formatDate(session.date, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-        <p className="font-display text-lg font-bold mt-2">{records.length > 0 ? 'Nicely done, and new records too!' : 'Nicely done. Another one in the books.'}</p>
+        <p className="font-display text-lg font-bold mt-2">{records.length > 0 ? 'Workout saved. New records in this one.' : 'Workout saved. Every set adds up.'}</p>
         <div className="grid grid-cols-3 gap-3 mt-4">
           <Stat label="Duration" value={formatDuration(summary.durationSec)} />
           <Stat label="Working sets" value={summary.workingSets} sub={summary.warmupSets ? `+${summary.warmupSets} warm-up` : undefined} />

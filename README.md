@@ -1,11 +1,11 @@
-# LiftCircle
+# Hard Earned
 
 A mobile-first fitness PWA with three parts in one app:
 
 1. **Tracker** — fast weightlifting logger (one-tap sets, rest timer, supersets, warm-ups, history, records) and manual logging for runs, walks, rides, swims, classes, yoga and more.
 2. **Plan** — an onboarding wizard that generates an editable, explainable training program, double-progression suggestions, and optional protein / calorie targets with 84 recipes, meal plans and a shopping list.
 3. **Social** — mutual friends, a chronological feed of shared workouts and photos, likes, comments, notifications, reporting and blocking.
-4. **Coaching** — a directory of approved human coaches (with admin review), consent-based coaching with messaging and program proposals, and an optional AI coach backed by the OpenAI or Anthropic API on the server.
+4. **Coaching** — a directory of approved human coaches (with admin review), consent-based coaching with messaging and program proposals, and an optional training assistant backed by the OpenAI or Anthropic API on the server.
 
 It installs to an iPhone or Android home screen, runs standalone, and keeps logging workouts offline.
 
@@ -19,7 +19,7 @@ The name and colours live in `src/config/brand.ts`, so they're easy to change.
 | Workouts, programs, nutrition, progress | ✅ on this device | ✅ + backed up and synced across devices |
 | Friends, feed, photos, likes, comments | – (explained in-app) | ✅ |
 | Human coaches, coach directory | – (explained in-app) | ✅ (after the coaching migrations) |
-| AI coach | – | ✅ when an OpenAI or Anthropic API key is set as a function secret |
+| Training assistant | – | ✅ when an OpenAI or Anthropic API key is set as a function secret |
 | Backup | JSON/CSV export | export + automatic cloud sync |
 
 Without `.env.local` the app runs in Personal mode. Add the two publishable Supabase values to switch on Connected mode (see [docs/SETUP.md](docs/SETUP.md)).

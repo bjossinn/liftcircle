@@ -1,6 +1,6 @@
 /**
  * Original in-house empty-state drawings (no third-party characters or brand art). Simple shapes coloured with
- * theme tokens via Tailwind fill/stroke classes, so they follow Midnight and Daylight. Decorative: aria-hidden,
+ * theme tokens via Tailwind fill/stroke classes, so they follow the dark and light themes. Decorative: aria-hidden,
  * the EmptyState title says what's going on. Imported only by the lazy-loaded screens that use them, so they stay
  * out of the startup bundle.
  */
@@ -15,8 +15,8 @@ export function NoWorkoutsArt() {
       <rect x="50" y="62" width="60" height="8" rx="4" className="fill-muted" />
       <rect x="38" y="48" width="14" height="36" rx="5" className="fill-accent" />
       <rect x="108" y="48" width="14" height="36" rx="5" className="fill-accent" />
-      <rect x="30" y="56" width="10" height="20" rx="4" className="fill-accent-strong" />
-      <rect x="120" y="56" width="10" height="20" rx="4" className="fill-accent-strong" />
+      <rect x="30" y="56" width="10" height="20" rx="4" className="fill-ember" />
+      <rect x="120" y="56" width="10" height="20" rx="4" className="fill-ember" />
       <path d="M124 22l3 8 8 3-8 3-3 8-3-8-8-3 8-3z" className="fill-celebrate" />
       <circle cx="40" cy="26" r="3" className="fill-accent-2" />
     </svg>
@@ -33,7 +33,7 @@ export function NoMealPlanArt() {
       <rect x="32" y="56" width="96" height="10" rx="5" className="fill-surface-3" />
       <circle cx="64" cy="57" r="9" className="fill-celebrate" />
       <circle cx="84" cy="54" r="10" className="fill-accent" />
-      <path d="M104 46c10-4 18 2 18 2s-6 9-16 7c-4-1-5-6-2-9z" className="fill-accent-strong" />
+      <path d="M104 46c10-4 18 2 18 2s-6 9-16 7c-4-1-5-6-2-9z" className="fill-ember" />
     </svg>
   );
 }

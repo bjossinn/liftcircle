@@ -32,7 +32,7 @@ export function QualificationsEditor({ rows, onChange, errors, disabled }: { row
       </Button>
       <p className="text-xs text-muted px-1 inline-flex items-start gap-1.5">
         <Lock className="size-3.5 shrink-0 mt-0.5" aria-hidden />
-        Documents are private: only you and LiftCircle reviewers can open them. Clients never see the files.
+        Documents are private: only you and Hard Earned reviewers can open them. Clients never see the files.
       </p>
     </div>
   );

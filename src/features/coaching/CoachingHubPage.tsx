@@ -9,7 +9,7 @@ import { STATUS_LABELS, STATUS_TONE, dateText } from '@/domain/coaching/display'
 import { CoachPhoto, CoachingAccessNotice, GuestCoachingIntro, useCoachingAccess, useLoad, type Loaded } from './directory/common';
 
 const linkBtn = 'inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl text-[15px] transition-colors';
-const primaryLink = `${linkBtn} bg-accent text-accent-ink hover:bg-accent-strong font-semibold`;
+const primaryLink = `${linkBtn} ember-fill font-semibold`;
 const secondaryLink = `${linkBtn} bg-surface-2 text-ink hover:bg-surface-3 border border-line`;
 
 export default function CoachingHubPage() {
@@ -126,18 +126,18 @@ function RelationshipCard({ rel }: { rel: CoachingRelationship }) {
   );
 }
 
-/* ---------------------------------------------------------------- AI coach */
+/* ---------------------------------------------------------------- training assistant */
 function aiUnavailableText(a: Extract<AiAvailability, { available: false }>['reason']): string {
   switch (a) {
     case 'not_configured':
     case 'backend_missing':
-      return 'The AI coach isn’t switched on in this version of LiftCircle yet.';
+      return 'The training assistant isn’t switched on in this version of Hard Earned yet.';
     case 'provider_down':
-      return 'The AI coach is temporarily unavailable. Please try again later.';
+      return 'The training assistant is temporarily unavailable. Please try again later.';
     case 'offline':
-      return 'The AI coach needs a connection.';
+      return 'The training assistant needs a connection.';
     case 'disabled':
-      return 'The AI coach is turned off.';
+      return 'The training assistant is turned off.';
   }
 }
 
@@ -152,24 +152,24 @@ function AiSection() {
   const st = status.data?.st;
   return (
     <section aria-labelledby="hub-ai">
-      <SectionTitle id="hub-ai">AI coach</SectionTitle>
+      <SectionTitle id="hub-ai">Training assistant</SectionTitle>
       <Card className="p-4 flex flex-col gap-3">
         <div className="flex items-start gap-3">
           <span className="size-10 rounded-xl bg-surface-3 text-info flex items-center justify-center shrink-0">
             <Bot className="size-5" aria-hidden />
           </span>
           <div className="min-w-0">
-            <p className="font-semibold">{enabled ? (paused ? 'AI coach is paused' : 'Your AI coach') : 'Start with an AI coach'}</p>
+            <p className="font-semibold">{enabled ? (paused ? 'The training assistant is paused' : 'Your training assistant') : 'Start with the training assistant'}</p>
             <p className="text-sm text-muted">
               Get suggestions and answers based on the records you choose to share. AI messages are always labelled, and nothing changes in your plan unless you accept it.
             </p>
           </div>
         </div>
         {status.loading ? (
-          <Spinner label="Checking the AI coach" />
+          <Spinner label="Checking the training assistant" />
         ) : status.error || !st ? (
           <Notice>
-            The AI coach isn’t available right now.{' '}
+            The training assistant isn’t available right now.{' '}
             <button type="button" className="text-accent font-medium min-h-11 px-1" onClick={status.reload}>
               Check again
             </button>
@@ -177,14 +177,14 @@ function AiSection() {
         ) : st.available ? (
           <Link to={enabled ? '/coaching/ai' : '/coaching/ai/setup'} className={enabled ? secondaryLink : primaryLink}>
             <Bot className="size-4" aria-hidden />
-            {enabled ? 'Open AI coach' : 'Start with an AI coach'}
+            {enabled ? 'Open training assistant' : 'Start with the training assistant'}
           </Link>
         ) : (
           <>
             <Notice>{aiUnavailableText(st.reason)}</Notice>
             {enabled && (
               <Link to="/coaching/ai/settings" className={secondaryLink}>
-                AI coach settings
+                training assistant settings
               </Link>
             )}
           </>
@@ -215,19 +215,19 @@ function ForCoachesSection({ profile, rels }: { profile: Loaded<CoachProfile | n
                 <UserRound className="size-5" aria-hidden />
               </span>
               <div>
-                <p className="font-semibold">Coach on LiftCircle</p>
-                <p className="text-sm text-muted">Apply with your profile and experience. After review, approved coaches can list themselves and take on clients — using this same account.</p>
+                <p className="font-semibold">Coach on Hard Earned</p>
+                <p className="text-sm text-muted">Apply with your profile and experience. After review, approved coaches can list themselves and take on clients, using this same account.</p>
               </div>
             </div>
             <Link to="/coaching/apply" className={secondaryLink}>
-              Become a coach
+              Apply to be listed
             </Link>
           </>
         ) : p.status === 'approved' ? (
           <>
             <div className="flex items-center justify-between gap-2">
               <p className="font-semibold">{p.displayName}</p>
-              {p.suspended ? <Badge tone="danger">Suspended</Badge> : <Badge tone="accent">Approved coach</Badge>}
+              {p.suspended ? <Badge tone="danger">Suspended</Badge> : <Badge tone="accent">Listed coach</Badge>}
             </div>
             {p.suspended ? (
               <Notice tone="danger">Your coach account is suspended{p.suspendedReason ? `: ${p.suspendedReason}` : '.'} Your listing is hidden and coaching tools are unavailable.</Notice>
@@ -259,7 +259,7 @@ function ForCoachesSection({ profile, rels }: { profile: Loaded<CoachProfile | n
               {!p.suspended && (
                 <Link to="/coaching/dashboard" className={`${primaryLink} flex-1`}>
                   <ClipboardList className="size-4" aria-hidden />
-                  Coach dashboard
+                  Your coaching workspace
                 </Link>
               )}
               <Link to="/coaching/apply" className={`${secondaryLink} flex-1`}>
@@ -277,7 +277,7 @@ function ForCoachesSection({ profile, rels }: { profile: Loaded<CoachProfile | n
               {p.status === 'draft'
                 ? 'Finish your profile and submit it for review when you’re ready.'
                 : p.status === 'submitted'
-                  ? 'Thanks — your application is with our reviewers. You’ll get a notification when it’s reviewed.'
+                  ? 'Application received. You’ll see its status here, and get a notification when it’s reviewed.'
                   : p.status === 'changes_requested'
                     ? 'Reviewers asked for a few changes. Update your application and resubmit.'
                     : 'Your application wasn’t approved. You can read the reason, update it and apply again.'}

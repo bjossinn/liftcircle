@@ -47,7 +47,7 @@ describe('backup export/import', () => {
 
   it('rejects files that are not backups or from a newer version', () => {
     expect(() => parseBackup('nope')).toThrow(/valid JSON/);
-    expect(() => parseBackup('{"a":1}')).toThrow(/LiftCircle backup/);
+    expect(() => parseBackup('{"a":1}')).toThrow(/Hard Earned backup/);
     expect(() => parseBackup(JSON.stringify({ format: 'liftcircle-backup', version: 99, exportedAt: 'x', records: {} }))).toThrow(/newer version/);
   });
 

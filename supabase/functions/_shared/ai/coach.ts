@@ -130,14 +130,14 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   if (text.length > MAX_TEXT) return err(400, 'bad_request', `Messages can be at most ${MAX_TEXT} characters.`);
 
   const prov = resolveProvider(deps.env);
-  if (!prov) return err(503, 'ai_unavailable', 'The AI coach is not configured on this server.', { reason: 'not_configured' });
+  if (!prov) return err(503, 'ai_unavailable', 'The training assistant is not configured on this server.', { reason: 'not_configured' });
 
   const settings = await deps.db.getSettings(uid);
-  if (!settings?.enabled) return err(409, 'ai_disabled', 'The AI coach is turned off. Turn it on in AI coach settings.', { reason: 'disabled' });
-  if (settings.paused) return err(409, 'ai_paused', 'The AI coach is paused. Resume it in AI coach settings.', { reason: 'disabled' });
+  if (!settings?.enabled) return err(409, 'ai_disabled', 'The training assistant is turned off. Turn it on in training assistant settings.', { reason: 'disabled' });
+  if (settings.paused) return err(409, 'ai_paused', 'The training assistant is paused. Resume it in training assistant settings.', { reason: 'disabled' });
   // The user agreed to send data to one specific provider; a provider switch on the server needs a fresh agreement.
   if (consentedProvider(settings) !== prov.provider)
-    return err(409, 'consent_required', `The AI coach now uses ${PROVIDER_NAMES[prov.provider]}. Review what’s sent and agree again in AI coach setup.`, {
+    return err(409, 'consent_required', `The training assistant now uses ${PROVIDER_NAMES[prov.provider]}. Review what’s sent and agree again in training assistant setup.`, {
       reason: 'consent_required',
       provider: prov.provider,
     });
@@ -151,7 +151,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   } catch (e) {
     if ((e as { code?: string })?.code === 'PT429') {
       const usage = await usageFor(deps, uid).catch(() => null);
-      return err(429, 'rate_limited', (e as Error).message || 'You’ve reached today’s AI coach limit.', { reason: 'rate_limited', usage });
+      return err(429, 'rate_limited', (e as Error).message || 'You’ve reached today’s training assistant limit.', { reason: 'rate_limited', usage });
     }
     throw e;
   }

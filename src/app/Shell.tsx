@@ -57,7 +57,7 @@ export function Shell() {
       {!online && (
         <div role="status" className="flex items-center justify-center gap-2 bg-surface-2 text-muted text-xs py-1.5">
           <WifiOff className="size-3.5" aria-hidden />
-          {health.storage === 'unavailable' || health.storage === 'quota' ? 'Offline' : 'Offline — workouts still save on this device'}
+          {health.storage === 'unavailable' || health.storage === 'quota' ? 'Offline' : 'Offline: workouts still save on this device'}
         </div>
       )}
       <SyncRunner />
@@ -105,9 +105,9 @@ function TabBar() {
               {({ isActive }) => (
                 <>
                   <span className={clsx('relative flex items-center justify-center h-7 w-12 rounded-full transition-colors', isActive && 'bg-accent-soft')}>
-                    {/* Remounts when the tab becomes active, so the icon bounces once (styles.css → .tab-bounce). */}
+                    {/* Remounts when the tab becomes active, so the indicator fades in (styles.css → .tab-bounce). */}
                     <t.icon key={isActive ? 'on' : 'off'} className={clsx('size-[22px]', isActive && 'tab-bounce')} aria-hidden />
-                    {t.to === '/coaching' && coachingUnread > 0 && <span className="absolute top-0 right-2 size-2 rounded-full bg-accent" aria-hidden />}
+                    {t.to === '/coaching' && coachingUnread > 0 && <span className="absolute top-0 right-2 size-2 rounded-full bg-ember" aria-hidden />}
                   </span>
                   {t.label}
                   {t.to === '/coaching' && coachingUnread > 0 && <span className="sr-only">, {coachingUnread} unread</span>}
@@ -138,7 +138,7 @@ function ResumeBar() {
     <div className="fixed inset-x-0 bottom-[calc(57px+env(safe-area-inset-bottom))] z-40 px-3 pb-2">
       <button
         onClick={() => nav(`/train/session/${active.id}`)}
-        className="mx-auto max-w-2xl w-full flex items-center gap-3 rounded-2xl bg-accent text-accent-ink px-4 min-h-14 shadow-lg"
+        className="mx-auto max-w-2xl w-full flex items-center gap-3 rounded-xl ember-fill px-4 min-h-14 shadow-lg"
       >
         <Play className="size-5" aria-hidden />
         <span className="font-semibold flex-1 text-left truncate">Resume workout · {active.name}</span>

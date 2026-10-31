@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * AI coach UI (mocked aiApi / coachingApi; real Dexie via fake-indexeddb).
+ * training assistant UI (mocked aiApi / coachingApi; real Dexie via fake-indexeddb).
  * These are UI-level tests only — no live AI provider is involved.
  *
  * @testing-library/react is installed but its peer @testing-library/dom is not (and we can't install
@@ -271,9 +271,9 @@ describe('AI chat', () => {
   it('shows a truthful not-configured state with no way to send', async () => {
     api.status.mockResolvedValue({ available: false, reason: 'not_configured' });
     renderAt('/coaching/ai', createElement(AiChatPage));
-    expect(await screen.findByText('AI coach isn’t set up on this server yet')).toBeTruthy();
+    expect(await screen.findByText('The training assistant isn’t set up on this server yet')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
-    expect(screen.queryByLabelText('Message the AI coach')).toBeNull();
+    expect(screen.queryByLabelText('Message the training assistant')).toBeNull();
     expect(api.history).not.toHaveBeenCalled();
   });
 
@@ -281,7 +281,7 @@ describe('AI chat', () => {
     api.status.mockRejectedValue(new Error('AI backend not implemented yet'));
     api.getSettings.mockRejectedValue(new Error('AI backend not implemented yet'));
     renderAt('/coaching/ai', createElement(AiChatPage));
-    expect(await screen.findByText('AI coach isn’t set up on this server yet')).toBeTruthy();
+    expect(await screen.findByText('The training assistant isn’t set up on this server yet')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
   });
 
@@ -306,7 +306,7 @@ describe('AI chat', () => {
       .mockRejectedValueOnce(Object.assign(new Error('Server hiccup'), { code: 'PGRST500', status: 500 }))
       .mockResolvedValueOnce({ reply: { id: 'r1', role: 'assistant', content: 'Do two full-body sessions.', createdAt: '2026-10-28T10:00:01Z' }, proposal: null });
     renderAt('/coaching/ai', createElement(AiChatPage));
-    const box = await screen.findByLabelText('Message the AI coach');
+    const box = await screen.findByLabelText('Message the training assistant');
     await waitFor(() => expect((box as HTMLTextAreaElement).disabled).toBe(false));
     fireEvent.change(box, { target: { value: 'I can only train twice this week' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
@@ -331,16 +331,16 @@ describe('AI chat', () => {
     ]);
     renderAt('/coaching/ai', createElement(AiChatPage));
     await screen.findByText('You completed 5 of 6 planned sessions.');
-    const ai = screen.getAllByRole('article', { name: 'AI coach message' });
+    const ai = screen.getAllByRole('article', { name: 'Training assistant message' });
     expect(ai).toHaveLength(2);
     for (const m of ai) {
-      expect(within(m).getByText('AI coach')).toBeTruthy();
+      expect(within(m).getByText('Training assistant')).toBeTruthy();
       expect(within(m).getByText('AI')).toBeTruthy();
       expect(within(m).getByText(/AI suggestion/)).toBeTruthy();
     }
     expect(within(ai[0]).getByText('Based on:')).toBeTruthy();
     expect(within(ai[0]).getByText('last 4 workouts')).toBeTruthy();
-    const link = within(ai[0]).getByRole('link', { name: /Suggested plan change — review/ });
+    const link = within(ai[0]).getByRole('link', { name: /Suggested plan change: review/ });
     expect(link.getAttribute('href')).toBe('/coaching/ai/proposals?id=prop-9');
     // The user's own message is not labelled as AI.
     expect(screen.getByText('Review my last two weeks').closest('article')).toBeNull();
@@ -427,7 +427,7 @@ describe('AI data access', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
     fireEvent.click(await screen.findByRole('switch', { name: 'Nutrition' }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    const enable = (await screen.findByRole('button', { name: /Turn on AI coach/ })) as HTMLButtonElement;
+    const enable = (await screen.findByRole('button', { name: /Turn on training assistant/ })) as HTMLButtonElement;
     expect(enable.disabled).toBe(true);
     fireEvent.click(screen.getByRole('checkbox'));
     expect(enable.disabled).toBe(false);
@@ -477,10 +477,10 @@ describe('AI chat v2 (MOCKED aiApi): greeting, Why this?, Apply to this week', (
     const p = await saveRecord('programs', threeDayPlan(), db);
     await saveRecord('sessions', completed(p, 'A', 'Full body A', '2026-10-26'), db);
     renderAt('/coaching/ai', createElement(AiChatPage));
-    const w = await screen.findByRole('article', { name: 'AI coach welcome' });
-    expect(within(w).getByText('Good afternoon!')).toBeTruthy(); // 12:00 UTC, no display name
+    const w = await screen.findByRole('article', { name: 'Training assistant welcome' });
+    expect(within(w).getByText('Good afternoon.')).toBeTruthy(); // 12:00 UTC, no display name
     expect(within(w).getByText('Full body B today, ready to go?')).toBeTruthy();
-    await waitFor(() => expect(within(w).getByText(/You’re on “Full body 3x” — 3 sessions a week \(Mon, Wed, Fri\)/)).toBeTruthy());
+    await waitFor(() => expect(within(w).getByText(/You’re on “Full body 3x”: 3 sessions a week \(Mon, Wed, Fri\)/)).toBeTruthy());
     expect(within(w).getByText(/Goal: build muscle/)).toBeTruthy();
     expect(within(w).getByText('This week: 1 of 3 done (Full body A, Mon). Next: Full body B, today.')).toBeTruthy();
     expect(api.send).not.toHaveBeenCalled();
@@ -492,14 +492,14 @@ describe('AI chat v2 (MOCKED aiApi): greeting, Why this?, Apply to this week', (
     await saveRecord('programs', threeDayPlan(), db);
     api.send.mockResolvedValueOnce({ reply: { id: 'r-chip', role: 'assistant', content: 'Totally normal. Let’s do a lighter Full body B.', createdAt: '2026-10-28T12:00:01Z' }, proposal: null });
     renderAt('/coaching/ai', createElement(AiChatPage));
-    await screen.findByRole('article', { name: 'AI coach welcome' });
+    await screen.findByRole('article', { name: 'Training assistant welcome' });
     for (const c of ['Feeling great 💪', 'Bit tired', 'Sore', 'Short on time', 'Want to skip today']) await screen.findByRole('button', { name: c });
     expect(api.send).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Bit tired' }));
     expect(await screen.findByText('Totally normal. Let’s do a lighter Full body B.')).toBeTruthy();
     expect(api.send).toHaveBeenCalledTimes(1);
     expect((api.send.mock.calls[0][0] as { text: string; mode: string })).toMatchObject({ text: 'Bit tired', mode: 'chat' });
-    expect(screen.queryByRole('article', { name: 'AI coach welcome' })).toBeNull();
+    expect(screen.queryByRole('article', { name: 'Training assistant welcome' })).toBeNull();
   });
 
   it('activation: setup → chat opens with the welcome immediately', async () => {
@@ -515,8 +515,8 @@ describe('AI chat v2 (MOCKED aiApi): greeting, Why this?, Apply to this week', (
     fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
     fireEvent.click(await screen.findByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: /Turn on AI coach/ }));
-    const w = await screen.findByRole('article', { name: 'AI coach welcome' });
+    fireEvent.click(screen.getByRole('button', { name: /Turn on training assistant/ }));
+    const w = await screen.findByRole('article', { name: 'Training assistant welcome' });
     await waitFor(() => expect(within(w).getByText(/Full body 3x/)).toBeTruthy());
     expect(api.send).not.toHaveBeenCalled();
   });
@@ -525,10 +525,10 @@ describe('AI chat v2 (MOCKED aiApi): greeting, Why this?, Apply to this week', (
     await saveRecord('programs', threeDayPlan(), h.db as LiftDb);
     renderAt('/coaching/ai', createElement(AiChatPage));
     renderAt('/coaching/ai', createElement(AiChatPage)); // second tab
-    await waitFor(() => expect(screen.getAllByRole('article', { name: 'AI coach welcome' })).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole('article', { name: 'Training assistant welcome' })).toHaveLength(2));
     cleanup(); // "refresh"
     renderAt('/coaching/ai', createElement(AiChatPage));
-    await waitFor(() => expect(screen.getAllByRole('article', { name: 'AI coach welcome' })).toHaveLength(1));
+    await waitFor(() => expect(screen.getAllByRole('article', { name: 'Training assistant welcome' })).toHaveLength(1));
     expect(api.send).not.toHaveBeenCalled();
     expect(api.saveSettings).not.toHaveBeenCalled();
     expect(await kvGet(AI_PENDING_KEY, h.db as LiftDb)).toBeFalsy();
@@ -540,7 +540,7 @@ describe('AI chat v2 (MOCKED aiApi): greeting, Why this?, Apply to this week', (
     await saveRecord('sessions', completed(p, 'A', 'Full body A', '2026-10-26'), db);
     api.getSettings.mockResolvedValue({ ...SETTINGS_ON, scopes: { profile: true, training: false, measurements: false, nutrition: false } });
     renderAt('/coaching/ai', createElement(AiChatPage));
-    const w = await screen.findByRole('article', { name: 'AI coach welcome' });
+    const w = await screen.findByRole('article', { name: 'Training assistant welcome' });
     expect(within(w).getByText(/Training isn’t shared with me, so I can’t see your plan or workouts/)).toBeTruthy();
     expect(w.textContent).not.toMatch(/Full body|This week|looked at|reviewed/);
   });
@@ -552,7 +552,7 @@ describe('AI chat v2 (MOCKED aiApi): greeting, Why this?, Apply to this week', (
     ]);
     renderAt('/coaching/ai', createElement(AiChatPage));
     await screen.findByText('Do Full body B tomorrow.');
-    expect(screen.queryByRole('article', { name: 'AI coach welcome' })).toBeNull();
+    expect(screen.queryByRole('article', { name: 'Training assistant welcome' })).toBeNull();
   });
 
   it('"Why this?" is collapsed by default', async () => {

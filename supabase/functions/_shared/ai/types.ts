@@ -1,5 +1,5 @@
 /**
- * Types for the AI coach server modules (pure; no Deno / npm imports).
+ * Types for the training assistant server modules (pure; no Deno / npm imports).
  * Payload shapes are the subsets of src/domain/types.ts that the server reads from the private tables'
  * `payload` column. Everything is optional because payloads are client-written and untrusted.
  */
@@ -293,7 +293,7 @@ export interface RecordExchangeInput {
 }
 
 /**
- * Data access for the AI coach. EVERY user-scoped method takes the verified user id as its first
+ * Data access for the training assistant. EVERY user-scoped method takes the verified user id as its first
  * argument and must filter by it (the Supabase implementation also uses the user's JWT, so RLS applies).
  * There are deliberately no methods for coach messages, coach notes/feedback, social data or other users.
  */

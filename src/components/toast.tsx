@@ -84,7 +84,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <Bot className="size-4" />
               </span>
               <span className="flex-1 py-1.5 pr-2">
-                <span className="sr-only">Coach: </span>
+                <span className="sr-only">Training assistant: </span>
                 {t.message}
               </span>
               {t.action && (

@@ -194,7 +194,7 @@ describe('privacy information when creating an account', () => {
     expect(details).not.toBeNull();
     const t = details!.textContent ?? '';
     expect(t).toMatch(/coach you approve/);
-    expect(t).toMatch(/AI coach after you agree/);
+    expect(t).toMatch(/training assistant after you agree/);
     expect(t).not.toMatch(/GDPR|HIPAA|compliant|certified|encrypted|always private/i);
     const link = details!.querySelector('a[href="/settings/data"]');
     expect(link).not.toBeNull();
