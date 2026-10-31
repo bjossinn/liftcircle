@@ -15,12 +15,12 @@
  */
 import type {
   Allergen, BudgetPref, DietPrefs, DietTag, ID, ISODate, Ingredient, Macros, MealPlanContent, MealPlanExtra, MealPlanItem, MealSlot,
-  NutritionTargetsLike, Recipe,
+  NutritionTargetsLike, ProteinGroup, Recipe,
 } from './types.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { catalog } from './catalog.ts';
 // @ts-ignore see above
-import { addMacros, ALLERGEN_LABELS, DIET_TAG_LABELS, displayMacro, formatGrams, friendlyAmount, ingredientAllowed, macrosForGrams, MEAL_LABELS, recipeAllergens, recipeCostTier, recipeDietTags, recipeMatches, recipeMinutes, recipeNutrition, resolveIngredients, roundMacros, satisfiesTag, ZERO_MACROS, type IngredientIndex, type Swap, } from './recipes.ts';
+import { addMacros, ALLERGEN_LABELS, ingredientFitsProteinPrefs, likedBonus, normalizeProteinPrefs, proteinFitSwaps, proteinListText, recipeProteinGroups, DIET_TAG_LABELS, displayMacro, formatGrams, friendlyAmount, ingredientAllowed, macrosForGrams, MEAL_LABELS, recipeAllergens, recipeCostTier, recipeDietTags, recipeMatches, recipeMinutes, recipeNutrition, resolveIngredients, roundMacros, satisfiesTag, ZERO_MACROS, type IngredientIndex, type Swap, } from './recipes.ts';
 
 const round = (n: number, decimals = 2) => {
   const f = 10 ** decimals;
@@ -47,6 +47,10 @@ export interface PlanPrefs {
   proteinTarget?: number;
   /** Rotates choices for "regenerate" while staying deterministic. */
   variant?: number;
+  /** Proteins to prefer (ranked higher; others still appear for variety). */
+  proteinLiked?: ProteinGroup[];
+  /** Proteins marked "not for me": never used in meals, swaps or protein sides. */
+  proteinExcluded?: ProteinGroup[];
 }
 
 export interface PlanContext {
@@ -75,7 +79,25 @@ export function planPrefsFrom(diet: DietPrefs, targets: NutritionTargetsLike, nu
     kcalTarget: energy,
     proteinTarget: withTargets && targets.proteinG && targets.proteinG > 0 ? targets.proteinG : undefined,
     variant,
+    ...proteinPrefsFields(diet),
   };
+}
+
+/** Protein preference fields for PlanPrefs; nothing at all when the user has none (old data plans exactly as before). */
+export function proteinPrefsFields(diet: Pick<DietPrefs, 'proteinPrefs'>): Pick<PlanPrefs, 'proteinLiked' | 'proteinExcluded'> {
+  const p = normalizeProteinPrefs(diet.proteinPrefs);
+  return { ...(p.liked.length ? { proteinLiked: p.liked } : {}), ...(p.excluded.length ? { proteinExcluded: p.excluded } : {}) };
+}
+
+/** The swaps a planned recipe needs to fit the user's protein exclusions ([] when none are needed). */
+export function planSwapsFor(recipe: Recipe, prefs: PlanPrefs, byId: IngredientIndex = catalog().byId): Swap[] {
+  const allowed = (ing: Ingredient) => ingredientAllowed(ing, { tags: prefs.tags, allergens: prefs.allergens, disliked: prefs.dislikedIngredientIds });
+  return proteinFitSwaps(recipe, prefs.proteinExcluded, allowed, byId) ?? [];
+}
+/** A plan item's recipe fields, with the protein swaps only when there are any (keeps the saved shape unchanged otherwise). */
+function withRecipe(recipe: Recipe, prefs: PlanPrefs, byId: IngredientIndex): { recipeId: ID; swaps?: Swap[] } {
+  const swaps = planSwapsFor(recipe, prefs, byId);
+  return swaps.length ? { recipeId: recipe.id, swaps } : { recipeId: recipe.id };
 }
 
 /** Meal slots for a number of meals per day (1–6). */
@@ -105,6 +127,7 @@ function score(recipe: Recipe, prefs: PlanPrefs, byId: IngredientIndex): number 
   const cost = recipeCostTier(recipe, byId);
   if (prefs.budget === 'low') s -= (cost - 1) * 0.6;
   else if (prefs.budget === 'medium') s -= Math.max(0, cost - 2) * 0.6;
+  s += likedBonus(recipe, prefs.proteinLiked, byId);
   return s;
 }
 
@@ -112,7 +135,7 @@ function score(recipe: Recipe, prefs: PlanPrefs, byId: IngredientIndex): number 
 export function rankedCandidates(slot: MealSlot, prefs: PlanPrefs, ctx: PlanContext = {}): { recipes: Recipe[]; relaxedTime: boolean } {
   const recipes = ctx.recipes ?? catalog().recipes;
   const byId = ctx.byId ?? catalog().byId;
-  const base = { meal: slot, tags: prefs.tags, excludeAllergens: prefs.allergens, dislikedIngredientIds: prefs.dislikedIngredientIds };
+  const base = { meal: slot, tags: prefs.tags, excludeAllergens: prefs.allergens, dislikedIngredientIds: prefs.dislikedIngredientIds, excludeProteinGroups: prefs.proteinExcluded };
   let list = recipes.filter((r) => recipeMatches(r, { ...base, maxMinutes: prefs.maxCookMinutes }, byId));
   let relaxedTime = false;
   if (list.length === 0) {
@@ -174,20 +197,22 @@ const ADDON_BY_ID = new Map(PROTEIN_ADDONS.map((a) => [a.ingredientId, a]));
 
 function addOnAllowed(ing: Ingredient, prefs: PlanPrefs): boolean {
   if (!ingredientAllowed(ing, { tags: prefs.tags, allergens: prefs.allergens, disliked: prefs.dislikedIngredientIds })) return false;
+  if (!ingredientFitsProteinPrefs(ing, prefs.proteinExcluded)) return false;
   if (prefs.budget === 'low' && ing.costTier > 2) return false;
   return true;
 }
 
-/** Protein sides allowed for a slot under the user's allergens, diet, dislikes and budget; most protein per kcal first. */
+/** Protein sides allowed for a slot under the user's allergens, diet, dislikes, protein choices and budget; liked proteins first, then most protein per kcal. */
 export function allowedAddOns(slot: MealSlot, prefs: PlanPrefs, ctx: PlanContext = {}): ProteinAddOn[] {
   const byId = ctx.byId ?? catalog().byId;
   return PROTEIN_ADDONS.filter((a) => {
     const ing = byId.get(a.ingredientId);
     return !!ing && a.slots.includes(slot) && addOnAllowed(ing, prefs);
   }).sort((a, b) => {
-    const ia = byId.get(a.ingredientId)!.per100g;
-    const ib = byId.get(b.ingredientId)!.per100g;
-    return ib.protein / ib.kcal - ia.protein / ia.kcal || a.ingredientId.localeCompare(b.ingredientId);
+    const ia = byId.get(a.ingredientId)!;
+    const ib = byId.get(b.ingredientId)!;
+    const liked = (i: Ingredient) => (i.proteinGroup && prefs.proteinLiked?.includes(i.proteinGroup) ? 1 : 0);
+    return liked(ib) - liked(ia) || ib.per100g.protein / ib.per100g.kcal - ia.per100g.protein / ia.per100g.kcal || a.ingredientId.localeCompare(b.ingredientId);
   });
 }
 
@@ -331,7 +356,7 @@ export function balanceDay(day: PlanDay, prefs: PlanPrefs, opts: BalanceOptions 
         for (const r of poolFor(it.slot)) {
           if (used.has(r.id)) continue;
           if (exMin > 0 && recipeMinutes(r) + exMin > prefs.maxCookMinutes) continue;
-          moves.push({ d: withItem(cur, idx, { ...it, recipeId: r.id, swaps: [] }), penalty: 2.5 + 0.75 * (usage.get(r.id) ?? 0) });
+          moves.push({ d: withItem(cur, idx, { ...it, swaps: [], ...withRecipe(r, prefs, byId) }), penalty: 2.5 + 0.75 * (usage.get(r.id) ?? 0) });
         }
       }
     });
@@ -389,7 +414,7 @@ export function selectMeals(weekStart: ISODate, prefs: PlanPrefs, ctx: PlanConte
       for (let tries = 0; tries < pool.length && used.has(pool[i].id); tries++) i = (i + 1) % pool.length;
       const recipe = pool[i];
       used.add(recipe.id);
-      items.push({ id: `${date}:${slot}:${idx}`, slot, recipeId: recipe.id, servings: 1 });
+      items.push({ id: `${date}:${slot}:${idx}`, slot, ...withRecipe(recipe, prefs, byId), servings: 1 });
     });
     if (prefs.kcalTarget && items.length) {
       const kcal = items.reduce((s, it) => s + recipeNutrition(recipesById.get(it.recipeId)!, { servings: 1, byId }).total.kcal, 0);
@@ -429,9 +454,15 @@ export function planWarnings(plan: PlanDraft, prefs: PlanPrefs, ctx: PlanContext
   const byId = ctx.byId ?? catalog().byId;
   const recipesById = new Map((ctx.recipes ?? catalog().recipes).map((r) => [r.id, r]));
   const out: string[] = [];
+  const excluded = prefs.proteinExcluded ?? [];
   for (const slot of new Set(slotsForMeals(prefs.mealsPerDay))) {
     const { recipes, relaxedTime } = rankedCandidates(slot, prefs, ctx);
-    if (recipes.length === 0) out.push(`No ${MEAL_LABELS[slot].toLowerCase()} recipes match your diet and allergy settings, so that meal is left empty.`);
+    if (recipes.length === 0)
+      out.push(excluded.length
+        ? `No ${MEAL_LABELS[slot].toLowerCase()} recipes match your diet, allergy and protein choices, so that meal is left empty. Allow one more protein or a longer cook time?`
+        : `No ${MEAL_LABELS[slot].toLowerCase()} recipes match your diet and allergy settings, so that meal is left empty.`);
+    else if (excluded.length && recipes.length < FEW_RECIPES)
+      out.push(`Only ${recipes.length} ${recipes.length === 1 ? MEAL_LABELS[slot].toLowerCase() : MEAL_PLURALS[slot]} fit${recipes.length === 1 ? 's' : ''} your choices, so some repeat this week: allow one more protein or a longer cook time?`);
     else if (relaxedTime) out.push(`No ${MEAL_LABELS[slot].toLowerCase()} recipes fit within ${prefs.maxCookMinutes} minutes; some take longer.`);
   }
   for (const day of plan.days) {
@@ -459,6 +490,15 @@ export function planWarnings(plan: PlanDraft, prefs: PlanPrefs, ctx: PlanContext
       if (notMet.length) problems.push(`isn't ${notMet.map((t) => DIET_TAG_LABELS[t].toLowerCase()).join(' or ')}`);
       const ids = [...resolveIngredients(r, swaps, byId).map((x) => x.ingredientId), ...(it.extras ?? []).map((e) => e.ingredientId)];
       if (prefs.dislikedIngredientIds.some((d) => ids.includes(d))) problems.push('includes an ingredient you skip');
+      if (excluded.length) {
+        const groups = new Set(recipeProteinGroups(r, swaps, byId));
+        for (const e of it.extras ?? []) {
+          const g = byId.get(e.ingredientId)?.proteinGroup;
+          if (g) groups.add(g);
+        }
+        const hitG = excluded.filter((g) => groups.has(g));
+        if (hitG.length) problems.push(`includes ${proteinListText(hitG)}, which you marked Not for me`);
+      }
       if (problems.length) out.push(`${r.name} on ${weekdayName(day.date)} ${problems.join(' and ')}. Swap it or edit the meal.`);
     }
   }
@@ -518,6 +558,9 @@ function describeChanges(before: PlanDay, after: PlanDay, recipesById: Map<ID, R
 }
 
 const COOK_TIME_OPTIONS = [15, 20, 30, 45, 60, 90];
+/** With protein exclusions, fewer matching recipes than this for a meal means visible repeats, so the status says so. */
+export const FEW_RECIPES = 5;
+const MEAL_PLURALS: Record<MealSlot, string> = { breakfast: 'breakfasts', lunch: 'lunches', dinner: 'dinners', snack: 'snacks' };
 
 /** Status of one planned day against the current objective, with the gap and practical changes. Pure and deterministic. */
 export function planDayStatus(day: PlanDay, prefs: PlanPrefs, ctx: PlanContext & { dayIndex?: number } = {}): PlanDayStatus {
@@ -570,7 +613,7 @@ export function planDayStatus(day: PlanDay, prefs: PlanPrefs, ctx: PlanContext &
       const cur = planItemNutrition(it, recipesById, byId).protein;
       for (const r of rankedCandidates(it.slot, prefs, ctx).recipes) {
         if (used.has(r.id)) continue;
-        const gain = planItemNutrition({ ...it, recipeId: r.id, swaps: [] }, recipesById, byId).protein - cur;
+        const gain = planItemNutrition({ ...it, swaps: [], ...withRecipe(r, prefs, byId) }, recipesById, byId).protein - cur;
         if (gain >= 3) swaps.push({ text: `Swap ${recipesById.get(it.recipeId)?.name ?? 'this meal'} for ${r.name} (+${displayMacro(gain, 'protein')} g protein).`, gain });
       }
     }
@@ -649,7 +692,7 @@ export function swapMeal<P extends PlanDraft>(plan: P, date: ISODate, itemId: ID
         }
       }
       if (!next) return day;
-      return { ...day, items: day.items.map((i) => (i.id === itemId ? { ...i, recipeId: next!.id, swaps: [] } : i)) };
+      return { ...day, items: day.items.map((i) => (i.id === itemId ? { ...i, swaps: [], ...withRecipe(next!, prefs, ctx.byId ?? catalog().byId) } : i)) };
     }),
   };
 }

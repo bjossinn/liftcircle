@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, History, Minus, Pencil, Plus, RefreshCw, Scale, Settings2, ShoppingCart, Shuffle, Trash2 } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Drumstick, History, Minus, Pencil, Plus, RefreshCw, Scale, Settings2, ShoppingCart, Shuffle, Trash2 } from 'lucide-react';
 import {
   Button, Card, ChipGroup, ConfirmDialog, EmptyState, IconButton, ListRow, Notice, NumberInput, Page, SectionTitle, Segmented, Select, Sheet, Spinner,
 } from '@/components/ui';
@@ -13,7 +13,7 @@ import type { Allergen, BudgetPref, DietPrefs, DietTag, ID, MealPlan, MealPlanEx
 import { INGREDIENTS, INGREDIENTS_BY_ID } from '@/data/ingredients';
 import { RECIPES, RECIPES_BY_ID } from '@/data/recipes';
 import {
-  ALLERGEN_LABELS, DIET_TAG_LABELS, MEAL_LABELS, MEAL_ORDER, displayMacro, recipeMatches, recipeMinutes, substitutesFor,
+  ALLERGEN_LABELS, DIET_TAG_LABELS, MEAL_LABELS, MEAL_ORDER, allowedSubstitutes, displayMacro, recipeMatches, recipeMinutes,
 } from '@/domain/nutrition/recipes';
 import {
   addPlanItem, allowedAddOns, balancePlan, extraText, generateMealPlan, planItemNutrition, planStatus, planWarnings, PORTION_STEP, PROTEIN_ADDONS,
@@ -21,6 +21,7 @@ import {
 } from '@/domain/nutrition/mealplan';
 import { AllergenNote, prefsFromAccount, useWeekPlan } from './shared';
 import { NoMealPlanArt } from '@/components/illustrations';
+import { ProteinPicker, ProteinsForm, proteinPrefsSummary } from './ProteinPicker';
 
 const VARIANT_KEY = 'nutrition:planVariant';
 
@@ -49,6 +50,7 @@ export default function MealPlanPage() {
   const [busy, setBusy] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
+  const [proteinsOpen, setProteinsOpen] = useState(false);
   const [editing, setEditing] = useState<{ date: string; item: MealPlanItem } | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
   const prefs = useMemo(() => prefsFromAccount(account), [account]);
@@ -67,12 +69,14 @@ export default function MealPlanPage() {
     }
   }
 
-  async function generate(existing: MealPlan | null) {
+  /** `diet` overrides the saved preferences (used right after saving new protein choices, before the account state updates). */
+  async function generate(existing: MealPlan | null, diet?: DietPrefs) {
     setBusy(true);
     try {
       const variant = ((await kvGet<number>(VARIANT_KEY, db)) ?? 0) + (existing ? 1 : 0);
       await kvSet(VARIANT_KEY, variant, db);
-      const { plan: draft } = generateMealPlan(weekStart, prefsFromAccount(account, variant));
+      const source = diet ? { ...account, profile: { ...account.profile, diet } } : account;
+      const { plan: draft } = generateMealPlan(weekStart, prefsFromAccount(source, variant));
       await saveRecord('meal_plans', existing ? { ...existing, ...draft } : newRecord(draft), db);
       toast.show(existing ? 'New plan generated' : 'Plan ready', { tone: 'success' });
     } catch {
@@ -210,6 +214,9 @@ export default function MealPlanPage() {
                 <Button variant="primary" loading={busy} onClick={() => generate(null)}>
                   Generate a week plan
                 </Button>
+                <Button variant="ghost" icon={<Drumstick className="size-4" />} onClick={() => setProteinsOpen(true)}>
+                  Proteins
+                </Button>
                 <Button variant="ghost" onClick={() => setPrefsOpen(true)}>
                   Adjust preferences
                 </Button>
@@ -247,6 +254,9 @@ export default function MealPlanPage() {
             <Link to={`/nutrition/shopping?week=${weekStart}`} className="flex-1 inline-flex items-center justify-center gap-2 min-h-11 rounded-xl bg-accent text-accent-ink font-semibold px-4">
               <ShoppingCart className="size-4" aria-hidden /> Shopping list
             </Link>
+            <IconButton label="Proteins" className="border border-line" onClick={() => setProteinsOpen(true)}>
+              <Drumstick className="size-5" />
+            </IconButton>
             <Button icon={<RefreshCw className="size-4" />} onClick={() => setConfirmRegen(true)}>
               Regenerate
             </Button>
@@ -310,6 +320,19 @@ export default function MealPlanPage() {
         )}
       </Sheet>
       <PrefsSheet open={prefsOpen} onClose={() => setPrefsOpen(false)} />
+      <Sheet open={proteinsOpen} onClose={() => setProteinsOpen(false)} title="Proteins">
+        {proteinsOpen && (
+          <ProteinsForm
+            hasPlan={!!plan}
+            busy={busy}
+            onRebuild={async (diet) => {
+              await generate(plan ?? null, diet);
+              setProteinsOpen(false);
+            }}
+            onDone={() => setProteinsOpen(false)}
+          />
+        )}
+      </Sheet>
       <Sheet open={historyOpen} onClose={() => setHistoryOpen(false)} title="Past meal plans">
         {historyOpen && (
           <PastPlans
@@ -365,6 +388,7 @@ function PrefsSummary({ diet }: { diet: DietPrefs }) {
     diet.budget === 'low' ? 'budget-friendly' : diet.budget === 'medium' ? 'moderate budget' : null,
     ...diet.tags.map((t) => DIET_TAG_LABELS[t].toLowerCase()),
     diet.allergens.length ? `avoiding ${diet.allergens.map((a) => ALLERGEN_LABELS[a].toLowerCase()).join(', ')}` : null,
+    proteinPrefsSummary(diet.proteinPrefs) || null,
   ].filter(Boolean);
   return <>We'll build seven days from the starter recipes: {bits.join(', ')}.</>;
 }
@@ -400,9 +424,10 @@ function ItemEditor({
   );
   const [sideId, setSideId] = useState<ID>('');
   if (!r) return null;
-  const m = planItemNutrition(item, RECIPES_BY_ID);
-  const swappable = r.ingredients.filter((i) => substitutesFor(r, i.ingredientId).length > 0);
   const swaps = item.swaps ?? [];
+  const m = planItemNutrition(item, RECIPES_BY_ID);
+  const subs = (id: ID) => allowedSubstitutes(r, id, prefs.proteinExcluded);
+  const swappable = r.ingredients.filter((i) => subs(i.ingredientId).length > 0 || swaps.some((s) => s.from === i.ingredientId));
   const extras = item.extras ?? [];
   const setExtras = (next: MealPlanExtra[]) => onChange({ extras: next });
   const chosenSide = sideOptions.some((a) => a.ingredientId === sideId) ? sideId : sideOptions.find((a) => !extras.some((e) => e.ingredientId === a.ingredientId))?.ingredientId ?? '';
@@ -479,7 +504,7 @@ function ItemEditor({
             </Button>
           </div>
         ) : (
-          <p className="text-xs text-muted">No protein sides fit your allergy, diet and budget settings for this meal.</p>
+          <p className="text-xs text-muted">No protein sides fit your allergy, diet, protein and budget settings for this meal.</p>
         )}
       </div>
       {swappable.length > 0 && (
@@ -499,7 +524,7 @@ function ItemEditor({
                 }}
               >
                 <option value={ri.ingredientId}>{INGREDIENTS_BY_ID.get(ri.ingredientId)?.name} (original)</option>
-                {substitutesFor(r, ri.ingredientId).map((a) => (
+                {[...new Set([...subs(ri.ingredientId), ...(cur !== ri.ingredientId ? [cur] : [])])].map((a) => (
                   <option key={a} value={a}>
                     {INGREDIENTS_BY_ID.get(a)?.name}
                   </option>
@@ -532,7 +557,7 @@ function AddMeal({ onAdd }: { onAdd: (slot: MealSlot, recipeId: ID) => void }) {
   const prefs = useMemo(() => prefsFromAccount(account), [account]);
   const options = useMemo(() => {
     const ranked = rankedCandidates(slot, { ...prefs, maxCookMinutes: 999 }).recipes;
-    return ranked.length ? ranked : RECIPES.filter((r) => recipeMatches(r, { excludeAllergens: prefs.allergens, tags: prefs.tags }));
+    return ranked.length ? ranked : RECIPES.filter((r) => recipeMatches(r, { excludeAllergens: prefs.allergens, tags: prefs.tags, excludeProteinGroups: prefs.proteinExcluded }));
   }, [slot, prefs]);
   const [recipeId, setRecipeId] = useState<ID>('');
   const chosen = options.some((o) => o.id === recipeId) ? recipeId : options[0]?.id ?? '';
@@ -540,7 +565,7 @@ function AddMeal({ onAdd }: { onAdd: (slot: MealSlot, recipeId: ID) => void }) {
     <div className="flex flex-col gap-3">
       <Segmented label="Meal" value={slot} onChange={setSlot} options={MEAL_ORDER.map((m) => ({ value: m, label: MEAL_LABELS[m] }))} />
       {options.length === 0 ? (
-        <p className="text-sm text-muted">No recipes match your diet and allergy settings for this meal.</p>
+        <p className="text-sm text-muted">No recipes match your diet, allergy and protein settings for this meal.</p>
       ) : (
         <Select label="Recipe" value={chosen} onChange={(e) => setRecipeId(e.target.value)}>
           {options.map((r) => (
@@ -624,6 +649,12 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
           options={(Object.keys(ALLERGEN_LABELS) as Allergen[]).map((a) => ({ value: a, label: ALLERGEN_LABELS[a] }))}
         />
       </div>
+      <div className="flex flex-col gap-1.5" role="group" aria-labelledby="prefs-proteins">
+        <span id="prefs-proteins" className="text-sm font-medium">
+          Proteins
+        </span>
+        <ProteinPicker value={d.proteinPrefs} onChange={(proteinPrefs) => setD({ ...d, proteinPrefs })} />
+      </div>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="dislike-q" className="text-sm font-medium">
           Ingredients you'd rather skip
@@ -682,3 +713,4 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
     </div>
   );
 }
+

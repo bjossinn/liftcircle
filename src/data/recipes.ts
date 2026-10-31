@@ -4,8 +4,13 @@
  * Nutrition, allergens and diet tags are COMPUTED from ingredients (see src/domain/nutrition/recipes.ts).
  */
 import type { Recipe } from '@/domain/types';
+import { RECIPES_PACK3_MEAT } from './recipes/pack3-meat';
+import { RECIPES_PACK3_FISH } from './recipes/pack3-fish';
+import { RECIPES_PACK3_EGGS_DAIRY } from './recipes/pack3-eggs-dairy';
+import { RECIPES_PACK3_PLANT } from './recipes/pack3-plant';
 
-export const RECIPES: Recipe[] = [
+/** The first 84 recipes (starters + pack 2). Pack 3 (src/data/recipes/) is appended below. */
+const RECIPES_PACK1_2: Recipe[] = [
   /* ================================================================ breakfast */
   {
     id: 'skyr-berry-oat-bowl',
@@ -2019,18 +2024,18 @@ export const RECIPES: Recipe[] = [
     ingredients: [
       { ingredientId: 'cucumber', grams: 120, display: '⅓ cucumber', prep: 'thick slices' },
       { ingredientId: 'smoked-salmon', grams: 60, display: '60 g' },
-      { ingredientId: 'skyr-plain', grams: 40, display: '2½ tbsp' },
+      { ingredientId: 'cottage-cheese', grams: 50, display: '3 tbsp' },
       { ingredientId: 'lemon-juice', grams: 5, display: '1 tsp' },
       { ingredientId: 'spices', grams: 1, display: 'dill & pepper' },
     ],
     steps: [
-      'Mix the skyr with lemon juice, dill and pepper.',
+      'Mix the cottage cheese with lemon juice, dill and pepper.',
       'Put a small spoonful on each cucumber slice.',
       'Top with a folded piece of smoked salmon.',
     ],
     substitutions: [
       { ingredientId: 'smoked-salmon', alternatives: ['shrimp-cooked', 'tuna-canned'] },
-      { ingredientId: 'skyr-plain', alternatives: ['cottage-cheese'] },
+      { ingredientId: 'cottage-cheese', alternatives: ['skyr-plain'] },
     ],
   },
   {
@@ -2185,5 +2190,7 @@ export const RECIPES: Recipe[] = [
     notes: 'Three balls per serving. Keeps a week in the fridge.',
   },
 ];
+
+export const RECIPES: Recipe[] = [...RECIPES_PACK1_2, ...RECIPES_PACK3_MEAT, ...RECIPES_PACK3_FISH, ...RECIPES_PACK3_EGGS_DAIRY, ...RECIPES_PACK3_PLANT];
 
 export const RECIPES_BY_ID = new Map(RECIPES.map((r) => [r.id, r]));

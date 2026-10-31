@@ -11,6 +11,22 @@ export type Allergen =
   | 'milk' | 'egg' | 'fish' | 'shellfish' | 'tree_nuts' | 'peanuts' | 'wheat' | 'gluten' | 'soy' | 'sesame' | 'mustard' | 'celery';
 export type BudgetPref = 'low' | 'medium' | 'any';
 export type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+/**
+ * Protein groups for "proteins I like / not for me" preferences. An ingredient carries at most one. Separate from
+ * allergens: an allergy is a safety filter, a protein preference is taste.
+ */
+export type ProteinGroup =
+  | 'chicken' | 'turkey' | 'beef' | 'pork' | 'lamb'
+  | 'white_fish' | 'oily_fish' | 'tuna' | 'prawns' | 'shellfish'
+  | 'eggs' | 'dairy'
+  | 'tofu_tempeh' | 'beans_lentils' | 'chickpeas'
+  | 'whey' | 'plant_protein';
+
+/** liked = rank and pick these more often; excluded = never use. Missing = no preference. */
+export interface ProteinPrefs {
+  liked: ProteinGroup[];
+  excluded: ProteinGroup[];
+}
 
 export interface DietPrefs {
   tags: DietTag[];
@@ -19,6 +35,8 @@ export interface DietPrefs {
   maxCookMinutes: number;
   budget: BudgetPref;
   mealsPerDay: number;
+  /** Optional; absent on data saved before 0.9.0 (= no preference). */
+  proteinPrefs?: ProteinPrefs;
 }
 
 export interface Macros {
@@ -40,6 +58,8 @@ export interface Ingredient {
   diet: { vegetarian: boolean; vegan: boolean; dairyFree: boolean; glutenFree: boolean; pescatarian: boolean };
   units?: Partial<Record<'piece' | 'cup' | 'tbsp' | 'tsp' | 'slice' | 'can', number>>;
   costTier: 1 | 2 | 3;
+  /** The protein group this ingredient belongs to, if it is a protein food. */
+  proteinGroup?: ProteinGroup;
 }
 
 export interface RecipeIngredient {

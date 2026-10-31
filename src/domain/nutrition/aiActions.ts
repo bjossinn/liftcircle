@@ -13,7 +13,7 @@
 import type { ID, ISODate, MealPlan, MealPlanItem, MealSlot } from '@/domain/types';
 import { RECIPES_BY_ID } from '@/data/recipes';
 import { INGREDIENTS_BY_ID } from '@/data/ingredients';
-import { balanceDay, planStatus, type PlanDay, type PlanDraft, type PlanPrefs, type PlanStatus } from './mealplan';
+import { balanceDay, planStatus, planSwapsFor, type PlanDay, type PlanDraft, type PlanPrefs, type PlanStatus } from './mealplan';
 
 export interface MealPlanSuggestion {
   kind: 'meal_plan';
@@ -93,7 +93,10 @@ export function toRecipeSuggestions(raw: unknown): RecipeSuggestions | null {
 /* ------------------------------------------------------------------ meal plan preview + apply */
 export const aiItemPrefix = (actionId: string) => `ai:${actionId}:`;
 
-/** The suggested days as plan days (item ids tagged), each balanced with the app's own balanceDay. */
+/**
+ * The suggested days as plan days (item ids tagged), each balanced with the app's own balanceDay. Swaps for proteins
+ * marked "not for me" are re-derived from the current settings, so a stored suggestion never brings an excluded one back.
+ */
 export function suggestedDays(s: MealPlanSuggestion, prefs: PlanPrefs): PlanDay[] {
   return s.days.map((d, i) =>
     balanceDay(
@@ -104,6 +107,7 @@ export function suggestedDays(s: MealPlanSuggestion, prefs: PlanPrefs): PlanDay[
           slot: it.slot,
           recipeId: it.recipeId,
           servings: it.servings,
+          ...((sw) => (sw.length ? { swaps: sw } : {}))(planSwapsFor(RECIPES_BY_ID.get(it.recipeId)!, prefs)),
           ...(it.extras?.length ? { extras: it.extras } : {}),
         })),
       },

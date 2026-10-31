@@ -19,6 +19,11 @@ import { RECIPES, RECIPES_BY_ID } from '@/data/recipes';
 import { LiftDb } from '@/db/db';
 import { newRecord, saveRecord } from '@/db/repo';
 import type { DietPrefs, MealPlan, NutritionTargets } from '@/domain/types';
+import { setNutritionCatalog } from '../../supabase/functions/_shared/nutrition/catalog';
+
+// These fixtures (and their exact numbers) were reviewed on the 84-recipe catalogue of packs 1–2, so the planner runs on that
+// catalogue here. The full catalogue (pack 3) is covered by recipeCatalog.test.ts and proteinPrefs.test.ts.
+setNutritionCatalog({ recipes: RECIPES.slice(0, 84) });
 
 const WEEK = '2026-10-26';
 const fixtureTargets = computeNutritionTargets({

@@ -192,7 +192,7 @@ describe('MOCKED meal plans are built on the server', () => {
   });
 
   it('impossible constraints → no plan and a clear reason naming the constraint', () => {
-    const acc = account({ diet: { tags: ['vegan'], allergens: ['soy', 'gluten', 'tree_nuts', 'peanuts'], maxCookMinutes: 5 } });
+    const acc = account({ diet: { tags: ['vegan'], allergens: ['soy', 'gluten', 'tree_nuts', 'peanuts'], dislikedIngredientIds: ['black-beans-cooked'], maxCookMinutes: 5 } });
     const r = buildMealPlanAction({}, planCtx(acc));
     expect(r.action).toBeNull();
     expect(r.errors[0]).toMatch(/^Nothing in the catalog fits Vegan \+ no soy/);
