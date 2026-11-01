@@ -1,0 +1,56 @@
+# Netlify config for the marketing site. This is a SECOND Netlify site with base directory "website"
+# (see README.md). The app's own site uses ../netlify.toml and is unaffected by this file.
+[build]
+  base = "website"
+  command = "npm ci && npm run build"
+  publish = "dist"
+  # Exit 0 = skip. Only build when something under website/ changed since the last deploy.
+  # Builds anyway when there is no earlier deploy to compare with (both refs equal).
+  ignore = 'if [ "$CACHED_COMMIT_REF" = "$COMMIT_REF" ]; then exit 1; fi; git diff --quiet "$CACHED_COMMIT_REF" "$COMMIT_REF" -- .'
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Security headers. Everything (scripts, styles, fonts, images) is served from this site: no inline
+# scripts or styles, no third-party requests, no analytics or cookies.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+    Strict-Transport-Security = "max-age=31536000"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+    Cross-Origin-Opener-Policy = "same-origin"
+
+# Cache: hashed build assets forever, fonts and icons for a long time, HTML always revalidated.
+[[headers]]
+  for = "/_astro/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+[[headers]]
+  for = "/og.png"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
