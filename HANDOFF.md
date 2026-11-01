@@ -2,6 +2,14 @@
 
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
+## 1 Nov 2026: Icelandic replies from the training assistant (v1.0.1)
+
+- The assistant's prompt now says to reply in the user's language and to write natural Icelandic (docs/AI_COACH.md §4c).
+- Deploys with Deploy Supabase on merge; no migration.
+- Owner choice: the default model is `gpt-5-mini` at `low` reasoning, which is weak at Icelandic. For better
+  Icelandic, set the function secrets `OPENAI_MODEL` (a full GPT-5 model) and `OPENAI_REASONING_EFFORT=medium`.
+  Costs more per message; no redeploy needed.
+
 ## 31 Oct 2026: Hard Earned rebrand (v1.0.0), PR waiting for your review
 
 - What changed:

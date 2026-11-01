@@ -229,6 +229,16 @@ describe('MOCKED ai-coach: context isolation (only the authenticated user, only 
     expect(ctx.system).toContain('+1.5 kg');
   });
 
+  it('tells the assistant to reply in the user’s language, with natural Icelandic and data names kept as shown', async () => {
+    const { db } = makeDb({ [A]: userA() });
+    const ctx = await buildContext({ db, uid: A, settings: userA().settings!, text: 'Hvað á ég að æfa í dag?', mode: 'chat', now: new Date('2026-10-29T10:00:00Z') });
+    expect(ctx.system).toContain("Reply in the language of the user's latest message");
+    expect(ctx.system).toContain('natural, idiomatic Icelandic');
+    expect(ctx.system).toContain('"102,5 kg"');
+    expect(ctx.system).toContain('Keep exercise, recipe and program names exactly as they appear in the data');
+    expect(ctx.system).toContain('All rules above apply in every language.');
+  });
+
   it('revoked scopes: category absent from context, rows not even read; history before scopes_changed_at excluded', async () => {
     const a = userA();
     a.settings!.scopes = { profile: true, training: false, measurements: false, nutrition: false };
