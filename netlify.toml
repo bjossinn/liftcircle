@@ -4,6 +4,9 @@
 [build]
   command = "npm ci && npm run build"
   publish = "dist"
+  # Skip app builds when only the marketing site (website/, its own Netlify site) changed. Exit 0 = skip.
+  # Builds anyway when there is no earlier deploy to compare with (both refs equal).
+  ignore = 'if [ "$CACHED_COMMIT_REF" = "$COMMIT_REF" ]; then exit 1; fi; git diff --quiet "$CACHED_COMMIT_REF" "$COMMIT_REF" -- . ":(exclude)website"'
 
 [build.environment]
   NODE_VERSION = "22"

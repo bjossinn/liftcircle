@@ -1,0 +1,28 @@
+---
+import { Picture } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+
+interface Props {
+  src: ImageMetadata;
+  alt: string;
+  class?: string;
+  light?: boolean;
+  /** Parallax factor; small numbers only (0.02–0.08). */
+  parallax?: number;
+  eager?: boolean;
+}
+const { src, alt, class: cls = '', light = false, parallax, eager = false } = Astro.props;
+---
+<div class:list={['phone', cls, { 'light-shot': light }]} data-parallax={parallax}>
+  <Picture
+    src={src}
+    alt={alt}
+    formats={['avif', 'webp']}
+    fallbackFormat="png"
+    widths={[260, 390]}
+    sizes="(min-width: 64rem) 20rem, (min-width: 40rem) 40vw, 78vw"
+    loading={eager ? 'eager' : 'lazy'}
+    fetchpriority={eager ? 'high' : 'auto'}
+    decoding="async"
+  />
+</div>
