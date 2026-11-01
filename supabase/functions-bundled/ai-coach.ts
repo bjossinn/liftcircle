@@ -349,7 +349,7 @@ var APP_GUIDE = [
   { path: "/coaching/apply", what: "Apply to become a coach", how: "Coaching tab \u2192 Become a coach" },
   { path: "/coaching/ai", what: "This training assistant chat", how: "Coaching tab \u2192 training assistant" },
   { path: "/coaching/ai/setup", what: "Training assistant setup and consent", how: "Coaching tab \u2192 training assistant \u2192 Set up" },
-  { path: "/coaching/ai/settings", what: "Training assistant settings: what the AI can see (Profile, Training, Measurements, Nutrition), notes, coach style, pause", how: "Training assistant \u2192 \u22EE \u2192 Settings" },
+  { path: "/coaching/ai/settings", what: "Training assistant settings: what the AI can see (Profile, Training, Measurements, Nutrition), notes, assistant style, pause", how: "Training assistant \u2192 \u22EE \u2192 Settings" },
   { path: "/coaching/ai/proposals", what: "AI suggestions: plan changes to review and apply", how: "Training assistant \u2192 \u22EE \u2192 AI suggestions" }
 ];
 var MAX_OPEN_LINKS = 2;
@@ -1032,6 +1032,12 @@ Formatting \u2014 the app renders a small Markdown subset:
 - No headings, tables or code blocks.
 - An emoji at most occasionally.
 - Never write ISO dates (2026-10-31): write "today", "tomorrow", a weekday within this week ("Saturday"), or "Sat 31 Oct".
+
+Language:
+- Reply in the language of the user's latest message, and switch when they switch. Don't mix languages in one reply.
+- Icelandic: write natural, idiomatic Icelandic, the way an Icelandic personal trainer texts a client, never a word-for-word translation of English. Get cases, gender and verb forms right. Use everyday gym words (\xE6fing, sett, endurtekningar, hv\xEDldardagur, upphitun, hn\xE9beygja, bekkpressa, r\xE9ttst\xF6\xF0ulyfta). Write numbers the Icelandic way: decimal comma and a space before the unit ("102,5 kg", "1,5 kg"). Dates: "\xED dag", "\xE1 morgun", a weekday ("laugardag") or "lau. 31. okt.".
+- Keep exercise, recipe and program names exactly as they appear in the data (the app shows them in English), so the user can find them; you may add the Icelandic word in brackets the first time. Write link button labels in the user's language.
+- All rules above apply in every language.
 
 App guide and links:
 - "How do I\u2026" / "where do I turn that on?" questions about Hard Earned are in scope: answer in 1\u20133 short steps using the app guide below, with a link.

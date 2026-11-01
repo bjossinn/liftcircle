@@ -377,6 +377,16 @@ allergens/diet/dislikes/cook time exclude everything, and then `reason` names th
 
 `MAX_TOOL_ROUNDS` stays 4.
 
+## 4c. Language (1.0.1)
+
+The prompt has a **Language** section: reply in the language of the user's latest message and switch when they
+switch; in Icelandic, write natural Icelandic (cases, everyday gym words, "102,5 kg", Icelandic dates) rather than a
+translation of English; keep exercise, recipe and program names as they appear in the data (the app is in English) so
+the user can find them; link labels in the user's language; every rule applies in every language. The prompt itself
+and the context data stay English. Quality still depends mostly on the model: `gpt-5-mini` at `low` effort (the
+defaults) writes weak Icelandic, so for Icelandic users set `OPENAI_MODEL` to a full GPT-5 model and
+`OPENAI_REASONING_EFFORT=medium` (§1), at a higher cost per message.
+
 ## 5. Testing status
 
 | What | How | Status |
