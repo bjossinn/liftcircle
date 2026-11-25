@@ -2083,10 +2083,19 @@ var DIET_WORDS = [
   [/\bdairy[\s-]?free\b|\bno dairy\b|\blactose[\s-]?free\b|\bmjolkurlaus|\blaktosalaus/, "dairy_free"],
   [/\bgluten[\s-]?free\b|\bno gluten\b|\bglutenlaus/, "gluten_free"]
 ];
+var NEGATED_DIET = new RegExp(
+  `(?<![${"a-z0-9\xE6\xF0\xFE"}])(?:not|never|no longer|isn'?t|aren'?t|am not|ekki lengur|ekki|non)[\\s-]+(?:(?:a|an|really|strictly|fully|alveg|neitt|neinn)\\s+)?(?:vegan[a-z\xE6\xF0\xFE]*|vegetarian|veggie|pescatarian|gr\xE6n[a-z\xE6\xF0\xFE]*|(?:dairy|lactose|gluten)[\\s-]?free|mjolkurlaus[a-z\xE6\xF0\xFE]*|glutenlaus[a-z\xE6\xF0\xFE]*|laktosalaus[a-z\xE6\xF0\xFE]*)`,
+  "g"
+);
+var stripNegatedDiets = (folded) => folded.replace(NEGATED_DIET, " ");
+function dietTagsIn(text) {
+  const t = stripNegatedDiets(fold2(text));
+  return DIET_WORDS.filter(([re]) => re.test(t)).map(([, tag]) => tag);
+}
 var STOP = /* @__PURE__ */ new Set(["a", "an", "the", "and", "or", "with", "for", "of", "in", "on", "some", "any", "meal", "meals", "recipe", "recipes", "idea", "ideas", "food", "dish", "something", "me", "my", "easy", "simple", "healthy", "good", "tasty", "high", "protein", "quick", "fast", "free", "low", "cal", "calorie", "kcal"]);
 function parseQuery(query) {
   const q = fold2(query);
-  const diet = DIET_WORDS.filter(([re]) => re.test(q)).map(([, t]) => t);
+  const diet = dietTagsIn(q);
   const quick = /\b(quick|fast|speedy|under 15|15 min|no[\s-]?cook)\b|\bfljot|\bsnogg/.test(q);
   const highProtein = /\bprotein\b|\bprotin/.test(q);
   const exclude = parseExclusions(query);
@@ -2120,8 +2129,11 @@ var NEGATOR_WORDS = [
   "zero",
   "engan",
   "enga",
+  "engar",
   "engin",
   "enginn",
+  "engum",
+  "engri",
   "ekkert",
   "ekki",
   "sleppa",
@@ -2234,16 +2246,55 @@ var NOT_AN_ITEM = /* @__PURE__ */ new Set([
   "mig",
   "mer"
 ]);
-var WEEKDAY_STEMS = [
-  [/^(mon|manudag)/, ["monday"]],
-  [/^(tue|þriðjudag)/, ["tuesday"]],
-  [/^(wed|miðvikudag)/, ["wednesday"]],
-  [/^(thu|fimmtudag)/, ["thursday"]],
-  [/^(fri|fostudag)/, ["friday"]],
-  [/^(sat|laugardag)/, ["saturday"]],
-  [/^(sun|sunnudag)/, ["sunday"]],
-  [/^(weekend|helgi)/, ["saturday", "sunday"]]
+var IS_DAY_END = "(?:ur|inn|s|sins|a|ana|ar|arnir|um|inum)?";
+var WEEKDAY_TOKENS = [
+  [new RegExp(`^(?:mondays?|mon|manud[ao]g${IS_DAY_END})$`), ["monday"]],
+  [new RegExp(`^(?:tuesdays?|tue|tues|\xFEri\xF0jud[ao]g${IS_DAY_END})$`), ["tuesday"]],
+  [new RegExp(`^(?:wednesdays?|wed|mi\xF0vikud[ao]g${IS_DAY_END})$`), ["wednesday"]],
+  [new RegExp(`^(?:thursdays?|thu|thur|thurs|fimmtud[ao]g${IS_DAY_END})$`), ["thursday"]],
+  [new RegExp(`^(?:fridays?|fri|fostud[ao]g${IS_DAY_END})$`), ["friday"]],
+  [new RegExp(`^(?:saturdays?|sat|laugard[ao]g${IS_DAY_END})$`), ["saturday"]],
+  [new RegExp(`^(?:sundays?|sun|sunnud[ao]g${IS_DAY_END})$`), ["sunday"]],
+  [/^(?:weekends?|helg(?:i|in|ina|inni|ar|arinnar|um)?)$/, ["saturday", "sunday"]]
 ];
+var CLAUSE_BREAK = /* @__PURE__ */ new Set([
+  "in",
+  "for",
+  "because",
+  "since",
+  "as",
+  "when",
+  "while",
+  "during",
+  "with",
+  "to",
+  "at",
+  "on",
+  "from",
+  "please",
+  "thanks",
+  "this",
+  "next",
+  "i",
+  "a",
+  "fyrir",
+  "af",
+  "\xFEvi",
+  "\xFEar",
+  "vegna",
+  "me\xF0",
+  "um",
+  "\xFEegar",
+  "svo",
+  "takk",
+  "til",
+  "fra",
+  "eftir",
+  "n\xE6stu",
+  "\xFEessa",
+  "\xFEessari"
+]);
+var DIET_NAME = /^(?:vegan\w*|vegetarian|veggie|pescatarian|keto|paleo|græn\w*|non)$/;
 var IS_FOOD = [
   ["kjuklingabaun", "chickpea"],
   ["linsubaun", "lentil"],
@@ -2279,20 +2330,29 @@ var IS_FOOD = [
 ];
 var FREE_RE = new RegExp(`(?<![${L}])([a-z\xE6\xF0\xFE]+)[\\s-]free(?![${L}])|(?<![${L}])([a-z\xE6\xF0\xFE]{3,}?)laus(?:ir|ar|an|um|ri|a|t)?(?![${L}])`, "g");
 function classifyItem(rawItem) {
-  const tokens = rawItem.split(/\s+/).filter(Boolean);
-  while (tokens.length && FILLER.has(tokens[0])) tokens.shift();
+  const all = rawItem.split(/\s+/).filter(Boolean);
+  while (all.length && FILLER.has(all[0])) all.shift();
+  const tokens = [];
+  let ended = false;
+  for (const w of all) {
+    if (/\d/.test(w) || NOT_AN_ITEM.has(w) || CLAUSE_BREAK.has(w) || tokens.length === 3) {
+      ended = true;
+      break;
+    }
+    tokens.push(w);
+  }
   while (tokens.length && FILLER.has(tokens[tokens.length - 1])) tokens.pop();
-  if (!tokens.length || tokens.length > 3 || tokens.some((w) => /\d/.test(w) || NOT_AN_ITEM.has(w))) return null;
-  const days = tokens.map((w) => WEEKDAY_STEMS.find(([re]) => re.test(w))?.[1]);
-  if (days.every(Boolean)) return { kind: "days", days: [...new Set(days.flat())], tokens };
+  if (!tokens.length || tokens.some((w) => DIET_NAME.test(w))) return null;
+  const days = tokens.map((w) => WEEKDAY_TOKENS.find(([re]) => re.test(w))?.[1]);
+  if (days.every(Boolean)) return { kind: "days", days: [...new Set(days.flat())], tokens, ended };
   const english = tokens.map((w) => IS_FOOD.find(([is]) => w.startsWith(is))?.[1] ?? w).join(" ");
   const hits = ALLERGEN_WORDS.filter(([re]) => re.test(english) || re.test(tokens.join(" "))).flatMap(([, a]) => a);
-  if (hits.length) return { kind: "allergens", allergens: [...new Set(hits)], tokens };
+  if (hits.length) return { kind: "allergens", allergens: [...new Set(hits)], tokens, ended };
   if (english.replace(/\s/g, "").length < 3) return null;
-  return { kind: "food", phrase: english, tokens };
+  return { kind: "food", phrase: english, tokens, ended };
 }
 function parseExclusions(text) {
-  const t = fold2(text.replace(/(^|[^\p{L}])án(?=\s)/giu, "$1without "));
+  const t = stripNegatedDiets(fold2(text.replace(/(^|[^\p{L}])án(?=\s)/giu, "$1without ")));
   const items = [];
   const starts = [...t.matchAll(NEG_START)];
   starts.forEach((m, k) => {
@@ -2304,6 +2364,7 @@ function parseExclusions(text) {
       const item = classifyItem(part.trim());
       if (!item) break;
       items.push(item);
+      if (item.ended) break;
     }
   });
   for (const m of t.matchAll(FREE_RE)) {
@@ -2423,7 +2484,7 @@ function buildMealPlanAction(input, ctx) {
   const userText = (ctx.requestText ?? "").slice(0, 1200);
   const prefText = fold2([...strs(input.preferences), ...strs(input.avoid), userText].join(" "));
   if (input.quick === true || /\b(quick|fast|no[\s-]?cook)\b/.test(prefText)) prefs.maxCookMinutes = Math.min(prefs.maxCookMinutes, 15);
-  const extraTags = [...strs(input.diet), ...DIET_WORDS.filter(([re]) => re.test(prefText)).map(([, t]) => t)].filter((t) => t in DIET_TAG_LABELS && t !== "high_protein");
+  const extraTags = [...strs(input.diet), ...dietTagsIn(prefText)].filter((t) => t in DIET_TAG_LABELS && t !== "high_protein");
   prefs.tags = [.../* @__PURE__ */ new Set([...prefs.tags, ...extraTags])];
   for (const w of strs(input.avoid).map(fold2)) {
     const item = classifyItem(w);
@@ -2577,7 +2638,7 @@ function mealPlanIntentFromText(text) {
   if (positive.length) intent.days = positive;
   else if (ex.days.length) intent.days = WEEKDAYS_EN.filter((d) => !ex.days.includes(d));
   if (/\b(quick|fast|no[\s-]?cook)\b|\bfljot|\bsnogg/.test(t)) intent.quick = true;
-  const diet = DIET_WORDS.filter(([re]) => re.test(t)).map(([, tag]) => tag);
+  const diet = dietTagsIn(t);
   if (diet.length) intent.diet = diet;
   const avoid = [...ex.allergens.map((a) => ALLERGEN_AVOID_WORD[a] ?? a.replace(/_/g, " ")), ...ex.words];
   if (avoid.length) intent.avoid = [...new Set(avoid)];

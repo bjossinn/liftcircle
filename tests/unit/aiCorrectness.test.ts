@@ -455,3 +455,91 @@ describe('PR #16 review: find_recipes keeps the user’s restriction when the mo
     for (const r of cards.recipes) expect(allergensOf(r.id).filter((a) => banned.includes(a)), r.id).toEqual([]);
   });
 });
+
+/* ================================================================== re-review of PR #16 (ChatGPT, 25 Nov) */
+describe('PR #16 re-review: trailing words never erase a restriction', () => {
+  it.each([
+    ['no nuts in my meals', ['tree_nuts'], 'nuts'],
+    ['no fish for dinner', ['fish', 'shellfish'], 'fish'],
+    ['engar hnetur í máltíðunum', ['tree_nuts'], 'hnetur'],
+    ['enginn fiskur í kvöldmatinn', ['fish', 'shellfish'], 'fiskur'],
+  ])('parse: %s', (t, allergens, food) => {
+    const ex = parseExclusions(t);
+    expect(ex.allergens.sort()).toEqual([...allergens].sort());
+    // …and the food is never turned into a word to search FOR.
+    expect(parseQuery(t).words).not.toContain(food);
+    expect(parseQuery(t).words.some((w) => food.startsWith(w))).toBe(false);
+  });
+
+  it.each([
+    ['Breakfast ideas, no fish for breakfast', { query: 'breakfast', max_results: 5 }, ['fish', 'shellfish']],
+    ['Morgunmatur, enginn fiskur í morgunmatinn', { query: 'breakfast', max_results: 5 }, ['fish', 'shellfish']],
+    ['Muesli please, no nuts in my meals', { query: 'muesli', max_results: 5 }, ['tree_nuts']],
+    ['Múslí, engar hnetur í máltíðunum', { query: 'muesli', max_results: 5 }, ['tree_nuts']],
+  ])('recipe cards for "%s" (model query %j) contain none of %j', async (userText, toolInput, banned) => {
+    const conv = conversationDb();
+    const { fetch } = capturingProvider([toolUse('find_recipes', toolInput), text('Here are a few.')]);
+    const res = await handleAiCoach(deps(conv.db, fetch).d, U, send(userText));
+    const cards = (res.body.reply as StoredMessage).action as unknown as { kind: string; recipes: { id: string }[] };
+    expect(cards.kind).toBe('recipe_suggestions');
+    expect(cards.recipes.length).toBeGreaterThan(0);
+    for (const r of cards.recipes) expect(allergensOf(r.id).filter((a) => banned.includes(a)), r.id).toEqual([]);
+  });
+});
+
+describe('PR #16 re-review: food names never become weekdays', () => {
+  it.each(['no fries', 'no satay', 'no monkfish', 'no sunflower seeds', 'no sundae', 'ekki laugardagsnammi', 'engin sunnudagssteik'])('%s rules out no day', (t) => {
+    expect(parseExclusions(t).days).toEqual([]);
+  });
+  it.each([
+    ['not Fri', ['friday']], ['not on Sundays', ['sunday']], ['ekki á mánudögum', ['monday']], ['ekki á föstudaginn', ['friday']], ['nema um helgar', ['saturday', 'sunday']],
+  ])('real days still match: %s', (t, days) => {
+    expect(parseExclusions(t).days).toEqual(days);
+  });
+  it('"next week, no fries" plans all seven days', async () => {
+    const conv = conversationDb();
+    const { fetch } = capturingProvider([text('Sure.')]);
+    const res = await handleAiCoach(deps(conv.db, fetch).d, U, send('Make a meal plan for next week, no fries'));
+    const action = (res.body.reply as StoredMessage).action as MealPlanAction;
+    expect(action.days.map((d) => d.date)).toEqual(['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08']);
+  });
+});
+
+describe('PR #16 re-review: a negated diet is never made mandatory', () => {
+  it.each([
+    ["I'm not vegan; suggest chicken dinners", { query: 'chicken dinners', max_results: 5 }],
+    ['Ég er ekki vegan, stingdu upp á kjúklingakvöldmat', { query: 'chicken dinner', max_results: 5 }],
+  ])('"%s" → chicken recipes, no vegan constraint', async (userText, toolInput) => {
+    const conv = conversationDb();
+    const { fetch } = capturingProvider([toolUse('find_recipes', toolInput), text('Try these.')]);
+    const res = await handleAiCoach(deps(conv.db, fetch).d, U, send(userText));
+    const cards = (res.body.reply as StoredMessage).action as unknown as { kind: string; recipes: { id: string }[] };
+    expect(cards.kind).toBe('recipe_suggestions');
+    expect(cards.recipes.length).toBeGreaterThan(0);
+    expect(cards.recipes.some((r) => RECIPES.find((x) => x.id === r.id)!.ingredients.some((i) => i.ingredientId.includes('chicken')))).toBe(true);
+  });
+  it('parsing: negated diet names are statements; "no dairy" / "no gluten" are still requests', () => {
+    expect(parseQuery("I'm not vegan; suggest chicken dinners").diet).toEqual([]);
+    expect(parseQuery('ekki vegan').diet).toEqual([]);
+    expect(parseQuery('Ég er ekki grænmetisæta').diet).toEqual([]);
+    expect(parseExclusions("I'm not gluten-free, just no nuts").allergens).toEqual(['tree_nuts']);
+    expect(parseQuery('vegan dinner').diet).toEqual(['vegan']);
+    expect(parseQuery('no dairy please').diet).toEqual(['dairy_free']);
+    expect(parseExclusions('no gluten').allergens).toEqual(['gluten']);
+    expect(mealPlanIntentFromText("Meal plan for next week, I'm not vegan").diet).toBeUndefined();
+  });
+});
+
+describe('PR #16 re-review: a reason clause never breaks a weekday negation', () => {
+  it.each([
+    ['Make a meal plan for next week, not Friday because I eat out'],
+    ['Matarplan fyrir næstu viku, ekki föstudag því ég fer út að borða'],
+  ])('"%s" → six days, Friday 6 Nov left out', async (msg) => {
+    expect(parseExclusions(msg).days).toEqual(['friday']);
+    const conv = conversationDb();
+    const { fetch } = capturingProvider([text('Here it is.')]);
+    const res = await handleAiCoach(deps(conv.db, fetch).d, U, send(msg));
+    const action = (res.body.reply as StoredMessage).action as MealPlanAction;
+    expect(action.days.map((d) => d.date)).toEqual(['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-07', '2026-11-08']);
+  });
+});
