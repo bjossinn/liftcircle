@@ -406,6 +406,14 @@ From the Claude + ChatGPT cross-review of 25 Nov 2026 (`tests/unit/aiCorrectness
 - **Icelandic words** for allergens and diets (fiskur, hnetur, glúten, mjólk, rækjur, jarðhnetur, egg, soja; vegan,
   grænmetis-, glútenlaus, mjólkurlaus), "án", follow-ups ("já", "já takk", "prófaðu núna", "gerðu það", "búin að
   deila") and "matarplan"/"matseðill". Replies and card texts are still English; full localisation is a separate item.
+- **Review follow-ups (PR #16).** Carry-over after a sharing change (`conversation.ts carryOver`) stops at the newest
+  reply whose grounding used a category that isn't shared now (or is unknown) — a revoked category never re-enters
+  history after a later, unrelated widening. `parseExclusions` reads lists ("no fish, no nuts", "án fisks, án hneta"),
+  multi-word items ("tree nuts", "red onion"), fillers ("without any nuts"), common Icelandic food words and negated
+  weekdays ("not Friday", "ekki um helgina"); a list ends at the first item that isn't a food or a day. Negated days
+  are never planned. A request is closed by ANY later reply that delivered it, and plain "takk"/"thanks" is not a
+  follow-up. The user's own words (`requestText`, plus the original request for a follow-up) are passed to
+  find_recipes and propose_meal_plan, so restrictions the model's tool input drops still apply.
 - **"Customize first" is now "Add and edit"**: it always added the plan before opening it (the meal plan screen has no
   draft mode); the label now says so, and Undo stays on the card.
 

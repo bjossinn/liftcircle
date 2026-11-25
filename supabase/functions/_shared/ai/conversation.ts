@@ -27,7 +27,8 @@ export function isFollowUp(text: string): boolean {
   return /^(ok|okay|k|yes|yep|yeah|yup|sure|please|go|go ahead|do it|do that|done|shared|again|now|lets go|let's go|lets do it|let's do it|sounds good|perfect|great)\b/.test(t) ||
     /\btry (it )?(again|now)\b|\b(do|make) it\b|\bgo ahead\b|\bdone now\b|\bshared it\b|\bturned it on\b/.test(t) ||
     // Icelandic (folded: accents dropped, æ/ð/þ kept): "já", "já takk", "endilega", "gerðu það", "prófaðu núna", "búið".
-    /^(ja|jæja|okei|oki|endilega|gjorðu svo vel|gerðu það|ja takk|takk)(?![a-zæðþ])/.test(t) ||
+    // Plain "takk" / "thanks" is gratitude, not "do it", so it is deliberately not here.
+    /^(ja|jæja|okei|oki|endilega|gjorðu svo vel|gerðu það|ja takk)(?![a-zæðþ])/.test(t) ||
     /(?<![a-zæðþ])(profaðu|reyndu|profa) (aftur|nuna)|(?<![a-zæðþ])gerðu það|(?<![a-zæðþ])(buið|buinn|buin) (að )?(deila|kveikja)|(?<![a-zæðþ])kveikti a/.test(t);
 }
 
@@ -62,9 +63,12 @@ export function findOpenRequest(history: StoredMessage[]): OpenRequest | null {
     const intent = classifyIntent(m.content ?? '');
     if (!intent) continue;
     seen++;
-    const reply = history.slice(i + 1).find((x) => x.role === 'assistant');
-    if (fulfilled(intent, reply)) return null;
-    return { text: m.content.slice(0, 300), intent, blocked: !!reply && BLOCK_RE.test(reply.content ?? '') };
+    // Delivered by ANY later reply closes it — including one that answered a follow-up ("já, prófaðu núna") after a
+    // blocked first reply. Otherwise it stays open, blocked if the latest reply was a missing-data message.
+    const replies = history.slice(i + 1).filter((x) => x.role === 'assistant');
+    if (replies.some((r) => fulfilled(intent, r))) return null;
+    const last = replies.at(-1);
+    return { text: m.content.slice(0, 300), intent, blocked: !!last && BLOCK_RE.test(last.content ?? '') };
   }
   return null;
 }
@@ -81,6 +85,26 @@ export function sharedFromGrounding(grounding: string[] | undefined): Partial<Ai
 }
 
 export const SCOPE_NAMES: Record<keyof AiScopes, string> = { profile: 'profile', training: 'training', measurements: 'measurements', nutrition: 'nutrition' };
+
+/**
+ * Messages from before the latest sharing change that may be carried over (oldest first, at most `max`). Walks back from
+ * the newest and stops at — and leaves out — the first assistant reply whose grounding used a category that isn't
+ * shared NOW (or whose grounding is unknown), together with everything older: a revoked category's content never
+ * re-enters the model's history, even after a later, unrelated widening (share → revoke → share something else).
+ */
+export function carryOver(pre: StoredMessage[], now: AiScopes, max = 6): StoredMessage[] {
+  const out: StoredMessage[] = [];
+  for (let i = pre.length - 1; i >= 0 && out.length < max; i--) {
+    const m = pre[i];
+    if (m.role === 'assistant') {
+      if (!Array.isArray(m.grounding)) break;
+      const used = sharedFromGrounding(m.grounding);
+      if ((Object.keys(SCOPE_NAMES) as (keyof AiScopes)[]).some((k) => used[k] && !now[k])) break;
+    }
+    out.push(m);
+  }
+  return out.reverse();
+}
 
 /** Newly shared categories, and whether any category was revoked since the previous reply. */
 export function sharingChange(prev: Partial<AiScopes>, now: AiScopes): { added: (keyof AiScopes)[]; revoked: boolean } {

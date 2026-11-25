@@ -127,9 +127,9 @@ describe('Supabase adapter: getHistory returns action and grounding', () => {
 /* ================================================================== 2. meal-plan fallback keeps the request */
 describe('meal-plan fallback keeps what the user asked for', () => {
   it('reads meals per day, week, days, quick, diet and exclusions from the user’s words (English and Icelandic)', () => {
-    expect(mealPlanIntentFromText('Make next week’s meal plan, no fish, two meals a day')).toMatchObject({ week: 'next', meals_per_day: 2, avoid: ['fish'] });
+    expect(mealPlanIntentFromText('Make next week’s meal plan, no fish, two meals a day')).toMatchObject({ week: 'next', meals_per_day: 2, avoid: ['fish', 'shellfish'] });
     expect(mealPlanIntentFromText('meal plan for Monday and Friday, quick and vegan please')).toMatchObject({ days: ['monday', 'friday'], quick: true, diet: ['vegan'] });
-    expect(mealPlanIntentFromText('Búðu til matarplan fyrir næstu viku, tvær máltíðir á dag, án fisks')).toMatchObject({ week: 'next', meals_per_day: 2, avoid: ['fisks'] });
+    expect(mealPlanIntentFromText('Búðu til matarplan fyrir næstu viku, tvær máltíðir á dag, án fisks')).toMatchObject({ week: 'next', meals_per_day: 2, avoid: ['fish', 'shellfish'] });
     expect(mealPlanIntentFromText('matarplan fyrir þriðjudag og helgina')).toMatchObject({ days: ['tuesday', 'saturday', 'sunday'] });
     // Nothing stated → nothing set (the user's saved settings apply).
     const plain = mealPlanIntentFromText('make me a meal plan');
@@ -210,6 +210,7 @@ describe('find_recipes: a request’s restrictions are hard constraints', () => 
     expect(parseExclusions('mjólkurlaus kvöldmatur').allergens).toContain('milk');
     expect(parseExclusions('an apple and a banana').raw).toEqual([]);
     expect(parseExclusions('no pork').words).toEqual(['pork']);
+    expect(parseExclusions('ég borða ekki svínakjöt eða sveppi').words).toEqual(['pork', 'mushroom']);
     expect(parseExclusions('no more than 20 minutes').words).toEqual([]);
   });
 
@@ -259,5 +260,198 @@ describe('Icelandic follow-ups and intents', () => {
     for (const t of ['Hvað á ég að æfa í dag?', 'Ég er með verk í hnénu']) expect(isFollowUp(t), t).toBe(false);
     expect(classifyIntent('Búðu til matarplan fyrir vikuna')).toBe('meal_plan');
     expect(classifyIntent('Getur þú gert matseðil fyrir mig')).toBe('meal_plan');
+  });
+});
+
+/* ================================================================== review of PR #16 (ChatGPT, 25 Nov) */
+const toolUse = (name: string, input: unknown, id = 'toolu_1') => ({ id: 'mt', model: 'claude-test', content: [{ type: 'tool_use', id, name, input }], stop_reason: 'tool_use', usage: { input_tokens: 10, output_tokens: 10 } });
+function capturingProvider(replies: unknown[]) {
+  const requests: { system: string; messages: { role: string; content: unknown }[] }[] = [];
+  const fetch: FetchLike = async (_url, init) => {
+    requests.push(JSON.parse(init.body));
+    const body = replies.shift() ?? text('…');
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) };
+  };
+  return { fetch, requests };
+}
+/** In-memory db whose history grows with every exchange (user message + stored reply, action and grounding kept). */
+function conversationDb(opts: { messages?: StoredMessage[]; scopes?: AiScopes; scopesChangedAt?: string | null; acc?: AccountStatePayload } = {}) {
+  const messages: StoredMessage[] = [...(opts.messages ?? [])];
+  const settings: AiSettingsRow = { enabled: true, paused: false, consentAt: '2026-10-01T00:00:00Z', scopes: opts.scopes ?? ALL, scopesChangedAt: opts.scopesChangedAt ?? null, profileNotes: '' };
+  const actions: (MealPlanAction | null)[] = [];
+  let clock = Date.parse('2026-10-29T09:50:00Z');
+  const db: AiDb = {
+    ...makeDb([], opts.acc ?? account()).db,
+    getSettings: async () => settings,
+    getExchange: async () => null,
+    getHistory: async (_u, after, limit) => messages.filter((m) => !after || m.createdAt > after).slice(-limit),
+    recordExchange: async (_u, input) => {
+      const at = (ms: number) => new Date(ms).toISOString();
+      messages.push({ id: input.message.id, role: 'user', content: input.message.content, createdAt: at((clock += 1000)) });
+      const reply: StoredMessage = { id: `r-${input.message.id}`, role: 'assistant', content: input.reply.content, createdAt: at((clock += 1000)), grounding: input.reply.grounding, proposalId: null, action: input.reply.action ?? null };
+      messages.push(reply);
+      actions.push((input.reply.action as MealPlanAction | null) ?? null);
+      return { reply, proposal: null, duplicate: false };
+    },
+  };
+  return { db, messages, actions, settings };
+}
+const allMessageText = (req: { system: string; messages: { content: unknown }[] }) => JSON.stringify(req.messages);
+const nutsOrFish = (a: MealPlanAction) => planAllergens(a).filter((x) => x === 'fish' || x === 'shellfish' || x === 'tree_nuts');
+
+describe('PR #16 review: a revoked category never re-enters history', () => {
+  it('share nutrition → nutrition reply → revoke → training-only reply → share measurements: the nutrition exchange is not carried', async () => {
+    const NUTRITION_REPLY = 'Your food log shows 142 g protein a day on average — about 40 g short of your 180 g target.';
+    const messages: StoredMessage[] = [
+      { id: 'u1', role: 'user', content: 'How is my protein this week?', createdAt: '2026-10-29T08:00:00Z' },
+      { id: 'a1', role: 'assistant', content: NUTRITION_REPLY, createdAt: '2026-10-29T08:00:05Z', grounding: ['Profile & preferences', 'Nutrition targets & 7-day food log'], action: null },
+      // 08:30 nutrition revoked (an earlier scopesChangedAt; only the latest is stored)
+      { id: 'u2', role: 'user', content: 'Should I train legs tomorrow?', createdAt: '2026-10-29T09:00:00Z' },
+      { id: 'a2', role: 'assistant', content: 'Yes, Full body B is tomorrow.', createdAt: '2026-10-29T09:00:05Z', grounding: ['Profile & preferences', '1 recent workout'], action: null },
+    ];
+    // 09:30 measurements shared — the latest change; nutrition still off.
+    const conv = conversationDb({ messages, scopes: { profile: true, training: true, measurements: true, nutrition: false }, scopesChangedAt: '2026-10-29T09:30:00Z' });
+    const { fetch, requests } = capturingProvider([text('Thanks — I can see your measurements now.')]);
+    await handleAiCoach(deps(conv.db, fetch).d, U, send('ok, how is my weight trending?', 3));
+    const sent = allMessageText(requests[0]);
+    expect(sent).not.toContain('142 g protein');
+    expect(sent).not.toContain('How is my protein this week?');
+    expect(sent).toContain('Should I train legs tomorrow?'); // the training-only exchange is still carried
+    expect(requests[0].system).not.toContain('142 g protein');
+  });
+
+  it('a reply with unknown grounding stops the carry-over too', async () => {
+    const messages: StoredMessage[] = [
+      { id: 'u1', role: 'user', content: 'Old question', createdAt: '2026-10-29T08:00:00Z' },
+      { id: 'a1', role: 'assistant', content: 'Old answer with private data', createdAt: '2026-10-29T08:00:05Z', grounding: undefined as never, action: null },
+      { id: 'u2', role: 'user', content: 'Newer question', createdAt: '2026-10-29T09:00:00Z' },
+      { id: 'a2', role: 'assistant', content: 'Newer answer', createdAt: '2026-10-29T09:00:05Z', grounding: ['Profile & preferences'], action: null },
+    ];
+    const conv = conversationDb({ messages, scopesChangedAt: '2026-10-29T09:30:00Z' });
+    const { fetch, requests } = capturingProvider([text('ok')]);
+    await handleAiCoach(deps(conv.db, fetch).d, U, send('ok', 3));
+    expect(allMessageText(requests[0])).not.toContain('Old answer with private data');
+    expect(allMessageText(requests[0])).toContain('Newer answer');
+  });
+});
+
+describe('PR #16 review: explicit food exclusions are never dropped', () => {
+  it.each([
+    ['no fish, no nuts', ['fish', 'shellfish', 'tree_nuts']],
+    ['án fisks, án hneta', ['fish', 'shellfish', 'tree_nuts']],
+    ['no tree nuts', ['tree_nuts']],
+    ['without any nuts', ['tree_nuts']],
+    ['without gluten, soy or nuts', ['gluten', 'soy', 'tree_nuts']],
+    ['ekki fisk og engar hnetur', ['fish', 'shellfish', 'tree_nuts']],
+  ])('parse: %s', (t, expected) => {
+    expect(parseExclusions(t).allergens.sort()).toEqual([...expected].sort());
+  });
+
+  it.each([
+    ['Make a meal plan for next week, no fish, no nuts'],
+    ['Búðu til matarplan fyrir næstu viku, án fisks, án hneta'],
+  ])('fallback plan for "%s" contains no fish or nut recipe or side', async (msg) => {
+    const conv = conversationDb();
+    const { fetch } = capturingProvider([text('Here: salmon Monday, nut granola Tuesday …')]);
+    const res = await handleAiCoach(deps(conv.db, fetch).d, U, send(msg));
+    const action = (res.body.reply as StoredMessage).action as MealPlanAction;
+    expect(action.kind).toBe('meal_plan');
+    expect(action.weekStart).toBe('2026-11-02');
+    expect(action.days.length).toBe(7);
+    expect(nutsOrFish(action)).toEqual([]);
+  });
+
+  it('tool path: the model calls propose_meal_plan without the user’s "no fish, no nuts" — the plan still honours it', async () => {
+    const conv = conversationDb();
+    const { fetch } = capturingProvider([toolUse('propose_meal_plan', { week: 'next' }), text('Here’s your week.')]);
+    const res = await handleAiCoach(deps(conv.db, fetch).d, U, send('Make a meal plan for next week, no fish, no nuts'));
+    const action = (res.body.reply as StoredMessage).action as MealPlanAction;
+    expect(action.kind).toBe('meal_plan');
+    expect(nutsOrFish(action)).toEqual([]);
+  });
+});
+
+describe('PR #16 review: a negated weekday is left out, never made the only day', () => {
+  it('"next week, not Friday" → six days, Friday 6 Nov not among them (fallback)', async () => {
+    const conv = conversationDb();
+    const { fetch } = capturingProvider([text('Sure, here it is.')]);
+    const res = await handleAiCoach(deps(conv.db, fetch).d, U, send('Make a meal plan for next week, not Friday'));
+    const action = (res.body.reply as StoredMessage).action as MealPlanAction;
+    expect(action.days.map((d) => d.date)).toEqual(['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-07', '2026-11-08']);
+  });
+
+  it('tool path: the model asks for Friday anyway → Friday is dropped', async () => {
+    const conv = conversationDb();
+    const { fetch } = capturingProvider([toolUse('propose_meal_plan', { week: 'next', days: ['thursday', 'friday'] }), text('Done.')]);
+    const res = await handleAiCoach(deps(conv.db, fetch).d, U, send('Meal plan for Thursday next week, ekki föstudag'));
+    const action = (res.body.reply as StoredMessage).action as MealPlanAction;
+    expect(action.days.map((d) => d.date)).toEqual(['2026-11-05']);
+  });
+
+  it('every remaining day ruled out → an honest reason, no plan', () => {
+    const acc = account();
+    const ctx = { facts: facts(), account: acc, today: TODAY, nutrition: nutritionStatus(acc, true), messageId: mid(5), recipes: REF_RECIPES, ingredients: REF_INGREDIENTS, requestText: 'just Friday, not Friday' };
+    const built = buildMealPlanAction({ week: 'next', days: ['friday'] }, ctx);
+    expect(built.action).toBeNull();
+    expect(built.errors[0]).toMatch(/asked to leave out/);
+  });
+});
+
+describe('PR #16 review: a delivered follow-up closes the original request', () => {
+  it('request → blocked → "Já, prófaðu núna" → plan → "Takk": exactly one meal plan, no second fallback', async () => {
+    const conv = conversationDb();
+    // 1. request; the model replies with a missing-data style message (blocked) — no plan
+    const p1 = capturingProvider([text('I can’t see your nutrition yet. You can share it under training assistant settings.')]);
+    // Avoid the fallback on turn 1 by asking for something the fallback doesn't build: the model blocks it itself.
+    conv.settings.scopes = { ...ALL, nutrition: false };
+    await handleAiCoach(deps(conv.db, p1.fetch).d, U, send('Make me a meal plan for next week, no fish', 1));
+    expect(conv.actions).toEqual([null]);
+    // 2. the user shares nutrition and says "já, prófaðu núna" → the server resumes the original request
+    conv.settings.scopes = ALL;
+    const p2 = capturingProvider([text('Já, hér er það.')]);
+    const r2 = await handleAiCoach(deps(conv.db, p2.fetch).d, U, send('Já, prófaðu núna', 2));
+    const plan = (r2.body.reply as StoredMessage).action as MealPlanAction;
+    expect(plan.kind).toBe('meal_plan');
+    expect(plan.weekStart).toBe('2026-11-02');
+    expect(nutsOrFish(plan).filter((x) => x !== 'tree_nuts')).toEqual([]);
+    // 3. "Takk" → no open request any more, no plan, no fallback
+    const p3 = capturingProvider([text('Gott að heyra!')]);
+    const { d, logs } = deps(conv.db, p3.fetch);
+    const r3 = await handleAiCoach(d, U, send('Takk', 3));
+    expect((r3.body.reply as StoredMessage).action ?? null).toBeNull();
+    expect(conv.actions.filter(Boolean)).toHaveLength(1);
+    expect(logs.some((l) => l.event === 'ai_reply_replaced')).toBe(false);
+    expect(p3.requests[0].system).not.toMatch(/Open request:/);
+  });
+
+  it('findOpenRequest looks at every later reply, not only the first', () => {
+    const h: StoredMessage[] = [
+      { id: 'u1', role: 'user', content: 'make a meal plan for next week', createdAt: 't1' },
+      { id: 'a1', role: 'assistant', content: 'I can’t see your nutrition yet.', createdAt: 't2' },
+      { id: 'u2', role: 'user', content: 'já, prófaðu núna', createdAt: 't3' },
+      { id: 'a2', role: 'assistant', content: 'Here.', createdAt: 't4', action: { kind: 'meal_plan' } as never },
+    ];
+    expect(findOpenRequest(h)).toBeNull();
+    expect(findOpenRequest(h.slice(0, 3))).toMatchObject({ intent: 'meal_plan', blocked: true });
+    expect(isFollowUp('Takk')).toBe(false);
+    expect(isFollowUp('Thanks!')).toBe(false);
+  });
+});
+
+describe('PR #16 review: find_recipes keeps the user’s restriction when the model drops it', () => {
+  it.each([
+    ['Breakfast ideas please, no fish', { query: 'breakfast', max_results: 5 }, ['fish', 'shellfish']],
+    ['Muesli ideas, án hneta', { query: 'muesli', max_results: 5 }, ['tree_nuts']],
+  ])('user: "%s", model query %j → recipe cards without %j', async (userText, toolInput, banned) => {
+    // Baseline: the model's query alone returns banned recipes (so the test means something).
+    const runAlone = await runTool('find_recipes', toolInput, { db: makeDb().db, facts: facts(), catalog: new Map(), state: { proposal: null, proposalAttempts: 0 }, messageId: mid(2), nutrition: nutritionStatus(account(), true), account: account() });
+    expect((JSON.parse(runAlone.content).results as { id: string }[]).some((r) => allergensOf(r.id).some((a) => banned.includes(a)))).toBe(true);
+    const conv = conversationDb();
+    const { fetch } = capturingProvider([toolUse('find_recipes', toolInput), text('Here are a few.')]);
+    const res = await handleAiCoach(deps(conv.db, fetch).d, U, send(userText));
+    const cards = ((res.body.reply as StoredMessage).action as unknown as { kind: string; recipes: { id: string }[] });
+    expect(cards.kind).toBe('recipe_suggestions');
+    expect(cards.recipes.length).toBeGreaterThan(0);
+    for (const r of cards.recipes) expect(allergensOf(r.id).filter((a) => banned.includes(a)), r.id).toEqual([]);
   });
 });

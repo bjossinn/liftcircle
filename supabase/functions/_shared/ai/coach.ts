@@ -162,6 +162,9 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   const model = prov.model;
   const maxTokens = intEnv(deps, 'AI_MAX_OUTPUT_TOKENS', 1200, 64, 8192);
   const state: ToolState = { proposal: null, proposalAttempts: 0, weekPlan: null, weekAttempts: 0, mealPlan: null, mealPlanAttempts: 0, recipes: null };
+  // The user's own words for this request — for a short follow-up ("ok, try now") also the original request — so tools
+  // and the meal-plan fallback keep the user's restrictions even when the model's tool input drops them.
+  const requestText = ctx.followUp && ctx.openRequest ? `${ctx.openRequest.text}\n${text}` : text;
   const conversation: ApiMessage[] = [...ctx.messages];
   let usage = { inputTokens: 0, outputTokens: 0 };
   let reply = '';
@@ -206,7 +209,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
       for (const tu of toolUses.slice(0, 4)) {
         const out = await runTool(tu.name, tu.input, {
           db: deps.db, facts: ctx.facts, catalog: ctx.catalog, state, week: ctx.week, trainingShared: ctx.trainingShared, messageId: id,
-          today: ctx.today, nutrition: ctx.nutrition, account: ctx.account,
+          today: ctx.today, nutrition: ctx.nutrition, account: ctx.account, requestText,
         });
         results.push({ type: 'tool_result', tool_use_id: tu.id, content: out.content, ...(out.isError ? { is_error: true } : {}) });
       }
@@ -242,8 +245,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   const wantsPlan = asksForMealPlan(text) || resumed;
   if (wantsPlan && !state.mealPlan && !state.weekPlan && !mealPlanBlocker(ctx.nutrition)) {
     const [recipes, ingredients] = await Promise.all([deps.db.getRecipes(), deps.db.getIngredients()]);
-    const requestText = resumed && ctx.openRequest ? `${ctx.openRequest.text}\n${text}` : text;
-    const built = buildMealPlanAction(mealPlanIntentFromText(requestText), { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id, recipes, ingredients });
+    const built = buildMealPlanAction(mealPlanIntentFromText(requestText), { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id, recipes, ingredients, requestText });
     if (built.action) {
       state.mealPlan = built.action;
       replaced = 'meal_plan_fallback';

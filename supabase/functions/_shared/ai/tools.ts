@@ -20,7 +20,7 @@ import type { NutritionStatus } from './dataStatus.ts';
 // @ts-ignore see above
 import { mealPlanBlocker } from './dataStatus.ts';
 // @ts-ignore see above
-import { buildMealPlanAction, excludedIngredientIds, explainNoRecipes, parseQuery, totalMinutes, wordsMatch } from './meals.ts';
+import { buildMealPlanAction, excludedIngredientIds, explainNoRecipes, parseQuery, stemWord, totalMinutes, wordsMatch } from './meals.ts';
 import type { NormProgram } from './validate.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { decideTarget, missingEquipment, normalizeProposedProgram, validateForUser, validateProposedProgram } from './validate.ts';
@@ -208,6 +208,11 @@ export interface ToolContext {
   nutrition?: NutritionStatus;
   /** The user's account state (diet, targets) — read for the meal planner and recipe ranking, never sent wholesale. */
   account?: AccountStatePayload | null;
+  /**
+   * The user's own words for this request (the message, plus the original request for a follow-up). Their diet words and
+   * exclusions are enforced by find_recipes and propose_meal_plan even when the model's tool input leaves them out.
+   */
+  requestText?: string;
 }
 
 export interface ToolOutcome {
@@ -285,6 +290,18 @@ async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Pr
   const [recipes, ingredients] = await Promise.all([ctx.db.getRecipes(), ctx.db.getIngredients()]);
   const ing = new Map(ingredients.map((i) => [i.id, i]));
   const intent = parseQuery(typeof input.query === 'string' ? input.query : '');
+  // Restrictions the USER stated count even if the model's query dropped them ("no nuts" → query "breakfast ideas").
+  if (ctx.requestText) {
+    const said = parseQuery(ctx.requestText);
+    intent.diet = [...new Set([...intent.diet, ...said.diet])];
+    intent.exclude = {
+      allergens: [...new Set([...intent.exclude.allergens, ...said.exclude.allergens])],
+      words: [...new Set([...intent.exclude.words, ...said.exclude.words])],
+      raw: [...new Set([...intent.exclude.raw, ...said.exclude.raw])],
+      days: [],
+    };
+    intent.words = intent.words.filter((w) => !said.exclude.raw.some((r) => stemWord(r) === w));
+  }
   const meal = typeof input.meal === 'string' && ['breakfast', 'lunch', 'dinner', 'snack'].includes(input.meal) ? input.meal : intent.meal;
   const minP = typeof input.min_protein_g === 'number' ? input.min_protein_g : intent.highProtein ? (meal === 'snack' ? 15 : 25) : null;
   const max = Math.min(5, Math.max(1, typeof input.max_results === 'number' ? Math.round(input.max_results) : 3));
@@ -489,6 +506,7 @@ async function proposeMealPlan(input: Record<string, unknown>, ctx: ToolContext)
   const [recipes, ingredients] = mealPlanBlocker(nutrition) ? [[], []] : await Promise.all([ctx.db.getRecipes(), ctx.db.getIngredients()]);
   const { action, errors, adjusted } = buildMealPlanAction(input, {
     facts: ctx.facts, account: ctx.account ?? null, today: ctx.today ?? new Date().toISOString().slice(0, 10), nutrition, messageId: ctx.messageId ?? '', recipes, ingredients,
+    requestText: ctx.requestText,
   });
   if (!action) return { content: JSON.stringify({ status: 'not_built', errors, note: 'Tell the user exactly this reason (with its link if any). Do not invent meals.' }), isError: true };
   ctx.state.mealPlan = action;

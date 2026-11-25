@@ -24,7 +24,7 @@ import { appGuideText, type KnownIds } from './appGuide.ts';
 // @ts-ignore see above
 import { dataStatusLines, nutritionStatus, type NutritionStatus } from './dataStatus.ts';
 // @ts-ignore see above
-import { findOpenRequest, isFollowUp, SCOPE_NAMES, sharedFromGrounding, sharingChange, type OpenRequest } from './conversation.ts';
+import { carryOver, findOpenRequest, isFollowUp, SCOPE_NAMES, sharedFromGrounding, sharingChange, type OpenRequest } from './conversation.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { normalizeProteinPrefs, PROTEIN_GROUP_LABELS } from '../nutrition/proteins.ts';
 import type { ProteinGroup, ProteinPrefs } from '../nutrition/types.ts';
@@ -548,7 +548,8 @@ export async function buildContext({ db, uid, settings, text, mode, now }: Build
     if (prevReply && Array.isArray(prevReply.grounding) && prevReply.grounding.length) {
       const ch = sharingChange(sharedFromGrounding(prevReply.grounding), scopes);
       if (!ch.revoked) {
-        carried = pre.slice(-6);
+        // Only messages written while nothing now-unshared was in use (see carryOver: share → revoke → widen).
+        carried = carryOver(pre, scopes, 6);
         added = ch.added;
       }
     }
