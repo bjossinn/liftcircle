@@ -2129,13 +2129,30 @@ var NEGATOR_WORDS = /* @__PURE__ */ new Set([
   "nor",
   "none",
   "zero",
+  "don't",
+  "don\u2019t",
+  "dont",
+  "doesn't",
+  "doesn\u2019t",
+  "doesnt",
+  "won't",
+  "won\u2019t",
+  "wont",
+  "can't",
+  "can\u2019t",
+  "cant",
+  "cannot",
   "engan",
   "enga",
   "engar",
+  "engir",
   "engin",
   "enginn",
   "engum",
   "engri",
+  "engra",
+  "engrar",
+  "engu",
   "ekkert",
   "ekki",
   "sleppa",
@@ -2150,13 +2167,11 @@ var SEP_WORDS = /* @__PURE__ */ new Set([",", "/", "&", "or", "and", "nor", "og"
 var LIST_END = /* @__PURE__ */ new Set([".", ";", ":", "!", "?", "\n", "(", ")", "but", "then", "instead", "en", "heldur", "bara"]);
 var POSITIVE_WITH = /* @__PURE__ */ new Set(["with", "plus", "me\xF0"]);
 var NOTHING_WORDS = /* @__PURE__ */ new Set(["nothing", "none", "ekkert", "neitt"]);
-var CLARIFIERS = [
+var EXTENDERS = [
   ["including"],
   ["incl", "."],
   ["incl"],
   ["inc", "."],
-  ["containing"],
-  ["contains"],
   ["such", "as"],
   ["like"],
   ["especially"],
@@ -2169,15 +2184,88 @@ var CLARIFIERS = [
   ["\xFEar", "me\xF0", "tali\xF0"],
   ["\xFE", ".", "m", ".", "t", "."],
   ["eins", "og"],
-  ["sem", "innihalda"],
-  ["sem", "inniheldur"],
-  ["sem", "innihelda"],
   ["til", "d\xE6mis"],
   ["t", ".", "d", "."],
   ["serstaklega"],
   ["jafnvel"],
   ["m", ".", "a", "."]
 ];
+var CONTAINERS = [["containing"], ["contains"], ["sem", "innihalda"], ["sem", "inniheldur"], ["sem", "innihelda"]];
+var CLARIFIERS = [...EXTENDERS, ...CONTAINERS];
+var AFFIRM_START = /* @__PURE__ */ new Set([
+  "i",
+  "i'm",
+  "i\u2019m",
+  "im",
+  "i'd",
+  "i\u2019d",
+  "i've",
+  "i\u2019ve",
+  "i'll",
+  "i\u2019ll",
+  "we",
+  "we're",
+  "we\u2019re",
+  "we'd",
+  "we\u2019d",
+  "we've",
+  "we\u2019ve",
+  "we'll",
+  "we\u2019ll",
+  "you",
+  "please",
+  "love",
+  "want",
+  "like",
+  "prefer",
+  "enjoy",
+  "would",
+  "let's",
+  "let\u2019s",
+  "\xE9g",
+  "eg",
+  "vi\xF0",
+  "m\xE9r",
+  "mer",
+  "mig",
+  "okkur",
+  "vil",
+  "viljum",
+  "elska",
+  "elskum",
+  "langar",
+  "finnst",
+  "myndi",
+  "myndum",
+  "bor\xF0a",
+  "bor\xF0um",
+  "endilega",
+  "gjarnan"
+]);
+var COPULA = /* @__PURE__ */ new Set(["is", "are", "was", "were", "seems", "er", "eru", "var", "voru"]);
+var LEAD_VERBS = /* @__PURE__ */ new Set([
+  "eat",
+  "want",
+  "like",
+  "have",
+  "need",
+  "use",
+  "include",
+  "put",
+  "add",
+  "give",
+  "get",
+  "bor\xF0a",
+  "bor\xF0a\xF0",
+  "bor\xF0ar",
+  "vil",
+  "vilja",
+  "nota",
+  "setja",
+  "hafa",
+  "fa",
+  "gefa"
+]);
 var LEAD_FILLER = /* @__PURE__ */ new Set([
   "any",
   "anything",
@@ -2192,11 +2280,8 @@ var LEAD_FILLER = /* @__PURE__ */ new Set([
   "of",
   "my",
   "with",
-  "containing",
-  "contains",
   "um",
-  "i",
-  "a",
+  "iis",
   "me\xF0",
   "neinn",
   "neitt",
@@ -2207,9 +2292,11 @@ var LEAD_FILLER = /* @__PURE__ */ new Set([
   "nokkur",
   "nokkurra",
   "nokkra",
-  "alls"
+  "alls",
+  "eitthva\xF0",
+  "neinu"
 ]);
-var TRAIL_FILLER = /* @__PURE__ */ new Set(["whatsoever", "please", "thanks", "takk", "alls", "yfirleitt", "heldur"]);
+var TRAIL_FILLER = /* @__PURE__ */ new Set(["whatsoever", "please", "thanks", "takk", "alls", "yfirleitt", "heldur", "though", "tho", "either", "also", "anyway", "\xFEa", "lika"]);
 var NOT_AN_ITEM = /* @__PURE__ */ new Set([
   "one",
   "two",
@@ -2269,6 +2356,7 @@ var NOT_AN_ITEM = /* @__PURE__ */ new Set([
   "spicy",
   "hungry",
   "plan",
+  "out",
   "ein",
   "eina",
   "tv\xE6r",
@@ -2306,7 +2394,12 @@ var NOT_AN_ITEM = /* @__PURE__ */ new Set([
   "\xFEa\xF0",
   "\xFEetta",
   "mig",
-  "mer"
+  "mer",
+  "sterkt",
+  "sterkur",
+  "sterk",
+  "sterka",
+  "uti"
 ]);
 var CLAUSE_BREAK = /* @__PURE__ */ new Set([
   "in",
@@ -2324,7 +2417,7 @@ var CLAUSE_BREAK = /* @__PURE__ */ new Set([
   "from",
   "this",
   "next",
-  "i",
+  "iis",
   "a",
   "fyrir",
   "af",
@@ -2352,7 +2445,8 @@ var WEEKDAY_TOKENS = [
   [new RegExp(`^(?:fridays?|fri|fostud[ao]g${IS_DAY_END})$`), ["friday"]],
   [new RegExp(`^(?:saturdays?|sat|laugard[ao]g${IS_DAY_END})$`), ["saturday"]],
   [new RegExp(`^(?:sundays?|sun|sunnud[ao]g${IS_DAY_END})$`), ["sunday"]],
-  [/^(?:weekends?|helg(?:i|in|ina|inni|ar|arinnar|um)?)$/, ["saturday", "sunday"]]
+  [/^(?:weekends?|helg(?:i|in|ina|inni|ar|arinnar|um)?)$/, ["saturday", "sunday"]],
+  [/^weekdays?$/, ["monday", "tuesday", "wednesday", "thursday", "friday"]]
 ];
 var dayWord = (w) => w.replace(/['’]s$/, "").replace(/-(?:only|ish)$/, "").replace(/^helgarplan[a-zæðþ]*$/, "helgar");
 var dayOf = (w) => {
@@ -2411,7 +2505,8 @@ function classifyItem(text) {
   return words.length && words.length <= 3 ? classifyHead(words) : null;
 }
 function parseExclusionTokens(text) {
-  const t = stripNegatedDiets(fold2(text.replace(/(^|[^\p{L}])án(?=\s)/giu, "$1without ")));
+  const marked = text.replace(/(^|[^\p{L}])án(?=\s)/giu, "$1without ").replace(/(^|[^\p{L}])í(?=\s)/giu, "$1iis ");
+  const t = stripNegatedDiets(fold2(marked));
   const tokens = t.match(TOKEN_RE) ?? [];
   const consumed = /* @__PURE__ */ new Set();
   const items = [];
@@ -2419,48 +2514,67 @@ function parseExclusionTokens(text) {
   const clarifierAt = (k) => {
     const open = tokens[k] === "(" ? 1 : 0;
     const hit = CLARIFIERS.find((c) => c.every((w, n) => tokens[k + open + n] === w));
-    return hit ? hit.length + open : 0;
+    return hit ? { len: hit.length + open, extender: EXTENDERS.includes(hit) } : null;
   };
   for (let i = 0; i < tokens.length; i++) {
     if (!NEGATOR_WORDS.has(tokens[i])) continue;
     consumed.add(i);
     let j = i + 1;
-    const withScope = NOTHING_WORDS.has(tokens[i]) && (POSITIVE_WITH.has(tokens[j]) || clarifierAt(j) > 0);
-    for (let first = true; ; first = false) {
-      if (!first && !withScope && clarifierAt(j) === 0 && POSITIVE_WITH.has(tokens[j])) break;
+    const withScope = NOTHING_WORDS.has(tokens[i]) && (POSITIVE_WITH.has(tokens[j]) || !!clarifierAt(j));
+    let afterFood = false;
+    list: for (let first = true; ; first = false) {
+      if (!first) {
+        if (AFFIRM_START.has(tokens[j])) break;
+        if (!withScope && !clarifierAt(j) && POSITIVE_WITH.has(tokens[j])) break;
+      }
       for (; ; ) {
         const c = clarifierAt(j);
-        if (c) j += c;
+        if (c) {
+          if (c.extender && !afterFood && !first) break list;
+          j += c.len;
+          afterFood = false;
+          if (AFFIRM_START.has(tokens[j])) break list;
+        } else if (first && LEAD_VERBS.has(tokens[j])) j++;
         else if (j < tokens.length && LEAD_FILLER.has(tokens[j]) && !(tokens[j] === "at" && tokens[j + 1] !== "all")) j++;
         else break;
       }
       const start = j;
       const head = [];
       let cut = false;
+      let copula = false;
       while (j < tokens.length && isWord(tokens[j]) && !SEP_WORDS.has(tokens[j]) && !LIST_END.has(tokens[j]) && !NEGATOR_WORDS.has(tokens[j]) && !clarifierAt(j)) {
         const w = tokens[j];
         if (w === "at" && tokens[j + 1] === "all") break;
         if (TRAIL_FILLER.has(w)) break;
-        if (/\d/.test(w) || NOT_AN_ITEM.has(w) || CLAUSE_BREAK.has(w) || head.length === 3) {
+        if (COPULA.has(w)) {
+          copula = true;
+          break;
+        }
+        if (/\d/.test(w) || NOT_AN_ITEM.has(w) || CLAUSE_BREAK.has(w) || AFFIRM_START.has(w) || head.length === 3) {
           cut = true;
           break;
         }
         head.push(w);
         j++;
       }
+      if (copula && !first) break;
       const item = classifyHead(head);
       if (!item) break;
       items.push(item);
       for (let k = start; k < start + head.length; k++) consumed.add(k);
-      if (cut) break;
+      if (cut || copula) break;
       for (; ; ) {
         if (tokens[j] === "at" && tokens[j + 1] === "all") j += 2;
         else if (TRAIL_FILLER.has(tokens[j]) || tokens[j] === ")") j++;
         else break;
       }
+      afterFood = true;
       if (clarifierAt(j)) continue;
       if (!SEP_WORDS.has(tokens[j])) break;
-      while (SEP_WORDS.has(tokens[j])) j++;
+      while (SEP_WORDS.has(tokens[j])) {
+        if (tokens[j] !== "," && tokens[j] !== "(") afterFood = false;
+        j++;
+      }
       if (NEGATOR_WORDS.has(tokens[j])) break;
     }
   }
@@ -2488,7 +2602,9 @@ function wantedDays(text) {
   const { tokens, consumed } = parseExclusionTokens(text);
   const out = /* @__PURE__ */ new Set();
   tokens.forEach((w, i) => {
-    if (!consumed.has(i)) dayOf(w)?.forEach((d) => out.add(d));
+    if (consumed.has(i)) return;
+    dayOf(w)?.forEach((d) => out.add(d));
+    if (/^virk(?:a|um|ir)$/.test(w) && /^d[ao]g(?:a|um|ar)$/.test(tokens[i + 1] ?? "")) ["monday", "tuesday", "wednesday", "thursday", "friday"].forEach((d) => out.add(d));
   });
   return WEEKDAYS_EN.filter((d) => out.has(d));
 }
@@ -2553,7 +2669,7 @@ var ALLERGEN_WORDS = [
   [/\bdairy\b|\bmilk\b|\blactose\b|\bcheese\b|\bmjolk|\blaktos/, ["milk"]],
   [/\beggs?\b|\beggj/, ["egg"]],
   [/\bpeanuts?\b|\bjarðhnet|\bhnetusmjor/, ["peanuts"]],
-  [/\bnuts?\b|\btree nuts?\b|\bhnet(?!usmjor)|\btrjahnet|\balmonds?\b|\bcashews?\b|\bwalnuts?\b|\bhazelnuts?\b|\bpecans?\b|\bpistachios?\b|\bmacadamias?\b|\bmondl|\bvalhnet|\bheslihnet|\bkasju/, ["tree_nuts"]],
+  [/\bnuts?\b|\btree nuts?\b|(?<![a-zæðþ])hnet(?!usmjor)|\btrjahnet|\balmonds?\b|\bcashews?\b|\bwalnuts?\b|\bhazelnuts?\b|\bpecans?\b|\bpistachios?\b|\bmacadamias?\b|\bmondl|\bvalhnet|\bheslihnet|\bkasju/, ["tree_nuts"]],
   [/\bgluten/, ["gluten"]],
   [/\bwheat\b|\bhveiti/, ["wheat"]],
   [/\bsoy\b|\bsoya\b|\btofu\b|\bsoja/, ["soy"]],
