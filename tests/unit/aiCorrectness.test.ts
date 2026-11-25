@@ -641,6 +641,26 @@ const CORPUS: Case[] = [
   { phrase: 'a satay-only lunch' },
   { phrase: 'fries’s fine' },
   { phrase: 'sunnudagssteik-only' },
+  // review 5: clarifiers extend a negation; "nothing with X or with/containing Y" keeps Y excluded
+  { phrase: 'No nuts, including peanuts', allergens: ['tree_nuts', 'peanuts'] },
+  { phrase: 'no nuts including peanuts', allergens: ['tree_nuts', 'peanuts'] },
+  { phrase: 'no nuts (incl. peanuts)', allergens: ['tree_nuts', 'peanuts'] },
+  { phrase: 'Nothing with peanuts or containing milk', allergens: ['peanuts', 'milk'] },
+  { phrase: 'nothing with nuts or with eggs', allergens: ['tree_nuts', 'egg'] },
+  { phrase: 'no nuts or anything containing milk', allergens: ['tree_nuts', 'milk'] },
+  { phrase: 'no nuts, such as almonds', allergens: ['tree_nuts'] },
+  { phrase: 'no nuts like almonds or cashews', allergens: ['tree_nuts'] },
+  { phrase: 'no nuts, especially peanuts', allergens: ['tree_nuts', 'peanuts'] },
+  { phrase: 'no nuts, even peanuts', allergens: ['tree_nuts', 'peanuts'] },
+  { phrase: 'no nuts, e.g. almonds', allergens: ['tree_nuts'] },
+  { phrase: 'án hneta, þar með talið jarðhnetur', allergens: ['tree_nuts', 'peanuts'] },
+  { phrase: 'engar hnetur, eins og möndlur', allergens: ['tree_nuts'] },
+  { phrase: 'ekkert sem inniheldur mjólk', allergens: ['milk'] },
+  { phrase: 'ekkert með hnetum eða sem inniheldur mjólk', allergens: ['tree_nuts', 'milk'] },
+  { phrase: 'ekkert með hnetum eða með eggjum', allergens: ['tree_nuts', 'egg'] },
+  { phrase: 'engar hnetur, jafnvel ekki jarðhnetur', allergens: ['tree_nuts', 'peanuts'] },
+  { phrase: 'engar hnetur, sérstaklega ekki jarðhnetur', allergens: ['tree_nuts', 'peanuts'] },
+  { phrase: 'án hneta, t.d. möndlur', allergens: ['tree_nuts'] },
 ];
 const NEXT_WEEK: Record<string, string> = { monday: '2026-11-02', tuesday: '2026-11-03', wednesday: '2026-11-04', thursday: '2026-11-05', friday: '2026-11-06', saturday: '2026-11-07', sunday: '2026-11-08' };
 const usedIngredients = (recipeId: string) => RECIPES.find((r) => r.id === recipeId)!.ingredients.filter((i) => !i.optional).map((i) => i.ingredientId);
@@ -713,5 +733,79 @@ describe('exclusion parser corpus (EN + IS, every review phrasing)', () => {
     expect(wantedDays("Friday's and Sunday’s dinners")).toEqual(['friday', 'sunday']);
     expect(wantedDays('weekend-only')).toEqual(['saturday', 'sunday']);
     expect(wantedDays('fries-only, satay’s, sunnudagssteik-only, frisbee')).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ safety net: every corpus exclusion, end to end */
+/**
+ * For EVERY corpus row that rules something out, the handler runs against the real catalog plus one "testbad" recipe per
+ * excluded allergen/food (built from an ingredient carrying it). Two paths: the model searches find_recipes for exactly
+ * those recipes, and the meal-plan fallback builds next week. No testbad recipe — and nothing ruled out — may ever be
+ * returned. A restriction the parser drops in the future fails here, loudly, for that phrase.
+ */
+const ALLERGEN_INGREDIENT = (a: string) => INGREDIENTS.find((i) => (i.allergens ?? []).includes(a as never))!;
+function fixtureFor(c: Case) {
+  const extraIngredients: RefIngredient[] = [];
+  const bad: { ingredientId: string; label: string }[] = [];
+  for (const a of c.allergens ?? []) bad.push({ ingredientId: ALLERGEN_INGREDIENT(a).id, label: a });
+  for (const f of c.foods ?? []) {
+    const ids = excludedIngredientIds([f], REF_INGREDIENTS);
+    if (ids.length) bad.push({ ingredientId: ids[0], label: f });
+    else {
+      const id = `testbad-ing-${f.replace(/[^a-z0-9]+/gi, '-')}`;
+      extraIngredients.push({ ...(INGREDIENTS.find((i) => i.id === 'chicken-breast-raw') ?? INGREDIENTS[0]), id, name: f, allergens: [] } as unknown as RefIngredient);
+      bad.push({ ingredientId: id, label: f });
+    }
+  }
+  const template = RECIPES[0];
+  const extraRecipes = bad.flatMap((b, n) =>
+    (['breakfast', 'lunch', 'dinner', 'snack'] as const).map((meal) => ({
+      ...template, id: `testbad-${n}-${meal}`, name: `Testbad ${b.label} ${meal}`, meal, prepMinutes: 5, cookMinutes: 5, substitutions: [],
+      ingredients: [{ ingredientId: b.ingredientId, grams: 250, display: '250 g' }],
+    })),
+  ) as unknown as RefRecipe[];
+  return { recipes: [...REF_RECIPES, ...extraRecipes], ingredients: [...REF_INGREDIENTS, ...extraIngredients], bad: new Set(bad.map((b) => b.ingredientId)) };
+}
+
+describe('safety net: no corpus exclusion is ever returned by the handler', () => {
+  const rows = CORPUS.filter((c) => (c.allergens?.length ?? 0) + (c.foods?.length ?? 0) > 0);
+  it.each(rows.map((c) => [c.phrase, c] as const))('%s', async (_p, c) => {
+    const fx = fixtureFor(c);
+    const banned = new Set<string>(c.allergens ?? []);
+    const isBad = (recipeId: string) => {
+      const r = fx.recipes.find((x) => x.id === recipeId)!;
+      const ids = (r.ingredients ?? []).filter((i) => !i.optional).map((i) => i.ingredientId);
+      return recipeId.startsWith('testbad') || ids.some((id) => fx.bad.has(id)) || ids.some((id) => (ING.get(id)?.allergens ?? []).some((a) => banned.has(a)));
+    };
+    const conv = conversationDb();
+    conv.db.getRecipes = async () => fx.recipes;
+    conv.db.getIngredients = async () => fx.ingredients;
+
+    // The fixture works: without the user's words, the search returns testbad recipes.
+    const acc = account();
+    const baseline = await runTool('find_recipes', { query: 'testbad', max_results: 5 }, {
+      db: conv.db, facts: facts(), catalog: new Map(), state: { proposal: null, proposalAttempts: 0 }, messageId: mid(4), nutrition: nutritionStatus(acc, true), account: acc,
+    });
+    expect((JSON.parse(baseline.content).results as { id: string }[]).some((r) => r.id.startsWith('testbad')), 'fixture baseline').toBe(true);
+
+    // 1. The model searches FOR the excluded recipes; the user's restriction must still win.
+    const p1 = capturingProvider([toolUse('find_recipes', { query: 'testbad', max_results: 5 }), text('Here you go.')]);
+    const r1 = await handleAiCoach(deps(conv.db, p1.fetch).d, U, send(c.phrase, 1));
+    // (A phrase that itself asks for a meal plan gets the plan card instead of recipe cards: check whichever came back.)
+    const a1 = (r1.body.reply as StoredMessage).action as unknown as { kind: string; recipes?: { id: string }[]; days?: MealPlanAction['days'] } | null;
+    const shown = a1?.kind === 'meal_plan' ? a1.days!.flatMap((d) => d.items.map((it) => it.recipeId)) : (a1?.recipes ?? []).map((r) => r.id);
+    expect(shown.length, 'recipes were shown').toBeGreaterThan(0);
+    for (const id of shown) expect(isBad(id), `returned ${id}`).toBe(false);
+
+    // 2. The meal-plan fallback for next week.
+    const p2 = capturingProvider([text('Here is your plan.')]);
+    const r2 = await handleAiCoach(deps(conv.db, p2.fetch).d, U, send(`Make a meal plan for next week. ${c.phrase}`, 2));
+    const plan = (r2.body.reply as StoredMessage).action as MealPlanAction | null;
+    expect(plan?.kind, 'a plan was built').toBe('meal_plan');
+    for (const d of plan!.days)
+      for (const it of d.items) {
+        expect(isBad(it.recipeId), `${d.date} ${it.recipeId}`).toBe(false);
+        for (const e of it.extras ?? []) expect(fx.bad.has(e.ingredientId) || (ING.get(e.ingredientId)?.allergens ?? []).some((a) => banned.has(a)), `${d.date} side ${e.ingredientId}`).toBe(false);
+      }
   });
 });

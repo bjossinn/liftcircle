@@ -146,10 +146,20 @@ const SEP_WORDS = new Set([',', '/', '&', 'or', 'and', 'nor', 'og', 'eða', 'eda
 /** Ends a list outright. */
 const LIST_END = new Set(['.', ';', ':', '!', '?', '\n', '(', ')', 'but', 'then', 'instead', 'en', 'heldur', 'bara']);
 /** Skipped before an item ("without ANY nuts", "nothing ON weekends", "ekki UM helgina", "nothing WITH nuts"). */
-/** "with" right after the negation belongs to it ("nothing WITH nuts" = no nuts); after a separator it starts what the
- *  user WANTS ("without nuts and WITH eggs", "án hneta, MEÐ eggjum"), so it ends the list there. */
-const WITH_WORDS = new Set(['with', 'containing', 'contains', 'including', 'plus', 'með']);
-const LEAD_FILLER = new Set(['any', 'the', 'some', 'a', 'an', 'at', 'all', 'on', 'of', 'my', 'with', 'containing', 'contains', 'um', 'i', 'a', 'með',
+/** A genuinely positive "with": after a separator it starts what the user WANTS ("without nuts and WITH eggs",
+ *  "án hneta, MEÐ eggjum"), so it ends the list. Right after the negation it belongs to it ("nothing WITH nuts"), and in a
+ *  "nothing with X or with Y" list it stays negative. */
+const POSITIVE_WITH = new Set(['with', 'plus', 'með']);
+/** Negators meaning "nothing", whose "with …" alternatives stay negative: "nothing with peanuts or containing milk". */
+const NOTHING_WORDS = new Set(['nothing', 'none', 'ekkert', 'neitt']);
+/** Clarifiers that EXTEND a negation to more items ("no nuts, including peanuts", "án hneta, þar með talið jarðhnetur",
+ *  "nothing … or containing milk"): skipped, and the list goes on. Folded tokens; "." and "(" are their own tokens. */
+const CLARIFIERS: string[][] = [
+  ['including'], ['incl', '.'], ['incl'], ['inc', '.'], ['containing'], ['contains'], ['such', 'as'], ['like'], ['especially'], ['particularly'],
+  ['specifically'], ['even'], ['e', '.', 'g', '.'], ['e', '.', 'g'], ['eg'], ['þar', 'með', 'talið'], ['þ', '.', 'm', '.', 't', '.'], ['eins', 'og'],
+  ['sem', 'innihalda'], ['sem', 'inniheldur'], ['sem', 'innihelda'], ['til', 'dæmis'], ['t', '.', 'd', '.'], ['serstaklega'], ['jafnvel'], ['m', '.', 'a', '.'],
+];
+const LEAD_FILLER = new Set(['any', 'anything', 'something', 'the', 'some', 'a', 'an', 'at', 'all', 'on', 'of', 'my', 'with', 'containing', 'contains', 'um', 'i', 'a', 'með',
   'neinn', 'neitt', 'neina', 'neinu', 'neinar', 'neinum', 'nokkur', 'nokkurra', 'nokkra', 'alls']);
 /** Skipped after an item without ending the list ("nuts AT ALL or eggs", "fish PLEASE, or soy"). */
 const TRAIL_FILLER = new Set(['whatsoever', 'please', 'thanks', 'takk', 'alls', 'yfirleitt', 'heldur']);
@@ -163,7 +173,7 @@ const NOT_AN_ITEM = new Set(['one', 'two', 'three', 'four', 'five', 'six', 'day'
 const CLAUSE_BREAK = new Set(['in', 'for', 'because', 'since', 'as', 'when', 'while', 'during', 'with', 'to', 'at', 'on', 'from', 'this', 'next',
   'i', 'a', 'fyrir', 'af', 'þvi', 'þar', 'vegna', 'með', 'um', 'þegar', 'svo', 'til', 'fra', 'eftir', 'næstu', 'þessa', 'þessari']);
 /** Connectors and fillers that never name a food, so they are never search words. */
-const QUERY_GLUE = new Set([...SEP_WORDS, ...LIST_END, ...LEAD_FILLER, ...TRAIL_FILLER, ...CLAUSE_BREAK]);
+const QUERY_GLUE = new Set([...SEP_WORDS, ...LIST_END, ...LEAD_FILLER, ...TRAIL_FILLER, ...CLAUSE_BREAK, ...CLARIFIERS.flat()]);
 // Weekdays match WHOLE tokens only — full English names (or plurals) and the usual abbreviations, and Icelandic day
 // names with their case endings — so food words never become days ("fries", "satay", "monkfish", "sunnudagssteik").
 const IS_DAY_END = '(?:ur|inn|s|sins|a|ana|ar|arnir|um|inum)?';
@@ -193,7 +203,7 @@ const IS_FOOD: [string, string][] = [
   ['hrisgrjon', 'rice'], ['kotasæl', 'cottage cheese'], ['hvitlauk', 'garlic'], ['kjukling', 'chicken'], ['kalkun', 'turkey'], ['beikon', 'bacon'],
   ['skink', 'ham'], ['svin', 'pork'], ['naut', 'beef'], ['hakk', 'mince'], ['kjot', 'meat'], ['svepp', 'mushroom'], ['lauk', 'onion'], ['tomat', 'tomato'],
   ['papri', 'pepper'], ['avokado', 'avocado'], ['banan', 'banana'], ['baun', 'bean'], ['hafra', 'oat'], ['ost', 'cheese'], ['lax', 'salmon'], ['þorsk', 'cod'],
-  ['tunfisk', 'tuna'], ['spinat', 'spinach'], ['kokos', 'coconut'],
+  ['tunfisk', 'tuna'], ['spinat', 'spinach'], ['kokos', 'coconut'], ['mondl', 'almond'],
 ];
 const FREE_RE = new RegExp(`(?<![${L}])([a-zæðþ]+)[\\s-]free(?![${L}])|(?<![${L}])([a-zæðþ]{3,}?)laus(?:ir|ar|an|um|ri|a|t)?(?![${L}])`, 'g');
 const TOKEN_RE = /[a-z0-9æðþ'’-]+|[.,;:!?\n()/&]/g;
@@ -234,18 +244,31 @@ function parseExclusionTokens(text: string): ExclusionParse {
   const consumed = new Set<number>();
   const items: Item[] = [];
   const isWord = (w: string | undefined) => !!w && /^[a-z0-9æðþ'’-]+$/.test(w);
+  /** Length of a clarifier phrase starting at k (an opening "(" may precede it), else 0. */
+  const clarifierAt = (k: number): number => {
+    const open = tokens[k] === '(' ? 1 : 0;
+    const hit = CLARIFIERS.find((c) => c.every((w, n) => tokens[k + open + n] === w));
+    return hit ? hit.length + open : 0;
+  };
   for (let i = 0; i < tokens.length; i++) {
     if (!NEGATOR_WORDS.has(tokens[i])) continue;
     consumed.add(i);
     let j = i + 1;
+    // "nothing WITH x …": later "with"/"containing" alternatives stay negative.
+    const withScope = NOTHING_WORDS.has(tokens[i]) && (POSITIVE_WITH.has(tokens[j]) || clarifierAt(j) > 0);
     for (let first = true; ; first = false) {
-      // A positive "with"/"með" after a separator ends the negation's scope (see WITH_WORDS).
-      if (!first && WITH_WORDS.has(tokens[j])) break;
-      while (j < tokens.length && LEAD_FILLER.has(tokens[j]) && !(tokens[j] === 'at' && tokens[j + 1] !== 'all')) j++;
+      if (!first && !withScope && clarifierAt(j) === 0 && POSITIVE_WITH.has(tokens[j])) break;
+      // Leading fillers and clarifiers: "without ANY nuts", "nothing WITH nuts", ", INCLUDING peanuts", "or CONTAINING milk".
+      for (;;) {
+        const c = clarifierAt(j);
+        if (c) j += c;
+        else if (j < tokens.length && LEAD_FILLER.has(tokens[j]) && !(tokens[j] === 'at' && tokens[j + 1] !== 'all')) j++;
+        else break;
+      }
       const start = j;
       const head: string[] = [];
       let cut = false;
-      while (j < tokens.length && isWord(tokens[j]) && !SEP_WORDS.has(tokens[j]) && !LIST_END.has(tokens[j]) && !NEGATOR_WORDS.has(tokens[j])) {
+      while (j < tokens.length && isWord(tokens[j]) && !SEP_WORDS.has(tokens[j]) && !LIST_END.has(tokens[j]) && !NEGATOR_WORDS.has(tokens[j]) && !clarifierAt(j)) {
         const w = tokens[j];
         if (w === 'at' && tokens[j + 1] === 'all') break; // "nuts at all" — a filler, handled below
         if (TRAIL_FILLER.has(w)) break;
@@ -261,12 +284,13 @@ function parseExclusionTokens(text: string): ExclusionParse {
       items.push(item);
       for (let k = start; k < start + head.length; k++) consumed.add(k);
       if (cut) break;
-      // Fillers after the item don't end the list: "no nuts at all, eggs or soy".
+      // Fillers after the item don't end the list: "no nuts at all, eggs or soy", "(incl. peanuts)".
       for (;;) {
         if (tokens[j] === 'at' && tokens[j + 1] === 'all') j += 2;
-        else if (TRAIL_FILLER.has(tokens[j])) j++;
+        else if (TRAIL_FILLER.has(tokens[j]) || tokens[j] === ')') j++;
         else break;
       }
+      if (clarifierAt(j)) continue; // "no nuts including peanuts": the clarifier is skipped at the top of the loop
       if (!SEP_WORDS.has(tokens[j])) break;
       while (SEP_WORDS.has(tokens[j])) j++;
       if (NEGATOR_WORDS.has(tokens[j])) break; // "no fish, no nuts": the outer loop starts the next list
@@ -396,7 +420,7 @@ export function explainNoRecipes(c: ConstraintSet, recipes: RefRecipe[], ing: Ma
 const ALLERGEN_WORDS: [RegExp, Allergen[]][] = [
   [/\bfish\b|\bseafood\b|\bfisk|\bsjavarfang/, ['fish', 'shellfish']], [/\bshellfish\b|\bprawns?\b|\bshrimps?\b|\brækj|\bskelfisk/, ['shellfish']],
   [/\bdairy\b|\bmilk\b|\blactose\b|\bcheese\b|\bmjolk|\blaktos/, ['milk']],
-  [/\beggs?\b|\beggj/, ['egg']], [/\bpeanuts?\b|\bjarðhnet|\bhnetusmjor/, ['peanuts']], [/\bnuts?\b|\btree nuts?\b|\bhnet(?!usmjor)|\btrjahnet/, ['tree_nuts']], [/\bgluten/, ['gluten']], [/\bwheat\b|\bhveiti/, ['wheat']],
+  [/\beggs?\b|\beggj/, ['egg']], [/\bpeanuts?\b|\bjarðhnet|\bhnetusmjor/, ['peanuts']], [/\bnuts?\b|\btree nuts?\b|\bhnet(?!usmjor)|\btrjahnet|\balmonds?\b|\bcashews?\b|\bwalnuts?\b|\bhazelnuts?\b|\bpecans?\b|\bpistachios?\b|\bmacadamias?\b|\bmondl|\bvalhnet|\bheslihnet|\bkasju/, ['tree_nuts']], [/\bgluten/, ['gluten']], [/\bwheat\b|\bhveiti/, ['wheat']],
   [/\bsoy\b|\bsoya\b|\btofu\b|\bsoja/, ['soy']], [/\bsesame\b|\bsesam/, ['sesame']], [/\bmustard\b|\bsinnep/, ['mustard']], [/\bcelery\b|\bsellerí|\bselleri/, ['celery']],
 ];
 

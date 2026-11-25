@@ -2148,9 +2148,40 @@ var NEGATORS = /* @__PURE__ */ new Set([...NEGATOR_WORDS, "free", "laus"]);
 var L = "a-z0-9\xE6\xF0\xFE";
 var SEP_WORDS = /* @__PURE__ */ new Set([",", "/", "&", "or", "and", "nor", "og", "e\xF0a", "eda", "ne"]);
 var LIST_END = /* @__PURE__ */ new Set([".", ";", ":", "!", "?", "\n", "(", ")", "but", "then", "instead", "en", "heldur", "bara"]);
-var WITH_WORDS = /* @__PURE__ */ new Set(["with", "containing", "contains", "including", "plus", "me\xF0"]);
+var POSITIVE_WITH = /* @__PURE__ */ new Set(["with", "plus", "me\xF0"]);
+var NOTHING_WORDS = /* @__PURE__ */ new Set(["nothing", "none", "ekkert", "neitt"]);
+var CLARIFIERS = [
+  ["including"],
+  ["incl", "."],
+  ["incl"],
+  ["inc", "."],
+  ["containing"],
+  ["contains"],
+  ["such", "as"],
+  ["like"],
+  ["especially"],
+  ["particularly"],
+  ["specifically"],
+  ["even"],
+  ["e", ".", "g", "."],
+  ["e", ".", "g"],
+  ["eg"],
+  ["\xFEar", "me\xF0", "tali\xF0"],
+  ["\xFE", ".", "m", ".", "t", "."],
+  ["eins", "og"],
+  ["sem", "innihalda"],
+  ["sem", "inniheldur"],
+  ["sem", "innihelda"],
+  ["til", "d\xE6mis"],
+  ["t", ".", "d", "."],
+  ["serstaklega"],
+  ["jafnvel"],
+  ["m", ".", "a", "."]
+];
 var LEAD_FILLER = /* @__PURE__ */ new Set([
   "any",
+  "anything",
+  "something",
   "the",
   "some",
   "a",
@@ -2311,7 +2342,7 @@ var CLAUSE_BREAK = /* @__PURE__ */ new Set([
   "\xFEessa",
   "\xFEessari"
 ]);
-var QUERY_GLUE = /* @__PURE__ */ new Set([...SEP_WORDS, ...LIST_END, ...LEAD_FILLER, ...TRAIL_FILLER, ...CLAUSE_BREAK]);
+var QUERY_GLUE = /* @__PURE__ */ new Set([...SEP_WORDS, ...LIST_END, ...LEAD_FILLER, ...TRAIL_FILLER, ...CLAUSE_BREAK, ...CLARIFIERS.flat()]);
 var IS_DAY_END = "(?:ur|inn|s|sins|a|ana|ar|arnir|um|inum)?";
 var WEEKDAY_TOKENS = [
   [new RegExp(`^(?:mondays?|mon|manud[ao]g${IS_DAY_END})$`), ["monday"]],
@@ -2360,7 +2391,8 @@ var IS_FOOD = [
   ["\xFEorsk", "cod"],
   ["tunfisk", "tuna"],
   ["spinat", "spinach"],
-  ["kokos", "coconut"]
+  ["kokos", "coconut"],
+  ["mondl", "almond"]
 ];
 var FREE_RE = new RegExp(`(?<![${L}])([a-z\xE6\xF0\xFE]+)[\\s-]free(?![${L}])|(?<![${L}])([a-z\xE6\xF0\xFE]{3,}?)laus(?:ir|ar|an|um|ri|a|t)?(?![${L}])`, "g");
 var TOKEN_RE = /[a-z0-9æðþ'’-]+|[.,;:!?\n()/&]/g;
@@ -2384,17 +2416,28 @@ function parseExclusionTokens(text) {
   const consumed = /* @__PURE__ */ new Set();
   const items = [];
   const isWord = (w) => !!w && /^[a-z0-9æðþ'’-]+$/.test(w);
+  const clarifierAt = (k) => {
+    const open = tokens[k] === "(" ? 1 : 0;
+    const hit = CLARIFIERS.find((c) => c.every((w, n) => tokens[k + open + n] === w));
+    return hit ? hit.length + open : 0;
+  };
   for (let i = 0; i < tokens.length; i++) {
     if (!NEGATOR_WORDS.has(tokens[i])) continue;
     consumed.add(i);
     let j = i + 1;
+    const withScope = NOTHING_WORDS.has(tokens[i]) && (POSITIVE_WITH.has(tokens[j]) || clarifierAt(j) > 0);
     for (let first = true; ; first = false) {
-      if (!first && WITH_WORDS.has(tokens[j])) break;
-      while (j < tokens.length && LEAD_FILLER.has(tokens[j]) && !(tokens[j] === "at" && tokens[j + 1] !== "all")) j++;
+      if (!first && !withScope && clarifierAt(j) === 0 && POSITIVE_WITH.has(tokens[j])) break;
+      for (; ; ) {
+        const c = clarifierAt(j);
+        if (c) j += c;
+        else if (j < tokens.length && LEAD_FILLER.has(tokens[j]) && !(tokens[j] === "at" && tokens[j + 1] !== "all")) j++;
+        else break;
+      }
       const start = j;
       const head = [];
       let cut = false;
-      while (j < tokens.length && isWord(tokens[j]) && !SEP_WORDS.has(tokens[j]) && !LIST_END.has(tokens[j]) && !NEGATOR_WORDS.has(tokens[j])) {
+      while (j < tokens.length && isWord(tokens[j]) && !SEP_WORDS.has(tokens[j]) && !LIST_END.has(tokens[j]) && !NEGATOR_WORDS.has(tokens[j]) && !clarifierAt(j)) {
         const w = tokens[j];
         if (w === "at" && tokens[j + 1] === "all") break;
         if (TRAIL_FILLER.has(w)) break;
@@ -2412,9 +2455,10 @@ function parseExclusionTokens(text) {
       if (cut) break;
       for (; ; ) {
         if (tokens[j] === "at" && tokens[j + 1] === "all") j += 2;
-        else if (TRAIL_FILLER.has(tokens[j])) j++;
+        else if (TRAIL_FILLER.has(tokens[j]) || tokens[j] === ")") j++;
         else break;
       }
+      if (clarifierAt(j)) continue;
       if (!SEP_WORDS.has(tokens[j])) break;
       while (SEP_WORDS.has(tokens[j])) j++;
       if (NEGATOR_WORDS.has(tokens[j])) break;
@@ -2509,7 +2553,7 @@ var ALLERGEN_WORDS = [
   [/\bdairy\b|\bmilk\b|\blactose\b|\bcheese\b|\bmjolk|\blaktos/, ["milk"]],
   [/\beggs?\b|\beggj/, ["egg"]],
   [/\bpeanuts?\b|\bjarðhnet|\bhnetusmjor/, ["peanuts"]],
-  [/\bnuts?\b|\btree nuts?\b|\bhnet(?!usmjor)|\btrjahnet/, ["tree_nuts"]],
+  [/\bnuts?\b|\btree nuts?\b|\bhnet(?!usmjor)|\btrjahnet|\balmonds?\b|\bcashews?\b|\bwalnuts?\b|\bhazelnuts?\b|\bpecans?\b|\bpistachios?\b|\bmacadamias?\b|\bmondl|\bvalhnet|\bheslihnet|\bkasju/, ["tree_nuts"]],
   [/\bgluten/, ["gluten"]],
   [/\bwheat\b|\bhveiti/, ["wheat"]],
   [/\bsoy\b|\bsoya\b|\btofu\b|\bsoja/, ["soy"]],
