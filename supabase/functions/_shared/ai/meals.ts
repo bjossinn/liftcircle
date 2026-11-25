@@ -146,6 +146,9 @@ const SEP_WORDS = new Set([',', '/', '&', 'or', 'and', 'nor', 'og', 'eða', 'eda
 /** Ends a list outright. */
 const LIST_END = new Set(['.', ';', ':', '!', '?', '\n', '(', ')', 'but', 'then', 'instead', 'en', 'heldur', 'bara']);
 /** Skipped before an item ("without ANY nuts", "nothing ON weekends", "ekki UM helgina", "nothing WITH nuts"). */
+/** "with" right after the negation belongs to it ("nothing WITH nuts" = no nuts); after a separator it starts what the
+ *  user WANTS ("without nuts and WITH eggs", "án hneta, MEÐ eggjum"), so it ends the list there. */
+const WITH_WORDS = new Set(['with', 'containing', 'contains', 'including', 'plus', 'með']);
 const LEAD_FILLER = new Set(['any', 'the', 'some', 'a', 'an', 'at', 'all', 'on', 'of', 'my', 'with', 'containing', 'contains', 'um', 'i', 'a', 'með',
   'neinn', 'neitt', 'neina', 'neinu', 'neinar', 'neinum', 'nokkur', 'nokkurra', 'nokkra', 'alls']);
 /** Skipped after an item without ending the list ("nuts AT ALL or eggs", "fish PLEASE, or soy"). */
@@ -174,7 +177,14 @@ const WEEKDAY_TOKENS: [RegExp, string[]][] = [
   [new RegExp(`^(?:sundays?|sun|sunnud[ao]g${IS_DAY_END})$`), ['sunday']],
   [/^(?:weekends?|helg(?:i|in|ina|inni|ar|arinnar|um)?)$/, ['saturday', 'sunday']],
 ];
-const dayOf = (w: string) => WEEKDAY_TOKENS.find(([re]) => re.test(w))?.[1];
+/** A day word with its common attachments removed: "friday's" / "friday’s", "weekend-only", "saturday-ish". Only these
+ *  suffixes are dropped, and the rest must still be a WHOLE day word, so "fries", "satay" or "sunnudagssteik" stay foods.
+ *  Icelandic "helgarplan…" (weekend plan) also counts as the weekend. */
+const dayWord = (w: string) => w.replace(/['’]s$/, '').replace(/-(?:only|ish)$/, '').replace(/^helgarplan[a-zæðþ]*$/, 'helgar');
+const dayOf = (w: string) => {
+  const d = dayWord(w);
+  return WEEKDAY_TOKENS.find(([re]) => re.test(d))?.[1];
+};
 /** Diet names: "not vegan" is a statement about the user, never a food to rule out. */
 const DIET_NAME = /^(?:vegan\w*|vegetarian|veggie|pescatarian|keto|paleo|græn\w*|non)$/;
 /** Icelandic food words (folded stems) → the English words used in catalog ingredient names. Longest stems first. */
@@ -228,7 +238,9 @@ function parseExclusionTokens(text: string): ExclusionParse {
     if (!NEGATOR_WORDS.has(tokens[i])) continue;
     consumed.add(i);
     let j = i + 1;
-    for (;;) {
+    for (let first = true; ; first = false) {
+      // A positive "with"/"með" after a separator ends the negation's scope (see WITH_WORDS).
+      if (!first && WITH_WORDS.has(tokens[j])) break;
       while (j < tokens.length && LEAD_FILLER.has(tokens[j]) && !(tokens[j] === 'at' && tokens[j + 1] !== 'all')) j++;
       const start = j;
       const head: string[] = [];

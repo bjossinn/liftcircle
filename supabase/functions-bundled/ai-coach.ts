@@ -2148,6 +2148,7 @@ var NEGATORS = /* @__PURE__ */ new Set([...NEGATOR_WORDS, "free", "laus"]);
 var L = "a-z0-9\xE6\xF0\xFE";
 var SEP_WORDS = /* @__PURE__ */ new Set([",", "/", "&", "or", "and", "nor", "og", "e\xF0a", "eda", "ne"]);
 var LIST_END = /* @__PURE__ */ new Set([".", ";", ":", "!", "?", "\n", "(", ")", "but", "then", "instead", "en", "heldur", "bara"]);
+var WITH_WORDS = /* @__PURE__ */ new Set(["with", "containing", "contains", "including", "plus", "me\xF0"]);
 var LEAD_FILLER = /* @__PURE__ */ new Set([
   "any",
   "the",
@@ -2322,7 +2323,11 @@ var WEEKDAY_TOKENS = [
   [new RegExp(`^(?:sundays?|sun|sunnud[ao]g${IS_DAY_END})$`), ["sunday"]],
   [/^(?:weekends?|helg(?:i|in|ina|inni|ar|arinnar|um)?)$/, ["saturday", "sunday"]]
 ];
-var dayOf = (w) => WEEKDAY_TOKENS.find(([re]) => re.test(w))?.[1];
+var dayWord = (w) => w.replace(/['’]s$/, "").replace(/-(?:only|ish)$/, "").replace(/^helgarplan[a-zæðþ]*$/, "helgar");
+var dayOf = (w) => {
+  const d = dayWord(w);
+  return WEEKDAY_TOKENS.find(([re]) => re.test(d))?.[1];
+};
 var DIET_NAME = /^(?:vegan\w*|vegetarian|veggie|pescatarian|keto|paleo|græn\w*|non)$/;
 var IS_FOOD = [
   ["kjuklingabaun", "chickpea"],
@@ -2383,7 +2388,8 @@ function parseExclusionTokens(text) {
     if (!NEGATOR_WORDS.has(tokens[i])) continue;
     consumed.add(i);
     let j = i + 1;
-    for (; ; ) {
+    for (let first = true; ; first = false) {
+      if (!first && WITH_WORDS.has(tokens[j])) break;
       while (j < tokens.length && LEAD_FILLER.has(tokens[j]) && !(tokens[j] === "at" && tokens[j + 1] !== "all")) j++;
       const start = j;
       const head = [];

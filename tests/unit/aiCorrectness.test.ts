@@ -554,7 +554,16 @@ describe('PR #16 re-review: a reason clause never breaks a weekday negation', ()
  *  - and, whenever something is ruled out, the real recipes chosen (find_recipes cards and the planned meals) contain none of it.
  */
 type Al = 'fish' | 'shellfish' | 'tree_nuts' | 'peanuts' | 'egg' | 'soy' | 'milk' | 'gluten';
-interface Case { phrase: string; allergens?: Al[]; foods?: string[]; diet?: string[]; search?: string[]; days?: string[] }
+interface Case {
+  phrase: string;
+  allergens?: Al[];
+  foods?: string[];
+  diet?: string[];
+  search?: string[];
+  days?: string[];
+  /** An ingredient the user WANTS: never ruled out, and a search for it (with the phrase as the user's words) finds recipes with it. */
+  wanted?: string;
+}
 const FISH: Al[] = ['fish', 'shellfish'];
 const WEEK = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const NOT_FRI = WEEK.filter((d) => d !== 'friday');
@@ -612,6 +621,26 @@ const CORPUS: Case[] = [
   { phrase: 'ekki meira en 20 mínútur' },
   { phrase: 'an apple and a banana', search: ['apple', 'banana'] },
   { phrase: 'not too spicy' },
+  // review 4: a positive "with"/"með" ends the negation; "nothing with nuts" still rules nuts out
+  { phrase: 'Breakfast without nuts and with eggs', allergens: ['tree_nuts'], search: ['egg'], wanted: 'egg' },
+  { phrase: 'Find dinner without dairy, with chicken', allergens: ['milk'], search: ['chicken'], wanted: 'chicken' },
+  { phrase: 'án hneta, með eggjum', allergens: ['tree_nuts'], search: ['eggjum'], wanted: 'egg' },
+  { phrase: 'Morgunmatur án hneta og með eggjum', allergens: ['tree_nuts'], wanted: 'egg' },
+  { phrase: 'Kvöldmatur án mjólkurvara, með kjúklingi', allergens: ['milk'], wanted: 'chicken' },
+  { phrase: 'nothing with nuts', allergens: ['tree_nuts'] },
+  { phrase: 'ekkert með hnetum', allergens: ['tree_nuts'] },
+  { phrase: 'no fish, with rice', allergens: FISH, search: ['rice'], wanted: 'rice' },
+  // review 4: day words with possessives and suffixes keep the schedule; foods stay foods
+  { phrase: 'Make a weekend-only meal plan', days: ['saturday', 'sunday'] },
+  { phrase: "Friday's dinners", days: ['friday'] },
+  { phrase: 'Friday’s dinners', days: ['friday'] },
+  { phrase: 'Saturday-ish is fine', days: ['saturday'] },
+  { phrase: 'bara um helgar', days: ['saturday', 'sunday'] },
+  { phrase: 'helgarplán', days: ['saturday', 'sunday'] },
+  { phrase: 'bara föstudag', days: ['friday'] },
+  { phrase: 'a satay-only lunch' },
+  { phrase: 'fries’s fine' },
+  { phrase: 'sunnudagssteik-only' },
 ];
 const NEXT_WEEK: Record<string, string> = { monday: '2026-11-02', tuesday: '2026-11-03', wednesday: '2026-11-04', thursday: '2026-11-05', friday: '2026-11-06', saturday: '2026-11-07', sunday: '2026-11-08' };
 const usedIngredients = (recipeId: string) => RECIPES.find((r) => r.id === recipeId)!.ingredients.filter((i) => !i.optional).map((i) => i.ingredientId);
@@ -659,6 +688,21 @@ describe('exclusion parser corpus (EN + IS, every review phrasing)', () => {
         expect(usedIngredients(r.id).filter((i) => bannedIng.has(i)), r.id).toEqual([]);
       }
     }
+
+    // A wanted ingredient is never ruled out, and searching for it (as the model would) finds recipes that use it.
+    if (c.wanted) {
+      const wantedIds = INGREDIENTS.filter((i) => i.id.includes(c.wanted!)).map((i) => i.id);
+      expect(wantedIds.length, 'fixture').toBeGreaterThan(0);
+      for (const id of wantedIds) {
+        expect((ING.get(id)!.allergens ?? []).filter((a) => ex.allergens.includes(a)), `${id} ruled out by allergen`).toEqual([]);
+        expect(excludedIngredientIds(ex.words, REF_INGREDIENTS), `${id} ruled out by food`).not.toContain(id);
+      }
+      const out = await runTool('find_recipes', { query: c.wanted, max_results: 5 }, {
+        db: makeDb().db, facts: facts(), catalog: new Map(), state: { proposal: null, proposalAttempts: 0 }, messageId: mid(3), nutrition: nutritionStatus(acc, true), account: acc, requestText: c.phrase,
+      });
+      const found = JSON.parse(out.content).results as { id: string }[];
+      expect(found.some((r) => usedIngredients(r.id).some((i) => i.includes(c.wanted!))), `recipes with ${c.wanted}`).toBe(true);
+    }
   });
 
   it('wantedDays only counts whole day words no negation used', () => {
@@ -666,5 +710,8 @@ describe('exclusion parser corpus (EN + IS, every review phrasing)', () => {
     expect(wantedDays('no sunday roast')).toEqual([]);
     expect(wantedDays('engin sunnudagssteik, ekki laugardagsnammi')).toEqual([]);
     expect(wantedDays('not Friday, but Saturday is fine')).toEqual(['saturday']);
+    expect(wantedDays("Friday's and Sunday’s dinners")).toEqual(['friday', 'sunday']);
+    expect(wantedDays('weekend-only')).toEqual(['saturday', 'sunday']);
+    expect(wantedDays('fries-only, satay’s, sunnudagssteik-only, frisbee')).toEqual([]);
   });
 });
