@@ -13,7 +13,7 @@ const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCas
 
 export function classifyIntent(text: string): RequestIntent | null {
   const t = fold(text);
-  if (/\bmeal[\s-]?plan|\bplan (my|the|our)?\s*(meals|food|eating)|\bplan meals\b|\bmeals for (the|this|next) week\b/.test(t)) return 'meal_plan';
+  if (/\bmeal[\s-]?plan|\bplan (my|the|our)?\s*(meals|food|eating)|\bplan meals\b|\bmeals for (the|this|next) week\b|\bmatarplan|\bmatseðil|\bmatseðl/.test(t)) return 'meal_plan';
   if (/\b(only|just) (train|lift|go|make it)\b.*\b(this week|once|twice|\d+ times?)|\bthis week\b.*\b(only|just|can'?t|cannot|miss|skip|move)\b|\b(move|swap|reschedule)\b.*\b(session|workout|day)\b/.test(t)) return 'week_adjustment';
   if (/\b(new|build|make|create|write|design|give me)\b.*\b(program|programme|routine|split|training plan|workout plan)\b|\b(program|programme|routine)\b.*\b(for me|please)\b/.test(t)) return 'program';
   if (/\brecipes?\b|\bmeal ideas?\b|\bwhat (should|can) i (eat|cook|make)\b|\b(breakfast|lunch|dinner|snack) ideas?\b/.test(t)) return 'recipes';
@@ -22,10 +22,13 @@ export function classifyIntent(text: string): RequestIntent | null {
 
 /** A short reply that refers back to the previous exchange ("ok", "yes do that", "try now", "go ahead"). */
 export function isFollowUp(text: string): boolean {
-  const t = fold(text).replace(/[^a-z\s']/g, ' ').replace(/\s+/g, ' ').trim();
+  const t = fold(text).replace(/[^a-zæðþ\s']/g, ' ').replace(/\s+/g, ' ').trim();
   if (!t || t.split(' ').length > 8) return false;
   return /^(ok|okay|k|yes|yep|yeah|yup|sure|please|go|go ahead|do it|do that|done|shared|again|now|lets go|let's go|lets do it|let's do it|sounds good|perfect|great)\b/.test(t) ||
-    /\btry (it )?(again|now)\b|\b(do|make) it\b|\bgo ahead\b|\bdone now\b|\bshared it\b|\bturned it on\b/.test(t);
+    /\btry (it )?(again|now)\b|\b(do|make) it\b|\bgo ahead\b|\bdone now\b|\bshared it\b|\bturned it on\b/.test(t) ||
+    // Icelandic (folded: accents dropped, æ/ð/þ kept): "já", "já takk", "endilega", "gerðu það", "prófaðu núna", "búið".
+    /^(ja|jæja|okei|oki|endilega|gjorðu svo vel|gerðu það|ja takk|takk)(?![a-zæðþ])/.test(t) ||
+    /(?<![a-zæðþ])(profaðu|reyndu|profa) (aftur|nuna)|(?<![a-zæðþ])gerðu það|(?<![a-zæðþ])(buið|buinn|buin) (að )?(deila|kveikja)|(?<![a-zæðþ])kveikti a/.test(t);
 }
 
 const BLOCK_RE = /\/coaching\/ai\/settings|\/nutrition\/targets|\[\[open:\/settings|\[\[open:\/onboarding|can['’]t see|cannot see|isn['’]t shared|not shared/i;

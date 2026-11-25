@@ -211,7 +211,7 @@ describe('MealPlanPage: today first, past plans', () => {
     await db.delete();
   });
 
-  it('?week= opens that week (e.g. the coach "Customize first" link)', async () => {
+  it('?week= opens that week (e.g. the coach "Add and edit" link)', async () => {
     pinDate('2026-10-30');
     const db = await setup();
     mount('/nutrition/plan?week=2026-10-21');

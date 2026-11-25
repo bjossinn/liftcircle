@@ -62,9 +62,11 @@ const SYNONYMS: Record<string, string[]> = {
   veggie: ['vegetable', 'veg'],
 };
 const MEAL_WORDS: Record<string, MealSlotName> = { breakfast: 'breakfast', brunch: 'breakfast', lunch: 'lunch', dinner: 'dinner', supper: 'dinner', snack: 'snack', snacks: 'snack' };
+// English and Icelandic (text is folded first: accents dropped, but æ, ð and þ stay).
 const DIET_WORDS: [RegExp, DietTag][] = [
-  [/\bvegan\b/, 'vegan'], [/\bvegetarian\b|\bveggie\b|\bmeatless\b/, 'vegetarian'], [/\bpescatarian\b/, 'pescatarian'],
-  [/\bdairy[\s-]?free\b|\bno dairy\b|\blactose[\s-]?free\b/, 'dairy_free'], [/\bgluten[\s-]?free\b|\bno gluten\b/, 'gluten_free'],
+  [/\bvegan/, 'vegan'], [/\bvegetarian\b|\bveggie\b|\bmeatless\b|\bgrænmetis/, 'vegetarian'], [/\bpescatarian\b/, 'pescatarian'],
+  [/\bdairy[\s-]?free\b|\bno dairy\b|\blactose[\s-]?free\b|\bmjolkurlaus|\blaktosalaus/, 'dairy_free'],
+  [/\bgluten[\s-]?free\b|\bno gluten\b|\bglutenlaus/, 'gluten_free'],
 ];
 const STOP = new Set(['a', 'an', 'the', 'and', 'or', 'with', 'for', 'of', 'in', 'on', 'some', 'any', 'meal', 'meals', 'recipe', 'recipes', 'idea', 'ideas', 'food', 'dish', 'something', 'me', 'my', 'easy', 'simple', 'healthy', 'good', 'tasty', 'high', 'protein', 'quick', 'fast', 'free', 'low', 'cal', 'calorie', 'kcal']);
 
@@ -74,23 +76,73 @@ export interface QueryIntent {
   diet: DietTag[];
   quick: boolean;
   highProtein: boolean;
+  /** What the request rules out ("no fish", "without nuts", "án glútens"): hard constraints, never relaxed. */
+  exclude: Exclusions;
 }
 export function parseQuery(query: string): QueryIntent {
   const q = fold(query);
   const diet = DIET_WORDS.filter(([re]) => re.test(q)).map(([, t]) => t);
-  const quick = /\b(quick|fast|speedy|under 15|15 min|no[\s-]?cook)\b/.test(q);
-  const highProtein = /\bprotein\b/.test(q);
+  const quick = /\b(quick|fast|speedy|under 15|15 min|no[\s-]?cook)\b|\bfljot|\bsnogg/.test(q);
+  const highProtein = /\bprotein\b|\bprotin/.test(q);
+  const exclude = parseExclusions(query);
+  const negated = new Set(exclude.raw);
   let meal: MealSlotName | null = null;
   const words: string[] = [];
-  for (const raw of q.replace(/[^a-z0-9\s-]/g, ' ').split(/\s+/).filter(Boolean)) {
+  for (const raw of q.replace(/[^a-z0-9æðþ\s-]/g, ' ').split(/\s+/).filter(Boolean)) {
     if (MEAL_WORDS[raw]) {
       meal ??= MEAL_WORDS[raw];
       continue;
     }
+    // A ruled-out word ("no FISH") must never become a word the recipe should contain.
+    if (negated.has(raw) || NEGATORS.has(raw)) continue;
     if (STOP.has(raw) || raw.length < 3 || DIET_WORDS.some(([re]) => re.test(raw)) || /^(vegan|vegetarian|pescatarian|dairy|gluten|lactose|no|cook|min|under)$/.test(raw)) continue;
     words.push(stem(raw));
   }
-  return { words: [...new Set(words)].slice(0, 6), meal, diet, quick, highProtein };
+  return { words: [...new Set(words)].slice(0, 6), meal, diet, quick, highProtein, exclude };
+}
+
+/* ------------------------------------------------------------------ exclusions ("no fish", "án hneta") */
+export interface Exclusions {
+  /** Allergen groups ruled out (fish, tree_nuts, …). */
+  allergens: Allergen[];
+  /** Other ruled-out words, to match against ingredient names (pork, mushroom, …). Folded, ≥ 3 letters. */
+  words: string[];
+  /** Every ruled-out word as written (folded), so callers can drop it from search words. */
+  raw: string[];
+}
+const NEGATORS = new Set(['no', 'without', 'avoid', 'not', 'never', 'minus', 'except', 'skip', 'nor', 'engan', 'enga', 'engin', 'enginn', 'ekkert', 'ekki', 'sleppa', 'sleppum', 'sleppi', 'nema', 'free', 'laus']);
+const EXCLUSION_NOISE = new Set(['one', 'two', 'three', 'four', 'five', 'six', 'please', 'day', 'days', 'week', 'today', 'tomorrow', 'takk', 'dag', 'viku', 'vikuna', 'tvær', 'þrjar', 'fjorar', 'more', 'than', 'too', 'time', 'much', 'many', 'longer', 'other', 'any', 'the', 'and', 'with', 'meal', 'meals', 'food', 'cooking', 'cook', 'mins', 'minutes', 'og', 'eda', 'meira', 'en', 'of', 'tima', 'mat', 'matur', 'maltið', 'maltiðir', 'lengi', 'heldur', 'vil', 'borða', 'borða', 'þvi', 'með', 'meðal']);
+const NEG_RE = /\b(?:no|without|avoid|not|never|minus|except|skip|engan|enga|engin|enginn|ekkert|ekki|sleppa|sleppum|sleppi|nema)\s+([a-zæðþ'-]+(?:\s*(?:,|\bor\b|\band\b|\bnor\b|\bog\b|\beða\b|\beda\b|\bne\b)\s*[a-zæðþ'-]+){0,4})/g;
+const FREE_RE = /\b([a-zæðþ]+)[\s-](?:free)\b|\b([a-zæðþ]{3,}?)laus(?:ir|ar|an|um|ri|a|t)?\b/g;
+
+/** Parse what a (folded or raw) request rules out. Allergen words map to allergen groups; the rest stay words. */
+export function parseExclusions(text: string): Exclusions {
+  // Icelandic "án" (without) folds to "an", which is also an English article, so it is read before folding.
+  const t = fold(text.replace(/(^|[^\p{L}])án(?=\s)/giu, '$1without'));
+  const raw: string[] = [];
+  for (const m of t.matchAll(NEG_RE)) for (const w of m[1].split(/\s*(?:,|\bor\b|\band\b|\bnor\b|\bog\b|\beða\b|\beda\b|\bne\b)\s*/)) if (w) raw.push(w.trim());
+  for (const m of t.matchAll(FREE_RE)) raw.push((m[1] ?? m[2] ?? '').trim());
+  const allergens = new Set<Allergen>();
+  const words = new Set<string>();
+  for (const w of raw) {
+    if (!w || EXCLUSION_NOISE.has(w)) continue;
+    const hit = ALLERGEN_WORDS.find(([re]) => re.test(w));
+    if (hit) hit[1].forEach((a) => allergens.add(a));
+    else if (w.length >= 3) words.add(w);
+  }
+  return { allergens: [...allergens], words: [...words], raw: [...new Set(raw.filter(Boolean))] };
+}
+
+/** Ingredient ids whose name matches a ruled-out word (or its synonyms: "meat" → beef, chicken, …). */
+export function excludedIngredientIds(words: string[], ingredients: Iterable<RefIngredient>): string[] {
+  const keys = words.flatMap((w) => [w, ...(SYNONYMS[w] ?? SYNONYMS[stem(w)] ?? [])]).map(stem).filter((k) => k.length >= 3);
+  if (!keys.length) return [];
+  const out: string[] = [];
+  for (const i of ingredients) {
+    const n = fold(i.name);
+    if (keys.some((k) => n.includes(k))) out.push(i.id);
+  }
+  return out;
 }
 
 const DIET_FLAG: Record<string, keyof NonNullable<RefIngredient['diet']>> = { vegetarian: 'vegetarian', vegan: 'vegan', pescatarian: 'pescatarian', dairy_free: 'dairyFree', gluten_free: 'glutenFree' };
@@ -167,10 +219,12 @@ export function explainNoRecipes(c: ConstraintSet, recipes: RefRecipe[], ing: Ma
 }
 
 /* ------------------------------------------------------------------ meal plans from intent */
+// English and Icelandic stems (folded text: "fiskur", "hnetum", "glútens", "rækjur", "jarðhnetur", "mjólk").
 const ALLERGEN_WORDS: [RegExp, Allergen[]][] = [
-  [/\bfish\b|\bseafood\b/, ['fish', 'shellfish']], [/\bshellfish\b|\bprawns?\b|\bshrimps?\b/, ['shellfish']], [/\bdairy\b|\bmilk\b|\blactose\b|\bcheese\b/, ['milk']],
-  [/\beggs?\b/, ['egg']], [/\bpeanuts?\b/, ['peanuts']], [/\bnuts?\b|\btree nuts?\b/, ['tree_nuts']], [/\bgluten\b/, ['gluten']], [/\bwheat\b/, ['wheat']],
-  [/\bsoy\b|\bsoya\b|\btofu\b/, ['soy']], [/\bsesame\b/, ['sesame']], [/\bmustard\b/, ['mustard']], [/\bcelery\b/, ['celery']],
+  [/\bfish\b|\bseafood\b|\bfisk|\bsjavarfang/, ['fish', 'shellfish']], [/\bshellfish\b|\bprawns?\b|\bshrimps?\b|\brækj|\bskelfisk/, ['shellfish']],
+  [/\bdairy\b|\bmilk\b|\blactose\b|\bcheese\b|\bmjolk|\blaktos/, ['milk']],
+  [/\beggs?\b|\beggj/, ['egg']], [/\bpeanuts?\b|\bjarðhnet/, ['peanuts']], [/\bnuts?\b|\btree nuts?\b|\bhnet/, ['tree_nuts']], [/\bgluten/, ['gluten']], [/\bwheat\b|\bhveiti/, ['wheat']],
+  [/\bsoy\b|\bsoya\b|\btofu\b|\bsoja/, ['soy']], [/\bsesame\b|\bsesam/, ['sesame']], [/\bmustard\b|\bsinnep/, ['mustard']], [/\bcelery\b|\bsellerí|\bselleri/, ['celery']],
 ];
 
 export interface MealPlanIntent {
@@ -239,12 +293,12 @@ export function buildMealPlanAction(input: MealPlanIntent, ctx: MealPlanBuildCon
   for (const w of strs(input.avoid).map(fold)) {
     const hit = ALLERGEN_WORDS.find(([re]) => re.test(w));
     if (hit) prefs.allergens = [...new Set([...prefs.allergens, ...hit[1]])];
-    else {
-      const ids = [...byId.values()].filter((i) => fold(i.name).includes(stem(w))).map((i) => i.id);
-      prefs.dislikedIngredientIds = [...new Set([...prefs.dislikedIngredientIds, ...ids])];
-    }
+    else prefs.dislikedIngredientIds = [...new Set([...prefs.dislikedIngredientIds, ...excludedIngredientIds([w], byId.values())])];
   }
-  for (const [re, al] of ALLERGEN_WORDS) if (new RegExp(`\\bno ${re.source.replace(/\\b/g, '')}`).test(prefText)) prefs.allergens = [...new Set([...prefs.allergens, ...al])];
+  // "no fish", "without nuts", "án glútens" in the request text: allergens and named ingredients are ruled out too.
+  const ex = parseExclusions([...strs(input.preferences), ...strs(input.avoid)].join(' '));
+  prefs.allergens = [...new Set([...prefs.allergens, ...ex.allergens])] as Allergen[];
+  prefs.dislikedIngredientIds = [...new Set([...prefs.dislikedIngredientIds, ...excludedIngredientIds(ex.words, byId.values())])];
 
   // Days.
   const { start: thisStart, end: thisEnd } = weekBounds(ctx.today, ctx.facts.weekStart);
@@ -330,5 +384,37 @@ export function buildMealPlanAction(input: MealPlanIntent, ctx: MealPlanBuildCon
 /** True when the request is "make/add a meal plan" (or a short follow-up to one). */
 export function asksForMealPlan(text: string): boolean {
   const t = fold(text);
-  return /\bmeal[\s-]?plan|\bplan (my|the|our)?\s*(meals|food|eating)|\bplan meals\b|\bmeals for (the|this|next) week\b/.test(t);
+  return /\bmeal[\s-]?plan|\bplan (my|the|our)?\s*(meals|food|eating)|\bplan meals\b|\bmeals for (the|this|next) week\b|\bmatarplan|\bmatseðil|\bmatseðl/.test(t);
+}
+
+const WEEKDAYS_EN = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const WEEKDAYS_IS = ['manudag', 'þriðjudag', 'miðvikudag', 'fimmtudag', 'fostudag', 'laugardag', 'sunnudag'];
+const COUNT_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, ein: 1, eina: 1, einni: 1, tvær: 2, tveimur: 2, þrjar: 3, þremur: 3, fjorar: 4, fjorum: 4, fimm: 5, sex: 6,
+};
+
+/**
+ * The meal-plan intent stated in a user's own words (used when the model didn't call propose_meal_plan, so the
+ * server-built plan still honours "no fish, two meals a day, next week"). Never invents constraints: anything it
+ * can't read is simply not set, and the user's saved settings still apply in buildMealPlanAction.
+ */
+export function mealPlanIntentFromText(text: string): MealPlanIntent {
+  const t = fold(text);
+  const intent: MealPlanIntent = { preferences: [text.slice(0, 300)] };
+  const m = t.match(/(?<![a-z0-9æðþ])(\d|one|two|three|four|five|six|ein|eina|einni|tvær|tveimur|þrjar|þremur|fjorar|fjorum|fimm|sex)\s+(?:meals?\b|maltið)/);
+  if (m) intent.meals_per_day = /^\d$/.test(m[1]) ? Number(m[1]) : COUNT_WORDS[m[1]];
+  if (/\bnext week\b|\bnæstu viku\b|\bnæsta viku\b/.test(t)) intent.week = 'next';
+  else if (/\bthis week\b|(?<![a-zæðþ])þessa(ri)? viku\b/.test(t)) intent.week = 'this';
+  const days: string[] = [];
+  WEEKDAYS_EN.forEach((d, i) => {
+    if (new RegExp(`(?<![a-zæðþ])(?:${d}|${WEEKDAYS_IS[i]})`).test(t)) days.push(d);
+  });
+  if (/\bweekend\b|\bhelgin/.test(t)) days.push('saturday', 'sunday');
+  if (days.length) intent.days = [...new Set(days)];
+  if (/\b(quick|fast|no[\s-]?cook)\b|\bfljot|\bsnogg/.test(t)) intent.quick = true;
+  const diet = DIET_WORDS.filter(([re]) => re.test(t)).map(([, tag]) => tag);
+  if (diet.length) intent.diet = diet;
+  const ex = parseExclusions(text);
+  if (ex.raw.length) intent.avoid = ex.raw.filter((w) => !EXCLUSION_NOISE.has(w));
+  return intent;
 }

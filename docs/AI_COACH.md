@@ -297,7 +297,7 @@ cards; nothing changes until the user taps. Migration `20261102000001_ai_coach_a
   sides outside 10–300 g, dates outside this/next week, past days and duplicate days; long cook times are warnings.
   The app (`src/domain/nutrition/aiActions.ts`, `ai/MealPlanCard.tsx`) balances each day with `balanceDay` and shows
   `planStatus` totals vs the current targets — exactly what gets saved. **Add to my meal plan** (replace these days /
-  only empty days), **Customize first** (applies, then opens `/nutrition/plan?week=…`; there's no draft mode in the
+  only empty days), **Add and edit** (1.0.2; was "Customize first": applies, then opens `/nutrition/plan?week=…`; there's no draft mode in the
   meal plan screen). Local-first (`saveRecord`), idempotent (item ids `ai:<messageId>:…`), Undo restores the touched
   days from a snapshot kept on the device (elsewhere it removes just the AI items). An expired week can't be applied.
 - **Recipes:** `find_recipes` results become recipe cards (`ai/RecipeCards.tsx`): Open, Save to favourites (toggle),
@@ -386,6 +386,28 @@ the user can find them; link labels in the user's language; every rule applies i
 and the context data stay English. Quality still depends mostly on the model: `gpt-5-mini` at `low` effort (the
 defaults) writes weak Icelandic, so for Icelandic users set `OPENAI_MODEL` to a full GPT-5 model and
 `OPENAI_REASONING_EFFORT=medium` (§1), at a higher cost per message.
+
+## 4d. Correctness fixes (1.0.2)
+
+From the Claude + ChatGPT cross-review of 25 Nov 2026 (`tests/unit/aiCorrectness.test.ts`):
+- **History from the real database carries `action` and `grounding`.** `supabaseDb.ts getHistory` selected neither, so
+  against Supabase a delivered plan never closed its request and "sharing changed" could not be detected (the in-memory
+  test db returned them, which hid it). Malformed stored values are dropped (`historyMessage`).
+- **The meal-plan fallback keeps the request.** When the model doesn't call `propose_meal_plan`, the server builds the
+  plan from the user's own words (`meals.ts mealPlanIntentFromText`: meals per day, this/next week, weekdays, weekend,
+  quick, diet words, "no …"/"without …"/"án …"), for a follow-up from the original request plus the new message. If it
+  can't be built, the reply says so ("I couldn't build that meal plan with what you asked for: …", logged as
+  `meal_plan_fallback_failed`) instead of offering an unrestricted plan.
+- **find_recipes never relaxes a request's restrictions.** Diet words and exclusions in the query are hard constraints,
+  added to the user's own settings before any matching; the fallback steps loosen only words, meal type, quick and
+  protein. A ruled-out word ("dinner without salmon") is no longer searched for.
+- **Exclusions in `buildMealPlanAction`.** The old `\bno <allergen>` regex leaked alternations ("no fish|seafood" matched
+  any "seafood"); it is replaced by `parseExclusions`, which also covers "without", "X-free" and Icelandic.
+- **Icelandic words** for allergens and diets (fiskur, hnetur, glúten, mjólk, rækjur, jarðhnetur, egg, soja; vegan,
+  grænmetis-, glútenlaus, mjólkurlaus), "án", follow-ups ("já", "já takk", "prófaðu núna", "gerðu það", "búin að
+  deila") and "matarplan"/"matseðill". Replies and card texts are still English; full localisation is a separate item.
+- **"Customize first" is now "Add and edit"**: it always added the plan before opening it (the meal plan screen has no
+  draft mode); the label now says so, and Undo stays on the card.
 
 ## 5. Testing status
 

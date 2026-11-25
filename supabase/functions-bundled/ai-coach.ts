@@ -485,16 +485,17 @@ function dataStatusLines(i) {
 var fold = (s) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 function classifyIntent(text) {
   const t = fold(text);
-  if (/\bmeal[\s-]?plan|\bplan (my|the|our)?\s*(meals|food|eating)|\bplan meals\b|\bmeals for (the|this|next) week\b/.test(t)) return "meal_plan";
+  if (/\bmeal[\s-]?plan|\bplan (my|the|our)?\s*(meals|food|eating)|\bplan meals\b|\bmeals for (the|this|next) week\b|\bmatarplan|\bmatseðil|\bmatseðl/.test(t)) return "meal_plan";
   if (/\b(only|just) (train|lift|go|make it)\b.*\b(this week|once|twice|\d+ times?)|\bthis week\b.*\b(only|just|can'?t|cannot|miss|skip|move)\b|\b(move|swap|reschedule)\b.*\b(session|workout|day)\b/.test(t)) return "week_adjustment";
   if (/\b(new|build|make|create|write|design|give me)\b.*\b(program|programme|routine|split|training plan|workout plan)\b|\b(program|programme|routine)\b.*\b(for me|please)\b/.test(t)) return "program";
   if (/\brecipes?\b|\bmeal ideas?\b|\bwhat (should|can) i (eat|cook|make)\b|\b(breakfast|lunch|dinner|snack) ideas?\b/.test(t)) return "recipes";
   return null;
 }
 function isFollowUp(text) {
-  const t = fold(text).replace(/[^a-z\s']/g, " ").replace(/\s+/g, " ").trim();
+  const t = fold(text).replace(/[^a-zæðþ\s']/g, " ").replace(/\s+/g, " ").trim();
   if (!t || t.split(" ").length > 8) return false;
-  return /^(ok|okay|k|yes|yep|yeah|yup|sure|please|go|go ahead|do it|do that|done|shared|again|now|lets go|let's go|lets do it|let's do it|sounds good|perfect|great)\b/.test(t) || /\btry (it )?(again|now)\b|\b(do|make) it\b|\bgo ahead\b|\bdone now\b|\bshared it\b|\bturned it on\b/.test(t);
+  return /^(ok|okay|k|yes|yep|yeah|yup|sure|please|go|go ahead|do it|do that|done|shared|again|now|lets go|let's go|lets do it|let's do it|sounds good|perfect|great)\b/.test(t) || /\btry (it )?(again|now)\b|\b(do|make) it\b|\bgo ahead\b|\bdone now\b|\bshared it\b|\bturned it on\b/.test(t) || // Icelandic (folded: accents dropped, æ/ð/þ kept): "já", "já takk", "endilega", "gerðu það", "prófaðu núna", "búið".
+  /^(ja|jæja|okei|oki|endilega|gjorðu svo vel|gerðu það|ja takk|takk)(?![a-zæðþ])/.test(t) || /(?<![a-zæðþ])(profaðu|reyndu|profa) (aftur|nuna)|(?<![a-zæðþ])gerðu það|(?<![a-zæðþ])(buið|buinn|buin) (að )?(deila|kveikja)|(?<![a-zæðþ])kveikti a/.test(t);
 }
 var BLOCK_RE = /\/coaching\/ai\/settings|\/nutrition\/targets|\[\[open:\/settings|\[\[open:\/onboarding|can['’]t see|cannot see|isn['’]t shared|not shared/i;
 function fulfilled(intent, reply) {
@@ -2060,29 +2061,61 @@ var SYNONYMS = {
 };
 var MEAL_WORDS = { breakfast: "breakfast", brunch: "breakfast", lunch: "lunch", dinner: "dinner", supper: "dinner", snack: "snack", snacks: "snack" };
 var DIET_WORDS = [
-  [/\bvegan\b/, "vegan"],
-  [/\bvegetarian\b|\bveggie\b|\bmeatless\b/, "vegetarian"],
+  [/\bvegan/, "vegan"],
+  [/\bvegetarian\b|\bveggie\b|\bmeatless\b|\bgrænmetis/, "vegetarian"],
   [/\bpescatarian\b/, "pescatarian"],
-  [/\bdairy[\s-]?free\b|\bno dairy\b|\blactose[\s-]?free\b/, "dairy_free"],
-  [/\bgluten[\s-]?free\b|\bno gluten\b/, "gluten_free"]
+  [/\bdairy[\s-]?free\b|\bno dairy\b|\blactose[\s-]?free\b|\bmjolkurlaus|\blaktosalaus/, "dairy_free"],
+  [/\bgluten[\s-]?free\b|\bno gluten\b|\bglutenlaus/, "gluten_free"]
 ];
 var STOP = /* @__PURE__ */ new Set(["a", "an", "the", "and", "or", "with", "for", "of", "in", "on", "some", "any", "meal", "meals", "recipe", "recipes", "idea", "ideas", "food", "dish", "something", "me", "my", "easy", "simple", "healthy", "good", "tasty", "high", "protein", "quick", "fast", "free", "low", "cal", "calorie", "kcal"]);
 function parseQuery(query) {
   const q = fold2(query);
   const diet = DIET_WORDS.filter(([re]) => re.test(q)).map(([, t]) => t);
-  const quick = /\b(quick|fast|speedy|under 15|15 min|no[\s-]?cook)\b/.test(q);
-  const highProtein = /\bprotein\b/.test(q);
+  const quick = /\b(quick|fast|speedy|under 15|15 min|no[\s-]?cook)\b|\bfljot|\bsnogg/.test(q);
+  const highProtein = /\bprotein\b|\bprotin/.test(q);
+  const exclude = parseExclusions(query);
+  const negated = new Set(exclude.raw);
   let meal = null;
   const words = [];
-  for (const raw of q.replace(/[^a-z0-9\s-]/g, " ").split(/\s+/).filter(Boolean)) {
+  for (const raw of q.replace(/[^a-z0-9æðþ\s-]/g, " ").split(/\s+/).filter(Boolean)) {
     if (MEAL_WORDS[raw]) {
       meal ??= MEAL_WORDS[raw];
       continue;
     }
+    if (negated.has(raw) || NEGATORS.has(raw)) continue;
     if (STOP.has(raw) || raw.length < 3 || DIET_WORDS.some(([re]) => re.test(raw)) || /^(vegan|vegetarian|pescatarian|dairy|gluten|lactose|no|cook|min|under)$/.test(raw)) continue;
     words.push(stem(raw));
   }
-  return { words: [...new Set(words)].slice(0, 6), meal, diet, quick, highProtein };
+  return { words: [...new Set(words)].slice(0, 6), meal, diet, quick, highProtein, exclude };
+}
+var NEGATORS = /* @__PURE__ */ new Set(["no", "without", "avoid", "not", "never", "minus", "except", "skip", "nor", "engan", "enga", "engin", "enginn", "ekkert", "ekki", "sleppa", "sleppum", "sleppi", "nema", "free", "laus"]);
+var EXCLUSION_NOISE = /* @__PURE__ */ new Set(["one", "two", "three", "four", "five", "six", "please", "day", "days", "week", "today", "tomorrow", "takk", "dag", "viku", "vikuna", "tv\xE6r", "\xFErjar", "fjorar", "more", "than", "too", "time", "much", "many", "longer", "other", "any", "the", "and", "with", "meal", "meals", "food", "cooking", "cook", "mins", "minutes", "og", "eda", "meira", "en", "of", "tima", "mat", "matur", "malti\xF0", "malti\xF0ir", "lengi", "heldur", "vil", "bor\xF0a", "bor\xF0a", "\xFEvi", "me\xF0", "me\xF0al"]);
+var NEG_RE = /\b(?:no|without|avoid|not|never|minus|except|skip|engan|enga|engin|enginn|ekkert|ekki|sleppa|sleppum|sleppi|nema)\s+([a-zæðþ'-]+(?:\s*(?:,|\bor\b|\band\b|\bnor\b|\bog\b|\beða\b|\beda\b|\bne\b)\s*[a-zæðþ'-]+){0,4})/g;
+var FREE_RE = /\b([a-zæðþ]+)[\s-](?:free)\b|\b([a-zæðþ]{3,}?)laus(?:ir|ar|an|um|ri|a|t)?\b/g;
+function parseExclusions(text) {
+  const t = fold2(text.replace(/(^|[^\p{L}])án(?=\s)/giu, "$1without"));
+  const raw = [];
+  for (const m of t.matchAll(NEG_RE)) for (const w of m[1].split(/\s*(?:,|\bor\b|\band\b|\bnor\b|\bog\b|\beða\b|\beda\b|\bne\b)\s*/)) if (w) raw.push(w.trim());
+  for (const m of t.matchAll(FREE_RE)) raw.push((m[1] ?? m[2] ?? "").trim());
+  const allergens = /* @__PURE__ */ new Set();
+  const words = /* @__PURE__ */ new Set();
+  for (const w of raw) {
+    if (!w || EXCLUSION_NOISE.has(w)) continue;
+    const hit = ALLERGEN_WORDS.find(([re]) => re.test(w));
+    if (hit) hit[1].forEach((a) => allergens.add(a));
+    else if (w.length >= 3) words.add(w);
+  }
+  return { allergens: [...allergens], words: [...words], raw: [...new Set(raw.filter(Boolean))] };
+}
+function excludedIngredientIds(words, ingredients) {
+  const keys = words.flatMap((w) => [w, ...SYNONYMS[w] ?? SYNONYMS[stem(w)] ?? []]).map(stem).filter((k) => k.length >= 3);
+  if (!keys.length) return [];
+  const out = [];
+  for (const i of ingredients) {
+    const n = fold2(i.name);
+    if (keys.some((k) => n.includes(k))) out.push(i.id);
+  }
+  return out;
 }
 var DIET_FLAG = { vegetarian: "vegetarian", vegan: "vegan", pescatarian: "pescatarian", dairy_free: "dairyFree", gluten_free: "glutenFree" };
 function haystack(r, ing) {
@@ -2092,10 +2125,6 @@ function wordsMatch(r, words, ing) {
   if (!words.length) return true;
   const hay = haystack(r, ing);
   return words.some((w) => [w, ...SYNONYMS[w] ?? SYNONYMS[`${w}s`] ?? []].some((s) => hay.includes(stem(s))));
-}
-function dietOk(r, tags, ing) {
-  const flags = tags.map((t) => DIET_FLAG[t]).filter(Boolean);
-  return flags.every((f) => (r.ingredients ?? []).every((x) => x.optional || ing.get(x.ingredientId)?.diet?.[f] === true));
 }
 var totalMinutes = (r) => (r.prepMinutes ?? 0) + (r.cookMinutes ?? 0);
 var allergenLabel = (a) => ALLERGEN_LABELS[a]?.toLowerCase() ?? a;
@@ -2134,18 +2163,18 @@ function explainNoRecipes(c, recipes, ing, facts) {
   return culprits.length ? `Nothing in the catalog fits ${combo}. It's ${culprits.slice(0, 3).join(" or ")} that rules everything out.` : `Nothing in the catalog fits ${combo}.`;
 }
 var ALLERGEN_WORDS = [
-  [/\bfish\b|\bseafood\b/, ["fish", "shellfish"]],
-  [/\bshellfish\b|\bprawns?\b|\bshrimps?\b/, ["shellfish"]],
-  [/\bdairy\b|\bmilk\b|\blactose\b|\bcheese\b/, ["milk"]],
-  [/\beggs?\b/, ["egg"]],
-  [/\bpeanuts?\b/, ["peanuts"]],
-  [/\bnuts?\b|\btree nuts?\b/, ["tree_nuts"]],
-  [/\bgluten\b/, ["gluten"]],
-  [/\bwheat\b/, ["wheat"]],
-  [/\bsoy\b|\bsoya\b|\btofu\b/, ["soy"]],
-  [/\bsesame\b/, ["sesame"]],
-  [/\bmustard\b/, ["mustard"]],
-  [/\bcelery\b/, ["celery"]]
+  [/\bfish\b|\bseafood\b|\bfisk|\bsjavarfang/, ["fish", "shellfish"]],
+  [/\bshellfish\b|\bprawns?\b|\bshrimps?\b|\brækj|\bskelfisk/, ["shellfish"]],
+  [/\bdairy\b|\bmilk\b|\blactose\b|\bcheese\b|\bmjolk|\blaktos/, ["milk"]],
+  [/\beggs?\b|\beggj/, ["egg"]],
+  [/\bpeanuts?\b|\bjarðhnet/, ["peanuts"]],
+  [/\bnuts?\b|\btree nuts?\b|\bhnet/, ["tree_nuts"]],
+  [/\bgluten/, ["gluten"]],
+  [/\bwheat\b|\bhveiti/, ["wheat"]],
+  [/\bsoy\b|\bsoya\b|\btofu\b|\bsoja/, ["soy"]],
+  [/\bsesame\b|\bsesam/, ["sesame"]],
+  [/\bmustard\b|\bsinnep/, ["mustard"]],
+  [/\bcelery\b|\bsellerí|\bselleri/, ["celery"]]
 ];
 var isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 var DAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
@@ -2183,12 +2212,11 @@ function buildMealPlanAction(input, ctx) {
   for (const w of strs(input.avoid).map(fold2)) {
     const hit = ALLERGEN_WORDS.find(([re]) => re.test(w));
     if (hit) prefs.allergens = [.../* @__PURE__ */ new Set([...prefs.allergens, ...hit[1]])];
-    else {
-      const ids = [...byId.values()].filter((i) => fold2(i.name).includes(stem(w))).map((i) => i.id);
-      prefs.dislikedIngredientIds = [.../* @__PURE__ */ new Set([...prefs.dislikedIngredientIds, ...ids])];
-    }
+    else prefs.dislikedIngredientIds = [.../* @__PURE__ */ new Set([...prefs.dislikedIngredientIds, ...excludedIngredientIds([w], byId.values())])];
   }
-  for (const [re, al] of ALLERGEN_WORDS) if (new RegExp(`\\bno ${re.source.replace(/\\b/g, "")}`).test(prefText)) prefs.allergens = [.../* @__PURE__ */ new Set([...prefs.allergens, ...al])];
+  const ex = parseExclusions([...strs(input.preferences), ...strs(input.avoid)].join(" "));
+  prefs.allergens = [.../* @__PURE__ */ new Set([...prefs.allergens, ...ex.allergens])];
+  prefs.dislikedIngredientIds = [.../* @__PURE__ */ new Set([...prefs.dislikedIngredientIds, ...excludedIngredientIds(ex.words, byId.values())])];
   const { start: thisStart, end: thisEnd } = weekBounds(ctx.today, ctx.facts.weekStart);
   const left = Math.round((Date.parse(`${thisEnd}T00:00:00Z`) - Date.parse(`${ctx.today}T00:00:00Z`)) / 864e5) + 1;
   const next = input.week === "next" || input.week !== "this" && left < 3 && !Array.isArray(input.days);
@@ -2269,7 +2297,48 @@ function buildMealPlanAction(input, ctx) {
 }
 function asksForMealPlan(text) {
   const t = fold2(text);
-  return /\bmeal[\s-]?plan|\bplan (my|the|our)?\s*(meals|food|eating)|\bplan meals\b|\bmeals for (the|this|next) week\b/.test(t);
+  return /\bmeal[\s-]?plan|\bplan (my|the|our)?\s*(meals|food|eating)|\bplan meals\b|\bmeals for (the|this|next) week\b|\bmatarplan|\bmatseðil|\bmatseðl/.test(t);
+}
+var WEEKDAYS_EN = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+var WEEKDAYS_IS = ["manudag", "\xFEri\xF0judag", "mi\xF0vikudag", "fimmtudag", "fostudag", "laugardag", "sunnudag"];
+var COUNT_WORDS = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  ein: 1,
+  eina: 1,
+  einni: 1,
+  tv\u00E6r: 2,
+  tveimur: 2,
+  \u00FErjar: 3,
+  \u00FEremur: 3,
+  fjorar: 4,
+  fjorum: 4,
+  fimm: 5,
+  sex: 6
+};
+function mealPlanIntentFromText(text) {
+  const t = fold2(text);
+  const intent = { preferences: [text.slice(0, 300)] };
+  const m = t.match(/(?<![a-z0-9æðþ])(\d|one|two|three|four|five|six|ein|eina|einni|tvær|tveimur|þrjar|þremur|fjorar|fjorum|fimm|sex)\s+(?:meals?\b|maltið)/);
+  if (m) intent.meals_per_day = /^\d$/.test(m[1]) ? Number(m[1]) : COUNT_WORDS[m[1]];
+  if (/\bnext week\b|\bnæstu viku\b|\bnæsta viku\b/.test(t)) intent.week = "next";
+  else if (/\bthis week\b|(?<![a-zæðþ])þessa(ri)? viku\b/.test(t)) intent.week = "this";
+  const days = [];
+  WEEKDAYS_EN.forEach((d, i) => {
+    if (new RegExp(`(?<![a-z\xE6\xF0\xFE])(?:${d}|${WEEKDAYS_IS[i]})`).test(t)) days.push(d);
+  });
+  if (/\bweekend\b|\bhelgin/.test(t)) days.push("saturday", "sunday");
+  if (days.length) intent.days = [...new Set(days)];
+  if (/\b(quick|fast|no[\s-]?cook)\b|\bfljot|\bsnogg/.test(t)) intent.quick = true;
+  const diet = DIET_WORDS.filter(([re]) => re.test(t)).map(([, tag]) => tag);
+  if (diet.length) intent.diet = diet;
+  const ex = parseExclusions(text);
+  if (ex.raw.length) intent.avoid = ex.raw.filter((w) => !EXCLUSION_NOISE.has(w));
+  return intent;
 }
 
 // supabase/functions/_shared/ai/validate.ts
@@ -2607,29 +2676,42 @@ async function findRecipes(input, ctx) {
   const meal = typeof input.meal === "string" && ["breakfast", "lunch", "dinner", "snack"].includes(input.meal) ? input.meal : intent.meal;
   const minP = typeof input.min_protein_g === "number" ? input.min_protein_g : intent.highProtein ? meal === "snack" ? 15 : 25 : null;
   const max = Math.min(5, Math.max(1, typeof input.max_results === "number" ? Math.round(input.max_results) : 3));
+  const fromRequest = intent.diet.length > 0 || intent.exclude.allergens.length > 0 || intent.exclude.words.length > 0;
+  const hard = fromRequest ? {
+    ...ctx.facts,
+    dietTags: [.../* @__PURE__ */ new Set([...ctx.facts.dietTags, ...intent.diet])],
+    allergens: [.../* @__PURE__ */ new Set([...ctx.facts.allergens, ...intent.exclude.allergens])],
+    dislikedIngredientIds: [.../* @__PURE__ */ new Set([...ctx.facts.dislikedIngredientIds, ...excludedIngredientIds(intent.exclude.words, ingredients)])]
+  } : ctx.facts;
   const allowed = [];
   for (const r of recipes) {
     const minutes = totalMinutes(r);
-    if (ctx.facts.maxCookMinutes != null && minutes > ctx.facts.maxCookMinutes) continue;
-    const fit = recipeFits(r, ing, ctx.facts);
+    if (hard.maxCookMinutes != null && minutes > hard.maxCookMinutes) continue;
+    const fit = recipeFits(r, ing, hard);
     if (!fit.ok) continue;
-    allowed.push({ r, omit: fit.omit, swaps: fit.swaps, macros: perServingMacros(r, ing, fit.omit, fit.swaps), minutes, liked: likedRecipe(r, ing, ctx.facts) });
+    allowed.push({ r, omit: fit.omit, swaps: fit.swaps, macros: perServingMacros(r, ing, fit.omit, fit.swaps), minutes, liked: likedRecipe(r, ing, hard) });
   }
   if (!allowed.length) {
     const reason = explainNoRecipes(
-      { allergens: ctx.facts.allergens, dietTags: ctx.facts.dietTags, disliked: ctx.facts.dislikedIngredientIds, maxMinutes: ctx.facts.maxCookMinutes, meal: null, proteinExcluded: ctx.facts.proteinExcluded },
+      { allergens: hard.allergens, dietTags: hard.dietTags, disliked: hard.dislikedIngredientIds, maxMinutes: hard.maxCookMinutes, meal: null, proteinExcluded: hard.proteinExcluded },
       recipes,
       ing,
-      ctx.facts
+      hard
     );
-    return { content: JSON.stringify({ results: [], reason, note: "The user's own settings exclude every recipe. Explain this reason; don't invent recipes." }) };
+    return {
+      content: JSON.stringify({
+        results: [],
+        reason,
+        note: fromRequest ? "Nothing in the catalog fits the user's settings together with the restrictions in this request. Say so plainly and name the reason; never relax a restriction and never invent recipes." : "The user's own settings exclude every recipe. Explain this reason; don't invent recipes."
+      })
+    };
   }
-  const want = (x, o) => (!o.meal || !meal || x.r.meal === meal) && (!o.extras || (!intent.quick || x.minutes <= 15) && dietOk(x.r, intent.diet, ing) && (minP == null || x.macros.protein_g >= minP)) && (!o.words || wordsMatch(x.r, intent.words, ing));
+  const want = (x, o) => (!o.meal || !meal || x.r.meal === meal) && (!o.extras || (!intent.quick || x.minutes <= 15) && (minP == null || x.macros.protein_g >= minP)) && (!o.words || wordsMatch(x.r, intent.words, ing));
   const steps = [
     { words: true, meal: true, extras: true, note: null },
     { words: false, meal: true, extras: true, note: intent.words.length ? `No recipe matched "${intent.words.join(" ")}"; these are the closest fits for the rest of the request.` : null },
-    { words: false, meal: true, extras: false, note: "Nothing matched every part of the request; these are the best fits for the user's targets for that meal." },
-    { words: false, meal: false, extras: false, note: "Nothing matched the request; these are the best fits for the user's targets." }
+    { words: false, meal: true, extras: false, note: `Nothing matched every part of the request; these are the best fits for the user's targets for that meal${fromRequest ? ' (its diet and "no \u2026" restrictions still apply)' : ""}.` },
+    { words: false, meal: false, extras: false, note: `Nothing matched the request; these are the best fits for the user's targets${fromRequest ? ' (its diet and "no \u2026" restrictions still apply)' : ""}.` }
   ];
   let picked = [];
   let note = null;
@@ -3106,13 +3188,20 @@ async function send(deps, uid, body) {
   const fullRecipe = looksLikeFullRecipe(reply);
   if (fullRecipe) deps.log?.("ai_full_recipe_warning", { words: wordCount(reply) });
   let replaced = null;
-  const wantsPlan = asksForMealPlan(text) || ctx.followUp && ctx.openRequest?.intent === "meal_plan";
+  let fallbackFailure = null;
+  const resumed = ctx.followUp && ctx.openRequest?.intent === "meal_plan";
+  const wantsPlan = asksForMealPlan(text) || resumed;
   if (wantsPlan && !state.mealPlan && !state.weekPlan && !mealPlanBlocker(ctx.nutrition)) {
     const [recipes, ingredients] = await Promise.all([deps.db.getRecipes(), deps.db.getIngredients()]);
-    const built = buildMealPlanAction({}, { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id, recipes, ingredients });
+    const requestText = resumed && ctx.openRequest ? `${ctx.openRequest.text}
+${text}` : text;
+    const built = buildMealPlanAction(mealPlanIntentFromText(requestText), { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id, recipes, ingredients });
     if (built.action) {
       state.mealPlan = built.action;
       replaced = "meal_plan_fallback";
+    } else if (built.errors.length) {
+      fallbackFailure = built.errors[0];
+      deps.log?.("ai_reply_replaced", { reason: "meal_plan_fallback_failed" });
     }
   }
   const weekPlan = state.weekPlan ?? null;
@@ -3132,6 +3221,7 @@ async function send(deps, uid, body) {
       if (mealPlanConflict(reply, state.mealPlan, names)) replaced = "meal_plan_conflict";
     } else if (proposalInfo && !proposalInfo.invalid && proposalConflict(reply, proposalInfo, ctx.today)) replaced = "proposal_conflict";
   }
+  if (fallbackFailure) reply = `I couldn't build that meal plan with what you asked for: ${fallbackFailure}`;
   if (replaced) {
     reply = weekPlan ? summarizeWeekPlan(weekPlan, ctx.today, ctx.facts.weekStart) : state.mealPlan ? summarizeMealPlan(state.mealPlan, ctx.today, ctx.facts.weekStart) : summarizeProposal(proposalInfo);
     if (ctx.sharingAdded.length) reply = `Thanks \u2014 I can see your ${ctx.sharingAdded.join(" and ")} now. ${reply}`;
@@ -3210,6 +3300,12 @@ async function cachedRef(key, load) {
   refCache.set(key, { at: Date.now(), rows });
   return rows;
 }
+function historyMessage(r) {
+  const grounding = Array.isArray(r.grounding) ? r.grounding.filter((g) => typeof g === "string") : [];
+  const a = r.action;
+  const action = a && typeof a === "object" && !Array.isArray(a) && typeof a.kind === "string" ? a : null;
+  return { id: r.id, role: r.role, content: r.content, createdAt: r.created_at, proposalId: r.proposal_id, grounding, action };
+}
 function createSupabaseAiDb(user, admin2) {
   return {
     async getSettings(_uid) {
@@ -3262,12 +3358,10 @@ function createSupabaseAiDb(user, admin2) {
       ));
     },
     async getHistory(uid, after, limit) {
-      let q = user.from("ai_messages").select("id, role, content, created_at, proposal_id").eq("user_id", uid);
+      let q = user.from("ai_messages").select("id, role, content, created_at, proposal_id, grounding, action").eq("user_id", uid);
       if (after) q = q.gt("created_at", after);
-      const rows = await run(
-        q.order("seq", { ascending: false }).limit(Math.min(50, limit))
-      );
-      return (rows ?? []).reverse().map((r) => ({ id: r.id, role: r.role, content: r.content, createdAt: r.created_at, proposalId: r.proposal_id }));
+      const rows = await run(q.order("seq", { ascending: false }).limit(Math.min(50, limit)));
+      return (rows ?? []).reverse().map(historyMessage);
     },
     async recordExchange(uid, input) {
       const r = await run(admin2.rpc("ai_record_exchange", {

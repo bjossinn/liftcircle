@@ -23,7 +23,7 @@ import { validateOpenLinks } from './appGuide.ts';
 // @ts-ignore see above
 import { humanizeDates } from './humanDates.ts';
 // @ts-ignore see above
-import { asksForMealPlan, buildMealPlanAction } from './meals.ts';
+import { asksForMealPlan, buildMealPlanAction, mealPlanIntentFromText } from './meals.ts';
 // @ts-ignore see above
 import { mealPlanBlocker } from './dataStatus.ts';
 // @ts-ignore see above
@@ -233,15 +233,23 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   if (fullRecipe) deps.log?.('ai_full_recipe_warning', { words: wordCount(reply) });
 
   // "Make a meal plan and add it" (or "ok, try now" after one was blocked) must end in a real plan, never invented meals:
-  // if the model didn't call propose_meal_plan, the server builds it from the same intent-free defaults.
+  // if the model didn't call propose_meal_plan, the server builds it from the intent in the user's OWN words (the
+  // original request for a follow-up, plus this message) — "no fish, two meals a day" survives. If that can't be
+  // built, the reply says so honestly instead of offering a plan that ignores what was asked.
   let replaced: string | null = null;
-  const wantsPlan = asksForMealPlan(text) || (ctx.followUp && ctx.openRequest?.intent === 'meal_plan');
+  let fallbackFailure: string | null = null;
+  const resumed = ctx.followUp && ctx.openRequest?.intent === 'meal_plan';
+  const wantsPlan = asksForMealPlan(text) || resumed;
   if (wantsPlan && !state.mealPlan && !state.weekPlan && !mealPlanBlocker(ctx.nutrition)) {
     const [recipes, ingredients] = await Promise.all([deps.db.getRecipes(), deps.db.getIngredients()]);
-    const built = buildMealPlanAction({}, { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id, recipes, ingredients });
+    const requestText = resumed && ctx.openRequest ? `${ctx.openRequest.text}\n${text}` : text;
+    const built = buildMealPlanAction(mealPlanIntentFromText(requestText), { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id, recipes, ingredients });
     if (built.action) {
       state.mealPlan = built.action;
       replaced = 'meal_plan_fallback';
+    } else if (built.errors.length) {
+      fallbackFailure = built.errors[0];
+      deps.log?.('ai_reply_replaced', { reason: 'meal_plan_fallback_failed' });
     }
   }
 
@@ -267,6 +275,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
       if (mealPlanConflict(reply, state.mealPlan, names)) replaced = 'meal_plan_conflict';
     } else if (proposalInfo && !proposalInfo.invalid && proposalConflict(reply, proposalInfo, ctx.today)) replaced = 'proposal_conflict';
   }
+  if (fallbackFailure) reply = `I couldn't build that meal plan with what you asked for: ${fallbackFailure}`;
   if (replaced) {
     reply =
       weekPlan ? summarizeWeekPlan(weekPlan, ctx.today, ctx.facts.weekStart)
