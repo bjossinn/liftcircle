@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import { handleAiCoach, type CoachDeps } from '../../supabase/functions/_shared/ai/coach';
 import { runTool, type ToolState } from '../../supabase/functions/_shared/ai/tools';
-import { buildMealPlanAction, mealPlanIntentFromText, parseExclusions, parseQuery } from '../../supabase/functions/_shared/ai/meals';
+import { buildMealPlanAction, dietTagsIn, excludedIngredientIds, mealPlanIntentFromText, parseExclusions, parseQuery, stemWord, wantedDays } from '../../supabase/functions/_shared/ai/meals';
 import { nutritionStatus } from '../../supabase/functions/_shared/ai/dataStatus';
 import { classifyIntent, findOpenRequest, isFollowUp } from '../../supabase/functions/_shared/ai/conversation';
 import { createSupabaseAiDb, historyMessage, type SbClient } from '../../supabase/functions/_shared/ai/supabaseDb';
@@ -541,5 +541,130 @@ describe('PR #16 re-review: a reason clause never breaks a weekday negation', ()
     const res = await handleAiCoach(deps(conv.db, fetch).d, U, send(msg));
     const action = (res.body.reply as StoredMessage).action as MealPlanAction;
     expect(action.days.map((d) => d.date)).toEqual(['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-07', '2026-11-08']);
+  });
+});
+
+/* ================================================================== exclusion parser corpus (all review rounds) */
+/**
+ * One table for every phrasing raised in the three ChatGPT reviews of PR #16 plus the probes that passed, in English and
+ * Icelandic. For each phrase:
+ *  - allergens / foods / diet: exactly what is ruled out and which diet tags are ASKED for (negated diets never count);
+ *  - search: words the recipe search must still look for; ruled-out tokens must never be search words;
+ *  - days: the weekdays a meal plan for next week actually gets (dates checked; default all seven);
+ *  - and, whenever something is ruled out, the real recipes chosen (find_recipes cards and the planned meals) contain none of it.
+ */
+type Al = 'fish' | 'shellfish' | 'tree_nuts' | 'peanuts' | 'egg' | 'soy' | 'milk' | 'gluten';
+interface Case { phrase: string; allergens?: Al[]; foods?: string[]; diet?: string[]; search?: string[]; days?: string[] }
+const FISH: Al[] = ['fish', 'shellfish'];
+const WEEK = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const NOT_FRI = WEEK.filter((d) => d !== 'friday');
+const WEEKDAYS_ONLY = WEEK.slice(0, 5);
+const CORPUS: Case[] = [
+  // review 1
+  { phrase: 'no fish, no nuts', allergens: [...FISH, 'tree_nuts'] },
+  { phrase: 'án fisks, án hneta', allergens: [...FISH, 'tree_nuts'] },
+  { phrase: 'no tree nuts', allergens: ['tree_nuts'] },
+  { phrase: 'engar trjáhnetur', allergens: ['tree_nuts'] },
+  { phrase: 'without any nuts', allergens: ['tree_nuts'] },
+  { phrase: 'án nokkurra hneta', allergens: ['tree_nuts'] },
+  { phrase: 'not Friday', days: NOT_FRI },
+  { phrase: 'ekki föstudag', days: NOT_FRI },
+  { phrase: 'no fish, two meals a day', allergens: FISH },
+  { phrase: 'enginn fiskur, tvær máltíðir á dag', allergens: FISH },
+  // review 2
+  { phrase: 'no nuts in my meals', allergens: ['tree_nuts'] },
+  { phrase: 'engar hnetur í máltíðunum', allergens: ['tree_nuts'] },
+  { phrase: 'no fish for dinner', allergens: FISH },
+  { phrase: 'enginn fiskur í kvöldmatinn', allergens: FISH },
+  { phrase: 'no fries', foods: ['fries'] },
+  { phrase: 'no satay', foods: ['satay'] },
+  { phrase: 'no monkfish', foods: ['monkfish'] },
+  { phrase: 'ekki laugardagsnammi', foods: ['laugardagsnammi'] },
+  { phrase: 'engin sunnudagssteik', foods: ['sunnudagssteik'] },
+  { phrase: "I'm not vegan; suggest chicken dinners", search: ['chicken'] },
+  { phrase: 'Ég er ekki vegan, stingdu upp á kjúklingakvöldmat' },
+  { phrase: 'not Friday because I eat out', days: NOT_FRI },
+  { phrase: 'ekki föstudag því ég fer út að borða', days: NOT_FRI },
+  // review 3
+  { phrase: 'no nuts at all or eggs', allergens: ['tree_nuts', 'egg'] },
+  { phrase: 'alls engar hnetur eða egg', allergens: ['tree_nuts', 'egg'] },
+  { phrase: 'no nuts at all, eggs or soy', allergens: ['tree_nuts', 'egg', 'soy'] },
+  { phrase: 'alls engar hnetur, egg eða soja', allergens: ['tree_nuts', 'egg', 'soy'] },
+  { phrase: 'no sunday roast', foods: ['sunday roast'] },
+  { phrase: 'enga sunnudagssteik', foods: ['sunnudagssteik'] },
+  { phrase: 'nothing on weekends', days: WEEKDAYS_ONLY },
+  { phrase: 'ekkert um helgar', days: WEEKDAYS_ONLY },
+  // probes that passed in review 3
+  { phrase: 'not vegan but no meat', foods: ['meat'] },
+  { phrase: 'ekki vegan en ekkert kjöt', foods: ['meat'] },
+  { phrase: 'no peanut butter for breakfast', allergens: ['peanuts'] },
+  { phrase: 'ekkert hnetusmjör í morgunmat', allergens: ['peanuts'] },
+  { phrase: 'not Friday and no fish', allergens: FISH, days: NOT_FRI },
+  { phrase: 'ekki föstudag og engan fisk', allergens: FISH, days: NOT_FRI },
+  { phrase: 'not gluten-free but no dairy', allergens: ['milk'], diet: ['dairy_free'] },
+  { phrase: 'ekki glútenlaus en engar mjólkurvörur', allergens: ['milk'] },
+  // days asked FOR, and things that rule out nothing
+  { phrase: 'Meal plan for Monday and Friday, no fish', allergens: FISH, days: ['monday', 'friday'], search: [] },
+  { phrase: 'matarplan fyrir þriðjudag og helgina, án hneta', allergens: ['tree_nuts'], days: ['tuesday', 'saturday', 'sunday'] },
+  { phrase: 'vegan dinner, no soy', allergens: ['soy'], diet: ['vegan'] },
+  { phrase: 'vegan kvöldmatur án soja', allergens: ['soy'], diet: ['vegan'] },
+  { phrase: 'no more than 20 minutes' },
+  { phrase: 'ekki meira en 20 mínútur' },
+  { phrase: 'an apple and a banana', search: ['apple', 'banana'] },
+  { phrase: 'not too spicy' },
+];
+const NEXT_WEEK: Record<string, string> = { monday: '2026-11-02', tuesday: '2026-11-03', wednesday: '2026-11-04', thursday: '2026-11-05', friday: '2026-11-06', saturday: '2026-11-07', sunday: '2026-11-08' };
+const usedIngredients = (recipeId: string) => RECIPES.find((r) => r.id === recipeId)!.ingredients.filter((i) => !i.optional).map((i) => i.ingredientId);
+
+describe('exclusion parser corpus (EN + IS, every review phrasing)', () => {
+  it.each(CORPUS.map((c) => [c.phrase, c] as const))('%s', async (_phrase, c) => {
+    const ex = parseExclusions(c.phrase);
+    expect(ex.allergens.sort(), 'allergens').toEqual([...(c.allergens ?? [])].sort());
+    expect(ex.words.sort(), 'foods').toEqual([...(c.foods ?? [])].sort());
+    expect(dietTagsIn(c.phrase).sort(), 'diet').toEqual([...(c.diet ?? [])].sort());
+    // Search terms: what must be looked for is there; nothing ruled out is ever looked FOR.
+    const words = parseQuery(c.phrase).words;
+    for (const w of c.search ?? []) expect(words, `search ${w}`).toContain(w);
+    for (const r of ex.raw) expect(words, `ruled-out "${r}" searched for`).not.toContain(stemWord(r));
+
+    // Plan dates for "meal plan for next week" + the phrase (fallback intent + the user's words, as in the handler).
+    const msg = `Meal plan for next week. ${c.phrase}`;
+    const acc = account();
+    const built = buildMealPlanAction(mealPlanIntentFromText(msg), {
+      facts: facts(), account: acc, today: TODAY, nutrition: nutritionStatus(acc, true), messageId: mid(9), recipes: REF_RECIPES, ingredients: REF_INGREDIENTS, requestText: msg,
+    });
+    expect(built.errors, 'plan errors').toEqual([]);
+    expect(built.action!.days.map((d) => d.date), 'plan dates').toEqual((c.days ?? WEEK).map((d) => NEXT_WEEK[d]));
+
+    // Real recipes: nothing ruled out appears in the plan or in find_recipes cards.
+    const bannedAl = new Set<string>(c.allergens ?? []);
+    const bannedIng = new Set(excludedIngredientIds(c.foods ?? [], REF_INGREDIENTS));
+    if (bannedAl.size || bannedIng.size) {
+      for (const day of built.action!.days)
+        for (const it of day.items) {
+          expect(allergensOf(it.recipeId).filter((a) => bannedAl.has(a)), `${day.date} ${it.recipeId}`).toEqual([]);
+          expect(usedIngredients(it.recipeId).filter((i) => bannedIng.has(i)), `${day.date} ${it.recipeId}`).toEqual([]);
+          for (const e of it.extras ?? []) {
+            expect((ING.get(e.ingredientId)?.allergens ?? []).filter((a) => bannedAl.has(a)), e.ingredientId).toEqual([]);
+            expect(bannedIng.has(e.ingredientId), e.ingredientId).toBe(false);
+          }
+        }
+      const out = await runTool('find_recipes', { query: '', max_results: 5 }, {
+        db: makeDb().db, facts: facts(), catalog: new Map(), state: { proposal: null, proposalAttempts: 0 }, messageId: mid(2), nutrition: nutritionStatus(acc, true), account: acc, requestText: c.phrase,
+      });
+      const results = JSON.parse(out.content).results as { id: string }[];
+      expect(results.length).toBeGreaterThan(0);
+      for (const r of results) {
+        expect(allergensOf(r.id).filter((a) => bannedAl.has(a)), r.id).toEqual([]);
+        expect(usedIngredients(r.id).filter((i) => bannedIng.has(i)), r.id).toEqual([]);
+      }
+    }
+  });
+
+  it('wantedDays only counts whole day words no negation used', () => {
+    expect(wantedDays('Meal plan for Monday and Friday')).toEqual(['monday', 'friday']);
+    expect(wantedDays('no sunday roast')).toEqual([]);
+    expect(wantedDays('engin sunnudagssteik, ekki laugardagsnammi')).toEqual([]);
+    expect(wantedDays('not Friday, but Saturday is fine')).toEqual(['saturday']);
   });
 });

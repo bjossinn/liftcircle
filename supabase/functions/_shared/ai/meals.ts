@@ -108,8 +108,9 @@ export function parseQuery(query: string): QueryIntent {
       meal ??= MEAL_WORDS[raw];
       continue;
     }
-    // A ruled-out word ("no FISH") must never become a word the recipe should contain.
-    if (negated.has(raw) || NEGATORS.has(raw)) continue;
+    // A ruled-out word ("no FISH") must never become a word the recipe should contain; nor may the words that only
+    // shape a request ("at all", "but", "eða", "í", "because").
+    if (negated.has(raw) || NEGATORS.has(raw) || QUERY_GLUE.has(raw)) continue;
     if (STOP.has(raw) || raw.length < 3 || DIET_WORDS.some(([re]) => re.test(raw)) || /^(vegan|vegetarian|pescatarian|dairy|gluten|lactose|no|cook|min|under)$/.test(raw)) continue;
     words.push(stem(raw));
   }
@@ -127,26 +128,41 @@ export interface Exclusions {
   /** Weekdays ruled out ("not Friday", "ekki um helgina"), as English names (monday … sunday). */
   days: string[];
 }
-// A negation opens a list ("without gluten, soy or nuts", "no fish, no nuts", "án fisks, án hneta"); each item is a
-// short food phrase or a weekday. The list ends at the next negation, at sentence punctuation or "but", or at the first
-// item that isn't a food/day phrase ("no fish, two meals a day" → fish only).
-const NEGATOR_WORDS = ['no', 'without', 'avoid', 'not', 'never', 'minus', 'except', 'excluding', 'exclude', 'skip', 'nor', 'none', 'zero',
-  'engan', 'enga', 'engar', 'engin', 'enginn', 'engum', 'engri', 'ekkert', 'ekki', 'sleppa', 'sleppum', 'sleppi', 'nema', 'utan'];
+// One token-stream pass reads what a request rules out. A negation ("no", "without", "nothing", "án", "ekki", "engar", …)
+// opens a LIST of items joined by "," / "or" / "and" / "og" / "eða"; each item is a short food phrase or a weekday.
+//  - an item is its HEAD: the words before the first explanatory word ("nuts" in "nuts in my meals", "friday" in
+//    "friday because I eat out"); a head cut short this way ends the list;
+//  - fillers around an item are skipped and do NOT end the list ("without ANY nuts", "nuts AT ALL or eggs");
+//  - the list also ends at punctuation, "but"/"en", a new negation, or an item that isn't a food or a day
+//    ("no fish, two meals a day" → fish only);
+//  - every token an item uses is CONSUMED, so it can never also count as something wanted: "no sunday roast" is a food,
+//    not a Sunday, and "no fish for dinner" never searches FOR fish.
+const NEGATOR_WORDS = new Set(['no', 'without', 'avoid', 'not', 'never', 'nothing', 'neither', 'minus', 'except', 'excluding', 'exclude', 'skip', 'nor',
+  'none', 'zero', 'engan', 'enga', 'engar', 'engin', 'enginn', 'engum', 'engri', 'ekkert', 'ekki', 'sleppa', 'sleppum', 'sleppi', 'nema', 'utan']);
 const NEGATORS = new Set([...NEGATOR_WORDS, 'free', 'laus']);
 const L = 'a-z0-9æðþ';
-const NEG_START = new RegExp(`(?<![${L}])(?:${NEGATOR_WORDS.join('|')})(?![${L}])`, 'g');
-const ITEM_SEP = new RegExp(`\\s*(?:,|/|&|(?<![${L}])(?:or|and|nor|og|eða|eda|ne)(?![${L}]))\\s*`);
-const SEGMENT_END = new RegExp(`[.;:!?\\n()]|(?<![${L}])(?:but|then|instead|en|heldur|bara)(?![${L}])`);
-/** Words around an item that carry no meaning ("without ANY nuts", "nuts AT ALL", "ekki UM helgina"). */
-const FILLER = new Set(['any', 'the', 'some', 'a', 'an', 'at', 'all', 'on', 'of', 'my', 'whatsoever', 'please', 'um', 'i', 'neinn', 'neitt', 'neina', 'neinu', 'neinar', 'neinum', 'takk']);
-/** A word that means the "item" is not a food or a day: the list has ended. */
+/** Joins items in a list. */
+const SEP_WORDS = new Set([',', '/', '&', 'or', 'and', 'nor', 'og', 'eða', 'eda', 'ne']);
+/** Ends a list outright. */
+const LIST_END = new Set(['.', ';', ':', '!', '?', '\n', '(', ')', 'but', 'then', 'instead', 'en', 'heldur', 'bara']);
+/** Skipped before an item ("without ANY nuts", "nothing ON weekends", "ekki UM helgina", "nothing WITH nuts"). */
+const LEAD_FILLER = new Set(['any', 'the', 'some', 'a', 'an', 'at', 'all', 'on', 'of', 'my', 'with', 'containing', 'contains', 'um', 'i', 'a', 'með',
+  'neinn', 'neitt', 'neina', 'neinu', 'neinar', 'neinum', 'nokkur', 'nokkurra', 'nokkra', 'alls']);
+/** Skipped after an item without ending the list ("nuts AT ALL or eggs", "fish PLEASE, or soy"). */
+const TRAIL_FILLER = new Set(['whatsoever', 'please', 'thanks', 'takk', 'alls', 'yfirleitt', 'heldur']);
+/** A word that means the "item" is not a food or a day. */
 const NOT_AN_ITEM = new Set(['one', 'two', 'three', 'four', 'five', 'six', 'day', 'days', 'week', 'weeks', 'today', 'tomorrow', 'time', 'minutes', 'mins', 'min', 'hour',
   'hours', 'meal', 'meals', 'snack', 'snacks', 'breakfast', 'lunch', 'dinner', 'cook', 'cooking', 'quick', 'fast', 'more', 'less', 'than', 'too', 'much', 'many', 'long', 'longer',
   'want', 'like', 'eat', 'have', 'need', 'make', 'sure', 'it', 'is', 'be', 'me', 'you', 'we', 'they', 'that', 'this', 'very', 'really', 'spicy', 'hungry', 'plan',
   'ein', 'eina', 'tvær', 'tveimur', 'þrjar', 'fjorar', 'fimm', 'sex', 'dag', 'daga', 'viku', 'vikuna', 'tima', 'timi', 'maltið', 'maltiðir', 'maltiða', 'matur', 'mat',
   'vil', 'borða', 'mikið', 'mikil', 'lengi', 'langt', 'of', 'meira', 'minna', 'fljot', 'fljotlegt', 'fljotlega', 'matarplan', 'ég', 'eg', 'það', 'þetta', 'mig', 'mer']);
+/** Words that start an explanatory clause after an item: the item — and the list — end there. */
+const CLAUSE_BREAK = new Set(['in', 'for', 'because', 'since', 'as', 'when', 'while', 'during', 'with', 'to', 'at', 'on', 'from', 'this', 'next',
+  'i', 'a', 'fyrir', 'af', 'þvi', 'þar', 'vegna', 'með', 'um', 'þegar', 'svo', 'til', 'fra', 'eftir', 'næstu', 'þessa', 'þessari']);
+/** Connectors and fillers that never name a food, so they are never search words. */
+const QUERY_GLUE = new Set([...SEP_WORDS, ...LIST_END, ...LEAD_FILLER, ...TRAIL_FILLER, ...CLAUSE_BREAK]);
 // Weekdays match WHOLE tokens only — full English names (or plurals) and the usual abbreviations, and Icelandic day
-// names with their case endings — so food words never become days ("fries", "satay", "monkfish", "sunflower").
+// names with their case endings — so food words never become days ("fries", "satay", "monkfish", "sunnudagssteik").
 const IS_DAY_END = '(?:ur|inn|s|sins|a|ana|ar|arnir|um|inum)?';
 const WEEKDAY_TOKENS: [RegExp, string[]][] = [
   [new RegExp(`^(?:mondays?|mon|manud[ao]g${IS_DAY_END})$`), ['monday']],
@@ -158,10 +174,7 @@ const WEEKDAY_TOKENS: [RegExp, string[]][] = [
   [new RegExp(`^(?:sundays?|sun|sunnud[ao]g${IS_DAY_END})$`), ['sunday']],
   [/^(?:weekends?|helg(?:i|in|ina|inni|ar|arinnar|um)?)$/, ['saturday', 'sunday']],
 ];
-/** Words that start an explanatory clause after an item: the item ends there ("no nuts IN my meals", "not Friday
- *  BECAUSE I eat out", "ekki föstudag ÞVÍ ég fer út"). */
-const CLAUSE_BREAK = new Set(['in', 'for', 'because', 'since', 'as', 'when', 'while', 'during', 'with', 'to', 'at', 'on', 'from', 'please', 'thanks', 'this', 'next',
-  'i', 'a', 'fyrir', 'af', 'þvi', 'þar', 'vegna', 'með', 'um', 'þegar', 'svo', 'takk', 'til', 'fra', 'eftir', 'næstu', 'þessa', 'þessari']);
+const dayOf = (w: string) => WEEKDAY_TOKENS.find(([re]) => re.test(w))?.[1];
 /** Diet names: "not vegan" is a statement about the user, never a food to rule out. */
 const DIET_NAME = /^(?:vegan\w*|vegetarian|veggie|pescatarian|keto|paleo|græn\w*|non)$/;
 /** Icelandic food words (folded stems) → the English words used in catalog ingredient names. Longest stems first. */
@@ -173,61 +186,90 @@ const IS_FOOD: [string, string][] = [
   ['tunfisk', 'tuna'], ['spinat', 'spinach'], ['kokos', 'coconut'],
 ];
 const FREE_RE = new RegExp(`(?<![${L}])([a-zæðþ]+)[\\s-]free(?![${L}])|(?<![${L}])([a-zæðþ]{3,}?)laus(?:ir|ar|an|um|ri|a|t)?(?![${L}])`, 'g');
+const TOKEN_RE = /[a-z0-9æðþ'’-]+|[.,;:!?\n()/&]/g;
 
 type Item = { kind: 'allergens'; allergens: Allergen[]; tokens: string[] } | { kind: 'food'; phrase: string; tokens: string[] } | { kind: 'days'; days: string[]; tokens: string[] };
 
-/**
- * One list item → what it rules out, or null when it isn't a food or day phrase. The item is its HEAD: the words before
- * the first explanatory word ("nuts" in "nuts in my meals", "friday" in "friday because i eat out"), at most three.
- * `ended` says the item was cut short, so the list stops after it.
- */
-function classifyItem(rawItem: string): (Item & { ended: boolean }) | null {
-  const all = rawItem.split(/\s+/).filter(Boolean);
-  while (all.length && FILLER.has(all[0])) all.shift();
-  const tokens: string[] = [];
-  let ended = false;
-  for (const w of all) {
-    if (/\d/.test(w) || NOT_AN_ITEM.has(w) || CLAUSE_BREAK.has(w) || tokens.length === 3) {
-      ended = true;
-      break;
-    }
-    tokens.push(w);
-  }
-  while (tokens.length && FILLER.has(tokens[tokens.length - 1])) tokens.pop();
-  if (!tokens.length || tokens.some((w) => DIET_NAME.test(w))) return null;
-  const days = tokens.map((w) => WEEKDAY_TOKENS.find(([re]) => re.test(w))?.[1]);
-  if (days.every(Boolean)) return { kind: 'days', days: [...new Set(days.flat() as string[])], tokens, ended };
-  const english = tokens.map((w) => IS_FOOD.find(([is]) => w.startsWith(is))?.[1] ?? w).join(' ');
-  const hits = ALLERGEN_WORDS.filter(([re]) => re.test(english) || re.test(tokens.join(' '))).flatMap(([, a]) => a);
-  if (hits.length) return { kind: 'allergens', allergens: [...new Set(hits)], tokens, ended };
+/** A head (1–3 words) → what it rules out, or null when it isn't a food or a day. */
+function classifyHead(head: string[]): Item | null {
+  if (!head.length || head.some((w) => DIET_NAME.test(w))) return null;
+  const days = head.map(dayOf);
+  if (days.every(Boolean)) return { kind: 'days', days: [...new Set(days.flat() as string[])], tokens: head };
+  const english = head.map((w) => IS_FOOD.find(([is]) => w.startsWith(is))?.[1] ?? w).join(' ');
+  const hits = ALLERGEN_WORDS.filter(([re]) => re.test(english) || re.test(head.join(' '))).flatMap(([, a]) => a);
+  if (hits.length) return { kind: 'allergens', allergens: [...new Set(hits)], tokens: head };
   if (english.replace(/\s/g, '').length < 3) return null;
-  return { kind: 'food', phrase: english, tokens, ended };
+  return { kind: 'food', phrase: english, tokens: head };
+}
+
+/** A single word or short phrase given as a thing to avoid (no negation needed): "tree nuts", "svínakjöt". */
+function classifyItem(text: string): Item | null {
+  const words = fold(text).match(TOKEN_RE)?.filter((w) => !LEAD_FILLER.has(w) && !TRAIL_FILLER.has(w)) ?? [];
+  return words.length && words.length <= 3 ? classifyHead(words) : null;
+}
+
+interface ExclusionParse {
+  items: Item[];
+  tokens: string[];
+  /** Token indices used by a negation or one of its items. */
+  consumed: Set<number>;
+}
+
+/** The token-stream pass (see the comment above NEGATOR_WORDS). */
+function parseExclusionTokens(text: string): ExclusionParse {
+  // Icelandic "án" (without) folds to "an", which is also an English article, so it is read before folding. Negated diet
+  // names ("I'm not vegan", "not gluten-free") are statements about the user, not exclusions: removed first.
+  const t = stripNegatedDiets(fold(text.replace(/(^|[^\p{L}])án(?=\s)/giu, '$1without ')));
+  const tokens = t.match(TOKEN_RE) ?? [];
+  const consumed = new Set<number>();
+  const items: Item[] = [];
+  const isWord = (w: string | undefined) => !!w && /^[a-z0-9æðþ'’-]+$/.test(w);
+  for (let i = 0; i < tokens.length; i++) {
+    if (!NEGATOR_WORDS.has(tokens[i])) continue;
+    consumed.add(i);
+    let j = i + 1;
+    for (;;) {
+      while (j < tokens.length && LEAD_FILLER.has(tokens[j]) && !(tokens[j] === 'at' && tokens[j + 1] !== 'all')) j++;
+      const start = j;
+      const head: string[] = [];
+      let cut = false;
+      while (j < tokens.length && isWord(tokens[j]) && !SEP_WORDS.has(tokens[j]) && !LIST_END.has(tokens[j]) && !NEGATOR_WORDS.has(tokens[j])) {
+        const w = tokens[j];
+        if (w === 'at' && tokens[j + 1] === 'all') break; // "nuts at all" — a filler, handled below
+        if (TRAIL_FILLER.has(w)) break;
+        if (/\d/.test(w) || NOT_AN_ITEM.has(w) || CLAUSE_BREAK.has(w) || head.length === 3) {
+          cut = true;
+          break;
+        }
+        head.push(w);
+        j++;
+      }
+      const item = classifyHead(head);
+      if (!item) break;
+      items.push(item);
+      for (let k = start; k < start + head.length; k++) consumed.add(k);
+      if (cut) break;
+      // Fillers after the item don't end the list: "no nuts at all, eggs or soy".
+      for (;;) {
+        if (tokens[j] === 'at' && tokens[j + 1] === 'all') j += 2;
+        else if (TRAIL_FILLER.has(tokens[j])) j++;
+        else break;
+      }
+      if (!SEP_WORDS.has(tokens[j])) break;
+      while (SEP_WORDS.has(tokens[j])) j++;
+      if (NEGATOR_WORDS.has(tokens[j])) break; // "no fish, no nuts": the outer loop starts the next list
+    }
+  }
+  for (const m of t.matchAll(FREE_RE)) {
+    const item = classifyHead([(m[1] ?? m[2] ?? '').trim()].filter(Boolean));
+    if (item && item.kind !== 'days') items.push(item);
+  }
+  return { items, tokens, consumed };
 }
 
 /** Parse what a request rules out: allergen groups, other foods and weekdays. Pass the user's text as written. */
 export function parseExclusions(text: string): Exclusions {
-  // Icelandic "án" (without) folds to "an", which is also an English article, so it is read before folding.
-  // Negated diet names ("I'm not vegan", "not gluten-free") are statements about the user, not exclusions: removed first.
-  const t = stripNegatedDiets(fold(text.replace(/(^|[^\p{L}])án(?=\s)/giu, '$1without ')));
-  const items: Item[] = [];
-  const starts = [...t.matchAll(NEG_START)];
-  starts.forEach((m, k) => {
-    let seg = t.slice(m.index! + m[0].length, k + 1 < starts.length ? starts[k + 1].index : t.length);
-    const cut = seg.search(SEGMENT_END);
-    if (cut >= 0) seg = seg.slice(0, cut);
-    for (const part of seg.split(ITEM_SEP)) {
-      if (!part.trim()) continue;
-      const item = classifyItem(part.trim());
-      if (!item) break;
-      items.push(item);
-      if (item.ended) break;
-    }
-  });
-  // "gluten-free", "mjólkurlaus" — but not when negated ("I'm not gluten-free").
-  for (const m of t.matchAll(FREE_RE)) {
-    const item = classifyItem((m[1] ?? m[2] ?? '').trim());
-    if (item && item.kind !== 'days') items.push(item);
-  }
+  const { items } = parseExclusionTokens(text);
   const allergens = new Set<Allergen>();
   const words = new Set<string>();
   const days = new Set<string>();
@@ -239,6 +281,17 @@ export function parseExclusions(text: string): Exclusions {
     else it.days.forEach((d) => days.add(d));
   }
   return { allergens: [...allergens], words: [...words], raw: [...raw], days: [...days] };
+}
+
+/** Weekdays the text asks FOR: whole day words that no negation used ("Monday and Friday" yes; "no sunday roast",
+ *  "not Friday", "sunnudagssteik" no). English names in week order. */
+export function wantedDays(text: string): string[] {
+  const { tokens, consumed } = parseExclusionTokens(text);
+  const out = new Set<string>();
+  tokens.forEach((w, i) => {
+    if (!consumed.has(i)) dayOf(w)?.forEach((d) => out.add(d));
+  });
+  return WEEKDAYS_EN.filter((d) => out.has(d));
 }
 
 /** Ingredient ids whose name matches a ruled-out word (or its synonyms: "meat" → beef, chicken, …). */
@@ -331,7 +384,7 @@ export function explainNoRecipes(c: ConstraintSet, recipes: RefRecipe[], ing: Ma
 const ALLERGEN_WORDS: [RegExp, Allergen[]][] = [
   [/\bfish\b|\bseafood\b|\bfisk|\bsjavarfang/, ['fish', 'shellfish']], [/\bshellfish\b|\bprawns?\b|\bshrimps?\b|\brækj|\bskelfisk/, ['shellfish']],
   [/\bdairy\b|\bmilk\b|\blactose\b|\bcheese\b|\bmjolk|\blaktos/, ['milk']],
-  [/\beggs?\b|\beggj/, ['egg']], [/\bpeanuts?\b|\bjarðhnet/, ['peanuts']], [/\bnuts?\b|\btree nuts?\b|\bhnet/, ['tree_nuts']], [/\bgluten/, ['gluten']], [/\bwheat\b|\bhveiti/, ['wheat']],
+  [/\beggs?\b|\beggj/, ['egg']], [/\bpeanuts?\b|\bjarðhnet|\bhnetusmjor/, ['peanuts']], [/\bnuts?\b|\btree nuts?\b|\bhnet(?!usmjor)|\btrjahnet/, ['tree_nuts']], [/\bgluten/, ['gluten']], [/\bwheat\b|\bhveiti/, ['wheat']],
   [/\bsoy\b|\bsoya\b|\btofu\b|\bsoja/, ['soy']], [/\bsesame\b|\bsesam/, ['sesame']], [/\bmustard\b|\bsinnep/, ['mustard']], [/\bcelery\b|\bsellerí|\bselleri/, ['celery']],
 ];
 
@@ -518,7 +571,6 @@ const ALLERGEN_AVOID_WORD: Partial<Record<Allergen, string>> = {
   sesame: 'sesame', mustard: 'mustard', celery: 'celery',
 };
 const WEEKDAYS_EN = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-const WEEKDAYS_IS = ['manudag', 'þriðjudag', 'miðvikudag', 'fimmtudag', 'fostudag', 'laugardag', 'sunnudag'];
 const COUNT_WORDS: Record<string, number> = {
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, ein: 1, eina: 1, einni: 1, tvær: 2, tveimur: 2, þrjar: 3, þremur: 3, fjorar: 4, fjorum: 4, fimm: 5, sex: 6,
 };
@@ -536,14 +588,9 @@ export function mealPlanIntentFromText(text: string): MealPlanIntent {
   if (/\bnext week\b|\bnæstu viku\b|\bnæsta viku\b/.test(t)) intent.week = 'next';
   else if (/\bthis week\b|(?<![a-zæðþ])þessa(ri)? viku\b/.test(t)) intent.week = 'this';
   const ex = parseExclusions(text);
-  // Days named outside a negation; "not Friday" / "except the weekend" / "ekki á föstudag" rule days OUT (all other days
-  // of that week, or the named ones minus the excluded).
-  const mentioned: string[] = [];
-  WEEKDAYS_EN.forEach((d, i) => {
-    if (new RegExp(`(?<![a-zæðþ])(?:${d}|${WEEKDAYS_IS[i]})`).test(t)) mentioned.push(d);
-  });
-  if (/\bweekend\b|\bhelgin/.test(t)) mentioned.push('saturday', 'sunday');
-  const positive = [...new Set(mentioned)].filter((d) => !ex.days.includes(d));
+  // Days asked for (whole day words no negation used), minus days ruled out ("not Friday", "ekki um helgina"); with only
+  // exclusions, every other day of that week.
+  const positive = wantedDays(text).filter((d) => !ex.days.includes(d));
   if (positive.length) intent.days = positive;
   else if (ex.days.length) intent.days = WEEKDAYS_EN.filter((d) => !ex.days.includes(d));
   if (/\b(quick|fast|no[\s-]?cook)\b|\bfljot|\bsnogg/.test(t)) intent.quick = true;
