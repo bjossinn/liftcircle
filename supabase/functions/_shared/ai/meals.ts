@@ -140,7 +140,14 @@ export interface Exclusions {
 //  - CLAUSE BOUNDARIES are explicit: after a separator, a subject or affirmative word ("I", "we", "I'd", "please", "ég",
 //    "við", "mér finnst", "vil", "elska", …) always starts a new clause and ends the list ("No fish, I like chicken");
 //    so does "<food> is fine" / "<food> er í lagi". Extending clarifiers ("like", "such as", "including", "eins og", …)
-//    extend the list ONLY directly after a food ("nuts like peanuts"), never after a subject ("I like eggs").
+//    inside a negation always extend it ("no nuts like peanuts", "no nuts, like peanuts") unless a subject follows
+//    ("no eggs like I said"); "I like eggs" is subject-led, so it ends the list at "I".
+//  - FAIL-SAFE: when it is ambiguous whether a food after a negation is wanted or ruled out, it is RULED OUT. Showing a
+//    user something they're allergic to is worse than leaving out something they wanted. A food counts as wanted only
+//    after an explicit boundary: a subject/affirmative word ("I like", "við viljum"), a positive "with"/"með" after a
+//    separator, "<food> is fine" / "er í lagi", or the end of the list (punctuation, "but"/"en", a new clause).
+//    tests/unit/aiCorrectness.test.ts enforces this: every allergen a corpus phrase mentions must be ruled out unless the
+//    row explicitly declares it wanted.
 const NEGATOR_WORDS = new Set(['no', 'without', 'avoid', 'not', 'never', 'nothing', 'neither', 'minus', 'except', 'excluding', 'exclude', 'skip', 'nor',
   'none', 'zero', "don't", 'don’t', 'dont', "doesn't", 'doesn’t', 'doesnt', "won't", 'won’t', 'wont', "can't", 'can’t', 'cant', 'cannot',
   'engan', 'enga', 'engar', 'engir', 'engin', 'enginn', 'engum', 'engri', 'engra', 'engrar', 'engu', 'ekkert', 'ekki', 'sleppa', 'sleppum', 'sleppi', 'nema', 'utan']);
@@ -161,7 +168,7 @@ const NOTHING_WORDS = new Set(['nothing', 'none', 'ekkert', 'neitt']);
 const EXTENDERS: string[][] = [
   ['including'], ['incl', '.'], ['incl'], ['inc', '.'], ['such', 'as'], ['like'], ['especially'], ['particularly'], ['specifically'], ['even'],
   ['e', '.', 'g', '.'], ['e', '.', 'g'], ['eg'], ['þar', 'með', 'talið'], ['þ', '.', 'm', '.', 't', '.'], ['eins', 'og'], ['til', 'dæmis'], ['t', '.', 'd', '.'],
-  ['serstaklega'], ['jafnvel'], ['m', '.', 'a', '.'],
+  ['serstaklega'], ['jafnvel'], ['m', '.', 'a', '.'], ['for', 'example'], ['for', 'instance'], ['say'], ['til', 'að', 'mynda'],
 ];
 /** "Containing …" always describes what is ruled out ("nothing with peanuts or containing milk", "ekkert sem inniheldur mjólk"). */
 const CONTAINERS: string[][] = [['containing'], ['contains'], ['sem', 'innihalda'], ['sem', 'inniheldur'], ['sem', 'innihelda']];
@@ -170,7 +177,7 @@ const CLARIFIERS = [...EXTENDERS, ...CONTAINERS];
  *  read as "iis" before folding, so "i" here is always the English pronoun. */
 const AFFIRM_START = new Set(['i', "i'm", 'i’m', 'im', "i'd", 'i’d', "i've", 'i’ve', "i'll", 'i’ll', 'we', "we're", 'we’re', "we'd", 'we’d', "we've", 'we’ve',
   "we'll", 'we’ll', 'you', 'please', 'love', 'want', 'like', 'prefer', 'enjoy', 'would', "let's", 'let’s',
-  'ég', 'eg', 'við', 'mér', 'mer', 'mig', 'okkur', 'vil', 'viljum', 'elska', 'elskum', 'langar', 'finnst', 'myndi', 'myndum', 'borða', 'borðum', 'endilega', 'gjarnan']);
+  'ég', 'eg', 'við', 'mér', 'mer', 'mig', 'okkur', 'vil', 'viljum', 'elska', 'elskum', 'langar', 'finnst', 'likar', 'myndi', 'myndum', 'borða', 'borðum', 'endilega', 'gjarnan']);
 /** "<food> is fine", "<food> er í lagi": the food is the subject of an affirmative clause, not something to rule out. */
 const COPULA = new Set(['is', 'are', 'was', 'were', 'seems', 'er', 'eru', 'var', 'voru']);
 /** Verbs between a negation and its item: "don't EAT fish", "can't HAVE gluten", "don't ADD nuts", "ekki SETJA hnetur". */
@@ -278,22 +285,23 @@ function parseExclusionTokens(text: string): ExclusionParse {
     let j = i + 1;
     // "nothing WITH x …": later "with"/"containing" alternatives stay negative.
     const withScope = NOTHING_WORDS.has(tokens[i]) && (POSITIVE_WITH.has(tokens[j]) || !!clarifierAt(j));
-    // True right after an item when only punctuation followed it ("nuts, like peanuts"): an extender may continue the list.
-    let afterFood = false;
     list: for (let first = true; ; first = false) {
       // Clause boundaries at the start of a later item: "…, I like chicken", "…, please …", "…, ég vil egg", "and with eggs".
       if (!first) {
-        if (AFFIRM_START.has(tokens[j])) break;
-        if (!withScope && !clarifierAt(j) && POSITIVE_WITH.has(tokens[j])) break;
+        // An extender inside the list keeps it going, even "like" ("no nuts, like peanuts"): fail-safe. Only a subject
+        // or another affirmative word ends it ("No fish, I like chicken").
+        const c0 = clarifierAt(j);
+        if (!c0?.extender && AFFIRM_START.has(tokens[j])) break;
+        if (!withScope && !c0 && POSITIVE_WITH.has(tokens[j])) break;
       }
       // Leading fillers, clarifiers and (right after the negation) verbs: "without ANY nuts", "nothing WITH nuts",
       // ", INCLUDING peanuts", "or CONTAINING milk", "don't EAT fish".
       for (;;) {
         const c = clarifierAt(j);
         if (c) {
-          if (c.extender && !afterFood && !first) break list; // "and like I said …": not a clarification of a food
+          // Fail-safe: an extender anywhere in the list extends it ("no nuts and like peanuts" rules peanuts out too);
+          // "like I said" stops right below, at the subject.
           j += c.len;
-          afterFood = false;
           if (AFFIRM_START.has(tokens[j])) break list; // "no eggs like I said"
         } else if (first && LEAD_VERBS.has(tokens[j])) j++;
         else if (j < tokens.length && LEAD_FILLER.has(tokens[j]) && !(tokens[j] === 'at' && tokens[j + 1] !== 'all')) j++;
@@ -331,13 +339,9 @@ function parseExclusionTokens(text: string): ExclusionParse {
         else if (TRAIL_FILLER.has(tokens[j]) || tokens[j] === ')') j++;
         else break;
       }
-      afterFood = true;
       if (clarifierAt(j)) continue; // "no nuts including peanuts": the clarifier is handled at the top of the loop
       if (!SEP_WORDS.has(tokens[j])) break;
-      while (SEP_WORDS.has(tokens[j])) {
-        if (tokens[j] !== ',' && tokens[j] !== '(') afterFood = false; // "nuts AND like …" is no longer right after the food
-        j++;
-      }
+      while (SEP_WORDS.has(tokens[j])) j++;
       if (NEGATOR_WORDS.has(tokens[j])) break; // "no fish, no nuts": the outer loop starts the next list
     }
   }
@@ -362,6 +366,14 @@ export function parseExclusions(text: string): Exclusions {
     else it.days.forEach((d) => days.add(d));
   }
   return { allergens: [...allergens], words: [...words], raw: [...raw], days: [...days] };
+}
+
+/** Every allergen group the text MENTIONS anywhere (wanted or not) — used by the tests to enforce the fail-safe rule. */
+export function allergenMentions(text: string): Allergen[] {
+  const tokens = fold(text).match(TOKEN_RE) ?? [];
+  const english = tokens.map((w) => IS_FOOD.find(([is]) => w.startsWith(is))?.[1] ?? w).join(' ');
+  const raw = tokens.join(' ');
+  return [...new Set(ALLERGEN_WORDS.filter(([re]) => re.test(english) || re.test(raw)).flatMap(([, a]) => a))];
 }
 
 /** Weekdays the text asks FOR: whole day words that no negation used ("Monday and Friday" yes; "no sunday roast",

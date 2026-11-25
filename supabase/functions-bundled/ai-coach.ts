@@ -2188,7 +2188,11 @@ var EXTENDERS = [
   ["t", ".", "d", "."],
   ["serstaklega"],
   ["jafnvel"],
-  ["m", ".", "a", "."]
+  ["m", ".", "a", "."],
+  ["for", "example"],
+  ["for", "instance"],
+  ["say"],
+  ["til", "a\xF0", "mynda"]
 ];
 var CONTAINERS = [["containing"], ["contains"], ["sem", "innihalda"], ["sem", "inniheldur"], ["sem", "innihelda"]];
 var CLARIFIERS = [...EXTENDERS, ...CONTAINERS];
@@ -2235,6 +2239,7 @@ var AFFIRM_START = /* @__PURE__ */ new Set([
   "elskum",
   "langar",
   "finnst",
+  "likar",
   "myndi",
   "myndum",
   "bor\xF0a",
@@ -2521,18 +2526,16 @@ function parseExclusionTokens(text) {
     consumed.add(i);
     let j = i + 1;
     const withScope = NOTHING_WORDS.has(tokens[i]) && (POSITIVE_WITH.has(tokens[j]) || !!clarifierAt(j));
-    let afterFood = false;
     list: for (let first = true; ; first = false) {
       if (!first) {
-        if (AFFIRM_START.has(tokens[j])) break;
-        if (!withScope && !clarifierAt(j) && POSITIVE_WITH.has(tokens[j])) break;
+        const c0 = clarifierAt(j);
+        if (!c0?.extender && AFFIRM_START.has(tokens[j])) break;
+        if (!withScope && !c0 && POSITIVE_WITH.has(tokens[j])) break;
       }
       for (; ; ) {
         const c = clarifierAt(j);
         if (c) {
-          if (c.extender && !afterFood && !first) break list;
           j += c.len;
-          afterFood = false;
           if (AFFIRM_START.has(tokens[j])) break list;
         } else if (first && LEAD_VERBS.has(tokens[j])) j++;
         else if (j < tokens.length && LEAD_FILLER.has(tokens[j]) && !(tokens[j] === "at" && tokens[j + 1] !== "all")) j++;
@@ -2568,13 +2571,9 @@ function parseExclusionTokens(text) {
         else if (TRAIL_FILLER.has(tokens[j]) || tokens[j] === ")") j++;
         else break;
       }
-      afterFood = true;
       if (clarifierAt(j)) continue;
       if (!SEP_WORDS.has(tokens[j])) break;
-      while (SEP_WORDS.has(tokens[j])) {
-        if (tokens[j] !== "," && tokens[j] !== "(") afterFood = false;
-        j++;
-      }
+      while (SEP_WORDS.has(tokens[j])) j++;
       if (NEGATOR_WORDS.has(tokens[j])) break;
     }
   }

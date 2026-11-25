@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import { handleAiCoach, type CoachDeps } from '../../supabase/functions/_shared/ai/coach';
 import { runTool, type ToolState } from '../../supabase/functions/_shared/ai/tools';
-import { buildMealPlanAction, dietTagsIn, excludedIngredientIds, mealPlanIntentFromText, parseExclusions, parseQuery, stemWord, wantedDays } from '../../supabase/functions/_shared/ai/meals';
+import { allergenMentions, buildMealPlanAction, dietTagsIn, excludedIngredientIds, mealPlanIntentFromText, parseExclusions, parseQuery, stemWord, wantedDays } from '../../supabase/functions/_shared/ai/meals';
 import { nutritionStatus } from '../../supabase/functions/_shared/ai/dataStatus';
 import { classifyIntent, findOpenRequest, isFollowUp } from '../../supabase/functions/_shared/ai/conversation';
 import { createSupabaseAiDb, historyMessage, type SbClient } from '../../supabase/functions/_shared/ai/supabaseDb';
@@ -553,7 +553,7 @@ describe('PR #16 re-review: a reason clause never breaks a weekday negation', ()
  *  - days: the weekdays a meal plan for next week actually gets (dates checked; default all seven);
  *  - and, whenever something is ruled out, the real recipes chosen (find_recipes cards and the planned meals) contain none of it.
  */
-type Al = 'fish' | 'shellfish' | 'tree_nuts' | 'peanuts' | 'egg' | 'soy' | 'milk' | 'gluten';
+type Al = 'fish' | 'shellfish' | 'tree_nuts' | 'peanuts' | 'egg' | 'soy' | 'milk' | 'gluten' | 'sesame';
 interface Case {
   phrase: string;
   allergens?: Al[];
@@ -563,6 +563,8 @@ interface Case {
   days?: string[];
   /** An ingredient the user WANTS: never ruled out, and a search for it (with the phrase as the user's words) finds recipes with it. */
   wanted?: string;
+  /** Allergen groups the phrase mentions that the user explicitly WANTS (fail-safe rule: any other mention must be ruled out). */
+  allowed?: Al[];
 }
 const FISH: Al[] = ['fish', 'shellfish'];
 const WEEK = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -610,8 +612,8 @@ const CORPUS: Case[] = [
   { phrase: 'ekkert hnetusmjör í morgunmat', allergens: ['peanuts'] },
   { phrase: 'not Friday and no fish', allergens: FISH, days: NOT_FRI },
   { phrase: 'ekki föstudag og engan fisk', allergens: FISH, days: NOT_FRI },
-  { phrase: 'not gluten-free but no dairy', allergens: ['milk'], diet: ['dairy_free'] },
-  { phrase: 'ekki glútenlaus en engar mjólkurvörur', allergens: ['milk'] },
+  { phrase: 'not gluten-free but no dairy', allergens: ['milk'], diet: ['dairy_free'], allowed: ['gluten'] },
+  { phrase: 'ekki glútenlaus en engar mjólkurvörur', allergens: ['milk'], allowed: ['gluten'] },
   // days asked FOR, and things that rule out nothing
   { phrase: 'Meal plan for Monday and Friday, no fish', allergens: FISH, days: ['monday', 'friday'], search: [] },
   { phrase: 'matarplan fyrir þriðjudag og helgina, án hneta', allergens: ['tree_nuts'], days: ['tuesday', 'saturday', 'sunday'] },
@@ -674,7 +676,7 @@ const SELF_REVIEW: Case[] = [
   { phrase: 'no nuts like almonds, but I love peanut butter', allergens: ['tree_nuts'], wanted: 'peanut' },
   { phrase: 'no shellfish such as prawns; tuna is fine', allergens: ['shellfish'], wanted: 'tuna' },
   { phrase: 'without gluten, I prefer rice', allergens: ['gluten'], wanted: 'rice' },
-  { phrase: 'no eggs, I eat fish', allergens: ['egg'], search: ['fish'], wanted: 'salmon' },
+  { phrase: 'no eggs, I eat fish', allergens: ['egg'], search: ['fish'], wanted: 'salmon', allowed: FISH },
   { phrase: 'no pork, we like beef', foods: ['pork'], wanted: 'beef' },
   { phrase: 'skip mushrooms, I love onions', foods: ['mushrooms'], wanted: 'onion' },
   { phrase: 'no nuts, especially cashews, I want chicken', allergens: ['tree_nuts'], wanted: 'chicken' },
@@ -682,7 +684,7 @@ const SELF_REVIEW: Case[] = [
   { phrase: "nothing with nuts, I'd like porridge", allergens: ['tree_nuts'], search: ['porridge'] },
   { phrase: 'no eggs including egg whites, I like turkey', allergens: ['egg'], wanted: 'turkey' },
   { phrase: 'not Friday, I eat out then', days: NOT_FRI },
-  { phrase: 'no meat but I eat fish', foods: ['meat'], search: ['fish'] },
+  { phrase: 'no meat but I eat fish', foods: ['meat'], search: ['fish'], allowed: FISH },
   { phrase: "I'm vegetarian, no eggs", diet: ['vegetarian'], allergens: ['egg'] },
   { phrase: "I'm not vegetarian, no pork though", foods: ['pork'] },
   { phrase: 'vegan, nothing with soy or containing gluten', diet: ['vegan'], allergens: ['soy', 'gluten'] },
@@ -748,6 +750,53 @@ const SELF_REVIEW: Case[] = [
   { phrase: 'ekki setja hnetur, ég vil jógúrt', allergens: ['tree_nuts'], wanted: 'yogurt' },
 ];
 CORPUS.push(...SELF_REVIEW);
+
+/** Review 7 self-review: extenders directly after a food vs affirmative clauses, and the fail-safe rule (EN + IS). */
+const PN: Al[] = ['tree_nuts', 'peanuts'];
+const SELF_REVIEW_7: Case[] = [
+  { phrase: 'No nuts like peanuts', allergens: PN },
+  { phrase: 'No nuts, like peanuts', allergens: PN },
+  { phrase: 'No nuts such as peanuts', allergens: PN },
+  { phrase: 'No nuts, such as peanuts or cashews', allergens: PN },
+  { phrase: 'no peanuts', allergens: ['peanuts'] },
+  { phrase: 'no tree nuts, peanuts are fine', allergens: ['tree_nuts'], wanted: 'peanut', allowed: ['peanuts'] },
+  { phrase: 'no nuts, like walnuts, but peanuts are ok', allergens: ['tree_nuts'], wanted: 'peanut', allowed: ['peanuts'] },
+  { phrase: 'no nuts, including peanuts, I like eggs', allergens: PN, wanted: 'egg' },
+  { phrase: 'no shellfish like prawns, I love salmon', allergens: ['shellfish'], wanted: 'salmon', allowed: ['fish'] },
+  { phrase: 'no dairy like cheese or milk, we like chicken', allergens: ['milk'], diet: ['dairy_free'], wanted: 'chicken' },
+  { phrase: 'no seeds like sesame, I want rice', allergens: ['sesame'], foods: ['seeds'], wanted: 'rice' },
+  { phrase: "nothing with nuts, like peanuts, I'd like oats", allergens: PN, wanted: 'oats' },
+  { phrase: 'no eggs, e.g. omelettes, I like beef', allergens: ['egg'], foods: ['omelettes'], wanted: 'beef' },
+  { phrase: 'no nuts and like peanuts', allergens: PN },
+  { phrase: 'no fish, like tuna', allergens: FISH, foods: ['tuna'] },
+  { phrase: 'no fish like I said, I want chicken', allergens: FISH, wanted: 'chicken' },
+  { phrase: 'no peanuts, especially peanut butter, I love bananas', allergens: ['peanuts'], wanted: 'banana' },
+  { phrase: 'no gluten such as bread or pasta; rice is fine', allergens: ['gluten'], diet: ['gluten_free'], foods: ['bread', 'pasta'], wanted: 'rice' },
+  { phrase: 'no meat like beef or pork, I eat fish', foods: ['meat', 'beef', 'pork'], search: ['fish'], allowed: FISH },
+  { phrase: 'nothing such as nuts or peanuts', allergens: PN },
+  { phrase: 'without dairy, for example cheese, I like chicken', allergens: ['milk'], wanted: 'chicken' },
+  { phrase: 'no nuts, say almonds, we want turkey', allergens: ['tree_nuts'], wanted: 'turkey' },
+  { phrase: 'without eggs like in omelettes, I want turkey', allergens: ['egg'], wanted: 'turkey' },
+  { phrase: 'Engar hnetur eins og jarðhnetur', allergens: PN },
+  { phrase: 'Engar hnetur, eins og jarðhnetur', allergens: PN },
+  { phrase: 'engar hnetur, til dæmis jarðhnetur, ég vil egg', allergens: PN, wanted: 'egg' },
+  { phrase: 'enginn skelfiskur eins og rækjur, ég elska lax', allergens: ['shellfish'], wanted: 'salmon', allowed: ['fish'] },
+  { phrase: 'engar mjólkurvörur eins og ostur, við viljum kjúkling', allergens: ['milk'], wanted: 'chicken' },
+  { phrase: 'ekkert glúten, t.d. brauð eða pasta, hrísgrjón eru fín', allergens: ['gluten'], foods: ['brauð', 'pasta'], wanted: 'rice' },
+  { phrase: 'engar hnetur og eins og jarðhnetur', allergens: PN },
+  { phrase: 'enginn fiskur, eins og túnfiskur', allergens: FISH, foods: ['tuna'] },
+  { phrase: 'enginn fiskur eins og ég sagði, ég vil kjúkling', allergens: FISH, wanted: 'chicken' },
+  { phrase: 'ekkert kjöt eins og nautakjöt eða svínakjöt, ég borða fisk', foods: ['meat', 'beef', 'pork'], allowed: FISH },
+  { phrase: 'engin egg, sérstaklega ekki eggjahvítur, mér finnst kalkúnn góður', allergens: ['egg'], wanted: 'turkey' },
+  { phrase: 'ég elska kjúkling en engar hnetur eins og jarðhnetur', allergens: PN, wanted: 'chicken' },
+  { phrase: 'við borðum fisk, en engar hnetur, þar með talið jarðhnetur', allergens: PN, allowed: FISH },
+  { phrase: 'án hneta, jafnvel jarðhneta, en ég vil hafra', allergens: PN, wanted: 'oats' },
+  { phrase: 'ekki hnetur, mér líkar egg', allergens: ['tree_nuts'], wanted: 'egg' },
+  { phrase: 'engar hnetur eins og möndlur, ég vil hnetusmjör', allergens: ['tree_nuts'], wanted: 'peanut', allowed: ['peanuts'] },
+  { phrase: 'engar trjáhnetur, jarðhnetur eru í lagi', allergens: ['tree_nuts'], wanted: 'peanut', allowed: ['peanuts'] },
+  { phrase: 'ekkert með hnetum, til að mynda jarðhnetum, ég vil kjúkling', allergens: PN, wanted: 'chicken' },
+];
+CORPUS.push(...SELF_REVIEW_7);
 const NEXT_WEEK: Record<string, string> = { monday: '2026-11-02', tuesday: '2026-11-03', wednesday: '2026-11-04', thursday: '2026-11-05', friday: '2026-11-06', saturday: '2026-11-07', sunday: '2026-11-08' };
 const usedIngredients = (recipeId: string) => RECIPES.find((r) => r.id === recipeId)!.ingredients.filter((i) => !i.optional).map((i) => i.ingredientId);
 
@@ -757,6 +806,11 @@ describe('exclusion parser corpus (EN + IS, every review phrasing)', () => {
     expect(ex.allergens.sort(), 'allergens').toEqual([...(c.allergens ?? [])].sort());
     expect(ex.words.sort(), 'foods').toEqual([...(c.foods ?? [])].sort());
     expect(dietTagsIn(c.phrase).sort(), 'diet').toEqual([...(c.diet ?? [])].sort());
+    // FAIL-SAFE (see meals.ts): every allergen group the phrase mentions is ruled out, unless the row declares it wanted
+    // (`allowed`, or the allergens of its wanted ingredient). A mention the parser silently lets through fails here.
+    const wantedPrimary = c.wanted ? INGREDIENTS.find((i) => i.id === c.wanted) ?? INGREDIENTS.find((i) => i.id.startsWith(c.wanted!)) ?? INGREDIENTS.find((i) => i.id.includes(c.wanted!)) : undefined;
+    const declared = new Set<string>([...(c.allowed ?? []), ...((wantedPrimary?.allergens ?? []) as string[])]);
+    for (const m of allergenMentions(c.phrase)) expect(ex.allergens.includes(m) || declared.has(m), `fail-safe: "${m}" mentioned but neither ruled out nor declared wanted`).toBe(true);
     // Search terms: what must be looked for is there; nothing ruled out is ever looked FOR.
     const words = parseQuery(c.phrase).words;
     for (const w of c.search ?? []) expect(words, `search ${w}`).toContain(w);
@@ -897,5 +951,31 @@ describe('safety net: no corpus exclusion is ever returned by the handler', () =
         expect(isBad(it.recipeId), `${d.date} ${it.recipeId}`).toBe(false);
         for (const e of it.extras ?? []) expect(fx.bad.has(e.ingredientId) || (ING.get(e.ingredientId)?.allergens ?? []).some((a) => banned.has(a)), `${d.date} side ${e.ingredientId}`).toBe(false);
       }
+  });
+});
+
+describe('review 7: "nuts like peanuts" rules peanuts out end to end (real catalog)', () => {
+  it.each(['No nuts like peanuts', 'No nuts, like peanuts', 'No nuts such as peanuts', 'Engar hnetur eins og jarðhnetur'])('%s', async (phrase) => {
+    const acc = account();
+    const ctx = { db: makeDb().db, facts: facts(), catalog: new Map(), state: { proposal: null, proposalAttempts: 0 }, messageId: mid(2), nutrition: nutritionStatus(acc, true), account: acc };
+    // Peanuts are their own allergen group (not tree nuts), and the plain search does return peanut recipes.
+    expect(parseExclusions('no tree nuts').allergens).toEqual(['tree_nuts']);
+    const base = JSON.parse((await runTool('find_recipes', { query: 'peanut', max_results: 5 }, ctx)).content).results as { id: string }[];
+    expect(base.some((r) => allergensOf(r.id).includes('peanuts')), 'baseline has peanut recipes').toBe(true);
+    // The model searches for peanut recipes; the user's words rule them out.
+    const conv = conversationDb();
+    const { fetch } = capturingProvider([toolUse('find_recipes', { query: 'peanut', max_results: 5 }), text('Try these.')]);
+    const res = await handleAiCoach(deps(conv.db, fetch).d, U, send(phrase));
+    const cards = (res.body.reply as StoredMessage).action as unknown as { recipes: { id: string }[] };
+    expect(cards.recipes.length).toBeGreaterThan(0);
+    for (const r of cards.recipes) expect(allergensOf(r.id).filter((a) => a === 'peanuts' || a === 'tree_nuts'), r.id).toEqual([]);
+    expect(parseQuery(phrase).words).not.toContain('peanut');
+  });
+  it.each([['No nuts, I like eggs for breakfast', 'egg'], ['No fish, I like chicken', 'chicken']])('%s keeps %s wanted', async (phrase, want) => {
+    const conv = conversationDb();
+    const { fetch } = capturingProvider([toolUse('find_recipes', { query: want, max_results: 5 }), text('Try these.')]);
+    const res = await handleAiCoach(deps(conv.db, fetch).d, U, send(phrase));
+    const cards = (res.body.reply as StoredMessage).action as unknown as { recipes: { id: string }[] };
+    expect(cards.recipes.some((r) => usedIngredients(r.id).some((i) => i.includes(want))), `recipes with ${want}`).toBe(true);
   });
 });
