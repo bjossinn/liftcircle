@@ -66,7 +66,7 @@ import AiChatPage from '@/features/coaching/AiChatPage';
 import SessionPage from '@/features/train/SessionPage';
 import SummaryPage from '@/features/train/SummaryPage';
 import { AI_PENDING_KEY } from '@/features/coaching/ai/model';
-import { AI_COACH_REQUEST_KEY, openCoachWith, type CoachRequest } from '@/features/coaching/ai/workoutContext';
+import { AI_ATTACHED_REQUEST_KEY, AI_COACH_REQUEST_KEY, openCoachWith, type CoachRequest } from '@/features/coaching/ai/workoutContext';
 import { applyAdjustment } from '@/features/coaching/ai/sessionAdjustStore';
 import type { SessionAdjustmentAction, WorkoutContext } from '../../supabase/functions/_shared/ai/workout';
 
@@ -114,6 +114,12 @@ const button = (name: string | RegExp) => {
 };
 const click = (b: Element) => act(() => void b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })));
 const text = () => norm(document.body.textContent);
+function fireInput(el: HTMLTextAreaElement, value: string) {
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
 
 /* ---------------------------------------------------------------- fixtures */
 const api = aiApi as unknown as Record<keyof typeof aiApi, ReturnType<typeof vi.fn>>;
@@ -358,16 +364,128 @@ describe('Coach: contextual requests, the workout card and first-use consent', (
     expect(el!.querySelector('[data-testid="ai-attached-workout"]')).toBeNull();
   });
 
-  it('the attached workout can be removed before sending', async () => {
+  const failedPending = () =>
+    kvSet(AI_PENDING_KEY, { id: '00000000-0000-4000-8000-000000000999', text: 'earlier', mode: 'chat', status: 'failed', createdAt: new Date().toISOString(), userId: 'user-1' }, db());
+  const chip = () => el!.querySelector('[data-testid="ai-attached-workout"]');
+  const composer = () => el!.querySelector<HTMLTextAreaElement>('#ai-composer')!;
+
+  it('the attached workout can be removed before sending (and stays removed after a reload)', async () => {
+    await seed();
+    await failedPending();
+    await openCoachWith(db(), (() => undefined) as never, { intent: 'shorten', sessionId: 'sess-live', minutes: 10, userId: 'user-1' });
+    coach();
+    await waitFor(() => expect(chip()).not.toBeNull());
+    expect(composer().value).toMatch(/^Short on time: I have about 10 minutes left/);
+    click(button('Remove attached workout'));
+    expect(chip()).toBeNull();
+    await waitFor(async () => expect(await kvGet(AI_ATTACHED_REQUEST_KEY, db())).toBeNull());
+    act(() => root!.unmount());
+    el!.remove();
+    coach();
+    await waitFor(() => expect(composer().value).toMatch(/^Short on time/)); // the draft text itself is kept
+    await tick(60);
+    expect(chip()).toBeNull();
+    expect(api.send).not.toHaveBeenCalled();
+  });
+
+  it('offline (sharing can’t be checked): nothing is written or sent; the request waits for the next online open', async () => {
     h.online = false;
     await seed();
     await openCoachWith(db(), (() => undefined) as never, { intent: 'shorten', sessionId: 'sess-live', minutes: 10, userId: 'user-1' });
     coach();
-    await waitFor(() => expect(el!.querySelector('[data-testid="ai-attached-workout"]')).not.toBeNull());
-    expect(el!.querySelector<HTMLTextAreaElement>('#ai-composer')!.value).toMatch(/^Short on time: I have about 10 minutes left/);
-    click(button('Remove attached workout'));
-    expect(el!.querySelector('[data-testid="ai-attached-workout"]')).toBeNull();
+    await waitFor(() => expect(el!.querySelector('#ai-composer')).not.toBeNull());
+    await tick(80);
+    expect(composer().value).toBe('');
+    expect(chip()).toBeNull();
+    expect(await kvGet(AI_COACH_REQUEST_KEY, db())).toMatchObject({ intent: 'shorten' });
+    // Back online: it's sent then.
+    act(() => root!.unmount());
+    el!.remove();
+    h.online = true;
+    coach();
+    await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1));
+    expect(sendArg().workout).toMatchObject({ intent: 'shorten', minutesLeft: 10 });
+  });
+
+  /* ---------------------------------------------------- PR #23 review: P1 Training sharing, P2 deferred attachments */
+  it('Summary “Explain” → first-use consent with Training switched off: no generated message, no attachment, nothing sent', async () => {
+    await db().sessions.put({ ...live(plan()), id: 'w-done', status: 'completed', endedAt: Date.now() });
+    api.getSettings.mockResolvedValue(null);
+    api.saveSettings.mockImplementation(async (patch: Partial<AiSettings>) => ({ ...SETTINGS_ON, ...patch, consentAt: '2026-11-28T10:00:00Z' }));
+    await openCoachWith(db(), (() => undefined) as never, { intent: 'explain', sessionId: 'w-done', focusId: 'se-bench', shownTarget: '62.5 kg × 8 (Add weight)', userId: 'user-1' });
+    coach();
+    const training = await waitFor(() => {
+      const t = [...document.querySelectorAll<HTMLButtonElement>('[role="switch"]')].find((x) => norm(document.querySelector(`label[for="${CSS.escape(x.id)}"]`)?.textContent) === 'Training');
+      if (!t) throw new Error('no Training switch');
+      return t;
+    });
+    click(training); // switch Training sharing off
+    click(button('Turn on training assistant'));
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ scopes: expect.objectContaining({ training: false }) })));
+    await waitFor(() => expect(text()).toContain('Training sharing is off, so your question about that workout wasn’t sent.'));
+    await tick(80);
     expect(api.send).not.toHaveBeenCalled();
+    expect(composer().value).toBe('');
+    expect(chip()).toBeNull();
+    expect(text()).not.toContain('62.5 kg × 8');
+    expect(text()).not.toContain('Explain this:');
+    expect(await kvGet(AI_COACH_REQUEST_KEY, db())).toBeNull(); // dropped, not kept for later
+    expect(await kvGet(AI_ATTACHED_REQUEST_KEY, db())).toBeFalsy();
+    // Whatever the user sends next carries no workout.
+    fireInput(composer(), 'hello');
+    click(button('Send'));
+    await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1));
+    expect(sendArg().text).toBe('hello');
+    expect(sendArg().workout).toBeUndefined();
+    expect(JSON.stringify(api.send.mock.calls)).not.toMatch(new RegExp(BENCH.name));
+  });
+
+  it('Training sharing turned off after a workout was attached: the attachment is dropped and never sent', async () => {
+    await seed();
+    await kvSet(AI_ATTACHED_REQUEST_KEY, { intent: 'shorten', sessionId: 'sess-live', minutes: 10, createdAt: Date.now(), userId: 'user-1' }, db());
+    api.getSettings.mockResolvedValue({ ...SETTINGS_ON, scopes: { ...SETTINGS_ON.scopes, training: false } });
+    coach();
+    await waitFor(() => expect(el!.querySelector('#ai-composer')).not.toBeNull());
+    await waitFor(async () => expect(await kvGet(AI_ATTACHED_REQUEST_KEY, db())).toBeNull());
+    expect(chip()).toBeNull();
+    fireInput(composer(), 'quick question');
+    click(button('Send'));
+    await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1));
+    expect(sendArg().workout).toBeUndefined();
+  });
+
+  it('a deferred attachment survives a reload, comes back with Edit after a failed send, and is rebuilt fresh when sent', async () => {
+    await seed();
+    await failedPending();
+    await openCoachWith(db(), (() => undefined) as never, { intent: 'shorten', sessionId: 'sess-live', minutes: 15, userId: 'user-1' });
+    coach();
+    await waitFor(() => expect(chip()).not.toBeNull());
+    // Reload: draft and attachment are both still there.
+    act(() => root!.unmount());
+    el!.remove();
+    coach();
+    await waitFor(() => expect(chip()).not.toBeNull());
+    expect(composer().value).toMatch(/^Short on time/);
+    // Clear the earlier failed message, then send: it fails.
+    click(button('Edit'));
+    fireInput(composer(), 'Short on time, keep it brief');
+    api.send.mockRejectedValueOnce(Object.assign(new Error('Failed to fetch'), { code: 'network' }));
+    click(await waitFor(() => button('Send')));
+    await waitFor(() => expect(text()).toContain('Not sent'));
+    expect(chip()).toBeNull(); // it travels with the pending message now
+    expect(sendArg().workout).toMatchObject({ intent: 'shorten' });
+    // Edit the failed send: the attachment comes back with the text.
+    click(button('Edit'));
+    await waitFor(() => expect(chip()).not.toBeNull());
+    expect(await kvGet(AI_ATTACHED_REQUEST_KEY, db())).toMatchObject({ intent: 'shorten', sessionId: 'sess-live' });
+    // Log another set meanwhile: the snapshot sent is rebuilt from the device right before sending.
+    const sess = (await db().sessions.get('sess-live'))!;
+    await saveRecord('sessions', { ...sess, exercises: sess.exercises.map((e) => (e.id === 'se-bench' ? { ...e, sets: e.sets.map((x) => ({ ...x, completed: true })) } : e)) }, db());
+    click(await waitFor(() => button('Send')));
+    await waitFor(() => expect(api.send).toHaveBeenCalledTimes(2));
+    expect(sendArg(1).workout!.exercises.find((e) => e.id === 'se-bench')!.sets.every((x) => x.done)).toBe(true);
+    await waitFor(() => expect(chip()).toBeNull());
+    expect(await kvGet(AI_ATTACHED_REQUEST_KEY, db())).toBeNull();
   });
 
   it('"Apply to today’s workout" changes only the live session (plan untouched); Undo restores it', async () => {

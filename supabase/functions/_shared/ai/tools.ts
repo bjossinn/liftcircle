@@ -179,7 +179,7 @@ export const TOOL_DEFS = [
   {
     name: 'propose_session_adjustment',
     description:
-      "TODAY'S WORKOUT ONLY, and only when the newest message comes with a workout snapshot (<user_data kind=\"workout\">). change \"swap\": replace one exercise that has sets left (session_exercise_id from the snapshot) with a catalog alternative (to_exercise_id, e.g. from exercise_alternatives) that fits the user's equipment, exclusions and areas to go easy on. change \"shorten\": fit what is left into the user's time (minutes); the server keeps the main lifts and trims accessories and later sets. Completed sets are never changed. The user sees the change and taps \"Apply to today's workout\" (with Undo); the saved plan never changes.",
+      "TODAY'S WORKOUT ONLY, and only when the newest message comes with a workout snapshot (<user_data kind=\"workout\">). change \"swap\": replace one exercise that has sets left (session_exercise_id from the snapshot) with a genuine catalog alternative (to_exercise_id from exercise_alternatives: a listed substitution or the same movement pattern for the same muscles) that fits the user's equipment, exclusions and areas to go easy on. change \"shorten\": fit what is left into the user's time (minutes); the server keeps the main lifts and trims accessories and later sets. Completed sets are never changed. The user sees the change and taps \"Apply to today's workout\" (with Undo); the saved plan never changes.",
     input_schema: {
       type: 'object',
       properties: {
@@ -468,12 +468,29 @@ async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Pr
 }
 
 /* ------------------------------------------------------------------ alternatives */
-/** Listed substitutions first, then the same movement pattern; only equipment the user has, never excluded exercises. */
+/**
+ * Listed substitutions first, then the same movement pattern for the same muscles (isGenuineAlternative); only equipment
+ * the user has, never excluded exercises.
+ */
 export function alternativesFor(ex: RefExercise, catalog: Map<string, RefExercise>, facts: UserFacts): RefExercise[] {
   const excluded = new Set(facts.excludedExerciseIds);
   const pool = [...(ex.substitutions ?? []).map((s) => catalog.get(s)).filter((x): x is RefExercise => Boolean(x))];
   for (const c of catalog.values()) if (c.id !== ex.id && c.pattern && c.pattern === ex.pattern && !pool.includes(c)) pool.push(c);
-  return pool.filter((c) => c.id !== ex.id && !excluded.has(c.id) && (!facts.equipment || missingEquipment(c, facts.equipment).length === 0));
+  return pool.filter((c) => isGenuineAlternative(ex, c) && !excluded.has(c.id) && (!facts.equipment || missingEquipment(c, facts.equipment).length === 0));
+}
+
+/**
+ * Whether `to` genuinely replaces `from` for today: a listed substitution (either way round), or the same movement
+ * pattern working at least one of the same primary muscles (when the catalog records them). A bench press can become
+ * a dumbbell press or push-ups, never a barbell row.
+ */
+export function isGenuineAlternative(from: RefExercise, to: RefExercise): boolean {
+  if (from.id === to.id) return false;
+  if ((from.substitutions ?? []).includes(to.id) || (to.substitutions ?? []).includes(from.id)) return true;
+  if (!from.pattern || from.pattern !== to.pattern) return false;
+  const a = from.primaryMuscles ?? [];
+  const b = to.primaryMuscles ?? [];
+  return !a.length || !b.length || a.some((m) => b.includes(m));
 }
 
 function exerciseAlternatives(input: Record<string, unknown>, ctx: ToolContext): ToolOutcome {
@@ -608,8 +625,14 @@ export function buildSessionAdjustment(
   const toId = typeof input.to_exercise_id === 'string' ? input.to_exercise_id : '';
   const to = ctx.catalog.get(toId);
   if (!to) return { action: null, errors: [`Unknown to_exercise_id "${toId.slice(0, 100)}": use a catalog id from exercise_alternatives.`] };
+  const from = ctx.catalog.get(se.exerciseId);
+  // Only a catalog exercise can be swapped this way: without its pattern and muscles we can't tell a real alternative.
+  if (!from) return { action: null, errors: [`${se.name} is a custom exercise, so a swap can't be checked here. Suggest one in text; the user can use Swap exercise.`] };
   const errors: string[] = [];
   if (to.id === se.exerciseId) errors.push('The replacement is the same exercise.');
+  else if (!isGenuineAlternative(from, to)) {
+    errors.push(`${to.name} isn't an alternative for ${from.name}: pick a listed substitution or the same movement pattern for the same muscles (call exercise_alternatives).`);
+  }
   if (ctx.facts.excludedExerciseIds.includes(to.id)) errors.push(`${to.name} is on the user's excluded list.`);
   if (ctx.facts.equipment) {
     const missing = missingEquipment(to, ctx.facts.equipment);
@@ -619,13 +642,12 @@ export function buildSessionAdjustment(
   if (easy.length) errors.push(`${to.name} loads an area the user asked to go easy on (${easy.join(', ')}); pick another.`);
   if (w.exercises.some((e) => e.id !== se.id && e.exerciseId === to.id && pendingWorking(e) > 0)) errors.push(`${to.name} is already later in today's workout; pick another.`);
   if (errors.length) return { action: null, errors };
-  const from = ctx.catalog.get(se.exerciseId);
   const warnings = se.sets.some((x) => x.done) ? [`Sets you already did stay with ${se.name}; the remaining ${pendingWorking(se)} move to ${to.name}.`] : [];
   return {
     action: {
       ...base,
       change,
-      swap: { sessionExerciseId: se.id, fromExerciseId: se.exerciseId, fromName: from?.name ?? se.name, toExerciseId: to.id, toName: to.name },
+      swap: { sessionExerciseId: se.id, fromExerciseId: se.exerciseId, fromName: from.name, toExerciseId: to.id, toName: to.name },
       removeSets: [],
       dropExercises: [],
       warnings,

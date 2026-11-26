@@ -5,7 +5,7 @@
  */
 import type { AiAvailability, AiMessage, AiScopes, AiSettings, AiUsage, ProgramProposal } from '@/backend/coachingContract';
 import type { CoachStyle, Program } from '@/domain/types';
-import type { WorkoutContext } from '../../../../supabase/functions/_shared/ai/workout';
+import type { CoachRequest } from './workoutContext';
 
 /* ------------------------------------------------------------ local keys */
 /** Unsent composer text (string). Survives reloads and offline. */
@@ -27,8 +27,11 @@ export interface PendingSend {
   id: string;
   text: string;
   mode: AiMode;
-  /** Snapshot of the workout the message was sent from (contextual entry points); resent unchanged on Retry. */
-  workout?: WorkoutContext;
+  /**
+   * The contextual request this message came from (entry points in the logger and summary). The workout snapshot is
+   * rebuilt from the device right before every send (and Retry), and only while Training is shared.
+   */
+  request?: CoachRequest;
   status: 'sending' | 'failed';
   error?: string;
   createdAt: string;

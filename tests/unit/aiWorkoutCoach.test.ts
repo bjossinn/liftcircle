@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { handleAiCoach, type CoachDeps } from '../../supabase/functions/_shared/ai/coach';
 import { asCoachStyle, buildContext, DEFAULT_COACH_STYLE } from '../../supabase/functions/_shared/ai/context';
 import { mentionsTiredness } from '../../supabase/functions/_shared/ai/conversation';
-import { buildSessionAdjustment, runTool, type ToolState } from '../../supabase/functions/_shared/ai/tools';
+import { buildSessionAdjustment, isGenuineAlternative, runTool, type ToolState } from '../../supabase/functions/_shared/ai/tools';
 import {
   describeSessionAdjustment, parseWorkoutContext, planShorten, remainingMinutes, workoutLines, type SessionAdjustmentAction, type WorkoutContext,
 } from '../../supabase/functions/_shared/ai/workout';
@@ -22,8 +22,12 @@ const mid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0'
 const NOW = new Date('2026-11-28T10:00:00Z');
 
 const EXERCISES: RefExercise[] = [
-  { id: 'barbell-bench-press', name: 'Barbell bench press', pattern: 'horizontal_push', equipment: ['barbell', 'bench'], tracking: 'weight_reps', substitutions: ['dumbbell-bench-press', 'push-up'] },
-  { id: 'dumbbell-bench-press', name: 'Dumbbell bench press', pattern: 'horizontal_push', equipment: ['dumbbell', 'bench'], tracking: 'weight_reps', substitutions: ['push-up'] },
+  { id: 'barbell-bench-press', name: 'Barbell bench press', pattern: 'horizontal_push', equipment: ['barbell', 'bench'], tracking: 'weight_reps', substitutions: ['dumbbell-bench-press', 'push-up'], primaryMuscles: ['chest', 'triceps'] },
+  { id: 'dumbbell-bench-press', name: 'Dumbbell bench press', pattern: 'horizontal_push', equipment: ['dumbbell', 'bench'], tracking: 'weight_reps', substitutions: ['push-up'], primaryMuscles: ['chest', 'triceps'] },
+  // Same pattern, same muscles, not a listed substitution: a genuine alternative by pattern + muscle.
+  { id: 'dumbbell-floor-press', name: 'Dumbbell floor press', pattern: 'horizontal_push', equipment: ['dumbbell'], tracking: 'weight_reps', substitutions: [], primaryMuscles: ['chest', 'triceps'] },
+  // Same pattern, different muscles: not an alternative for bench press.
+  { id: 'band-pushaway', name: 'Band push-away', pattern: 'horizontal_push', equipment: ['band'], tracking: 'reps', substitutions: [], primaryMuscles: ['serratus'] },
   { id: 'push-up', name: 'Push-up', pattern: 'horizontal_push', equipment: ['bodyweight'], tracking: 'reps', substitutions: [] },
   { id: 'machine-chest-press', name: 'Machine chest press', pattern: 'horizontal_push', equipment: ['machine'], tracking: 'weight_reps', substitutions: [] },
   { id: 'dip', name: 'Dip', pattern: 'horizontal_push', equipment: ['dip_bars'], tracking: 'reps', substitutions: [], stresses: ['shoulder'] },
@@ -130,9 +134,37 @@ describe('propose_session_adjustment (validated, today only)', () => {
     expect(err({ session_exercise_id: 'se-bench', to_exercise_id: 'dip' }, facts({ limitations: ['shoulder'] }))).toMatch(/go easy on \(shoulder\)/);
     expect(err({ session_exercise_id: 'se-bench', to_exercise_id: 'nope' })).toMatch(/Unknown to_exercise_id/);
     expect(err({ session_exercise_id: 'nope', to_exercise_id: 'push-up' })).toMatch(/Unknown session_exercise_id/);
-    expect(err({ session_exercise_id: 'se-bench', to_exercise_id: 'barbell-row' })).toMatch(/already later in today's workout/);
+    const pushUpLater = live({ intent: 'swap', exercises: [...live().exercises, { id: 'se-pu', exerciseId: 'push-up', name: 'Push-up', sets: [set(false)] }] });
+    expect(buildSessionAdjustment({ change: 'swap', session_exercise_id: 'se-bench', to_exercise_id: 'push-up' }, ctx(pushUpLater)).errors.join(' ')).toMatch(/already later in today's workout/);
     const allDone = live({ exercises: [{ ...live().exercises[0], sets: [set(true), set(true)] }] });
     expect(buildSessionAdjustment({ change: 'swap', session_exercise_id: 'se-bench', to_exercise_id: 'push-up' }, ctx(allDone)).errors[0]).toMatch(/already done/);
+  });
+
+  it('PR #23 review: the replacement must be a genuine alternative (listed, or same pattern for the same muscles)', () => {
+    const w = live({ intent: 'swap', focusId: 'se-bench' });
+    const swapTo = (to: string, wk = w) => buildSessionAdjustment({ change: 'swap', session_exercise_id: 'se-bench', to_exercise_id: to }, ctx(wk));
+    // Cross-pattern: bench press → barbell row is refused even though the user has the equipment.
+    expect(swapTo('barbell-row').action).toBeNull();
+    expect(swapTo('barbell-row').errors.join(' ')).toMatch(/Barbell row isn't an alternative for Barbell bench press/);
+    // Same pattern but other muscles.
+    expect(swapTo('band-pushaway', w).errors.join(' ')).toMatch(/isn't an alternative/);
+    // Listed substitutions and same-pattern, same-muscle exercises are accepted.
+    expect(swapTo('dumbbell-bench-press').action?.swap?.toExerciseId).toBe('dumbbell-bench-press');
+    expect(swapTo('push-up').action?.swap?.toExerciseId).toBe('push-up');
+    expect(swapTo('dumbbell-floor-press').action?.swap?.toExerciseId).toBe('dumbbell-floor-press');
+    expect(isGenuineAlternative(CATALOG.get('barbell-bench-press')!, CATALOG.get('barbell-row')!)).toBe(false);
+    expect(isGenuineAlternative(CATALOG.get('push-up')!, CATALOG.get('barbell-bench-press')!)).toBe(true); // listed the other way round
+    // A custom exercise (not in the catalog) can't be checked, so it isn't swapped this way.
+    const custom = live({ intent: 'swap', exercises: [{ id: 'se-c', exerciseId: 'my-press', name: 'My press', sets: [set(false)] }] });
+    expect(buildSessionAdjustment({ change: 'swap', session_exercise_id: 'se-c', to_exercise_id: 'push-up' }, ctx(custom)).errors[0]).toMatch(/custom exercise/);
+  });
+
+  it('exercise_alternatives only lists genuine alternatives (so the model is never offered a swap that would be refused)', async () => {
+    const out = await runTool('exercise_alternatives', { exercise_id: 'barbell-bench-press' }, { db: {} as AiDb, facts: facts({ equipment: ['barbell', 'bench', 'dumbbell', 'band'] }), catalog: CATALOG, state: { proposal: null, proposalAttempts: 0 } });
+    const ids = (JSON.parse(out.content).results as { id: string }[]).map((r) => r.id);
+    expect(ids).toEqual(expect.arrayContaining(['dumbbell-bench-press', 'push-up', 'dumbbell-floor-press']));
+    expect(ids).not.toContain('band-pushaway');
+    expect(ids).not.toContain('barbell-row');
   });
 
   it('never without a snapshot, for a finished workout, or without Training shared', () => {

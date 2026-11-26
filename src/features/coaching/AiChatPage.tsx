@@ -12,7 +12,9 @@
  *
  * State-aware coach (roadmap item 7): the workout logger and summary open the Coach with a contextual request
  * (ai/workoutContext.ts). The chat sends it once with a fresh snapshot of that workout attached (or, when it can't send
- * yet, puts it in the composer with the workout attached). A reply may carry a today-only workout change
+ * yet, puts it in the composer with the workout attached, kept on the device until it's sent or removed). Only while
+ * Training is shared: otherwise nothing about the workout is written, attached or sent. A reply may carry a today-only
+ * workout change
  * (ai/SessionAdjustmentCard.tsx). First use (and a provider change) shows the single-step consent (ai/AiConsent.tsx).
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
@@ -37,8 +39,7 @@ import { MealPlanCard } from './ai/MealPlanCard';
 import { RecipeCards } from './ai/RecipeCards';
 import { SessionAdjustmentCard } from './ai/SessionAdjustmentCard';
 import { AiConsent } from './ai/AiConsent';
-import { prepareCoachRequest, takeCoachRequest } from './ai/workoutContext';
-import type { WorkoutContext } from '../../../supabase/functions/_shared/ai/workout';
+import { AI_ATTACHED_REQUEST_KEY, loadAttachedRequest, prepareCoachRequest, takeCoachRequest, type CoachRequest } from './ai/workoutContext';
 import { syncBeforeAi } from './ai/syncBarrier';
 import { isCancelled, SendCancelled, sendWhileInProgress } from './ai/inProgress';
 import { Markdown } from './ai/markdown';
@@ -286,11 +287,14 @@ function Chat({
     try {
       // Sync barrier: push this device's pending changes first (bounded wait), so the coach doesn't act on stale data.
       const unsynced = await syncBeforeAi(db);
+      // A workout attachment is rebuilt from the device right before each send (so a retry or a send after a reload
+      // carries the latest sets), and only while Training is shared.
+      const workout = p.request && trainingRef.current ? (await prepareCoachRequest(db, p.request, exerciseByIdRef.current))?.workout : undefined;
       // A replay of a message still being answered waits for that answer (same id) instead of failing. Cancelled (never
       // sent) if the account changed or the chat closed meanwhile.
       const res = await sendWhileInProgress(() => {
         if (!stillMine()) throw new SendCancelled();
-        return aiApi.send({ id: p.id, text: p.text, mode: p.mode, ...(unsynced ? { unsynced } : {}), ...(p.workout ? { workout: p.workout } : {}) });
+        return aiApi.send({ id: p.id, text: p.text, mode: p.mode, ...(unsynced ? { unsynced } : {}), ...(workout ? { workout } : {}) });
       }, { signal });
       if (!stillMine()) return; // answered for the previous account: it's in that account's history (its Retry gets it back as a duplicate)
       const userMsg: AiMessage = { id: p.id, role: 'user', content: p.text, createdAt: p.createdAt, status: 'sent' };
@@ -325,38 +329,68 @@ function Chat({
   function submit(e?: FormEvent) {
     e?.preventDefault();
     if (!canSend) return;
-    start(draft.trim(), 'chat', true, attached ?? undefined);
-    setAttached(null);
+    // The attachment moves onto the pending message (stored on the device) until the send succeeds.
+    start(draft.trim(), 'chat', true, attachedActive?.req);
+    setAttachedReq(null);
   }
   /** `fromDraft`: the text came from the composer, so clear it (quick replies leave a typed draft alone). */
-  function start(text: string, mode: AiMode, fromDraft = mode === 'chat', workout?: WorkoutContext) {
+  function start(text: string, mode: AiMode, fromDraft = mode === 'chat', request?: CoachRequest) {
     if (blocked) return;
-    const p: PendingSend = { id: uuid(), text, mode, status: 'sending', createdAt: new Date().toISOString(), userId, ...(workout ? { workout } : {}) };
+    const p: PendingSend = { id: uuid(), text, mode, status: 'sending', createdAt: new Date().toISOString(), userId, ...(request ? { request } : {}) };
     if (fromDraft) updateDraft('');
     void run(p);
   }
 
   /*
    * A contextual request from the workout screen or summary ("Short on time", "Equipment busy", "Explain this"): taken
-   * once, after the conversation and any unconfirmed message are loaded. Sent right away when possible; otherwise its
-   * text goes into the composer with the workout attached, so the user can send it when they're ready.
+   * once, after the conversation, any unconfirmed message and the settings are loaded. Only while Training is shared
+   * (the visible message itself names exercises and targets): otherwise nothing is written or sent, and a notice says
+   * why. Sent right away when possible; otherwise its text goes into the composer with the workout attached, and the
+   * attachment is kept on this device until it's sent or removed.
    */
-  const [attached, setAttached] = useState<WorkoutContext | null>(null);
+  const trainingOn = settings?.scopes.training === true;
+  const trainingRef = useRef(trainingOn);
+  trainingRef.current = trainingOn;
   const { byId: exerciseById } = useExercises();
+  const exerciseByIdRef = useRef(exerciseById);
+  exerciseByIdRef.current = exerciseById;
+  const [attached, setAttached] = useState<{ req: CoachRequest; name: string; finished: boolean } | null>(null);
+  const [trainingOffNotice, setTrainingOffNotice] = useState(false);
+  /** Set or clear the deferred attachment (state + device storage). */
+  const setAttachedReq = useCallback(
+    (req: CoachRequest | null) => {
+      void kvSet(AI_ATTACHED_REQUEST_KEY, req, db).catch(() => undefined);
+      if (!req) return setAttached(null);
+      void db.sessions.get(req.sessionId).then(
+        (sess) => setAttached(sess && !sess.deletedAt ? { req, name: sess.name, finished: sess.status === 'completed' } : null),
+        () => setAttached(null),
+      );
+    },
+    [db],
+  );
+  // While Training isn't shared an attachment is neither shown nor sent.
+  const attachedActive = trainingOn ? attached : null;
   const requestTaken = useRef(false);
-  const ready = loaded && history !== undefined;
+  const ready = loaded && history !== undefined && settings !== undefined;
   useEffect(() => {
     if (!ready || requestTaken.current) return;
     requestTaken.current = true;
     void (async () => {
+      const kept = await loadAttachedRequest(db, userId);
+      if (kept && trainingOn) setAttachedReq(kept);
+      else if (kept) setAttachedReq(null); // sharing was turned off: drop it
       const req = await takeCoachRequest(db, userId);
       if (!req) return;
+      if (!trainingOn) {
+        setTrainingOffNotice(true);
+        return;
+      }
       const prepared = await prepareCoachRequest(db, req, exerciseById);
       if (!prepared || owner.current.userId !== userId) return;
-      if (!pending && !blocked) start(prepared.text, 'chat', false, prepared.workout);
+      if (!pending && !blocked) start(prepared.text, 'chat', false, req);
       else {
         updateDraft(prepared.text);
-        setAttached(prepared.workout);
+        setAttachedReq(req);
       }
     })();
   }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps -- once, when ready
@@ -366,6 +400,8 @@ function Chat({
   function editPending() {
     if (!pending) return;
     updateDraft(draft ? `${draft}\n${pending.text}` : pending.text);
+    // Its workout attachment comes back with the text (it lived on the pending message until now).
+    if (pending.request && trainingOn) setAttachedReq(pending.request);
     persistPending(null);
     setSendError(null);
     inputRef.current?.focus();
@@ -444,6 +480,16 @@ function Chat({
           </Notice>
         )}
         {historyNote && <Notice>{historyNote}</Notice>}
+        {trainingOffNotice && (
+          <Notice className="flex gap-2 items-start">
+            <span className="flex-1" role="status">
+              Training sharing is off, so your question about that workout wasn’t sent. To ask about your workouts, switch on Training in training assistant settings.
+            </span>
+            <Button size="sm" onClick={() => nav('/coaching/ai/settings')}>
+              Settings
+            </Button>
+          </Notice>
+        )}
       </div>
 
       {/* conversation */}
@@ -532,13 +578,13 @@ function Chat({
             ))}
           </div>
         )}
-        {attached && (
+        {attachedActive && (
           <div className="flex items-center gap-2 pb-2">
             <span className="inline-flex items-center gap-1.5 min-h-8 rounded-full bg-surface-2 border border-line px-3 text-xs" data-testid="ai-attached-workout">
               <Dumbbell className="size-3.5 text-accent" aria-hidden />
-              {attached.status === 'completed' ? 'Workout attached' : 'Today’s workout attached'}: {attached.name}
+              {attachedActive.finished ? 'Workout attached' : 'Today’s workout attached'}: {attachedActive.name}
             </span>
-            <IconButton size="sm" label="Remove attached workout" onClick={() => setAttached(null)}>
+            <IconButton size="sm" label="Remove attached workout" onClick={() => setAttachedReq(null)}>
               <X className="size-4" />
             </IconButton>
           </div>

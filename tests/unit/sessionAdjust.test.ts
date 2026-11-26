@@ -11,6 +11,8 @@ import { EXERCISES } from '@/data/exercises';
 import { createProgram } from '@/domain/program/program';
 import { applySessionAdjustment, adjustmentLines, revertSessionAdjustment } from '@/domain/sessionAdjust';
 import * as ops from '@/domain/sessionOps';
+import { suggestionFor } from '@/domain/program/session';
+import { defaultAccountState } from '@/state/defaults';
 import type { Exercise, LoggedSet, Program, ProgramVersion, SessionExercise, WorkoutSession } from '@/domain/types';
 import { toSessionAdjustment } from '@/backend/ai';
 import { activeRecordFor, AI_SESSION_ADJUST_KEY, applyAdjustment, loadAdjustRecords, revertAdjustment } from '@/features/coaching/ai/sessionAdjustStore';
@@ -149,6 +151,92 @@ describe('applySessionAdjustment / revertSessionAdjustment (pure)', () => {
   it('preview lines describe exactly what changes', () => {
     expect(adjustmentLines(shorten())).toEqual([`Skip ${RAISE.name}`, `${ROW.name}: 1 fewer set`]);
     expect(adjustmentLines(swap())).toEqual([`${ROW.name} → ${DB_BENCH.name}`]);
+  });
+});
+
+/* ================================================================== PR #23 review fixes */
+describe('PR #23 review: discomfort is never erased, undo never mixes exercises, order is exact', () => {
+  const settings = defaultAccountState().settings;
+  const finishAndAsk = (sess: WorkoutSession, exId: string) => {
+    const done = ops.finishSession(sess, Date.now());
+    const ex = byId.get(exId)!;
+    return { done, next: suggestionFor({ exerciseId: exId, sets: 3, repMin: 8, repMax: 12, targetRir: 2 }, ex, [done], settings, 'intermediate').suggestion };
+  };
+
+  it('shorten never deletes a discomfort-flagged exercise: the row stays, finishing keeps it, and progression still holds it', () => {
+    const cur = liveSession(plan());
+    cur.exercises[2] = { ...cur.exercises[2], discomfort: true }; // unstarted, flagged
+    const r = applySessionAdjustment(cur, shorten(), byId);
+    if (!r.ok) throw new Error(r.reason);
+    const raise = r.session.exercises.find((e) => e.id === 'se-raise')!;
+    expect(raise.discomfort).toBe(true);
+    expect(raise.sets).toEqual([]); // nothing left to do today
+    const { done, next } = finishAndAsk(r.session, RAISE.id);
+    expect(done.exercises.find((e) => e.exerciseId === RAISE.id)?.discomfort).toBe(true); // in history
+    expect(next.action).toBe('discomfort_hold');
+    // Undo puts the sets back on the same row.
+    const back = revertSessionAdjustment(r.session, r.undo);
+    if (!back.ok) throw new Error(back.reason);
+    expect(back.session.exercises).toEqual(cur.exercises);
+  });
+
+  it('swap never moves a discomfort flag onto the replacement: the flagged row stays, the replacement gets its own row', () => {
+    const cur = liveSession(plan());
+    cur.exercises[1] = { ...cur.exercises[1], discomfort: true }; // untouched row, flagged
+    const r = applySessionAdjustment(cur, swap(), byId);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.session.exercises.map((e) => [e.exerciseId, !!e.discomfort])).toEqual([[BENCH.id, false], [ROW.id, true], [DB_BENCH.id, false], [RAISE.id, false]]);
+    expect(r.session.exercises[1].sets).toEqual([]);
+    expect(r.session.exercises[2].sets.filter((x) => x.type !== 'warmup')).toHaveLength(3);
+    // Finish → history → next recommendation: the flagged exercise is still held; the replacement isn't flagged.
+    const { done, next } = finishAndAsk(r.session, ROW.id);
+    expect(done.exercises.find((e) => e.exerciseId === ROW.id)?.discomfort).toBe(true);
+    expect(next.action).toBe('discomfort_hold');
+    expect(done.exercises.some((e) => e.exerciseId === DB_BENCH.id && e.discomfort)).toBe(false);
+    const back = revertSessionAdjustment(r.session, r.undo);
+    if (!back.ok) throw new Error(back.reason);
+    expect(back.session.exercises).toEqual(cur.exercises);
+  });
+
+  it('shorten → swap → undo the shortening is refused: a barbell load never lands on its dumbbell replacement', () => {
+    const cur = liveSession(plan());
+    // Bench untouched: 3 sets prefilled at 100 kg.
+    cur.exercises[0] = { ...cur.exercises[0], sets: [0, 1, 2].map(() => ({ ...s(false), weightKg: 100, entered: { value: 100, unit: 'kg' as const } })) };
+    const short = applySessionAdjustment(cur, shorten({ removeSets: [{ sessionExerciseId: 'se-bench', name: BENCH.name, count: 1 }], dropExercises: [] }), byId);
+    if (!short.ok) throw new Error(short.reason);
+    expect(short.undo.removedSets[0]).toMatchObject({ seId: 'se-bench', exerciseId: BENCH.id });
+    const swapped = applySessionAdjustment(short.session, swap({ id: 'msg-3', swap: { sessionExerciseId: 'se-bench', fromExerciseId: BENCH.id, fromName: BENCH.name, toExerciseId: DB_BENCH.id, toName: DB_BENCH.name } }), byId);
+    if (!swapped.ok) throw new Error(swapped.reason);
+    expect(swapped.session.exercises[0].exerciseId).toBe(DB_BENCH.id);
+    const back = revertSessionAdjustment(swapped.session, short.undo);
+    expect(back).toEqual({ ok: false, reason: expect.stringMatching(/swapped since/) });
+    // Undoing in reverse order works: first the swap, then the shortening.
+    const unswap = revertSessionAdjustment(swapped.session, swapped.undo);
+    if (!unswap.ok) throw new Error(unswap.reason);
+    const unshort = revertSessionAdjustment(unswap.session, short.undo);
+    if (!unshort.ok) throw new Error(unshort.reason);
+    expect(unshort.session.exercises).toEqual(cur.exercises);
+  });
+
+  it('undo restores the exact order: dropping B and C from [A, B, C, D] comes back as [A, B, C, D]', () => {
+    const p = plan();
+    const base = liveSession(p);
+    const mk = (id: string, e: Exercise, order: number) => ex(id, e, [s(false), s(false)], `slot-${id}`, order);
+    const cur: WorkoutSession = { ...base, exercises: [ex('A', BENCH, [s(true), s(false)], 'slot-A', 0), mk('B', ROW, 1), mk('C', RAISE, 2), mk('D', DB_BENCH, 3)] };
+    const r = applySessionAdjustment(cur, shorten({ removeSets: [], dropExercises: [{ sessionExerciseId: 'B', name: 'B' }, { sessionExerciseId: 'C', name: 'C' }] }), byId);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.session.exercises.map((e) => e.id)).toEqual(['A', 'D']);
+    expect(r.undo.removedExercises.map((x) => [x.se.id, x.index, x.afterId])).toEqual([['B', 1, 'A'], ['C', 2, 'B']]);
+    const back = revertSessionAdjustment(r.session, r.undo);
+    if (!back.ok) throw new Error(back.reason);
+    expect(back.session.exercises.map((e) => e.id)).toEqual(['A', 'B', 'C', 'D']);
+    expect(back.session.exercises.map((e) => e.order)).toEqual([0, 1, 2, 3]);
+    // The same, dropped in the other order (C listed first).
+    const r2 = applySessionAdjustment(cur, shorten({ removeSets: [], dropExercises: [{ sessionExerciseId: 'C', name: 'C' }, { sessionExerciseId: 'B', name: 'B' }] }), byId);
+    if (!r2.ok) throw new Error(r2.reason);
+    const back2 = revertSessionAdjustment(r2.session, r2.undo);
+    if (!back2.ok) throw new Error(back2.reason);
+    expect(back2.session.exercises.map((e) => e.id)).toEqual(['A', 'B', 'C', 'D']);
   });
 });
 

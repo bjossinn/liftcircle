@@ -16,6 +16,8 @@ import { elapsedMs } from '@/domain/sessionOps';
 import type { WorkoutContext, WorkoutIntent } from '../../../../supabase/functions/_shared/ai/workout';
 
 export const AI_COACH_REQUEST_KEY = 'ai-coach-request';
+/** A request waiting in the composer ("Today's workout attached"), kept until it's sent or removed. */
+export const AI_ATTACHED_REQUEST_KEY = 'ai-attached-request';
 /** A request older than this is stale (the user moved on); it is dropped instead of sent. */
 export const COACH_REQUEST_TTL_MS = 30 * 60 * 1000;
 export const SHORT_ON_TIME_MINUTES = [10, 15, 20, 30, 45] as const;
@@ -45,6 +47,14 @@ export async function takeCoachRequest(db: LiftDb, userId: string | undefined, n
   if (!r) return null;
   await kvSet(AI_COACH_REQUEST_KEY, null, db).catch(() => undefined);
   if (typeof r.createdAt !== 'number' || now - r.createdAt > COACH_REQUEST_TTL_MS || now < r.createdAt - 60_000) return null;
+  if (r.userId && userId && r.userId !== userId) return null;
+  return r;
+}
+
+/** The attachment waiting in the composer, if it belongs to this account (no expiry: the user put it there). */
+export async function loadAttachedRequest(db: LiftDb, userId: string | undefined): Promise<CoachRequest | null> {
+  const r = await kvGet<CoachRequest | null>(AI_ATTACHED_REQUEST_KEY, db).catch(() => null);
+  if (!r || typeof r.sessionId !== 'string') return null;
   if (r.userId && userId && r.userId !== userId) return null;
   return r;
 }
