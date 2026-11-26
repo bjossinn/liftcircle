@@ -3449,7 +3449,7 @@ function mentionsTiredness(text) {
   }
   return false;
 }
-var BLOCK_RE = /\/coaching\/ai\/settings|\/nutrition\/targets|\[\[open:\/settings|\[\[open:\/onboarding|can['’]t see|cannot see|isn['’]t shared|not shared/i;
+var BLOCK_RE = /\/coaching\/ai\/settings|\/nutrition\/targets|\[\[open:\/settings|\[\[open:\/onboarding|can['’]t see|cannot see|isn['’]t shared|not shared|turn on \w+ sharing|kveiktu á deilingu|deilir ekki/i;
 function fulfilled(intent, reply) {
   if (!reply) return false;
   const kind = reply.action?.kind;
@@ -9181,7 +9181,12 @@ ${text}` : text;
     links_removed: links.removed,
     replaced,
     full_recipe: fullRecipe,
-    open_request: ctx.openRequest?.intent ?? null
+    open_request: ctx.openRequest?.intent ?? null,
+    // Item 10: which prompt produced this (version + hash of the static modules) and the assembled size.
+    prompt_version: ctx.prompt.version,
+    prompt_hash: ctx.prompt.staticHash,
+    system_chars: system.length,
+    output
   });
   const storedReply = { ...recorded.reply };
   if (!recorded.duplicate && !("why" in storedReply)) storedReply.why = why;

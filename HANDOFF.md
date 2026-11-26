@@ -3,6 +3,19 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 30 Nov 2026: Eval set, streaming status line and six-part prompt (roadmap item 10)
+
+- One additive migration: `supabase/migrations/20261130000001_ai_cancellation.sql` (acknowledged Stop: request states,
+  refunds, idempotent usage reports, a publication guard). Deploy Supabase applies it on merge, then deploys `ai-coach`.
+  Until it is applied the app streams but shows no Stop button.
+- Dashboard bundles regenerated: `supabase/functions-bundled/ai-coach.ts` and `push-send.ts`.
+- Structured Outputs switch on automatically for supported models on the official endpoints (`AI_STRUCTURED_OUTPUT`,
+  default `auto`; set `off` to keep plain-text replies). The production model is unchanged.
+- Owner tasks: (1) run `node tests/live/ai-sse-smoke.mjs` against the deployed project with a synthetic test account;
+  (2) run the eval with real keys (`node tests/live/coach-eval.mjs --repeat 3 --max-cost-usd 10 …`) and have a native
+  speaker fill in the blind `review.csv` before choosing any model change. Neither could run in the build sandbox.
+- Details: docs/AI_COACH.md §4g, docs/BACKEND.md §9b, docs/AI_PROMPT_RULES.md.
+
 ## 29 Nov 2026: Coach-initiated push notifications, phase 1 (roadmap item 9)
 
 - One additive migration: `supabase/migrations/20261129000001_coach_push.sql` (daily limit, pause, revision and the

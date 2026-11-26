@@ -490,6 +490,21 @@ Migration `20261129000001_coach_push.sql` (additive), `_shared/push/copy.ts`, `_
   (`_shared/push/judge.ts`). Chat history and the chat daily allowance are not touched; logs
   hold counts and token usage only.
 
+### 9b. Training assistant cancellation and streaming (roadmap item 10)
+
+- Migration `supabase/migrations/20261130000001_ai_cancellation.sql` (additive): `ai_requests` gains the states
+  `cancel_requested` and `cancelled` and `cancel_requested_at`; `ai_usage` gains `cancelled_requests` and
+  `unknown_usage_attempts`; new table `ai_request_usage_reports` (idempotency of failed/cancelled usage per attempt,
+  service role only, RLS on). New service-role RPCs `ai_cancel_request`, `ai_settle_cancelled`, `ai_request_status`;
+  `ai_begin_request`, `ai_fail_request` and `ai_record_exchange_settled` are redefined (cancelled requests never start
+  or publish). A BEFORE INSERT trigger on `ai_messages` refuses an assistant reply to a stopped request, so older
+  function deployments (legacy `ai_record_exchange`) can't publish one either. State machine and refund rules are in
+  the migration header; `npm run test:ai-db` covers them on PostgreSQL 16.
+- The `ai-coach` function streams (`{stream:true}` + `Accept: text/event-stream`) and keeps the work alive with
+  `EdgeRuntime.waitUntil`. Deploy order: migration first (Deploy Supabase does this), then the function. Either order
+  is safe: without the migration the function advertises no `cancel` and the app shows no Stop button.
+- Dashboard bundles regenerated: `supabase/functions-bundled/ai-coach.ts` and `push-send.ts` (shared provider code).
+
 ## 8. Coaching
 
 Human coaches, the coach directory, coach/client tools and coaching messages. Migrations
