@@ -7,6 +7,9 @@
  *    when the timer is skipped, paused or extended, the next set starts a new rest, or the workout ends. While the
  *    page is visible the in-app alert handles it, so the push is cancelled a few seconds before the deadline.
  * Offline-first: every upload is best-effort. No signal → no push; the in-app timer and reminders on Today still work.
+ * Upload signatures and cached preferences are namespaced by the signed-in user id; work started for one account is
+ * dropped when the account changes. Uploaded reminders are candidates: the server re-checks synchronized data, the
+ * daily limit and the pause before sending, and writes the final text. Food-log reminders are scheduled by the server.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '@/state/app';
@@ -17,37 +20,41 @@ import type { Exercise, ID, WeightUnit, WorkoutSession } from '@/domain/types';
 import { useActiveProgram, useAllActivities, useAllSessions } from '@/features/train/hooks';
 import { AI_HISTORY_CACHE_KEY } from '@/features/coaching/ai/model';
 import { todayISO } from '@/lib/dates';
-import { cachedPushPrefs, listenForSubscriptionChanges, onPushChange, pushEnabledHere, refreshPushSubscription } from './push';
+import { cachedPushPrefs, listenForSubscriptionChanges, onPushChange, pushEnabledHere, refreshPushSubscription, type PushAccount } from './push';
 
 const UPLOADED_KEY = 'lc-push-uploaded';
-function lastUploaded(kind: string): string | null {
+export const uploadedKey = (uid: string, kind: string) => `${UPLOADED_KEY}:${uid}:${kind}`;
+function lastUploaded(uid: string, kind: string): string | null {
   try {
-    return localStorage.getItem(`${UPLOADED_KEY}:${kind}`);
+    return localStorage.getItem(uploadedKey(uid, kind));
   } catch {
     return null;
   }
 }
-function markUploaded(kind: string, sig: string) {
+function markUploaded(uid: string, kind: string, sig: string) {
   try {
-    localStorage.setItem(`${UPLOADED_KEY}:${kind}`, sig);
+    localStorage.setItem(uploadedKey(uid, kind), sig);
   } catch {
     /* ignore */
   }
 }
-/** Forget upload signatures so the next run re-uploads everything (after turning push on again). */
-export function resetUploadedSchedules() {
+/** Forget this account's upload signatures so the next run re-uploads everything (after turning push on again). */
+export function resetUploadedSchedules(uid: PushAccount) {
   try {
-    for (const k of ['workout_reminder', 'missed_nudge']) localStorage.removeItem(`${UPLOADED_KEY}:${k}`);
+    for (const k of ['workout_reminder', 'missed_nudge']) {
+      localStorage.removeItem(`${UPLOADED_KEY}:${k}`); // pre-namespacing keys
+      if (uid) localStorage.removeItem(uploadedKey(uid, k));
+    }
   } catch {
     /* ignore */
   }
 }
 
-async function upload(kind: 'workout_reminder' | 'missed_nudge', jobs: ScheduledJob[]) {
+async function upload(uid: string, kind: 'workout_reminder' | 'missed_nudge', jobs: ScheduledJob[], isCurrent: () => boolean) {
   const sig = JSON.stringify(jobs);
-  if (lastUploaded(kind) === sig) return;
+  if (lastUploaded(uid, kind) === sig || !isCurrent()) return;
   await pushApi.replaceJobs(kind, jobs);
-  markUploaded(kind, sig);
+  if (isCurrent()) markUploaded(uid, kind, sig);
 }
 
 /** Latest local hint of pain/injury/illness: the last AI chat message the user sent, or discomfort in the last workout. */
@@ -66,32 +73,44 @@ export function usePushScheduler() {
   const activities = useAllActivities();
   const [rev, setRev] = useState(0);
   const signedIn = auth.status === 'signed_in';
-  const enabled = signedIn && online && pushEnabledHere();
+  const uid = signedIn ? auth.userId ?? null : null;
+  // Guests and demo databases never upload reminders.
+  const enabled = !!uid && online && !db.isGuest && db.accountKey === uid && !account.settings.demoData && pushEnabledHere(uid);
 
   useEffect(() => onPushChange(() => setRev((r) => r + 1)), []);
-  useEffect(() => listenForSubscriptionChanges(), []);
+  useEffect(() => listenForSubscriptionChanges(uid), [uid]);
   useEffect(() => {
-    if (signedIn && online) void refreshPushSubscription().catch(() => undefined);
-  }, [signedIn, online]);
+    if (!uid || !online) return;
+    let current = true;
+    void refreshPushSubscription(uid, () => current).catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [uid, online]);
 
   useEffect(() => {
-    if (!enabled || program === undefined || sessions === undefined) return;
+    if (!enabled || !uid || program === undefined || sessions === undefined) return;
+    let current = true;
+    const isCurrent = () => current;
     const t = setTimeout(() => {
       void (async () => {
-        const prefs = { ...cachedPushPrefs(), timeZone: account.settings.timeZone };
+        const prefs = { ...cachedPushPrefs(uid), timeZone: account.settings.timeZone };
         const base = { program, sessions, activities: activities ?? [], today: todayISO(account.settings.timeZone), now: new Date(), prefs, style: account.settings.coachStyle };
         const painFlag = await localPainFlag(db, sessions);
-        await upload('workout_reminder', prefs.kinds.includes('workout_reminder') ? workoutReminderJobs(base) : []);
-        await upload('missed_nudge', prefs.kinds.includes('missed_nudge') ? missedNudgeJobs({ ...base, painFlag }) : []);
+        await upload(uid, 'workout_reminder', prefs.kinds.includes('workout_reminder') ? workoutReminderJobs(base) : [], isCurrent);
+        await upload(uid, 'missed_nudge', prefs.kinds.includes('missed_nudge') ? missedNudgeJobs({ ...base, painFlag }) : [], isCurrent);
       })().catch(() => undefined); // offline / server down: try again on the next change or start
     }, 2000);
-    return () => clearTimeout(t);
-  }, [enabled, program, sessions, activities, account.settings.timeZone, account.settings.coachStyle, db, rev]);
+    return () => {
+      current = false; // account / data changed: a running upload for the old state stops before its next call
+      clearTimeout(t);
+    };
+  }, [enabled, uid, program, sessions, activities, account.settings.timeZone, account.settings.coachStyle, db, rev]);
 }
 
 /** Cancel this workout's rest-over push (finish / discard). Best-effort. */
-export function cancelRestPush(sessionId: string) {
-  if (!pushEnabledHere()) return;
+export function cancelRestPush(uid: PushAccount, sessionId: string) {
+  if (!pushEnabledHere(uid)) return;
   void pushApi.cancelJob(`rest:${sessionId}`).catch(() => undefined);
 }
 
@@ -99,7 +118,8 @@ const VISIBLE_HANDOFF_MS = 5000;
 
 export function useRestPush(session: WorkoutSession | null | undefined, byId: Map<ID, Exercise>, unit: WeightUnit) {
   const { auth, online } = useApp();
-  const enabled = auth.status === 'signed_in' && online && pushEnabledHere() && cachedPushPrefs().kinds.includes('rest_over');
+  const uid = auth.status === 'signed_in' ? auth.userId ?? null : null;
+  const enabled = !!uid && online && pushEnabledHere(uid) && cachedPushPrefs(uid).kinds.includes('rest_over');
   const job = session ? restAlertJob(session, byId, unit) : null;
   const sig = job ? `${job.fireAt}|${job.payload.body}` : '';
   const sent = useRef<string | null>(null);

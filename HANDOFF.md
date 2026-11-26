@@ -3,6 +3,22 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 29 Nov 2026: Coach-initiated push notifications, phase 1 (roadmap item 9)
+
+- One additive migration: `supabase/migrations/20261129000001_coach_push.sql` (daily limit, pause, revision and the
+  off-by-default food-log reminder in `push_prefs`; dispatch state, claim tokens, expiry and a quota ledger for
+  `push_jobs`; a sync-completed receipt). Deploy Supabase applies it on merge and then deploys `push-send`
+  (migrations run first, so the new worker never meets the old schema). Until the migration is applied, the app shows
+  "Coach notification settings aren’t available right now" and everything else keeps working.
+- Dashboard bundles regenerated: `supabase/functions-bundled/push-send.ts` and `ai-coach.ts` (consent helpers moved
+  to `_shared/ai/consent.ts`; behaviour unchanged).
+- Generated reminder wording is OFF until you set the function secret `PUSH_AI_COPY=on`. Before that, run
+  `node tests/live/push-copy-live.mjs` with the production provider key and have a native speaker review the
+  Icelandic output. Without it every reminder uses the approved fallback text.
+- Rollout is safe in either order: until the new `push-send` is live, the old one only receives rest/test/coaching/
+  social pushes (legacy `push_claim_due`); coach reminders wait for the new worker (`push_claim_due_v2`).
+- Details: docs/BACKEND.md §9a.
+
 ## 28 Nov 2026: State-aware training assistant (roadmap item 7)
 
 - One additive migration: `supabase/migrations/20261128000001_ai_session_adjustment.sql`. It stores the new

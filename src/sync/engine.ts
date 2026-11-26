@@ -10,6 +10,9 @@
  *   are kept as a restorable conflict instead of being silently dropped.
  * - Ops carry the account id and are only ever sent while that same account is authenticated.
  * - Auth failures pause sync without touching local data.
+ * - A cycle that leaves nothing pending, failing or in conflict asks the server to stamp a "sync completed" receipt
+ *   (record_sync_complete, at most every 5 minutes). Coach food-log reminders require a fresh one: missing logs
+ *   only mean something when the device is known to have synced.
  */
 import { useSyncExternalStore } from 'react';
 import { SYNCED_ENTITIES, type LiftDb, type OutboxOp, type SyncConflict, type SyncedEntity } from '@/db/db';
@@ -20,6 +23,22 @@ import { uuid } from '@/lib/id';
 import { supabase } from '@/backend/supabase';
 import { BackendError } from '@/backend/syncRemote';
 import { t } from '@/i18n';
+import { pushApi } from '@/backend/push';
+
+const RECEIPT_EVERY_MS = 5 * 60_000;
+const receiptAt = new Map<string, number>();
+async function recordReceipt(db: LiftDb, userId: string) {
+  const last = receiptAt.get(userId) ?? 0;
+  if (Date.now() - last < RECEIPT_EVERY_MS) return;
+  const [pending, conflicts, failing] = await Promise.all([
+    db.outbox.where('status').equals('pending').filter((o) => o.accountId === userId).count(),
+    db.conflicts.count(),
+    db.outbox.where('status').equals('error').count(),
+  ]);
+  if (pending || conflicts || failing || ctx?.db !== db || ctx.userId !== userId) return;
+  receiptAt.set(userId, Date.now());
+  await pushApi.recordSyncComplete().catch(() => receiptAt.delete(userId)); // older server / offline: try next cycle
+}
 
 export type SyncPhase = 'disabled' | 'idle' | 'syncing' | 'offline' | 'paused_auth' | 'error';
 export interface SyncStatus {
@@ -168,6 +187,7 @@ async function cycle() {
     await pushAll(c.db, c.userId);
     await pullAll(c.db);
     setStatus({ phase: 'idle', lastSyncedAt: Date.now(), lastError: undefined });
+    await recordReceipt(c.db, c.userId).catch(() => undefined);
   } catch (e) {
     const err = toBackendError(e);
     if (err.isAuth) setStatus({ phase: 'paused_auth', lastError: err.message });

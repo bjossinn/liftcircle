@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  clampToAllowed, DEFAULT_PUSH_PREFS, mentionsPainOrIllness, missedNudgeJobs, missedText, reminderText, reminderTime, restAlertJob, restText, toMinutes,
+  activeSnooze, clampToAllowed, COACH_PUSH_KINDS, DEFAULT_PUSH_KINDS, DEFAULT_PUSH_PREFS, isDailyCap, isHHMM, isSnoozeDays, mentionsPainOrIllness, quietHoursOff, missedNudgeJobs, missedText, reminderText, reminderTime, restAlertJob, restText, toMinutes,
   workoutReminderJobs, zonedToUtc, type PushPrefs,
 } from '@/domain/pushSchedule';
 import { createProgram } from '@/domain/program/program';
@@ -12,6 +12,7 @@ import { applyWeekPlan, skipPlanned, type WeekPlan } from '@/domain/program/sche
 import * as ops from '@/domain/sessionOps';
 import { EXERCISES } from '@/data/exercises';
 import type { CoachStyle, Program, ProgramVersion, WorkoutSession } from '@/domain/types';
+import { toPushPrefs, toUpdateResult } from '@/backend/push';
 
 const byId = new Map(EXERCISES.map((e) => [e.id, e]));
 const OSLO = 'Europe/Oslo';
@@ -206,5 +207,47 @@ describe('rest-over alert: schedule, replace, cancel', () => {
     // Last set done: no next set → no alert.
     const last = complete(complete(complete(session(), 'a', 1), 'b', 2), 'c', 3);
     expect(restAlertJob(last, byId, 'kg')).toBeNull();
+  });
+});
+
+describe('coach notification settings (roadmap item 9)', () => {
+  it('defaults: food-log reminders off, cap 2, no pause; existing kinds unchanged', () => {
+    expect(DEFAULT_PUSH_KINDS).toEqual(['workout_reminder', 'rest_over', 'coaching', 'missed_nudge']);
+    expect(DEFAULT_PUSH_PREFS).toMatchObject({ dailyCap: 2, snoozeUntil: null, revision: 0, quietStart: '22:00', quietEnd: '07:00', fixedReminderTime: null });
+    expect(COACH_PUSH_KINDS).toEqual(['workout_reminder', 'missed_nudge', 'food_unlogged']);
+  });
+
+  it('server prefs: an explicitly empty kinds list is kept; old servers are detected as unsupported; bad values fall back', () => {
+    const legacy = toPushPrefs({ kinds: [], fixedReminderTime: '17:30', timeZone: OSLO, quietStart: '22:00', quietEnd: '07:00', devices: 2 });
+    expect(legacy).toMatchObject({ kinds: [], fixedReminderTime: '17:30', dailyCap: 2, snoozeUntil: null, revision: 0, coachSupported: false, devices: 2 });
+    const now = toPushPrefs({ kinds: ['food_unlogged', 'spam'], dailyCap: 3, snoozeUntil: '2026-11-30T10:00:00Z', revision: 7, quietStart: '25:00' });
+    expect(now).toMatchObject({ kinds: ['food_unlogged'], dailyCap: 3, snoozeUntil: '2026-11-30T10:00:00Z', revision: 7, coachSupported: true, quietStart: '22:00' });
+    expect(toPushPrefs({ dailyCap: 9, revision: 1 }).dailyCap).toBe(2);
+    expect(toUpdateResult({ status: 'invalid', field: 'cap', prefs: { revision: 1, dailyCap: 2 } })).toMatchObject({ status: 'invalid', field: 'cap' });
+    expect(toUpdateResult({ status: 'conflict', prefs: { revision: 4, dailyCap: 1 } })).toMatchObject({ status: 'conflict', prefs: { revision: 4, dailyCap: 1 } });
+    expect(() => toUpdateResult({ status: 'weird' })).toThrow();
+  });
+
+  it('validation helpers, equal quiet hours = off, and a pause only counts until it ends', () => {
+    expect([1, 2, 3].every(isDailyCap) && !isDailyCap(0) && !isDailyCap(4) && !isDailyCap('2')).toBe(true);
+    expect([1, 3, 7, 14].every(isSnoozeDays) && !isSnoozeDays(2) && !isSnoozeDays(30)).toBe(true);
+    expect([isHHMM('00:00'), isHHMM('23:59'), isHHMM('24:00'), isHHMM('7:00'), isHHMM('')]).toEqual([true, true, false, false, false]);
+    expect(quietHoursOff({ quietStart: '07:00', quietEnd: '07:00' })).toBe(true);
+    expect(quietHoursOff({ quietStart: '22:00', quietEnd: '07:00' })).toBe(false);
+    const t = Date.parse('2026-11-26T12:00:00Z');
+    expect(activeSnooze({ snoozeUntil: '2026-11-27T12:00:00Z' }, t)).toBe('2026-11-27T12:00:00Z');
+    expect(activeSnooze({ snoozeUntil: '2026-11-26T11:59:00Z' }, t)).toBeNull(); // expired: reminders resume, no catch-up
+    expect(activeSnooze({ snoozeUntil: null }, t)).toBeNull();
+  });
+
+  it('uploaded candidates carry their event day and planned day (the server expires them at the end of the event day)', () => {
+    const p = plan();
+    const reminders = workoutReminderJobs({ program: p, sessions: [], today: '2026-10-26', now: at('2026-10-26T06:00:00Z'), prefs: prefs() });
+    expect(reminders[0]).toMatchObject({ dedupeKey: 'reminder:2026-10-26', eventDate: '2026-10-26', sourceDate: '2026-10-26' });
+    const nudges = missedNudgeJobs({ program: p, sessions: [], today: '2026-10-27', now: at('2026-10-27T06:00:00Z'), prefs: prefs() });
+    expect(nudges[0]).toMatchObject({ dedupeKey: 'nudge:2026-10-26', eventDate: '2026-10-27', sourceDate: '2026-10-26' });
+    // Midnight: a reminder computed just before midnight local time for today is not sent (time passed).
+    const lateNight = workoutReminderJobs({ program: p, sessions: [], today: '2026-10-26', now: at('2026-10-26T22:59:00Z'), prefs: prefs() });
+    expect(lateNight.map((j) => j.eventDate)).not.toContain('2026-10-26');
   });
 });

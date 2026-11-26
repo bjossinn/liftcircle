@@ -5,12 +5,24 @@
  * The VAPID public key is a public value (VITE_VAPID_PUBLIC_KEY, set in netlify.toml). Without it the whole feature
  * is hidden. iOS/iPadOS only allows web push for apps installed to the Home Screen (standalone).
  */
-import { pushApi } from '@/backend/push';
+import { isAccountChanged, isMissingRpc, pushApi } from '@/backend/push';
 import { DEFAULT_PUSH_PREFS, type PushPrefs } from '@/domain/pushSchedule';
 import { isStandalone } from './install';
 
-const DEVICE_KEY = 'lc-push-device';
-const PREFS_KEY = 'lc-push-prefs';
+/**
+ * Local state is namespaced by the authenticated user id (`lc-push-device:<uid>`, `lc-push-prefs:<uid>`), so another
+ * account signing in on this device never inherits an opt-in, cached preferences or the "on for this device" state.
+ * Keys from before namespacing are adopted once by the first account that signs in after the update (on a shared
+ * device that is the account that was using it) and then removed.
+ */
+const LEGACY_DEVICE_KEY = 'lc-push-device';
+const LEGACY_PREFS_KEY = 'lc-push-prefs';
+export const deviceKey = (uid: string) => `${LEGACY_DEVICE_KEY}:${uid}`;
+export const prefsKey = (uid: string) => `${LEGACY_PREFS_KEY}:${uid}`;
+/** A turned-off device whose server row couldn't be deleted yet (offline, older server): retried on refresh. */
+export const pendingDeleteKey = (uid: string) => `lc-push-pending-delete:${uid}`;
+/** The signed-in user id, or null for guests / signed out. */
+export type PushAccount = string | null | undefined;
 
 export function vapidPublicKey(): string {
   const k = (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) ?? '';
@@ -61,11 +73,29 @@ export function onPushChange(fn: () => void) {
 export interface PushDevice {
   endpoint: string;
 }
-export const getPushDevice = () => read<PushDevice>(DEVICE_KEY);
-export const pushEnabledHere = () => !!getPushDevice()?.endpoint;
-export const cachedPushPrefs = (): PushPrefs => ({ ...DEFAULT_PUSH_PREFS, ...(read<PushPrefs>(PREFS_KEY) ?? {}) });
-export function cachePushPrefs(p: PushPrefs) {
-  write(PREFS_KEY, p);
+function adoptLegacy(uid: string) {
+  try {
+    const legacy = localStorage.getItem(LEGACY_DEVICE_KEY);
+    if (legacy != null) {
+      if (localStorage.getItem(deviceKey(uid)) == null) localStorage.setItem(deviceKey(uid), legacy);
+      localStorage.removeItem(LEGACY_DEVICE_KEY);
+    }
+    localStorage.removeItem(LEGACY_PREFS_KEY); // re-read from the server
+  } catch {
+    /* storage blocked */
+  }
+}
+export function getPushDevice(uid: PushAccount): PushDevice | null {
+  if (!uid) return null;
+  adoptLegacy(uid);
+  return read<PushDevice>(deviceKey(uid));
+}
+export const pushEnabledHere = (uid: PushAccount) => !!getPushDevice(uid)?.endpoint;
+export const cachedPushPrefs = (uid: PushAccount): PushPrefs => ({ ...DEFAULT_PUSH_PREFS, ...((uid ? read<PushPrefs>(prefsKey(uid)) : null) ?? {}) });
+export function cachePushPrefs(uid: PushAccount, p: PushPrefs) {
+  if (!uid) return;
+  const { kinds, fixedReminderTime, timeZone, quietStart, quietEnd, dailyCap, snoozeUntil, revision } = p;
+  write(prefsKey(uid), { kinds, fixedReminderTime, timeZone, quietStart, quietEnd, dailyCap, snoozeUntil, revision });
   emit();
 }
 
@@ -83,80 +113,165 @@ async function registration(): Promise<ServiceWorkerRegistration> {
   return navigator.serviceWorker.ready;
 }
 
-export type EnableResult = { ok: true } | { ok: false; reason: 'denied' | 'dismissed' | 'unsupported' | 'failed'; message?: string };
+export type EnableResult = { ok: true } | { ok: false; reason: 'denied' | 'dismissed' | 'unsupported' | 'failed' | 'cancelled'; message?: string };
+/** Is the operation still wanted (the caller's own cancellation, e.g. the screen moved on to another account)? */
+export type StillCurrent = () => boolean;
+const always: StillCurrent = () => true;
+
+/**
+ * Every awaited step (permission prompt, service worker, network) can outlast an account switch. Before each write the
+ * operation re-checks that it is still current AND that the backend session still belongs to `uid`; the server also
+ * refuses a write for another account (expectedUserId). Nothing is cached under an account that didn't do the write.
+ */
+async function stillFor(uid: string, isCurrent: StillCurrent): Promise<boolean> {
+  if (!isCurrent()) return false;
+  const who = await pushApi.currentUserId();
+  return who === uid && isCurrent();
+}
 
 /** Call only from a user tap: asks for permission, subscribes and stores the subscription on the server. */
-export async function enablePush(timeZone: string): Promise<EnableResult> {
+export async function enablePush(uid: PushAccount, timeZone: string, isCurrent: StillCurrent = always): Promise<EnableResult> {
+  if (!uid) return { ok: false, reason: 'unsupported' };
   const support = pushSupport();
   if (support !== 'available') return { ok: false, reason: support === 'denied' ? 'denied' : 'unsupported' };
   const perm = await Notification.requestPermission();
+  if (!isCurrent()) return { ok: false, reason: 'cancelled' };
   if (perm === 'denied') return { ok: false, reason: 'denied' };
   if (perm !== 'granted') return { ok: false, reason: 'dismissed' };
   try {
     const reg = await registration();
     const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(vapidPublicKey()) as BufferSource }));
     const body = subscriptionBody(sub);
-    await pushApi.saveSubscription(body);
-    const prefs = await pushApi.setPrefs({ timeZone });
-    write(DEVICE_KEY, { endpoint: body.endpoint });
-    cachePushPrefs(prefs);
+    if (!(await stillFor(uid, isCurrent))) return { ok: false, reason: 'cancelled' };
+    await pushApi.saveSubscription(body, uid);
+    if (!(await stillFor(uid, isCurrent))) return { ok: false, reason: 'cancelled' };
+    write(deviceKey(uid), { endpoint: body.endpoint });
+    write(pendingDeleteKey(uid), null);
+    const prefs = await pushApi.setPrefs({ timeZone }, uid);
+    if (isCurrent()) cachePushPrefs(uid, prefs);
+    else emit();
     return { ok: true };
   } catch (e) {
+    if (isAccountChanged(e)) return { ok: false, reason: 'cancelled' };
     return { ok: false, reason: 'failed', message: (e as Error)?.message };
   }
 }
 
-/** Unsubscribes this device and deletes its server row. */
-export async function disablePush(): Promise<void> {
-  const device = getPushDevice();
+/**
+ * Deletes `endpoint`'s server row for `uid`. Uses the account-bound RPC; on a server that predates it, falls back to the
+ * one-argument RPC only after re-checking that the session still belongs to `uid`. Returns false when the row is still
+ * there (offline, account changed, server error).
+ */
+async function deleteServerRow(uid: string, endpoint: string, isCurrent: StillCurrent): Promise<boolean> {
+  try {
+    await pushApi.deleteSubscription(endpoint, uid);
+    return true;
+  } catch (e) {
+    if (isMissingRpc(e)) {
+      if (!(await stillFor(uid, isCurrent))) return false;
+      return pushApi.deleteSubscriptionLegacy(endpoint).then(() => true, () => false);
+    }
+    return false;
+  }
+}
+
+/**
+ * Turns push off on this device for `uid` (only the account that asked). The local opt-out is stored as soon as the
+ * browser subscription is gone, independently of the server: if the server row can't be deleted now it is remembered
+ * and deleted on the next refresh, and nothing ever re-subscribes a device the user turned off.
+ */
+export async function disablePush(uid: PushAccount, isCurrent: StillCurrent = always): Promise<boolean> {
+  if (!uid) return false;
+  if (!(await stillFor(uid, isCurrent))) return false;
+  const device = getPushDevice(uid);
   let endpoint = device?.endpoint;
   try {
     const sub = await (await registration()).pushManager.getSubscription();
     if (sub) {
       endpoint = sub.endpoint;
+      if (!(await stillFor(uid, isCurrent))) return false;
       await sub.unsubscribe();
     }
   } catch {
     /* no service worker: the server row is still removed below */
   }
-  if (endpoint) await pushApi.deleteSubscription(endpoint);
-  write(DEVICE_KEY, null);
+  // Opted out here from now on, whatever the server says.
+  write(deviceKey(uid), null);
+  if (endpoint) write(pendingDeleteKey(uid), { endpoint });
   emit();
+  if (endpoint && (await deleteServerRow(uid, endpoint, isCurrent))) write(pendingDeleteKey(uid), null);
+  return true;
+}
+
+/** Retries a pending server-row deletion for `uid` (after an offline or old-server turn-off). */
+export async function flushPendingDelete(uid: PushAccount, isCurrent: StillCurrent = always): Promise<void> {
+  if (!uid) return;
+  const pending = read<PushDevice>(pendingDeleteKey(uid));
+  if (!pending?.endpoint) return;
+  if (pushEnabledHere(uid)) {
+    // Turned on again since: the row is wanted now.
+    write(pendingDeleteKey(uid), null);
+    return;
+  }
+  if (!(await stillFor(uid, isCurrent))) return;
+  if (await deleteServerRow(uid, pending.endpoint, isCurrent)) write(pendingDeleteKey(uid), null);
 }
 
 /**
- * On app start (signed in, online): if push is on here, make sure the browser still has the subscription and the
- * server has the current one (endpoints can change, e.g. after pushsubscriptionchange). Also refreshes cached prefs.
+ * On app start and on every account change (signed in, online): if push is on here for `uid`, make sure the browser
+ * still has a subscription and that the server's row for this endpoint belongs to `uid` — another account may have
+ * taken the same browser endpoint meanwhile (A enables, B enables, A returns), so ownership is checked, not assumed
+ * from the cached endpoint. Also refreshes cached prefs.
  */
-export async function refreshPushSubscription(): Promise<void> {
-  const device = getPushDevice();
-  if (!device || pushSupport() !== 'available' || Notification.permission !== 'granted') return;
+export async function refreshPushSubscription(uid: PushAccount, isCurrent: StillCurrent = always): Promise<void> {
+  await flushPendingDelete(uid, isCurrent).catch(() => undefined);
+  const device = getPushDevice(uid);
+  if (!uid || !device || pushSupport() !== 'available' || Notification.permission !== 'granted') return;
   const reg = await registration();
   let sub = await reg.pushManager.getSubscription();
-  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(vapidPublicKey()) as BufferSource });
-  if (sub.endpoint !== device.endpoint) {
-    await pushApi.saveSubscription(subscriptionBody(sub));
-    await pushApi.deleteSubscription(device.endpoint).catch(() => undefined);
-    write(DEVICE_KEY, { endpoint: sub.endpoint });
+  if (!sub) {
+    if (!(await stillFor(uid, isCurrent))) return;
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(vapidPublicKey()) as BufferSource });
   }
-  cachePushPrefs(await pushApi.getPrefs());
+  if (!(await stillFor(uid, isCurrent))) return;
+  const changed = sub.endpoint !== device.endpoint;
+  const owner = changed ? 'other' : await pushApi.deviceOwner(sub.endpoint).catch(() => 'unknown' as const);
+  if (changed || owner === 'other' || owner === 'none') {
+    if (!(await stillFor(uid, isCurrent))) return;
+    try {
+      await pushApi.saveSubscription(subscriptionBody(sub), uid);
+    } catch (e) {
+      if (isAccountChanged(e)) return;
+      throw e;
+    }
+    if (changed) await pushApi.deleteSubscription(device.endpoint, uid).catch(() => undefined);
+    if (!isCurrent()) return;
+    write(deviceKey(uid), { endpoint: sub.endpoint });
+  }
+  const prefs = await pushApi.getPrefs();
+  if (await stillFor(uid, isCurrent)) cachePushPrefs(uid, prefs); // never cache another account's settings under uid
 }
 
-/** The service worker re-subscribed (pushsubscriptionchange): upload the new subscription. */
-export function listenForSubscriptionChanges(): () => void {
-  if (typeof navigator === 'undefined' || !navigator.serviceWorker) return () => undefined;
+/** The service worker re-subscribed (pushsubscriptionchange): upload the new subscription for `uid` only. */
+export function listenForSubscriptionChanges(uid: PushAccount, isCurrent: StillCurrent = always): () => void {
+  if (!uid || typeof navigator === 'undefined' || !navigator.serviceWorker) return () => undefined;
+  let live = true;
+  const current = () => live && isCurrent();
   const onMessage = (e: MessageEvent) => {
     const d = e.data as { type?: string; subscription?: PushSubscriptionJSON } | null;
-    if (d?.type !== 'lc-push-subscription-changed' || !d.subscription?.endpoint || !pushEnabledHere()) return;
-    const old = getPushDevice()?.endpoint;
-    void pushApi
-      .saveSubscription(subscriptionBody(d.subscription))
-      .then(() => {
-        write(DEVICE_KEY, { endpoint: d.subscription!.endpoint });
-        if (old && old !== d.subscription!.endpoint) return pushApi.deleteSubscription(old).then(() => undefined);
-      })
-      .catch(() => undefined);
+    if (d?.type !== 'lc-push-subscription-changed' || !d.subscription?.endpoint || !pushEnabledHere(uid)) return;
+    const old = getPushDevice(uid)?.endpoint;
+    void (async () => {
+      if (!(await stillFor(uid, current))) return;
+      await pushApi.saveSubscription(subscriptionBody(d.subscription!), uid);
+      if (!current()) return;
+      write(deviceKey(uid), { endpoint: d.subscription!.endpoint });
+      if (old && old !== d.subscription!.endpoint) await pushApi.deleteSubscription(old, uid);
+    })().catch(() => undefined);
   };
   navigator.serviceWorker.addEventListener('message', onMessage);
-  return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  return () => {
+    live = false;
+    navigator.serviceWorker.removeEventListener('message', onMessage);
+  };
 }

@@ -77,4 +77,12 @@ describe('service worker push handlers', () => {
     await sw.dispatch('notificationclick', { notification: { close: () => undefined, data: { url: '/feed/post/p1' } } });
     expect(sw.self.clients.openWindow).toHaveBeenCalledWith(`${ORIGIN}/feed/post/p1`);
   });
+
+  it('coach reminders: Icelandic text shows as sent and the food-log reminder opens /nutrition/log', async () => {
+    const sw = load([]);
+    await sw.dispatch('push', pushEvent({ title: 'Hard Earned', body: 'Viltu bæta við matarskráninguna? Gerðu það þegar þér hentar.', url: '/nutrition/log', tag: 'food' }));
+    expect(sw.shown[0].options).toMatchObject({ body: 'Viltu bæta við matarskráninguna? Gerðu það þegar þér hentar.', tag: 'food', data: { url: '/nutrition/log' } });
+    await sw.dispatch('notificationclick', { notification: { close: () => undefined, data: sw.shown[0].options.data } });
+    expect(sw.self.clients.openWindow).toHaveBeenCalledWith(`${ORIGIN}/nutrition/log`);
+  });
 });
