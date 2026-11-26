@@ -300,7 +300,7 @@ export default function SessionPage() {
     finishedOnce.current = true;
     setFinishOpen(false);
     clearSessionDrafts(finished.id);
-    cancelRestPush(finished.id);
+    cancelRestPush(auth.status === 'signed_in' ? auth.userId : null, finished.id);
     void trackWorkoutCompleted(db, finished.id); // first workout / second within 7 days: no workout data is recorded
     void maybeAutoShare({ session: finished }, { db, settings, byId }).then((shared) => {
       if (shared) toast.show(t('workout.queuedToShare'), { tone: 'success' });
@@ -571,7 +571,7 @@ export default function SessionPage() {
         onConfirm={async () => {
           await deleteRecord('sessions', session.id, db);
           clearSessionDrafts(session.id);
-          cancelRestPush(session.id);
+          cancelRestPush(auth.status === 'signed_in' ? auth.userId : null, session.id);
           setDiscardOpen(false);
           nav('/train', { replace: true });
         }}

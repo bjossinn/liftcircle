@@ -364,7 +364,7 @@ supabase secrets set CLEANUP_SECRET=<random>
 function, imports of `_shared/*` inlined). Regenerate after changing a function:
 
 ```bash
-for f in finalize-post delete-account cleanup-media ai-coach geocode finalize-coach-media; do
+for f in finalize-post delete-account cleanup-media ai-coach geocode finalize-coach-media push-send; do
   npx esbuild supabase/functions/$f/index.ts --bundle --format=esm --platform=neutral --target=es2022 \
     --external:'npm:*' --external:'jsr:*' --outfile=supabase/functions-bundled/$f.ts
 done
@@ -427,6 +427,43 @@ secrets exist. Owner steps: docs/SETUP.md §9.
 410, cleanup, SKIP LOCKED across two connections; also in CI); `tests/unit/pushSend.test.ts` (RFC vector, VAPID,
 mocked push service, quiet hours, secret); `pushSchedule`, `pushSw`, `pushSettingsUi` unit tests; `pwa.spec.ts`.
 The Deno entry point (`push-send/index.ts`) only wires env, the service-role client and fetch and was not executed here.
+
+### 9a. Coach notifications, phase 1 (roadmap item 9)
+
+Migration `20261129000001_coach_push.sql` (additive), `_shared/push/copy.ts`, `_shared/push/send.ts`,
+`src/features/settings/PushSection.tsx`. Bundles are checked against their sources by `tests/unit/bundleParity.test.ts`.
+
+* **Preferences** stay in `push_prefs` (server-backed, outside Settings and account backups): new `daily_cap` (1–3,
+  default 2), `snooze_until` (UTC instant) and a monotonic `revision`; new kind `food_unlogged` (never a default: off).
+  The app saves one versioned patch with `update_push_prefs(patch, revision)` → `ok` | `conflict` (nothing written; the
+  latest settings come back) | `invalid` (field `cap`/`time`/`snoozeDays`). `snoozeDays` 1/3/7/14 pauses until the same
+  local time N calendar days later; `resume` clears it. Legacy `set_push_prefs` (older apps) preserves the new fields,
+  including the food-reminder choice. Cap and pause apply only to workout, missed-workout and food-log reminders, across
+  all devices; quiet hours keep their wider scope (everything except rest alerts and test pushes; equal start/end = off).
+* **Jobs**: `push_jobs` gained `source_type` / `source_ref` / `event_date` / `expires_at` (end of the event's local
+  day), `claim_token` + `lease_until` (per attempt), `prefs_revision`, `dispatch_state`
+  (pending → claimed → dispatching → sent | ambiguous | discarded), `outcome`, and the cached copy's
+  `copy_language` / `copy_source`. Uploads never touch a job under an active lease and never revive sent or discarded
+  jobs. `private.push_quota` (service-only) reserves one row per (user, local date, logical event): one `training`
+  event (a workout reminder wins over a missed-workout nudge) and one `food` event per day, at most `daily_cap` rows.
+* **Food-log reminders** are server-owned: `push_generate_food()` creates one candidate per opted-in user and local
+  day at 19:00 (only before 19:00, no catch-up). At send time they need nutrition features on, zero non-deleted food
+  logs that day, and a server-stamped completed-sync receipt (`record_sync_complete()`, written by the sync engine
+  after a cycle with nothing pending/failing/in conflict) from the same local day and the last 24 h; otherwise skipped.
+* **push-send**: rest/test/coaching/social jobs are claimed first and settled before any model call. Each coach
+  reminder: quiet hours (deferral must stay inside its local day, else discarded) → `push_check(id, token, 'prepare')`
+  (preferences, pause, expiry, synchronized sessions/activities/plan overrides, demo accounts, quota reservation) →
+  copy → `push_check(…, 'dispatch')` (everything again; marks it `dispatching`) → send → `push_finish` with the token.
+  A network error/timeout after dispatch is `ambiguous`: it consumes the reservation and is never resent; a crashed
+  dispatch is settled the same way when its lease ends. The time budget is checked per job.
+* **Copy** (`copy.ts`): the model writes only `{ "body" }` (≤ 140 code points, plain text, requested language,
+  always supportive; no guilt, compensation, prescriptions, targets, numbers or claims about skipping). It needs
+  `PUSH_AI_COPY=on` (off by default until the live evaluation `node tests/live/push-copy-live.mjs` has been reviewed),
+  the assistant enabled and not paused, consent for the configured provider and the Training (workout/missed) or
+  Nutrition (food) scope; otherwise there is no model call. One attempt, 3 s total, no retries; any failure → the
+  approved fallback (`push.coach*.body`). The final copy is cached on the job; a language or consent change before
+  dispatch switches to the current-language fallback. Chat history and the chat daily allowance are not touched; logs
+  hold counts and token usage only.
 
 ## 8. Coaching
 

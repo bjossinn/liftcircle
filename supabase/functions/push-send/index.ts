@@ -4,11 +4,14 @@
 // NOT callable by users: deployed with verify_jwt = false and authenticated with
 //   x-push-secret: <PUSH_CRON_SECRET>
 // Secrets: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (mailto:…), PUSH_CRON_SECRET.
+// Coach reminder copy (optional) reuses the training assistant's provider secrets (AI_PROVIDER, OPENAI_API_KEY /
+// ANTHROPIC_API_KEY, …); generated wording is used only with PUSH_AI_COPY=on, PUSH_COPY_MODEL / PUSH_COPY_REASONING_EFFORT
+// override the model for reminder copy only. Without them every reminder uses the approved fallback text.
 // The logic lives in ../_shared/push/send.ts (tested with a mocked push service); this file only wires env,
 // the service-role client and fetch.
 import { handler, HttpError, json } from '../_shared/http.ts';
 import { adminClient } from '../_shared/supabase.ts';
-import { authorizePush, runPushSend, type DueJob, type JobResult } from '../_shared/push/send.ts';
+import { authorizePush, runPushSend, type CheckResult, type DueJob, type JobResult } from '../_shared/push/send.ts';
 import { sendWebPush, type VapidConfig } from '../_shared/push/webpush.ts';
 
 Deno.serve(handler(async (req) => {
@@ -31,11 +34,14 @@ Deno.serve(handler(async (req) => {
       finish: async (results: JobResult[]) => void (await rpc('push_finish', { p_results: results })),
       subscriptionResult: async (endpoint, status) => void (await rpc('push_subscription_result', { p_endpoint: endpoint, p_status: status })),
       cleanup: () => rpc<number>('push_cleanup', {}),
+      check: (id, token, stage) => rpc<CheckResult>('push_check', { p_id: id, p_token: token, p_stage: stage }),
+      generate: () => rpc<number>('push_generate_food', {}),
     },
+    copy: { env: (name) => Deno.env.get(name), fetch: (url, init) => fetch(url, init) },
     send: (sub, payload, opts) =>
       sendWebPush(sub, payload, vapid, (url, init) => fetch(url, { ...init, body: init.body, signal: AbortSignal.timeout(10_000) }), opts),
     now: () => new Date(),
-    // Content-free log: counts only.
+    // Content-free log: counts and token usage only (never notification text).
     log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
   });
   return json(summary);

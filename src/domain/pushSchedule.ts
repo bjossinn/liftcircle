@@ -15,16 +15,27 @@
  * scheduled in advance; it is cancelled by the next upload once the workout is logged. Never when the latest
  * local input mentioned pain, injury or illness.
  *
- * Texts are short, in the coach style, and never mention body weight or food.
+ * Texts are short, in the coach style, and never mention body weight or food. They are placeholders: since roadmap
+ * item 9 the server replaces the text of every coach reminder with approved, always-supportive copy in the account
+ * language at send time (supabase/functions/_shared/push/copy.ts), after re-checking the synchronized data. Uploaded
+ * schedules are candidates, not proof that a workout was missed.
  */
 import type { ActivityLog, CoachStyle, Exercise, ID, ISODate, Program, WeightUnit, WorkoutSession } from './types';
 import { plannedSessionsInRange } from './program/schedule';
 import { nextSet } from './coachCheers';
 
-export type PushKind = 'workout_reminder' | 'rest_over' | 'coaching' | 'social' | 'missed_nudge';
-export const PUSH_KINDS: PushKind[] = ['workout_reminder', 'rest_over', 'coaching', 'social', 'missed_nudge'];
-/** On by default once push is on — everything except social. */
+export type PushKind = 'workout_reminder' | 'rest_over' | 'coaching' | 'social' | 'missed_nudge' | 'food_unlogged';
+export const PUSH_KINDS: PushKind[] = ['workout_reminder', 'rest_over', 'coaching', 'social', 'missed_nudge', 'food_unlogged'];
+/** On by default once push is on — everything except social and food-log reminders. */
 export const DEFAULT_PUSH_KINDS: PushKind[] = ['workout_reminder', 'rest_over', 'coaching', 'missed_nudge'];
+/** Coach notifications (roadmap item 9): the daily limit and the pause apply to these three, across all devices. */
+export const COACH_PUSH_KINDS: PushKind[] = ['workout_reminder', 'missed_nudge', 'food_unlogged'];
+export const DAILY_CAPS = [1, 2, 3] as const;
+export type DailyCap = (typeof DAILY_CAPS)[number];
+export const SNOOZE_DAYS = [1, 3, 7, 14] as const;
+export type SnoozeDays = (typeof SNOOZE_DAYS)[number];
+/** Food-log reminders are server-scheduled once a day at this local time. */
+export const FOOD_REMINDER_TIME = '19:00';
 
 export interface PushPrefs {
   kinds: PushKind[];
@@ -33,8 +44,33 @@ export interface PushPrefs {
   timeZone: string;
   quietStart: string;
   quietEnd: string;
+  /** Maximum coach reminders per local day (default 2). */
+  dailyCap: DailyCap;
+  /** ISO instant until which coach reminders are paused, or null. */
+  snoozeUntil: string | null;
+  /** Server revision of these settings (optimistic concurrency); 0 = never saved. */
+  revision: number;
 }
-export const DEFAULT_PUSH_PREFS: PushPrefs = { kinds: DEFAULT_PUSH_KINDS, fixedReminderTime: null, timeZone: 'UTC', quietStart: '22:00', quietEnd: '07:00' };
+export const DEFAULT_PUSH_PREFS: PushPrefs = {
+  kinds: DEFAULT_PUSH_KINDS,
+  fixedReminderTime: null,
+  timeZone: 'UTC',
+  quietStart: '22:00',
+  quietEnd: '07:00',
+  dailyCap: 2,
+  snoozeUntil: null,
+  revision: 0,
+};
+export const isDailyCap = (v: unknown): v is DailyCap => (DAILY_CAPS as readonly unknown[]).includes(v);
+export const isSnoozeDays = (v: unknown): v is SnoozeDays => (SNOOZE_DAYS as readonly unknown[]).includes(v);
+export const isHHMM = (v: unknown): v is string => typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+/** Quiet hours with the same start and end are off. */
+export const quietHoursOff = (p: Pick<PushPrefs, 'quietStart' | 'quietEnd'>) => p.quietStart === p.quietEnd;
+/** The pause still in effect at `now`, or null. */
+export function activeSnooze(p: Pick<PushPrefs, 'snoozeUntil'>, now: number = Date.now()): string | null {
+  const t = p.snoozeUntil ? Date.parse(p.snoozeUntil) : NaN;
+  return Number.isFinite(t) && t > now ? p.snoozeUntil : null;
+}
 
 export interface PushPayload {
   title: string;
@@ -46,6 +82,10 @@ export interface ScheduledJob {
   dedupeKey: string;
   fireAt: string;
   payload: PushPayload;
+  /** Local day the reminder belongs to (the server discards it once that day is over). */
+  eventDate?: ISODate;
+  /** The planned day the reminder is about (a missed-workout nudge: the previous day). */
+  sourceDate?: ISODate;
 }
 
 /* ------------------------------------------------------------------ time zone helpers */
@@ -183,7 +223,7 @@ export function workoutReminderJobs(i: PlanJobsInput): ScheduledJob[] {
     const at = zonedToUtc(it.date, reminderTime({ templateId: it.template.id, sessions: i.sessions, prefs: i.prefs }), tz);
     if (at.getTime() <= i.now.getTime()) continue;
     seen.add(it.date);
-    out.push({ dedupeKey: `reminder:${it.date}`, fireAt: at.toISOString(), payload: { title: 'Hard Earned', body: reminderText(it.template.name, i.style), url: '/', tag: 'workout' } });
+    out.push({ dedupeKey: `reminder:${it.date}`, fireAt: at.toISOString(), payload: { title: 'Hard Earned', body: reminderText(it.template.name, i.style), url: '/', tag: 'workout' }, eventDate: it.date, sourceDate: it.date });
   }
   return out;
 }
@@ -210,7 +250,7 @@ export function missedNudgeJobs(i: PlanJobsInput): ScheduledJob[] {
     const at = zonedToUtc(nudgeDay, reminderTime({ templateId: it.template.id, sessions: i.sessions, prefs: i.prefs }), tz);
     if (at.getTime() <= i.now.getTime()) continue;
     seen.add(it.date);
-    out.push({ dedupeKey: `nudge:${it.date}`, fireAt: at.toISOString(), payload: { title: 'Hard Earned', body: missedText(it.template.name, i.style), url: '/', tag: 'workout' } });
+    out.push({ dedupeKey: `nudge:${it.date}`, fireAt: at.toISOString(), payload: { title: 'Hard Earned', body: missedText(it.template.name, i.style), url: '/', tag: 'workout' }, eventDate: nudgeDay, sourceDate: it.date });
   }
   // At most one nudge per calendar day.
   const perDay = new Map<string, ScheduledJob>();

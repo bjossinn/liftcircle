@@ -354,6 +354,12 @@ var SHARED_EN = {
   "progression.seconds": "{{seconds}} s",
   "progression.suggestion": "Progression suggestion",
   "progression.why": "Why?",
+  "push.coachFood.body": "Want to update your food log? Do it whenever it suits you.",
+  "push.coachFood.title": "Hard Earned",
+  "push.coachMissed.body": "Plans change. Open Today and choose what works for you.",
+  "push.coachMissed.title": "Hard Earned",
+  "push.coachWorkout.body": "When it suits you, open Today to see your workout.",
+  "push.coachWorkout.title": "Hard Earned",
   "workout.meta.equipment.band": "Band",
   "workout.meta.equipment.barbell": "Barbell",
   "workout.meta.equipment.bench": "Bench",
@@ -653,6 +659,12 @@ var SHARED_IS = {
   "progression.seconds": "{{seconds}} sek.",
   "progression.suggestion": "Tillaga um framvindu",
   "progression.why": "Af hverju?",
+  "push.coachFood.body": "Viltu b\xE6ta vi\xF0 matarskr\xE1ninguna? Ger\xF0u \xFEa\xF0 \xFEegar \xFE\xE9r hentar.",
+  "push.coachFood.title": "Hard Earned",
+  "push.coachMissed.body": "\xC1\xE6tlanir geta breyst. Opna\xF0u \xCD dag og veldu \xFEa\xF0 sem hentar \xFE\xE9r.",
+  "push.coachMissed.title": "Hard Earned",
+  "push.coachWorkout.body": "Opna\xF0u \xCD dag \xFEegar \xFE\xE9r hentar og sko\xF0a\xF0u \xE6finguna \xFE\xEDna.",
+  "push.coachWorkout.title": "Hard Earned",
   "workout.meta.equipment.band": "Teygja",
   "workout.meta.equipment.barbell": "St\xF6ng",
   "workout.meta.equipment.bench": "Bekkur",
@@ -5107,6 +5119,17 @@ function estimateCostUsd(t, priceInPerMTok, priceOutPerMTok) {
   return Math.round((t.inputTokens / 1e6 * pin + t.outputTokens / 1e6 * pout) * 1e6) / 1e6;
 }
 
+// supabase/functions/_shared/ai/consent.ts
+function consentProvider(version) {
+  if (!version) return null;
+  const tail = version.includes(":") ? version.slice(version.lastIndexOf(":") + 1).toLowerCase() : "anthropic";
+  return tail === "openai" || tail === "anthropic" ? tail : null;
+}
+function consentedProvider(s) {
+  if (!s?.consentAt) return null;
+  return consentProvider(s.consentVersion || "2026-10-29");
+}
+
 // supabase/functions/_shared/nutrition/recipes.ts
 var round3 = (n, decimals = 2) => {
   const f = 10 ** decimals;
@@ -8520,15 +8543,6 @@ var err = (status2, code, error, extra = {}) => ({
   status: status2,
   body: { error, code, ...extra }
 });
-function consentProvider(version) {
-  if (!version) return null;
-  const tail = version.includes(":") ? version.slice(version.lastIndexOf(":") + 1).toLowerCase() : "anthropic";
-  return tail === "openai" || tail === "anthropic" ? tail : null;
-}
-function consentedProvider(s) {
-  if (!s?.consentAt) return null;
-  return consentProvider(s.consentVersion || "2026-10-29");
-}
 async function handleAiCoach(deps, uid, rawBody) {
   const body = rawBody && typeof rawBody === "object" ? rawBody : {};
   const { t } = sharedT(requestLanguage(body.language) ?? "en");

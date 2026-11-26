@@ -9,8 +9,18 @@ import { pushApi } from '@/backend/push';
 import { DEFAULT_PUSH_PREFS, type PushPrefs } from '@/domain/pushSchedule';
 import { isStandalone } from './install';
 
-const DEVICE_KEY = 'lc-push-device';
-const PREFS_KEY = 'lc-push-prefs';
+/**
+ * Local state is namespaced by the authenticated user id (`lc-push-device:<uid>`, `lc-push-prefs:<uid>`), so another
+ * account signing in on this device never inherits an opt-in, cached preferences or the "on for this device" state.
+ * Keys from before namespacing are adopted once by the first account that signs in after the update (on a shared
+ * device that is the account that was using it) and then removed.
+ */
+const LEGACY_DEVICE_KEY = 'lc-push-device';
+const LEGACY_PREFS_KEY = 'lc-push-prefs';
+export const deviceKey = (uid: string) => `${LEGACY_DEVICE_KEY}:${uid}`;
+export const prefsKey = (uid: string) => `${LEGACY_PREFS_KEY}:${uid}`;
+/** The signed-in user id, or null for guests / signed out. */
+export type PushAccount = string | null | undefined;
 
 export function vapidPublicKey(): string {
   const k = (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) ?? '';
@@ -61,11 +71,29 @@ export function onPushChange(fn: () => void) {
 export interface PushDevice {
   endpoint: string;
 }
-export const getPushDevice = () => read<PushDevice>(DEVICE_KEY);
-export const pushEnabledHere = () => !!getPushDevice()?.endpoint;
-export const cachedPushPrefs = (): PushPrefs => ({ ...DEFAULT_PUSH_PREFS, ...(read<PushPrefs>(PREFS_KEY) ?? {}) });
-export function cachePushPrefs(p: PushPrefs) {
-  write(PREFS_KEY, p);
+function adoptLegacy(uid: string) {
+  try {
+    const legacy = localStorage.getItem(LEGACY_DEVICE_KEY);
+    if (legacy != null) {
+      if (localStorage.getItem(deviceKey(uid)) == null) localStorage.setItem(deviceKey(uid), legacy);
+      localStorage.removeItem(LEGACY_DEVICE_KEY);
+    }
+    localStorage.removeItem(LEGACY_PREFS_KEY); // re-read from the server
+  } catch {
+    /* storage blocked */
+  }
+}
+export function getPushDevice(uid: PushAccount): PushDevice | null {
+  if (!uid) return null;
+  adoptLegacy(uid);
+  return read<PushDevice>(deviceKey(uid));
+}
+export const pushEnabledHere = (uid: PushAccount) => !!getPushDevice(uid)?.endpoint;
+export const cachedPushPrefs = (uid: PushAccount): PushPrefs => ({ ...DEFAULT_PUSH_PREFS, ...((uid ? read<PushPrefs>(prefsKey(uid)) : null) ?? {}) });
+export function cachePushPrefs(uid: PushAccount, p: PushPrefs) {
+  if (!uid) return;
+  const { kinds, fixedReminderTime, timeZone, quietStart, quietEnd, dailyCap, snoozeUntil, revision } = p;
+  write(prefsKey(uid), { kinds, fixedReminderTime, timeZone, quietStart, quietEnd, dailyCap, snoozeUntil, revision });
   emit();
 }
 
@@ -86,7 +114,8 @@ async function registration(): Promise<ServiceWorkerRegistration> {
 export type EnableResult = { ok: true } | { ok: false; reason: 'denied' | 'dismissed' | 'unsupported' | 'failed'; message?: string };
 
 /** Call only from a user tap: asks for permission, subscribes and stores the subscription on the server. */
-export async function enablePush(timeZone: string): Promise<EnableResult> {
+export async function enablePush(uid: PushAccount, timeZone: string): Promise<EnableResult> {
+  if (!uid) return { ok: false, reason: 'unsupported' };
   const support = pushSupport();
   if (support !== 'available') return { ok: false, reason: support === 'denied' ? 'denied' : 'unsupported' };
   const perm = await Notification.requestPermission();
@@ -98,8 +127,8 @@ export async function enablePush(timeZone: string): Promise<EnableResult> {
     const body = subscriptionBody(sub);
     await pushApi.saveSubscription(body);
     const prefs = await pushApi.setPrefs({ timeZone });
-    write(DEVICE_KEY, { endpoint: body.endpoint });
-    cachePushPrefs(prefs);
+    write(deviceKey(uid), { endpoint: body.endpoint });
+    cachePushPrefs(uid, prefs);
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: 'failed', message: (e as Error)?.message };
@@ -107,8 +136,9 @@ export async function enablePush(timeZone: string): Promise<EnableResult> {
 }
 
 /** Unsubscribes this device and deletes its server row. */
-export async function disablePush(): Promise<void> {
-  const device = getPushDevice();
+export async function disablePush(uid: PushAccount): Promise<void> {
+  if (!uid) return;
+  const device = getPushDevice(uid);
   let endpoint = device?.endpoint;
   try {
     const sub = await (await registration()).pushManager.getSubscription();
@@ -120,7 +150,7 @@ export async function disablePush(): Promise<void> {
     /* no service worker: the server row is still removed below */
   }
   if (endpoint) await pushApi.deleteSubscription(endpoint);
-  write(DEVICE_KEY, null);
+  write(deviceKey(uid), null);
   emit();
 }
 
@@ -128,31 +158,33 @@ export async function disablePush(): Promise<void> {
  * On app start (signed in, online): if push is on here, make sure the browser still has the subscription and the
  * server has the current one (endpoints can change, e.g. after pushsubscriptionchange). Also refreshes cached prefs.
  */
-export async function refreshPushSubscription(): Promise<void> {
-  const device = getPushDevice();
-  if (!device || pushSupport() !== 'available' || Notification.permission !== 'granted') return;
+export async function refreshPushSubscription(uid: PushAccount, isCurrent: () => boolean = () => true): Promise<void> {
+  const device = getPushDevice(uid);
+  if (!uid || !device || pushSupport() !== 'available' || Notification.permission !== 'granted') return;
   const reg = await registration();
   let sub = await reg.pushManager.getSubscription();
   if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(vapidPublicKey()) as BufferSource });
   if (sub.endpoint !== device.endpoint) {
     await pushApi.saveSubscription(subscriptionBody(sub));
     await pushApi.deleteSubscription(device.endpoint).catch(() => undefined);
-    write(DEVICE_KEY, { endpoint: sub.endpoint });
+    if (!isCurrent()) return;
+    write(deviceKey(uid), { endpoint: sub.endpoint });
   }
-  cachePushPrefs(await pushApi.getPrefs());
+  const prefs = await pushApi.getPrefs();
+  if (isCurrent()) cachePushPrefs(uid, prefs); // the account changed meanwhile: don't cache under the old user
 }
 
 /** The service worker re-subscribed (pushsubscriptionchange): upload the new subscription. */
-export function listenForSubscriptionChanges(): () => void {
-  if (typeof navigator === 'undefined' || !navigator.serviceWorker) return () => undefined;
+export function listenForSubscriptionChanges(uid: PushAccount): () => void {
+  if (!uid || typeof navigator === 'undefined' || !navigator.serviceWorker) return () => undefined;
   const onMessage = (e: MessageEvent) => {
     const d = e.data as { type?: string; subscription?: PushSubscriptionJSON } | null;
-    if (d?.type !== 'lc-push-subscription-changed' || !d.subscription?.endpoint || !pushEnabledHere()) return;
-    const old = getPushDevice()?.endpoint;
+    if (d?.type !== 'lc-push-subscription-changed' || !d.subscription?.endpoint || !pushEnabledHere(uid)) return;
+    const old = getPushDevice(uid)?.endpoint;
     void pushApi
       .saveSubscription(subscriptionBody(d.subscription))
       .then(() => {
-        write(DEVICE_KEY, { endpoint: d.subscription!.endpoint });
+        write(deviceKey(uid), { endpoint: d.subscription!.endpoint });
         if (old && old !== d.subscription!.endpoint) return pushApi.deleteSubscription(old).then(() => undefined);
       })
       .catch(() => undefined);

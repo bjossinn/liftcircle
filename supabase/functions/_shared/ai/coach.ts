@@ -15,6 +15,8 @@ import { buildContext } from './context.ts';
 // @ts-ignore see above
 import { addUsage, AiUnavailableError, createMessage, estimateCostUsd, PROVIDER_NAMES, resolveProvider, type ProviderId } from './provider.ts';
 // @ts-ignore see above
+import { consentProvider, consentedProvider } from './consent.ts';
+// @ts-ignore see above
 import { alternativesFor, buildSessionAdjustment, MAX_TOOL_ROUNDS, runTool, TOOL_DEFS, type ToolState } from './tools.ts';
 // @ts-ignore see above
 import { describeSessionAdjustment, parseWorkoutContext, type WorkoutContext } from './workout.ts';
@@ -74,18 +76,7 @@ export function isConfigured(deps: CoachDeps): boolean {
   return resolveProvider(deps.env) !== null;
 }
 
-/** Consent is recorded per provider ("2026-10-29:openai"). Older versions without a suffix were given for Anthropic. */
-export function consentProvider(version: string | null | undefined): ProviderId | null {
-  if (!version) return null;
-  const tail = version.includes(':') ? version.slice(version.lastIndexOf(':') + 1).toLowerCase() : 'anthropic';
-  return tail === 'openai' || tail === 'anthropic' ? tail : null;
-}
-
-/** The provider this user agreed to; a consent recorded before versions existed counts as Anthropic. */
-export function consentedProvider(s: { consentAt?: string | null; consentVersion?: string | null } | null | undefined): ProviderId | null {
-  if (!s?.consentAt) return null;
-  return consentProvider(s.consentVersion || '2026-10-29');
-}
+export { consentProvider, consentedProvider };
 
 export async function handleAiCoach(deps: CoachDeps, uid: string, rawBody: unknown): Promise<CoachResult> {
   const body = (rawBody && typeof rawBody === 'object' ? rawBody : {}) as Record<string, unknown>;
