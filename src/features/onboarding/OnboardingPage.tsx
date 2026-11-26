@@ -16,10 +16,11 @@ import { alive, kvGet, kvSet, saveRecord } from '@/db/repo';
 import { createProgram } from '@/domain/program/program';
 import { emptyTemplate, generateProgram, suggestProgramName } from '@/domain/program/generator';
 import { splitKeyOfVersion } from '@/domain/program/splits';
-import { SPLITS } from '@/domain/program/templates';
+import { splitLabel } from '@/domain/program/localize';
 import { formatDate, todayISO } from '@/lib/dates';
 import type { AccountState, OnboardingAnswers, ProgramVersion, SplitKey } from '@/domain/types';
-import { DRAFT_KEY, migrateDraft, newDraft, QUESTION_STEPS, questionNumber, STEP_TITLES, stepsFor, validateStep, type Draft, type StepKey } from './draft';
+import { t as translate, useT } from '@/i18n';
+import { DRAFT_KEY, migrateDraft, newDraft, QUESTION_STEPS, questionNumber, stepsFor, stepTitle, validateStep, type Draft, type StepKey } from './draft';
 import { DaysStep, DurationStep, ExperienceStep, GoalStep, LimitsStep, LocationStep, ManualStep, WelcomeStep, type StepProps } from './steps';
 import { ResultStep } from './result';
 import { startFirstWorkout } from './firstWorkout';
@@ -51,6 +52,7 @@ export function profileFrom(a: OnboardingAnswers, prev: AccountState['profile'])
 export default function OnboardingPage() {
   const nav = useNavigate();
   const toast = useToast();
+  const { t, tp } = useT();
   const { db, account, accountReady, updateAccount } = useApp();
   const coachPlan = useLiveQuery(async () => alive(await db.programs.toArray()).find((p) => p.active && p.managedBy?.kind === 'coach'), [db]);
   const { list: catalog, byId } = useExercises();
@@ -75,7 +77,7 @@ export default function OnboardingPage() {
         if (cancelled) return;
         if (isDraft(saved)) {
           setDraftState(migrateDraft(saved));
-          if (saved.step !== 'welcome') toast.show('Picked up where you left off', { action: { label: 'Start over', onClick: () => setConfirmRestart(true) } });
+          if (saved.step !== 'welcome') toast.show(t('onboarding.resumed'), { action: { label: t('onboarding.restart'), onClick: () => setConfirmRestart(true) } });
         } else setDraftState(newDraft(account));
       });
     return () => {
@@ -87,10 +89,10 @@ export default function OnboardingPage() {
   // Persist after every change (debounced).
   useEffect(() => {
     if (!draft || finished.current) return;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       if (!finished.current) void kvSet(DRAFT_KEY, draft, db).catch(() => undefined);
     }, 250);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [draft, db]);
 
   const setDraft = useCallback((fn: (d: Draft) => Draft) => setDraftState((d) => (d ? fn(d) : d)), []);
@@ -107,7 +109,7 @@ export default function OnboardingPage() {
   if (!draft) {
     return (
       <div className="mx-auto max-w-2xl px-4">
-        <Spinner label="Loading setup" />
+        <Spinner label={t('onboarding.loading')} />
       </div>
     );
   }
@@ -174,24 +176,26 @@ export default function OnboardingPage() {
     } catch (e) {
       finished.current = false;
       accepting.current = false;
-      setSaveError(e instanceof Error ? e.message : 'Could not save. Please try again.');
+      // Raw storage/network error text isn't shown (it isn't translatable); the generic save error is.
+      console.warn('onboarding: saving the plan failed', e);
+      setSaveError(t('onboarding.saveError'));
       setSaving(false);
       return;
     }
     // The plan is saved from here on: never stay on this screen (a retry would save it again).
     void trackOnboardingCompleted(db, 'suggested');
     if (!start) {
-      toast.show('Plan saved. Start your first workout whenever you’re ready.', { tone: 'success' });
+      toast.show(t('onboarding.savedLater'), { tone: 'success' });
       return finish('/');
     }
     try {
       const r = await startFirstWorkout(program, today, { db, settings, catalog, experience });
       if (r.kind === 'started') return await finish(`/train/session/${r.session.id}`);
-      toast.show(r.kind === 'already_active' ? 'Plan saved. You already have a workout in progress: finish that one first.' : 'You’re ready to log your first workout.', {
+      toast.show(r.kind === 'already_active' ? t('onboarding.activeSession') : t('onboarding.readyToLog'), {
         tone: 'success',
       });
     } catch {
-      toast.show('Plan saved, but the workout couldn’t start. Start it from Today.', { tone: 'error' });
+      toast.show(t('onboarding.startFailed'), { tone: 'error' });
     }
     await finish('/');
   }
@@ -203,28 +207,31 @@ export default function OnboardingPage() {
     try {
       const a = draft.a;
       const letters = Array.from({ length: draft.manual.sessions }, (_, i) => String.fromCharCode(65 + i));
-      const templates = letters.map((l) => emptyTemplate(`custom:${l.toLowerCase()}`, `Session ${l}`));
+      // Stored plan text is canonical English (localized when shown, like generated plans).
+      const en = (key: Parameters<typeof translate>[0], params?: Parameters<typeof translate>[1]) => translate(key, params, 'en');
+      const templates = letters.map((l) => emptyTemplate(`custom:${l.toLowerCase()}`, en('onboarding.manualSessionName', { letter: l })));
       const days = [...draft.manual.days].sort((x, y) => ((x + 6) % 7) - ((y + 6) % 7));
       const version: ProgramVersion = {
         version: 1,
         createdAt: Date.now(),
-        reason: 'Created manually',
+        reason: en('onboarding.manualReason'),
         templates,
         schedule: days.map((weekday, i) => ({ weekday, templateId: templates[i % templates.length].id })),
         weeks: 8,
         reviewWeek: 8,
-        rationale: ['You chose to set up your own program. Add exercises to each session. Every change is saved as a version you can restore.'],
+        rationale: [en('onboarding.manualRationale')],
         warnings: [],
       };
       await deactivateOthers();
-      await saveRecord('programs', createProgram(null, version, today, 'My program', 'manual'), db);
+      await saveRecord('programs', createProgram(null, version, today, en('onboarding.myProgram'), 'manual'), db);
       await updateAccount((acc) => ({ ...acc, profile: { ...acc.profile, onboardedAt: Date.now() }, settings: { ...acc.settings, units: a.units } }));
       void trackOnboardingCompleted(db, 'manual');
-      toast.show('Program created: add your exercises', { tone: 'success' });
+      toast.show(t('onboarding.manualCreated'), { tone: 'success' });
       await finish('/train/program');
     } catch (e) {
       finished.current = false;
-      setSaveError(e instanceof Error ? e.message : 'Could not save. Please try again.');
+      console.warn('onboarding: creating the program failed', e);
+      setSaveError(t('onboarding.saveError'));
     } finally {
       setSaving(false);
     }
@@ -235,35 +242,41 @@ export default function OnboardingPage() {
   const isResult = step === 'result';
   const isManual = step === 'manual';
   const qn = questionNumber(step);
-  const primaryLabel = step === 'welcome' ? 'Get started' : step === QUESTION_STEPS[QUESTION_STEPS.length - 1] ? 'Build my plan' : 'Continue';
+  const primaryLabel = step === 'welcome' ? t('onboarding.getStarted') : step === QUESTION_STEPS[QUESTION_STEPS.length - 1] ? t('onboarding.buildPlan') : t('onboarding.continue');
   const hasErrors = Object.keys(errors).length > 0;
 
   return (
     <div className="mx-auto w-full max-w-2xl min-h-dvh flex flex-col">
       <header className="sticky top-0 z-10 bg-bg/95 backdrop-blur px-4 pt-3 pb-2">
         <div className="flex items-center gap-2 min-h-11">
-          <IconButton label={idx === 0 ? 'Close setup' : 'Back'} onClick={back}>
+          <IconButton label={idx === 0 ? t('onboarding.close') : t('onboarding.back')} onClick={back}>
             {idx === 0 ? <X className="size-5" /> : <ChevronLeft className="size-5" />}
           </IconButton>
           <span className="flex-1 text-sm text-muted" aria-live="polite">
-            {qn ? `Question ${qn} of ${QUESTION_STEPS.length}` : step === 'welcome' ? 'About a minute' : step === 'result' ? 'Your suggested plan' : 'Set up your own program'}
+            {qn
+              ? t('onboarding.questionCount', { current: qn, total: QUESTION_STEPS.length })
+              : step === 'welcome'
+                ? t('onboarding.aboutMinute')
+                : step === 'result'
+                  ? t('onboarding.suggestedPlan')
+                  : t('onboarding.setUpOwn')}
           </span>
           {idx > 0 && (
-            <IconButton label="Start over" onClick={() => setConfirmRestart(true)}>
+            <IconButton label={t('onboarding.restart')} onClick={() => setConfirmRestart(true)}>
               <RotateCcw className="size-4" />
             </IconButton>
           )}
         </div>
-        <ProgressBar value={idx + 1} max={steps.length} label="Setup progress" />
+        <ProgressBar value={idx + 1} max={steps.length} label={t('onboarding.progress')} />
       </header>
 
       <div className={`flex-1 px-4 ${isResult ? 'pb-44' : 'pb-32'}`}>
         <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-bold tracking-tight mt-4 mb-4 focus:outline-none">
-          {step === 'welcome' ? 'Welcome to Hard Earned' : STEP_TITLES[step]}
+          {step === 'welcome' ? t('onboarding.welcomeHeading') : stepTitle(step)}
         </h1>
         {hasErrors && (
           <Notice tone="danger" className="mb-4">
-            Please fix the highlighted {Object.keys(errors).length === 1 ? 'field' : 'fields'}.
+            {tp('onboarding.fixField', Object.keys(errors).length)}
           </Notice>
         )}
         {Comp && <Comp {...stepProps} />}
@@ -279,14 +292,14 @@ export default function OnboardingPage() {
             onShuffle={() => {
               const prev = { variant: draft.variant, version: draft.version, versionKey: draft.versionKey, regen: draft.regen };
               setDraft((d) => ({ ...d, variant: d.variant + 1, version: null, versionKey: null, regen: {} }));
-              toast.show('Exercises shuffled: same split', { action: { label: 'Undo', onClick: () => setDraft((d) => ({ ...d, ...prev })) } });
+              toast.show(t('onboarding.shuffled'), { action: { label: t('onboarding.undo'), onClick: () => setDraft((d) => ({ ...d, ...prev })) } });
             }}
             onSplit={(key: SplitKey) => {
               const prev = { splitPreference: draft.a.splitPreference, variant: draft.variant, version: draft.version, versionKey: draft.versionKey, regen: draft.regen };
               setDraft((d) => ({ ...d, a: { ...d.a, splitPreference: key }, variant: 0, version: null, versionKey: null, regen: {} }));
-              toast.show(`Split changed to ${SPLITS[key].label}`, {
+              toast.show(t('onboarding.splitChanged', { split: splitLabel(key) }), {
                 action: {
-                  label: 'Undo',
+                  label: t('onboarding.undo'),
                   onClick: () =>
                     setDraft((d) => {
                       const a = { ...d.a, splitPreference: prev.splitPreference };
@@ -300,8 +313,7 @@ export default function OnboardingPage() {
         )}
         {(isResult || isManual) && coachPlan && (
           <Notice tone="warn" className="mt-4">
-            Your current plan, “{coachPlan.name}”, is managed by {coachPlan.managedBy?.coachName ?? 'your coach'}. Starting this program makes it your
-            active plan instead. The coach’s plan and your workouts are kept, and your coaching relationship isn’t changed.
+            {t('onboarding.coachManaged', { planName: coachPlan.name, coachName: coachPlan.managedBy?.coachName ?? t('onboarding.yourCoach') })}
           </Notice>
         )}
         {saveError && (
@@ -316,15 +328,15 @@ export default function OnboardingPage() {
           {isResult ? (
             <>
               <Button variant="ghost" onClick={() => goTo(QUESTION_STEPS[0])}>
-                Edit answers
+                {t('onboarding.editAnswers')}
               </Button>
               <Button variant="primary" size="lg" className="flex-1" loading={saving} onClick={() => void accept({ start: true })}>
-                Accept & start
+                {t('onboarding.acceptStart')}
               </Button>
             </>
           ) : isManual ? (
             <Button variant="primary" size="lg" className="flex-1" loading={saving} onClick={createManual}>
-              Create my program
+              {t('onboarding.createOwn')}
             </Button>
           ) : (
             <Button variant="primary" size="lg" className="flex-1" onClick={next}>
@@ -340,7 +352,7 @@ export default function OnboardingPage() {
               disabled={saving}
               onClick={() => void accept({ start: false })}
             >
-              Save plan, start later
+              {t('onboarding.saveLater')}
             </button>
           </div>
         )}
@@ -348,9 +360,9 @@ export default function OnboardingPage() {
 
       <ConfirmDialog
         open={confirmRestart}
-        title="Start over?"
-        body="Your answers so far will be cleared."
-        confirmLabel="Start over"
+        title={t('onboarding.restartTitle')}
+        body={t('onboarding.restartBody')}
+        confirmLabel={t('onboarding.restart')}
         danger
         onCancel={() => setConfirmRestart(false)}
         onConfirm={() => {

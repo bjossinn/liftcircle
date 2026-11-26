@@ -3,18 +3,28 @@
  * without touching the selection logic. Everything here describes product defaults as defaults.
  */
 import type { Equipment, Experience, Goal, LimitationArea, Prescription } from '@/domain/types';
-import { WEEKDAY_SHORT } from '@/lib/dates';
-import { progressionRuleText } from '@/domain/progression';
+import { weekdayShort } from '@/lib/dates';
+import { PROGRESSION_STRINGS, progressionRuleText } from '@/domain/progression';
+import { getLanguage, listText as localeListText, t, type Language } from '@/i18n';
+import { localizeGeneratedText } from './localize';
 
-export const RIR_PLAIN =
-  'RIR means “reps in reserve”: stop each set with about that many reps left in the tank. RIR 2–3 = you could have done 2–3 more good reps.';
+/*
+ * Language: functions that build text the generator STORES (rationale, cues, notes) are called by the generator with
+ * 'en' — stored plan text is canonical English and is localized at render time (see ./localize.ts). Functions that
+ * only build display text default to the current UI language.
+ */
 
-export function rirPhrase(rir: number): string {
-  if (rir <= 0) return 'go close to your limit';
-  if (rir === 1) return 'stop with about 1 rep left in the tank';
-  return `stop with about ${rir} reps left in the tank`;
+/** English RIR explanation (canonical; part of stored rationale). Display: `rirPlain()`. */
+export const RIR_PLAIN = t('program.explain.rir', undefined, 'en');
+export const rirPlain = (language: Language = getLanguage()) => t('program.explain.rir', undefined, language);
+
+export function rirPhrase(rir: number, language: Language = getLanguage()): string {
+  if (rir <= 0) return t('program.explain.rirZero', undefined, language);
+  if (rir === 1) return t('program.explain.rirOne', undefined, language);
+  return t('program.explain.rirMany', { count: rir }, language);
 }
 
+/** English goal phrases (canonical, used inside stored rationale and by coach tools). Display: `goalText()`. */
 export const GOAL_TEXT: Record<Goal, string> = {
   build_muscle: 'build muscle',
   strength: 'get stronger',
@@ -22,13 +32,16 @@ export const GOAL_TEXT: Record<Goal, string> = {
   general_fitness: 'improve general fitness',
   endurance: 'improve endurance',
 };
+export const goalText = (goal: Goal, language: Language = getLanguage()) => t(`program.goalText.${goal}`, undefined, language);
 
+/** English experience phrases (canonical). Display: `experienceText()`. */
 export const EXPERIENCE_TEXT: Record<Experience, string> = {
   new: 'new to lifting',
   returning: 'returning after a break',
   intermediate: 'intermediate',
   advanced: 'advanced',
 };
+export const experienceText = (exp: Experience, language: Language = getLanguage()) => t(`program.experienceText.${exp}`, undefined, language);
 
 export const EQUIPMENT_TEXT: Record<Equipment, string> = {
   barbell: 'barbell',
@@ -58,81 +71,87 @@ export const LIMITATION_TEXT: Record<LimitationArea, string> = {
   ankle: 'ankles',
 };
 
-export function listText(items: string[]): string {
-  if (items.length <= 1) return items.join('');
-  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+/** Localized conjunction list ("A, B and C" / "A, B og C"): Intl.ListFormat, never a hand-built English " and ". */
+export function listText(items: readonly string[], language: Language = getLanguage()): string {
+  return localeListText(items, language);
 }
 
-export function weekdaysText(days: number[]): string {
+/** Monday-first, localized short weekday list: "Mon, Wed and Fri" / "mán., mið. og fös.". */
+export function weekdaysText(days: number[], language: Language = getLanguage()): string {
   const order = [1, 2, 3, 4, 5, 6, 0];
-  return listText([...days].sort((a, b) => order.indexOf(a) - order.indexOf(b)).map((d) => WEEKDAY_SHORT[d]));
+  return listText([...days].sort((a, b) => order.indexOf(a) - order.indexOf(b)).map((d) => weekdayShort(d, language)), language);
 }
 
-export function repRangeText(rx: Pick<Prescription, 'repMin' | 'repMax' | 'durationSec'>): string {
-  if (rx.durationSec) return `${rx.durationSec} s`;
-  return rx.repMin === rx.repMax ? `${rx.repMin}` : `${rx.repMin}–${rx.repMax}`;
+export function repRangeText(rx: Pick<Prescription, 'repMin' | 'repMax' | 'durationSec'>, language: Language = getLanguage()): string {
+  if (rx.durationSec) return t('program.explain.seconds', { seconds: rx.durationSec }, language);
+  return rx.repMin === rx.repMax ? `${rx.repMin}` : t('program.explain.repRange', { min: rx.repMin, max: rx.repMax }, language);
 }
 
-export function prescriptionText(rx: Prescription): string {
-  return `${rx.sets} × ${repRangeText(rx)} · RIR ${rx.targetRir} · rest ${restText(rx.restSec)}`;
+export function prescriptionText(rx: Prescription, language: Language = getLanguage()): string {
+  return t('program.explain.prescription', { sets: rx.sets, reps: repRangeText(rx, language), rir: rx.targetRir, rest: restText(rx.restSec, language) }, language);
 }
 
-export function restText(sec: number): string {
-  if (sec < 60) return `${sec} s`;
+export function restText(sec: number, language: Language = getLanguage()): string {
+  if (sec < 60) return t('program.explain.restSeconds', { seconds: sec }, language);
   const m = sec / 60;
-  return Number.isInteger(m) ? `${m} min` : `${Math.floor(m)}:${String(sec % 60).padStart(2, '0')} min`;
+  return Number.isInteger(m)
+    ? t('program.explain.restMinutes', { minutes: m }, language)
+    : t('program.explain.restMinutesSeconds', { minutes: Math.floor(m), secondsPadded: String(sec % 60).padStart(2, '0') }, language);
 }
 
-export function repsRationale(goal: Goal, experience: Experience): string {
+/* ---- rationale lines the generator stores: canonical English by default ('en'), localized on display. */
+export function repsRationale(goal: Goal, experience: Experience, language: Language = 'en'): string {
   const experienced = experience === 'intermediate' || experience === 'advanced';
-  if (goal === 'strength' && experienced)
-    return 'Main lifts use lower reps (3–6) for strength, with moderate-rep secondary work and higher-rep accessories. These ranges are adjustable product defaults.';
-  if (goal === 'strength')
-    return 'Main lifts start at 5–8 reps so you can practise technique before going heavier; accessories use 10–15 reps. These ranges are adjustable product defaults.';
-  if (goal === 'endurance')
-    return 'Strength work uses moderate reps (8–12) and accessories 12–15, so it supports your activity without leaving you very sore. Adjustable product defaults.';
-  return 'Most lifts use moderate rep ranges (about 8–12) and accessories 10–15 reps. Practical for building muscle. These are adjustable product defaults, not the only good choice.';
+  if (goal === 'strength' && experienced) return t('program.explain.repsStrength', undefined, language);
+  if (goal === 'strength') return t('program.explain.repsBeginner', undefined, language);
+  if (goal === 'endurance') return t('program.explain.repsEndurance', undefined, language);
+  return t('program.explain.repsDefault', undefined, language);
 }
 
-export function effortRationale(experience: Experience): string {
+export function effortRationale(experience: Experience, language: Language = 'en'): string {
   const start = experience === 'new' || experience === 'returning' ? 3 : 2;
-  return `Starting effort: ${rirPhrase(start)} (RIR ${start}). ${RIR_PLAIN}`;
+  return t('program.explain.startingEffort', { rirPhrase: rirPhrase(start, language), rir: start, rirExplanation: rirPlain(language) }, language);
 }
 
-export const CALIBRATION_RATIONALE =
-  'You don’t need to know your 1-rep max. Lifts without a known comfortable load start with a light calibration session: begin light and add small jumps until a set feels like about 2–3 reps left in the tank. We never guess a starting weight from age or bodyweight.';
+export const CALIBRATION_RATIONALE = t('program.explain.calibrationRationale', undefined, 'en');
 
-/* ---- per-exercise cues (generator writes them; plan screens de-duplicate them for display) */
-export const WARMUP_NONE = 'No separate warm-up needed. Make the first set an easy one.';
-export const WARMUP_SECONDARY = 'If these muscles haven’t worked yet today, do one lighter set of 8 first.';
-export const WARMUP_ACCESSORY = 'Your first set doubles as the warm-up. Start conservatively.';
-export const CALIBRATION_CUE = 'Calibration: start light and add small jumps until a set feels like about 2–3 reps left in the tank; log that as your starting load.';
-export const CALIBRATION_NOTE = 'First session is a light calibration session. No 1-rep max needed.';
-/** Shown once per session instead of on every exercise. */
-export const SESSION_CALIBRATION_TIP = 'Lifts marked “calibrate”: start light and add small jumps until a set feels like 2–3 reps left in the tank, then log that as your starting load.';
-export const SESSION_WARMUP_TIP = 'Other lifts: do one lighter set first if those muscles haven’t worked yet today; otherwise make the first set an easy one.';
+/* ---- per-exercise cues (generator writes them in English; plan screens de-duplicate and localize them for display) */
+export const WARMUP_NONE = t('program.explain.warmupNone', undefined, 'en');
+export const WARMUP_SECONDARY = t('program.explain.warmupSecondary', undefined, 'en');
+export const WARMUP_ACCESSORY = t('program.explain.warmupAccessory', undefined, 'en');
+export const CALIBRATION_CUE = t('program.explain.calibrationCue', undefined, 'en');
+export const CALIBRATION_NOTE = t('program.explain.calibrationNote', undefined, 'en');
+/** Shown once per session instead of on every exercise (English constants kept for compatibility; display uses the functions). */
+export const SESSION_CALIBRATION_TIP = t('program.explain.sessionCalibration', undefined, 'en');
+export const SESSION_WARMUP_TIP = t('program.explain.sessionWarmup', undefined, 'en');
+export const sessionCalibrationTip = (language: Language = getLanguage()) => t('program.explain.sessionCalibration', undefined, language);
+export const sessionWarmupTip = (language: Language = getLanguage()) => t('program.explain.sessionWarmup', undefined, language);
 
 /**
  * What to show on an exercise row: the warm-up cue without the repeated calibration sentence, or null
- * when it's one of the generic cues covered by the session-level tip. Custom (coach/user) text is kept.
+ * when it's one of the generic cues covered by the session-level tip. Custom (coach/user) text is kept as written;
+ * recognised generated cues are shown in the current language. (Stored cues are compared as exact English.)
  */
-export function exerciseCue(rx: Pick<Prescription, 'warmup'>): { cue: string | null; generic: boolean } {
+export function exerciseCue(rx: Pick<Prescription, 'warmup'>, language: Language = getLanguage()): { cue: string | null; generic: boolean } {
   const cue = (rx.warmup ?? '').replace(CALIBRATION_CUE, '').trim();
   if (!cue) return { cue: null, generic: false };
   if (cue === WARMUP_NONE || cue === WARMUP_SECONDARY || cue === WARMUP_ACCESSORY) return { cue: null, generic: true };
-  return { cue, generic: false };
+  return { cue: localizeGeneratedText(cue, language), generic: false };
 }
 /** Exercise note worth showing on the row (the default calibration note is covered by the session tip). */
-export function exerciseNote(rx: Pick<Prescription, 'notes'>): string | null {
-  return rx.notes && rx.notes !== CALIBRATION_NOTE ? rx.notes : null;
+export function exerciseNote(rx: Pick<Prescription, 'notes'>, language: Language = getLanguage()): string | null {
+  return rx.notes && rx.notes !== CALIBRATION_NOTE ? localizeGeneratedText(rx.notes, language) : null;
 }
 
-export const DURATION_RATIONALE =
-  'Estimated session times include a 5-minute general warm-up, setup, ramp-up sets and rest between sets.';
+export const DURATION_RATIONALE = t('program.explain.durationRationale', undefined, 'en');
 
-/** How load progression works for this user: worded by the progression engine itself (one rule, one description). */
-export function progressionRationale(beginner: boolean): string {
-  return progressionRuleText(beginner);
+/**
+ * How load progression works for this user: worded by the progression engine itself (one rule, one description).
+ * The generator stores it in English; display passes the UI language (falls back to English until the engine has it).
+ */
+export function progressionRationale(beginner: boolean, language: Language = 'en'): string {
+  const rule = progressionRuleText as (beginner: boolean, lang?: string) => string;
+  return language in PROGRESSION_STRINGS ? rule(beginner, language) : rule(beginner);
 }
 
 /** The progression sentence generated plans saved before 1.0.3 (kept only to recognise it in stored rationale). */
@@ -146,17 +165,26 @@ export function isGeneratedProgressionText(r: string): boolean {
 
 /**
  * A saved plan's rationale for display: the generated progression sentence is replaced by the engine's CURRENT text
- * for this user (plans store text, and the rule or the user's experience level may have changed since). Everything
- * else, including human-coach progression notes, is shown as saved.
+ * for this user (plans store text, and the rule or the user's experience level may have changed since). Other
+ * recognised generated lines are shown in the current language; everything else, including human-coach notes, is
+ * shown as saved.
  */
-export function currentRationale(rationale: readonly string[], beginner: boolean): string[] {
-  return rationale.map((r) => (isGeneratedProgressionText(r) ? progressionRationale(beginner) : r));
+export function currentRationale(rationale: readonly string[], beginner: boolean, language: Language = getLanguage()): string[] {
+  return rationale.map((r) => (isGeneratedProgressionText(r) ? progressionRationale(beginner, language) : localizeGeneratedText(r, language)));
 }
 
-export function limitationRationale(limits: LimitationArea[]): string {
-  return `We left out exercises that commonly load your ${listText(limits.map((l) => LIMITATION_TEXT[l]))}. This isn’t a diagnosis. If something you enjoy feels fine, you can swap it back in. If pain persists, consider a qualified professional.`;
+/** English names of limitation areas used inside the stored limitation rationale. */
+export function limitationRationale(limits: LimitationArea[], language: Language = 'en'): string {
+  const areas = language === 'en' ? limits.map((l) => LIMITATION_TEXT[l]) : limits.map((l) => lowerInitial(t(`workout.meta.limitation.${l}`, undefined, language), language));
+  return t('program.explain.limitationRationale', { areas: listText(areas, language) }, language);
 }
 
-export function blockRationale(weeks: number, reviewWeek: number): string {
-  return `This is a ${weeks}-week block. In week ${reviewWeek} we’ll prompt a review: how sessions felt, what progressed and whether to change days or exercises.`;
+export function blockRationale(weeks: number, reviewWeek: number, language: Language = 'en'): string {
+  return t('program.explain.blockRationale', { weeks, reviewWeek }, language);
+}
+
+/** Lower-cases a label's first letter for use inside a sentence; leaves acronyms ("EZ-stöng") alone. */
+export function lowerInitial(s: string, language: Language = getLanguage()): string {
+  if (s.length > 1 && s[1] !== s[1].toLocaleLowerCase(language === 'is' ? 'is-IS' : 'en-GB')) return s;
+  return s.charAt(0).toLocaleLowerCase(language === 'is' ? 'is-IS' : 'en-GB') + s.slice(1);
 }

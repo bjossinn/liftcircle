@@ -11,7 +11,8 @@
  * between the full-body "supporting strength" pair and an upper/lower pair.
  */
 import type { Experience, OnboardingAnswers, SplitKey } from '@/domain/types';
-import { SPLITS, type SplitDef } from './templates';
+import { getLanguage, t, tp, type Language } from '@/i18n';
+import { SPLITS, splitLabel, type SplitDef } from './templates';
 
 export type SplitFamily = 'full_body' | 'upper_lower' | 'ppl';
 
@@ -29,44 +30,45 @@ interface Entry {
   family: SplitFamily;
   /** Other intents this structure keeps reasonably well when the day count changes. */
   alsoFits?: SplitFamily[];
-  tradeoff: (exp: Experience) => string;
+  tradeoff: (exp: Experience, language: Language) => string;
 }
 
 const isNewer = (exp: Experience) => exp === 'new' || exp === 'returning';
-const onceWeeklyNote = (exp: Experience) => (isNewer(exp) ? ' Newer lifters usually learn the lifts faster with more frequent practice.' : '');
+const onceWeeklyNote = (exp: Experience, language: Language) => (isNewer(exp) ? ` ${t('program.split.tradeoff.newer', undefined, language)}` : '');
+const tr = (key: Parameters<typeof t>[0]) => (_e: Experience, language: Language) => t(key, undefined, language);
 
 /** First entry per day count = recommended default. */
 const STRENGTH: Record<number, Entry[]> = {
-  1: [{ key: 'fb1', family: 'full_body', alsoFits: ['upper_lower', 'ppl'], tradeoff: () => 'One session that practises every major movement. The only structure that covers everything on one day.' }],
+  1: [{ key: 'fb1', family: 'full_body', alsoFits: ['upper_lower', 'ppl'], tradeoff: tr('program.split.tradeoff.fb1') }],
   2: [
-    { key: 'fb2', family: 'full_body', tradeoff: () => 'Each muscle group twice a week, and missing a session still leaves a complete workout.' },
-    { key: 'ul2', family: 'upper_lower', alsoFits: ['ppl'], tradeoff: (e) => `More work per muscle in each session, but each muscle group is trained once a week.${onceWeeklyNote(e)}` },
+    { key: 'fb2', family: 'full_body', tradeoff: tr('program.split.tradeoff.fb2') },
+    { key: 'ul2', family: 'upper_lower', alsoFits: ['ppl'], tradeoff: (e, l) => `${t('program.split.tradeoff.ul2', undefined, l)}${onceWeeklyNote(e, l)}` },
   ],
   3: [
-    { key: 'fb3', family: 'full_body', tradeoff: () => 'Main lifts practised three times a week with shorter sessions. The easiest to recover from.' },
-    { key: 'ulf', family: 'upper_lower', alsoFits: ['full_body'], tradeoff: () => 'An upper, a lower and a full-body day. More work per session, upper and lower body each trained twice.' },
-    { key: 'ppl3', family: 'ppl', tradeoff: (e) => `Most work per muscle in each session, but each muscle group is trained once a week and a missed day skips a whole area.${onceWeeklyNote(e)}` },
+    { key: 'fb3', family: 'full_body', tradeoff: tr('program.split.tradeoff.fb3') },
+    { key: 'ulf', family: 'upper_lower', alsoFits: ['full_body'], tradeoff: tr('program.split.tradeoff.ulf') },
+    { key: 'ppl3', family: 'ppl', tradeoff: (e, l) => `${t('program.split.tradeoff.ppl3', undefined, l)}${onceWeeklyNote(e, l)}` },
   ],
   4: [
-    { key: 'ul4', family: 'upper_lower', alsoFits: ['ppl'], tradeoff: () => 'Each muscle group twice a week with focused sessions and a recovery day for each half.' },
-    { key: 'fb4', family: 'full_body', tradeoff: () => 'Four shorter full-body sessions. Frequent practice of every lift; handy when sessions are short.' },
+    { key: 'ul4', family: 'upper_lower', alsoFits: ['ppl'], tradeoff: tr('program.split.tradeoff.ul4') },
+    { key: 'fb4', family: 'full_body', tradeoff: tr('program.split.tradeoff.fb4') },
   ],
   5: [
-    { key: 'ulppl', family: 'ppl', alsoFits: ['upper_lower'], tradeoff: (e) => `Upper/lower plus push, pull and legs. High frequency and volume.${isNewer(e) ? ' Demanding to recover from when you’re newer.' : ''}` },
-    { key: 'ul5', family: 'upper_lower', alsoFits: ['full_body'], tradeoff: () => 'Upper/lower twice plus a full-body day. Twice-weekly frequency with less specialised days.' },
+    { key: 'ulppl', family: 'ppl', alsoFits: ['upper_lower'], tradeoff: (e, l) => `${t('program.split.tradeoff.ulppl', undefined, l)}${isNewer(e) ? ` ${t('program.split.tradeoff.ulpplNewer', undefined, l)}` : ''}` },
+    { key: 'ul5', family: 'upper_lower', alsoFits: ['full_body'], tradeoff: tr('program.split.tradeoff.ul5') },
   ],
   6: [
-    { key: 'ppl6', family: 'ppl', alsoFits: ['upper_lower'], tradeoff: () => 'Push, pull and legs twice each. High volume; needs good sleep and recovery.' },
-    { key: 'ul6', family: 'upper_lower', tradeoff: () => 'Upper and lower three times each. High frequency with moderate work per session.' },
+    { key: 'ppl6', family: 'ppl', alsoFits: ['upper_lower'], tradeoff: tr('program.split.tradeoff.ppl6') },
+    { key: 'ul6', family: 'upper_lower', tradeoff: tr('program.split.tradeoff.ul6') },
   ],
 };
 
 /** Endurance goal: supporting strength (1–2 sessions). */
 const ENDURANCE: Record<number, Entry[]> = {
-  1: [{ key: 'es', family: 'full_body', alsoFits: ['upper_lower', 'ppl'], tradeoff: () => 'One short full-body session for legs, hips, trunk and posture.' }],
+  1: [{ key: 'es', family: 'full_body', alsoFits: ['upper_lower', 'ppl'], tradeoff: tr('program.split.tradeoff.es1') }],
   2: [
-    { key: 'es', family: 'full_body', tradeoff: () => 'Two short full-body sessions that support your main activity without heavy leg fatigue on any one day.' },
-    { key: 'ul2', family: 'upper_lower', alsoFits: ['ppl'], tradeoff: () => 'Legs and hips get one focused session, so the other strength day leaves your legs fresh for key sessions.' },
+    { key: 'es', family: 'full_body', tradeoff: tr('program.split.tradeoff.es2') },
+    { key: 'ul2', family: 'upper_lower', alsoFits: ['ppl'], tradeoff: tr('program.split.tradeoff.esUpperLower') },
   ],
 };
 
@@ -92,12 +94,12 @@ export function effectiveLiftingDays(a: Pick<OnboardingAnswers, 'liftingDaysPerW
 
 const entriesFor = (goal: OnboardingAnswers['goal'], liftingDays: number): Entry[] => (goal === 'endurance' ? ENDURANCE : STRENGTH)[liftingDays] ?? [];
 
-/** Selectable structures for this many lifting days, recommended one first. */
-export function splitOptions(a: Pick<OnboardingAnswers, 'goal' | 'experience'>, liftingDays: number): SplitOption[] {
+/** Selectable structures for this many lifting days, recommended one first (label/tradeoff in the display language). */
+export function splitOptions(a: Pick<OnboardingAnswers, 'goal' | 'experience'>, liftingDays: number, language: Language = getLanguage()): SplitOption[] {
   return entriesFor(a.goal, liftingDays).map((e, i) => ({
     key: e.key,
-    label: SPLITS[e.key].label,
-    tradeoff: e.tradeoff(a.experience),
+    label: splitLabel(e.key, language),
+    tradeoff: e.tradeoff(a.experience, language),
     family: e.family,
     recommended: i === 0,
   }));
@@ -126,7 +128,10 @@ export interface SplitResolution {
   /** True when the plan uses exactly the user's explicit choice. */
   explicit: boolean;
   recommended: boolean;
-  /** Visible explanation when an explicit choice didn't fit the current days. */
+  /**
+   * Visible explanation when an explicit choice didn't fit the current days. `message` is canonical English (it is
+   * persisted in the version's warnings): display it with `localizeGeneratedText` from ./localize.
+   */
   adjustment?: { kind: 'mapped' | 'fallback'; message: string };
 }
 
@@ -156,14 +161,16 @@ export function resolveSplit(a: Pick<OnboardingAnswers, 'goal' | 'experience' | 
 
   const fam = splitFamily(requested);
   const near = entries.find((e) => e.family === fam) ?? entries.find((e) => e.alsoFits?.includes(fam));
-  const what = a.goal === 'endurance' ? `${liftingDays} supporting strength day${liftingDays === 1 ? '' : 's'} with an endurance goal` : `${liftingDays} lifting day${liftingDays === 1 ? '' : 's'}`;
-  const reqLabel = SPLITS[requested].label;
+  const endurance = a.goal === 'endurance';
+  const requestedSplit = SPLITS[requested].label;
   if (near) {
-    return result(near.key, { kind: 'mapped', message: `${reqLabel} doesn’t fit ${what}, so the plan uses the closest structure: ${SPLITS[near.key].label}.` });
+    const base = endurance ? 'program.split.fallbackEndurance' : 'program.split.fallbackLifting';
+    return result(near.key, { kind: 'mapped', message: tp(base, liftingDays, { requestedSplit, actualSplit: SPLITS[near.key].label }, 'en') });
   }
+  const base = endurance ? 'program.split.recommendedEndurance' : 'program.split.recommendedLifting';
   return result(entries[0].key, {
     kind: 'fallback',
-    message: `${reqLabel} doesn’t fit ${what}, so the plan uses the recommended ${SPLITS[entries[0].key].label}. You can pick another structure.`,
+    message: tp(base, liftingDays, { requestedSplit, actualSplit: SPLITS[entries[0].key].label }, 'en'),
   });
 }
 

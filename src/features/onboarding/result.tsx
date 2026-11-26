@@ -2,15 +2,15 @@
 import { useState } from 'react';
 import { LayoutGrid, Shuffle } from 'lucide-react';
 import { Badge, Button, Card, Notice, SectionTitle, Sheet } from '@/components/ui';
-import { LIMITATION_LABELS } from '@/data/exerciseMeta';
 import { weekdaysText } from '@/domain/program/explain';
 import { regenerateTemplates, suggestProgramName } from '@/domain/program/generator';
 import { effectiveLiftingDays, resolveSplit, splitKeyOfVersion } from '@/domain/program/splits';
-import { SPLITS } from '@/domain/program/templates';
+import { localizeGeneratedText, programDisplayName, splitLabel } from '@/domain/program/localize';
+import { locale, t, useT } from '@/i18n';
 import type { Exercise, ID, OnboardingAnswers, ProgramVersion, SessionTemplate, SplitKey } from '@/domain/types';
 import { PlanLegend, SessionCard, WeekStrip, WhyItFits } from '@/features/program/parts';
 import { trainingDaysOf, type Draft } from './draft';
-import { EXPERIENCE_OPTIONS, GOAL_OPTIONS, LOCATION_OPTIONS, SplitPicker } from './steps';
+import { EXPERIENCE_OPTIONS, GOAL_OPTIONS, limitationLabel, LOCATION_OPTIONS, SplitPicker } from './steps';
 
 /** One line restating the six answers, e.g. "Build muscle · New to lifting · Mon, Wed, Fri · 60 min · Gym". */
 export function answersSummary(a: OnboardingAnswers): string {
@@ -18,9 +18,9 @@ export function answersSummary(a: OnboardingAnswers): string {
     GOAL_OPTIONS.find((g) => g.value === a.goal)?.title,
     EXPERIENCE_OPTIONS.find((o) => o.value === a.experience)?.title,
     weekdaysText(trainingDaysOf(a)),
-    `${a.sessionMinutes} min`,
+    t('onboarding.result.minutes', { minutes: a.sessionMinutes }),
     LOCATION_OPTIONS.find((o) => o.value === a.location)?.title,
-    a.limitations.length ? `Careful with ${a.limitations.map((l) => LIMITATION_LABELS[l].toLowerCase()).join(', ')}` : undefined,
+    a.limitations.length ? t('onboarding.result.carefulWith', { areas: a.limitations.map((l) => limitationLabel(l).toLocaleLowerCase(locale())).join(', ') }) : undefined,
   ];
   return parts.filter(Boolean).join(' · ');
 }
@@ -46,8 +46,10 @@ export function ResultStep({
   /** Choose another split structure. */
   onSplit: (key: SplitKey) => void;
   setDraft: (fn: (d: Draft) => Draft) => void;
+  /** The block's start date, already formatted for display (not an ISO date). */
   today: string;
 }) {
+  const { t } = useT();
   const a = d.a;
   const unit = a.units.weight;
   const days = (t: SessionTemplate) => version.schedule.filter((s) => s.templateId === t.id).map((s) => s.weekday);
@@ -64,42 +66,42 @@ export function ResultStep({
   return (
     <div className="flex flex-col">
       <Card className="px-4 py-3">
-        <h2 className="text-lg font-semibold">{suggestProgramName(a, version)}</h2>
+        <h2 className="text-lg font-semibold">{programDisplayName(suggestProgramName(a, version))}</h2>
         <p className="text-sm mt-1" data-testid="answers-summary">
           {answersSummary(a)}
         </p>
         <p className="text-sm text-muted mt-1">
-          {version.weeks}-week block starting {today} · review in week {version.reviewWeek} · about {Math.round(totalMin / 5) * 5} min of training a week
+          {t('onboarding.result.block', { weeks: version.weeks, date: today, reviewWeek: version.reviewWeek, minutes: Math.round(totalMin / 5) * 5 })}
         </p>
         <div className="mt-3">
           <WeekStrip version={version} />
         </div>
         {shownKey && (
           <p className="text-sm mt-3">
-            <span className="text-muted">Split: </span>
-            <span className="font-medium">{SPLITS[shownKey].label}</span>
+            <span className="text-muted">{t('onboarding.result.splitLabel')} </span>
+            <span className="font-medium">{splitLabel(shownKey)}</span>
             {split.recommended && shownKey === split.key && ' '}
             {split.recommended && shownKey === split.key && (
               <Badge tone="accent" className="ml-1">
-                Recommended
+                {t('onboarding.result.recommended')}
               </Badge>
             )}
           </p>
         )}
         {split.adjustment && (
           <Notice tone="warn" className="mt-2 py-2.5">
-            {split.adjustment.message}
+            {localizeGeneratedText(split.adjustment.message)}
           </Notice>
         )}
         <div className="flex flex-wrap gap-2 mt-3">
           {split.options.length > 1 && (
             <Button size="sm" icon={<LayoutGrid className="size-4" />} onClick={() => setSplitOpen(true)}>
-              Change split
+              {t('onboarding.result.changeSplit')}
             </Button>
           )}
           {canShuffle && (
             <Button size="sm" variant="ghost" icon={<Shuffle className="size-4" />} onClick={onShuffle}>
-              Shuffle exercises
+              {t('onboarding.result.shuffle')}
             </Button>
           )}
         </div>
@@ -107,7 +109,7 @@ export function ResultStep({
 
       <WhyItFits version={version} defaultOpen={false} experience={a.experience} />
 
-      <SectionTitle>Sessions</SectionTitle>
+      <SectionTitle>{t('onboarding.result.sessions')}</SectionTitle>
       <PlanLegend />
       <div className="flex flex-col gap-3">
         {version.templates.map((t) => (
@@ -128,10 +130,10 @@ export function ResultStep({
         ))}
       </div>
 
-      <Sheet open={splitOpen} onClose={() => setSplitOpen(false)} title="Change split">
+      <Sheet open={splitOpen} onClose={() => setSplitOpen(false)} title={t('onboarding.result.changeSplit')}>
         {splitOpen && (
           <div className="flex flex-col gap-3">
-            <p className="text-sm text-muted">Pick how your {split.liftingDays} lifting sessions are organised. Changing the split rebuilds the sessions (edits to the current ones are replaced. You can undo).</p>
+            <p className="text-sm text-muted">{t('onboarding.result.splitDescription', { count: split.liftingDays })}</p>
             <SplitPicker
               a={a}
               showTitle={false}
