@@ -370,8 +370,17 @@ export interface AiUsage {
 export type AiProvider = 'anthropic' | 'openai';
 /** `provider`/`providerName`: which company the server sends AI requests to (named in consent and data texts).
  *  `consentCurrent: false` = the user agreed for a different provider and must agree again. */
+/**
+ * What the server supports (roadmap item 10): `stream` = server-sent progress and the finished reply; `cancel` = an
+ * acknowledged Stop. Older servers send neither: the app keeps the JSON request and shows no Stop button.
+ */
+export interface AiProtocol {
+  stream: boolean;
+  cancel: boolean;
+}
+
 export type AiAvailability =
-  | { available: true; provider?: AiProvider; providerName?: string; consentCurrent?: boolean }
+  | { available: true; provider?: AiProvider; providerName?: string; consentCurrent?: boolean; protocol?: AiProtocol }
   | { available: false; reason: 'not_configured' | 'provider_down' | 'offline' | 'disabled' | 'backend_missing' };
 
 export interface AiApi {

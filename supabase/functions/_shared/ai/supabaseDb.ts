@@ -7,8 +7,8 @@
  * - `admin` = service-role client, used ONLY for the service-only RPCs (usage counter, exchange record/lookup).
  */
 import type {
-  AccountStatePayload, ActiveProgramRow, AiAction, AiDb, AiSettingsRow, FoodLogPayload, GoalPayload, MeasurementPayload, RefExercise,
-  RefIngredient, RefRecipe, SessionPayload, StoredExchange, StoredMessage, UsageRow,
+  AccountStatePayload, ActiveProgramRow, AiAction, AiDb, AiSettingsRow, CancelResult, FoodLogPayload, GoalPayload, MeasurementPayload, RefExercise,
+  RefIngredient, RefRecipe, RequestState, SessionPayload, StoredExchange, StoredMessage, UsageRow,
 } from './types.ts';
 
 // Minimal structural view of supabase-js (query builders are thenables resolving to {data, error}).
@@ -25,7 +25,7 @@ interface SbResult<T> {
 }
 
 export class DbError extends Error {
-  constructor(message: string, readonly code?: string) {
+  constructor(message: string, readonly code?: string, readonly hint?: string) {
     super(message);
     this.name = 'DbError';
   }
@@ -33,9 +33,16 @@ export class DbError extends Error {
 
 async function run<T>(q: PromiseLike<SbResult<T>>): Promise<T | null> {
   const { data, error } = await q;
-  if (error) throw new DbError(error.message || 'Database error', error.code);
+  if (error) throw new DbError(error.message || 'Database error', error.code, error.hint);
   return data;
 }
+
+/** The function isn't in this database yet (migration not applied). */
+const missingFn = (code?: string) => code === 'PGRST202' || code === '42883';
+const REQUEST_STATES: RequestState[] = ['none', 'running', 'cancel_requested', 'cancelled', 'failed', 'succeeded'];
+/** Item 10 cancellation functions found in this database (cached per isolate once present). */
+let cancellationPresent = false;
+const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
 const payloads = <T>(rows: { payload: T }[] | null): T[] => (rows ?? []).map((r) => r.payload).filter(Boolean);
 
@@ -100,6 +107,32 @@ export function createSupabaseAiDb(user: SbClient, admin: SbClient): AiDb {
       const { error } = await admin.rpc('ai_fail_request', { p_user: uid, p_message_id: messageId, p_attempt: attempt, p_usage: usage });
       // Best effort: an older database (no RPC) simply keeps the old behaviour.
       if (error && error.code !== 'PGRST202' && error.code !== '42883') throw new DbError(error.message || 'Usage update failed', error.code);
+    },
+    async cancelSupported() {
+      if (cancellationPresent) return true;
+      const { error } = await admin.rpc('ai_request_status', { p_user: ZERO_UUID, p_message_id: ZERO_UUID });
+      if (error && missingFn(error.code)) return false;
+      if (error) throw new DbError(error.message || 'Status check failed', error.code);
+      cancellationPresent = true;
+      return true;
+    },
+    async requestState(uid, messageId) {
+      return this.requestStatus!(uid, messageId);
+    },
+    async requestStatus(uid, messageId) {
+      const d = await run<{ state?: string }>(admin.rpc('ai_request_status', { p_user: uid, p_message_id: messageId }));
+      const st = d?.state as RequestState | undefined;
+      return st && REQUEST_STATES.includes(st) ? st : 'none';
+    },
+    async cancelRequest(uid, messageId) {
+      const d = await run<{ status?: string }>(admin.rpc('ai_cancel_request', { p_user: uid, p_message_id: messageId }));
+      const st = d?.status;
+      if (st !== 'cancelled' && st !== 'cancel_requested' && st !== 'succeeded') throw new DbError('Unexpected response from ai_cancel_request.');
+      return { status: st } satisfies CancelResult;
+    },
+    async settleCancelled(uid, messageId, attempt, usage) {
+      const d = await run<{ settled?: boolean; refunded?: boolean }>(admin.rpc('ai_settle_cancelled', { p_user: uid, p_message_id: messageId, p_attempt: attempt, p_usage: usage }));
+      return { settled: d?.settled === true, refunded: d?.refunded === true };
     },
     async getUsage(uid, day) {
       const r = await run<{ requests: number; input_tokens: number; output_tokens: number; cost_usd: number | null } | null>(

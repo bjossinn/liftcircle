@@ -26,3 +26,8 @@ export function requireSupabase(): SupabaseClient {
 }
 
 export const publicAppUrl = (import.meta.env.VITE_PUBLIC_APP_URL as string | undefined) || (typeof location !== 'undefined' ? location.origin : '');
+
+/** Base URL of the Edge Functions (authenticated fetch for streaming; credentials never go in the URL). */
+export const functionsBaseUrl = (): string => `${String(url ?? '').replace(/\/+$/, '')}/functions/v1`;
+/** The publishable key sent as `apikey` with direct function calls (not a secret). */
+export const publishableApiKey = (): string => anonKey ?? '';
