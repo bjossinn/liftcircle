@@ -84,6 +84,18 @@ describe('six prompt modules', () => {
   });
 });
 
+describe('safety precautions kept through the compression (review P2-6)', () => {
+  it('pregnancy and medication questions get conservative guidance and a professional, in every style and output', () => {
+    for (const style of COACH_STYLES) for (const output of OUTPUTS) {
+      const text = staticInstructions({ style, output });
+      expect(text, `${style}/${output}`).toMatch(/Pregnancy, medication or a medical condition: also say to check with their doctor or midwife/);
+      expect(text).toMatch(/No diagnoses or clinical certainty: general, conservative guidance only/);
+    }
+    expect(SYSTEM_RULES).toMatch(/Pregnancy/);
+    expect(SYSTEM_RULES).toMatch(/medication/);
+  });
+});
+
 describe('composition', () => {
   it('orders static modules → controls → app guide → data, with extra controls among the controls', async () => {
     const ctx = await buildContext({ db: db(), uid: 'u', settings: settings(), text: 'I’m exhausted', mode: 'chat', now: NOW, output: 'structured' });

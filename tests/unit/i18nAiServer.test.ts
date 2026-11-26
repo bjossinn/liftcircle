@@ -172,11 +172,15 @@ describe('handler: Icelandic deterministic replies', () => {
     const is = await handleAiCoach(deps(f.db, provider([text('Hér er planið: lax á mánudag …')]).fetch), U, send('Búðu til matseðil fyrir næstu viku', 2, { language: 'is' }));
     expect(content(is)).toMatch(/^Hér er matseðill fyrir 7 daga \(mán\. 30\. nóv\. til sun\. 6\. des\.\)\. Ýttu á \*\*Bæta við matseðilinn minn\*\* til að vista hann í appinu\./);
     expect(content(is)).not.toMatch(/Add to my meal plan/);
-    // An empty model reply to "ok" with the Icelandic app language: Icelandic, not English.
-    const ok = await handleAiCoach(deps(f.db, provider([text('')]).fetch), U, send('ok', 3, { language: 'is' }));
+    // An empty model reply to "ok" with the Icelandic app language: Icelandic, not English. Text path: the server's own
+    // sentence; Structured Outputs: never a stored success (review P2-1), the error copy follows the language.
+    const TEXT = { AI_STRUCTURED_OUTPUT: 'off' };
+    const ok = await handleAiCoach(deps(f.db, provider([text('')]).fetch, TEXT), U, send('ok', 3, { language: 'is' }));
     expect(content(ok)).toBe('Því miður tókst mér ekki að svara. Prófaðu að spyrja aftur.');
-    const okEn = await handleAiCoach(deps(f.db, provider([text('')]).fetch), U, send('ok', 4));
+    const okEn = await handleAiCoach(deps(f.db, provider([text('')]).fetch, TEXT), U, send('ok', 4));
     expect(content(okEn)).toBe('Sorry — I couldn’t put together a reply. Please try asking again.');
+    const blank = await handleAiCoach(deps(f.db, provider([text('')]).fetch), U, send('ok', 5, { language: 'is' }));
+    expect(blank).toMatchObject({ status: 502, body: { code: 'invalid_reply', error: 'Ekki tókst að yfirfara svarið. Reyndu aftur.' } });
   });
 
   it('the model is told the reply language when the app sends one (older apps: prompt unchanged)', async () => {
@@ -190,7 +194,7 @@ describe('handler: Icelandic deterministic replies', () => {
 
   it('a meal plan the server cannot build says why, in Icelandic', async () => {
     const f = fakeDb({ profile: true, training: true, measurements: false, nutrition: false });
-    const res = await handleAiCoach(deps(f.db, provider([toolUse('propose_meal_plan', {}), text('')]).fetch), U, send('Búðu til matseðil', 1, { language: 'is' }));
+    const res = await handleAiCoach(deps(f.db, provider([toolUse('propose_meal_plan', {}), text('')]).fetch, { AI_STRUCTURED_OUTPUT: 'off' }), U, send('Búðu til matseðil', 1, { language: 'is' }));
     expect(res.status).toBe(200);
     expect(mealPlanBlocker({ shared: false, enabled: true, autoDisabled: false, proteinG: 180, kcal: null, macros: false }, 'is'))
       .toBe('Þú deilir ekki næringargögnum með Æfingaaðstoð. Þú getur breytt því í stillingum Æfingaaðstoðar. [[open:/coaching/ai/settings|Opna stillingar]]');

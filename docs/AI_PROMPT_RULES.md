@@ -72,3 +72,5 @@ enforcement that does not depend on the model reading the prompt, and a regressi
 | R43 | Validated in-app links only, at end, ≤ 2 screen links | response | only with paths from the app guide | `validateOpenLinks()` with the feature-filtered guide | tests/unit/aiAppGuide.test.ts |
 | R44 | Optional short rationale ("Why this?") | response | Why this? | `splitWhy()` (text) or the strict `{answer, why}` envelope (structured.ts) | tests/unit/aiStructured.test.ts |
 | R45 | All rules apply in every language | response | All rules apply in every language. | — | tests/unit/ai.test.ts |
+| R46 | Pregnancy questions: general, conservative guidance and a qualified professional (restored, review round 2) | safety | Pregnancy, medication or a medical condition | — | tests/unit/aiReviewServer.test.ts |
+| R47 | Medication questions: general, conservative guidance and a qualified professional (restored, review round 2) | safety | medication or a medical condition: also say to check with their doctor or midwife | — | tests/unit/aiReviewServer.test.ts |

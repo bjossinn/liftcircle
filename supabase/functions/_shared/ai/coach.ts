@@ -278,7 +278,9 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   // Failure accounting (1.0.3): a request that fails gives its daily allowance back, and tokens from provider rounds that
   // did complete are booked as FAILED usage — never as a successful exchange. The database decides: the call is a no-op
   // unless this attempt still owns the running request (so a lost response after the answer was stored never refunds).
-  const tally = { inputTokens: 0, outputTokens: 0, unknown: false };
+  // attempts: provider requests dispatched (every round and retry); unknown: one of them may have been billed but
+  // produced no known usage (aborted, timed out, network error, unreadable body) — reported as unknown, never as zero.
+  const tally = { inputTokens: 0, outputTokens: 0, unknown: false, attempts: 0 };
   let settled = false;
   const attemptUsage = () => ({
     inputTokens: tally.inputTokens,
@@ -297,16 +299,31 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   };
   // Item 10: the user stopped the reply. The worker acknowledges (cancelled, one refund, completed-round tokens booked);
   // nothing is published. Never treated as a provider failure or a timeout.
+  // Only an AUTHORITATIVE confirmation counts as stopped (review P2-3): the settlement succeeded, or the database says the
+  // request is cancelled (e.g. the expiry finalizer got there first). Otherwise the state stays unconfirmed and the app
+  // keeps checking the same id (bounded) — it is never told "stopped" on a guess.
+  let cancelConfirmed = false;
   const cancelled = async (): Promise<CoachResult> => {
     if (!settled) {
       settled = true;
       try {
-        if (attempt) await deps.db.settleCancelled?.(uid, id, attempt, attemptUsage());
+        if (attempt) cancelConfirmed = (await deps.db.settleCancelled?.(uid, id, attempt, attemptUsage()))?.settled === true;
       } catch (e) {
         deps.log?.('ai_settle_cancel_error', { code: (e as { code?: string })?.code ?? null });
       }
     }
-    deps.log?.('ai_cancelled', { input_tokens: tally.inputTokens, output_tokens: tally.outputTokens });
+    if (!cancelConfirmed) {
+      try {
+        cancelConfirmed = (await (deps.db.requestStatus ?? deps.db.requestState)?.call(deps.db, uid, id)) === 'cancelled';
+      } catch {
+        cancelConfirmed = false;
+      }
+    }
+    if (!cancelConfirmed) {
+      deps.log?.('ai_cancel_unconfirmed', { attempts: tally.attempts });
+      return err(409, 'cancel_unconfirmed', t('aiServer.error.inProgress'), { reason: 'cancel_unconfirmed' });
+    }
+    deps.log?.('ai_cancelled', { input_tokens: tally.inputTokens, output_tokens: tally.outputTokens, attempts: tally.attempts, unknown_usage: tally.unknown });
     return err(409, 'request_cancelled', t('aiServer.error.requestCancelled'), { reason: 'cancelled', usage: await usageFor(deps, uid).catch(() => null) });
   };
   const recordOnce = async <T,>(record: () => Promise<T>): Promise<T> => {
@@ -318,8 +335,34 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
     // Cooperative cancellation: a bounded poll of this request's state aborts the attempt-owned signal.
     const cancelCtl = new AbortController();
     const poll = attempt && deps.db.requestState ? startCancelPoll(deps, uid, id, cancelCtl, intEnv(deps, 'AI_CANCEL_POLL_MS', 1500, 200, 10_000)) : null;
+    // Every dispatched provider request is counted; one that never yields known usage marks this attempt "unknown".
+    const metered: FetchLike = async (url, init) => {
+      tally.attempts += 1;
+      let res: Awaited<ReturnType<FetchLike>>;
+      try {
+        res = await deps.fetch(url, init);
+      } catch (e) {
+        tally.unknown = true; // aborted / timed out / network: it may still have been billed
+        throw e;
+      }
+      return {
+        ok: res.ok,
+        status: res.status,
+        headers: res.headers,
+        text: () => res.text(),
+        json: async () => {
+          try {
+            return await res.json();
+          } catch (e) {
+            if (res.ok) tally.unknown = true;
+            throw e;
+          }
+        },
+      };
+    };
     const phaseDeps: CoachDeps = {
       ...deps,
+      fetch: metered,
       onPhase: (p) => {
         try {
           hooks.onPhase?.(p);
@@ -385,7 +428,7 @@ interface Answering {
   workout: WorkoutContext | null;
   prov: NonNullable<ReturnType<typeof resolveProvider>>;
   settings: AiSettingsRow;
-  tally: { inputTokens: number; outputTokens: number; unknown: boolean };
+  tally: { inputTokens: number; outputTokens: number; unknown: boolean; attempts: number };
   fail: () => Promise<void>;
   /** Settle as cancelled (item 10) and build the response. */
   cancelled: () => Promise<CoachResult>;
@@ -514,7 +557,7 @@ async function answer(a: Answering): Promise<CoachResult> {
   } catch (e) {
     if (e instanceof AiCancelledError) return await cancelled();
     if (e instanceof AiUnavailableError) {
-      deps.log?.('ai_provider_error', { provider: prov.provider, kind: e.kind, status: e.status ?? null, reason: e.reason, rounds });
+      deps.log?.('ai_provider_error', { provider: prov.provider, kind: e.kind, status: e.status ?? null, reason: e.reason, rounds, attempts: tally.attempts, unknown_usage: tally.unknown });
       await fail();
       // i18n: no approved Icelandic copy for "unavailable right now" (provider_down) — it stays English (code is stable).
       const message = e.reason === 'not_configured' && toolLang === 'is' ? sharedT('is').t('aiServer.error.notConfigured') : e.message;
@@ -714,6 +757,7 @@ async function answer(a: Answering): Promise<CoachResult> {
     full_recipe: fullRecipe,
     open_request: ctx.openRequest?.intent ?? null,
     // Item 10: which prompt produced this (version + hash of the static modules) and the assembled size.
+    attempts: (a.tally as { attempts?: number }).attempts ?? rounds,
     prompt_version: ctx.prompt.version,
     prompt_hash: ctx.prompt.staticHash,
     system_chars: system.length,

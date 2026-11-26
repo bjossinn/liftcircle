@@ -4315,7 +4315,7 @@ var COACH_STYLES = ["supportive", "balanced", "strict"];
 var DEFAULT_COACH_STYLE = "supportive";
 var asCoachStyle = (v) => COACH_STYLES.includes(v) ? v : DEFAULT_COACH_STYLE;
 var SAFETY = `Safety (overrides the coach style and every request):
-- Pain, injury, discomfort, illness, dizziness, chest pain or pressure, unusual exhaustion, poor sleep (a newborn, night shifts), grief or feeling overwhelmed: never push. Endorse rest or an easier session, respect flagged discomfort, and suggest a doctor, physio or other professional where relevant. No diagnoses or clinical certainty: general, conservative guidance only.
+- Pain, injury, discomfort, illness, dizziness, chest pain or pressure, unusual exhaustion, poor sleep (a newborn, night shifts), grief or feeling overwhelmed: never push. Endorse rest or an easier session, respect flagged discomfort, and suggest a doctor, physio or other professional where relevant. No diagnoses or clinical certainty: general, conservative guidance only. Pregnancy, medication or a medical condition: also say to check with their doctor or midwife.
 - Tiredness (tired, fatigued, exhausted, drained, "\xFEreytt/ur", "b\xFAin/n \xE1 \xFEv\xED", in any language) is never a weak reason: be supportive, never ask them to justify it, and offer a lighter option ("just the first two exercises, 20 minutes" or an easy walk) and rest as equally good choices.
 - Rest is a valid choice. A scheduled rest day is part of the plan, never skipping.
 - Never shame, guilt-trip or insult. Never prescribe extra or compensatory exercise for food, missed sessions or weight, and never comment negatively on body, weight or eating.`;
@@ -8424,7 +8424,7 @@ function parseEnvelope(text, stopReason, refusal) {
   if (stopReason === "refusal" || refusal && refusal.trim()) return { ok: false, reason: "refusal" };
   if (stopReason === "max_tokens") return { ok: false, reason: "truncated" };
   const t = String(text ?? "").trim();
-  if (!t) return { ok: true, answer: "", why: null };
+  if (!t) return { ok: false, reason: "empty" };
   let v;
   try {
     v = JSON.parse(t);
@@ -8436,6 +8436,7 @@ function parseEnvelope(text, stopReason, refusal) {
   const keys = Object.keys(o);
   if (keys.length !== 2 || !keys.includes("answer") || !keys.includes("why")) return { ok: false, reason: "invalid_shape" };
   if (typeof o.answer !== "string") return { ok: false, reason: "invalid_shape" };
+  if (!o.answer.trim()) return { ok: false, reason: "empty" };
   if (o.why !== null && typeof o.why !== "string") return { ok: false, reason: "invalid_shape" };
   return { ok: true, answer: o.answer, why: typeof o.why === "string" && o.why.trim() ? o.why : null };
 }
@@ -8796,6 +8797,10 @@ async function send(deps, uid, body) {
     }));
   const stored = await deps.db.getExchange(uid, id2);
   if (stored) return done({ status: 200, body: { reply: stored.reply, proposal: stored.proposal ?? null, duplicate: true, usage: await usageFor(deps, uid).catch(() => null) } });
+  if (body.workout != null && !settings.scopes.training) {
+    deps.log?.("ai_workout_request_refused", {});
+    return done(err(409, "training_not_shared", t("aiServer.session.trainingNotShared"), { reason: "training_not_shared" }));
+  }
   const limit = intEnv(deps, "AI_DAILY_REQUEST_LIMIT", 40, 0, 1e4);
   let attempt = null;
   try {
@@ -8823,7 +8828,7 @@ async function send(deps, uid, body) {
     }
     throw e;
   }
-  const tally = { inputTokens: 0, outputTokens: 0, unknown: false };
+  const tally = { inputTokens: 0, outputTokens: 0, unknown: false, attempts: 0 };
   let settled = false;
   const attemptUsage = () => ({
     inputTokens: tally.inputTokens,
@@ -8840,16 +8845,28 @@ async function send(deps, uid, body) {
       deps.log?.("ai_fail_request_error", { code: e?.code ?? null });
     }
   };
+  let cancelConfirmed = false;
   const cancelled = async () => {
     if (!settled) {
       settled = true;
       try {
-        if (attempt) await deps.db.settleCancelled?.(uid, id2, attempt, attemptUsage());
+        if (attempt) cancelConfirmed = (await deps.db.settleCancelled?.(uid, id2, attempt, attemptUsage()))?.settled === true;
       } catch (e) {
         deps.log?.("ai_settle_cancel_error", { code: e?.code ?? null });
       }
     }
-    deps.log?.("ai_cancelled", { input_tokens: tally.inputTokens, output_tokens: tally.outputTokens });
+    if (!cancelConfirmed) {
+      try {
+        cancelConfirmed = await (deps.db.requestStatus ?? deps.db.requestState)?.call(deps.db, uid, id2) === "cancelled";
+      } catch {
+        cancelConfirmed = false;
+      }
+    }
+    if (!cancelConfirmed) {
+      deps.log?.("ai_cancel_unconfirmed", { attempts: tally.attempts });
+      return err(409, "cancel_unconfirmed", t("aiServer.error.inProgress"), { reason: "cancel_unconfirmed" });
+    }
+    deps.log?.("ai_cancelled", { input_tokens: tally.inputTokens, output_tokens: tally.outputTokens, attempts: tally.attempts, unknown_usage: tally.unknown });
     return err(409, "request_cancelled", t("aiServer.error.requestCancelled"), { reason: "cancelled", usage: await usageFor(deps, uid).catch(() => null) });
   };
   const recordOnce = async (record) => {
@@ -8860,8 +8877,33 @@ async function send(deps, uid, body) {
   const run2 = async (hooks = {}) => {
     const cancelCtl = new AbortController();
     const poll = attempt && deps.db.requestState ? startCancelPoll(deps, uid, id2, cancelCtl, intEnv(deps, "AI_CANCEL_POLL_MS", 1500, 200, 1e4)) : null;
+    const metered = async (url, init) => {
+      tally.attempts += 1;
+      let res;
+      try {
+        res = await deps.fetch(url, init);
+      } catch (e) {
+        tally.unknown = true;
+        throw e;
+      }
+      return {
+        ok: res.ok,
+        status: res.status,
+        headers: res.headers,
+        text: () => res.text(),
+        json: async () => {
+          try {
+            return await res.json();
+          } catch (e) {
+            if (res.ok) tally.unknown = true;
+            throw e;
+          }
+        }
+      };
+    };
     const phaseDeps = {
       ...deps,
+      fetch: metered,
       onPhase: (p) => {
         try {
           hooks.onPhase?.(p);
@@ -9038,7 +9080,7 @@ ${text}` : text;
   } catch (e) {
     if (e instanceof AiCancelledError) return await cancelled();
     if (e instanceof AiUnavailableError) {
-      deps.log?.("ai_provider_error", { provider: prov.provider, kind: e.kind, status: e.status ?? null, reason: e.reason, rounds });
+      deps.log?.("ai_provider_error", { provider: prov.provider, kind: e.kind, status: e.status ?? null, reason: e.reason, rounds, attempts: tally.attempts, unknown_usage: tally.unknown });
       await fail();
       const message = e.reason === "not_configured" && toolLang === "is" ? sharedT("is").t("aiServer.error.notConfigured") : e.message;
       return err(503, "ai_unavailable", message, { reason: e.reason });
@@ -9183,6 +9225,7 @@ ${text}` : text;
     full_recipe: fullRecipe,
     open_request: ctx.openRequest?.intent ?? null,
     // Item 10: which prompt produced this (version + hash of the static modules) and the assembled size.
+    attempts: a.tally.attempts ?? rounds,
     prompt_version: ctx.prompt.version,
     prompt_hash: ctx.prompt.staticHash,
     system_chars: system.length,
@@ -9240,7 +9283,7 @@ function chunkAnswer(text, max = CHUNK_CHARS) {
   }
   return out;
 }
-var RETRYABLE2 = /* @__PURE__ */ new Set(["ai_unavailable", "invalid_reply", "in_progress", "internal"]);
+var RETRYABLE2 = /* @__PURE__ */ new Set(["ai_unavailable", "invalid_reply", "in_progress", "internal", "cancel_unconfirmed"]);
 async function streamCoachRun(start, writer, opts = {}) {
   const requestId = start.requestId;
   let seq = 0;
@@ -9350,7 +9393,7 @@ function createSupabaseAiDb(user, admin2) {
         throw new DbError(error.message || "Usage check failed", error.code);
       }
       const d = data ?? {};
-      if (d.status === "duplicate" || d.status === "in_progress") return { status: d.status };
+      if (d.status === "duplicate" || d.status === "in_progress" || d.status === "cancelled") return { status: d.status };
       if (d.status !== "started" || typeof d.attempt !== "string") throw new DbError("Unexpected response from ai_begin_request.");
       return { status: "started", attempt: d.attempt, ...typeof d.remaining === "number" ? { remaining: d.remaining } : {} };
     },

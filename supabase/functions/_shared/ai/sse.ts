@@ -51,7 +51,7 @@ export function chunkAnswer(text: string, max = CHUNK_CHARS): string[] {
 }
 
 /** Codes the app may retry on its own initiative (a new attempt with the same message id). */
-const RETRYABLE = new Set(['ai_unavailable', 'invalid_reply', 'in_progress', 'internal']);
+const RETRYABLE = new Set(['ai_unavailable', 'invalid_reply', 'in_progress', 'internal', 'cancel_unconfirmed']);
 
 export interface SseWriter {
   write(chunk: string): void | Promise<void>;

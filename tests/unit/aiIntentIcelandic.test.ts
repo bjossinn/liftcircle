@@ -223,7 +223,7 @@ async function chat(t: string, replies: unknown[], opts: DbOpts & { body?: Recor
   const conv = conversationDb(opts);
   const p = provider(replies);
   const res = await handleAiCoach(deps(conv.db, p.fetch), U, send(t, opts.body));
-  return { reply: res.body.reply as Reply, requests: p.requests, conv, status: res.status };
+  return { reply: res.body.reply as Reply, requests: p.requests, conv, status: res.status, body: res.body };
 }
 const toolCtx = (requestText?: string, recipes: RefRecipe[] = ALL_RECIPES, f: Partial<UserFacts> = {}) => {
   const db = conversationDb({ recipes }).db;
@@ -754,10 +754,12 @@ describe('context: sharing, untrusted snapshot text, finished workouts, reply la
       // App language Icelandic: the reply language is Icelandic (an ambiguous "ok" never defaults to English).
       expect(resolveReplyLang({ text: c.text, setting: e.settingsLanguage, history: ['Hi there'] })).toBe(e.responseLanguage);
       const body = { language: e.settingsLanguage, ...(e.mustUseEngineTargetExactly ? { workout: live({ intent: 'explain', shownTarget: 'Add weight → 62.5 kg × 8' }) } : {}) };
-      // The model returns nothing usable, so the reply is the server's own sentence — in the resolved language.
-      const { reply, requests } = await chat(c.text, [text('')], { body, messages: [{ id: 'h1', role: 'user', content: 'Hi there', createdAt: '2026-11-26T09:00:00Z' }] });
-      expect(reply.content).toMatch(/[áðéíóúýþæö]/i);
-      expect(reply.content).not.toMatch(/Sorry/);
+      // The model returns nothing usable: a blank reply is never stored as a charged success (review P2-1); the server's
+      // own message is in the resolved language.
+      const { requests, status, body: res } = await chat(c.text, [text('')], { body, messages: [{ id: 'h1', role: 'user', content: 'Hi there', createdAt: '2026-11-26T09:00:00Z' }] });
+      expect(status).toBe(502);
+      expect(String(res.error)).toMatch(/[áðéíóúýþæö]/i);
+      expect(String(res.error)).not.toMatch(/Sorry|could not/);
       if (e.mustUseEngineTargetExactly) expect(systemOf(requests[0])).toContain('62.5 kg × 8');
     }
   });

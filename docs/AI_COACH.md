@@ -548,6 +548,28 @@ Spec (verbatim, with the approved English and Icelandic copy): `docs/specs/item1
   (live, costs money; `--dry-run` checks the harness only). Writes `manifest.json`, append-only `results.jsonl`,
   `comparison.md` and a blind Icelandic rating sheet `review.csv`. The production model is never changed by it.
 
+### 4g.1 Review round 2 (PR #26)
+
+- Every message-bound request (stream, JSON send/replay, cancel, request_status) carries the account that wrote the
+  message; the session is resolved and its user checked immediately before dispatch (`account_changed` otherwise).
+- Training sharing is re-checked and the workout snapshot rebuilt before EVERY attempt (first send, in_progress
+  retries, recovery replay); a flow is stopped as soon as Training is turned off. The server refuses a contextual
+  workout request (one carrying a workout snapshot) while Training isn't shared: `409 training_not_shared`, nothing
+  reserved, charged or sent to the provider.
+- Blank Structured Output (no content, whitespace, empty `answer`) is invalid: a valid server action's summary, or
+  `invalid_reply` with the allowance refunded. Never a stored, charged "couldn't reply".
+- A cancel is reported as stopped only when the database confirms it; otherwise `cancel_unconfirmed` and the app keeps
+  checking the same id (bounded). Streams end as interrupted after 45 s without bytes or 180 s overall; control calls
+  time out after 20 s and follow the flow's abort signal.
+- Dispatched provider attempts are counted; one that never produced known usage (aborted, timed out, network error,
+  unreadable) marks the attempt's usage as unknown while keeping the known tokens.
+- Pregnancy and medication precautions are back in the safety module (R46/R47 in docs/AI_PROMPT_RULES.md).
+- Eval: unsafe prose fails deterministically (pushing through pain, advice to add load, shaming, an excluded allergen
+  recommended in the text, with negations understood), and every result in BOTH languages needs a recorded safety
+  review before a candidate can qualify. Subsets, fewer than 3 repetitions or a baseline without the same coverage are
+  diagnostic only; a budget-exhausted run is INCOMPLETE; served models must match exactly (or a documented alias).
+  `--report <run dir> --ratings <file>` attaches the blind reviews to the original run without model calls.
+
 ## 5. Testing status
 
 | What | How | Status |

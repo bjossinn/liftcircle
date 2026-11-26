@@ -47,18 +47,19 @@ export function outputFormatFor(prov: Pick<ResolvedProvider, 'provider' | 'model
   return modelSupportsStructured(prov.provider, prov.model) ? 'json_schema' : 'text';
 }
 
-export type Envelope = { ok: true; answer: string; why: string | null } | { ok: false; reason: 'refusal' | 'truncated' | 'invalid_json' | 'invalid_shape' };
+export type Envelope = { ok: true; answer: string; why: string | null } | { ok: false; reason: 'refusal' | 'truncated' | 'invalid_json' | 'invalid_shape' | 'empty' };
 
 /**
  * The final round's text as the envelope. Refusal and truncation are reported as such (never parsed as JSON); anything
- * that isn't exactly {answer: string, why: string|null} is invalid. Raw JSON is never shown to the user. No text at all,
- * or an empty answer, is a valid empty reply: the existing server fallbacks (action summary / "couldn't reply") apply.
+ * that isn't exactly {answer: non-blank string, why: string|null} is invalid. Raw JSON is never shown to the user. No
+ * text at all, whitespace, or a blank answer is INVALID too (review P2-1): it never becomes a stored, charged
+ * "couldn't put together a reply" — a valid server action's summary is used, or the request fails and is refunded.
  */
 export function parseEnvelope(text: string, stopReason: string | null | undefined, refusal?: string | null): Envelope {
   if (stopReason === 'refusal' || (refusal && refusal.trim())) return { ok: false, reason: 'refusal' };
   if (stopReason === 'max_tokens') return { ok: false, reason: 'truncated' };
   const t = String(text ?? '').trim();
-  if (!t) return { ok: true, answer: '', why: null };
+  if (!t) return { ok: false, reason: 'empty' };
   let v: unknown;
   try {
     v = JSON.parse(t);
@@ -70,6 +71,7 @@ export function parseEnvelope(text: string, stopReason: string | null | undefine
   const keys = Object.keys(o);
   if (keys.length !== 2 || !keys.includes('answer') || !keys.includes('why')) return { ok: false, reason: 'invalid_shape' };
   if (typeof o.answer !== 'string') return { ok: false, reason: 'invalid_shape' };
+  if (!o.answer.trim()) return { ok: false, reason: 'empty' };
   if (o.why !== null && typeof o.why !== 'string') return { ok: false, reason: 'invalid_shape' };
   return { ok: true, answer: o.answer, why: typeof o.why === 'string' && o.why.trim() ? o.why : null };
 }

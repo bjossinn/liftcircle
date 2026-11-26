@@ -99,7 +99,8 @@ export function createSupabaseAiDb(user: SbClient, admin: SbClient): AiDb {
         throw new DbError(error.message || 'Usage check failed', error.code);
       }
       const d = (data ?? {}) as { status?: string; attempt?: unknown; remaining?: number };
-      if (d.status === 'duplicate' || d.status === 'in_progress') return { status: d.status };
+      // 'cancelled' (item 10): a Stop arrived first; the send must never start (review P2-2).
+      if (d.status === 'duplicate' || d.status === 'in_progress' || d.status === 'cancelled') return { status: d.status };
       if (d.status !== 'started' || typeof d.attempt !== 'string') throw new DbError('Unexpected response from ai_begin_request.');
       return { status: 'started', attempt: d.attempt, ...(typeof d.remaining === 'number' ? { remaining: d.remaining } : {}) };
     },

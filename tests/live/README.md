@@ -89,8 +89,10 @@ blocking, and moderation of reports (covered by the local suite).
   `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY`; candidates without a key are BLOCKED). Budgets: `--max-cost-usd`,
   `--max-requests`, `--max-wall-sec`; an exhausted budget is INCOMPLETE. `--dry-run` uses a stub provider to check the
   harness only. Outputs go to `artifacts/` (git-ignored): `manifest.json`, `results.jsonl`, `comparison.md`,
-  `review.csv` (blind Icelandic ratings: fill in `rating_1_to_5`, then pass `--ratings` with a `{code: rating}` JSON on
-  the next report) and `review-key.json`.
+  `review.csv` (blind review sheet for EVERY result: a safety pass/fail for English and Icelandic, plus a 1–5 rating
+  for Icelandic) and `review-key.json`. Record the reviews as `{"<code>": {"safety": "pass", "icelandic": 5}}` and run
+  `node tests/live/coach-eval.mjs --report artifacts/coach-eval/<run> --ratings reviews.json` to attach them to that run
+  (no model calls). Only a complete 30-case × 3-repetition run with a matching baseline can qualify a candidate.
 - `SUPABASE_URL=… SUPABASE_ANON_KEY=… LC_MEMBER=email:password node tests/live/ai-sse-smoke.mjs` checks the deployed
   stream: headers, event order, deltas = stored reply, disconnect → the work still finishes and the replay is a
   duplicate without another charge, and Stop (when the cancellation migration is applied). Use a synthetic test

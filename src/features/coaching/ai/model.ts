@@ -173,6 +173,7 @@ export function classifyAiError(e: unknown): ClassifiedAiError {
   if (code === 'sharing_changed') return out('failed', 'ai.chat.replyDiscardedPrivacy');
   if (code === 'training_not_shared') return out('failed', 'ai.chat.trainingOffPending');
   if (code === 'request_cancelled') return out('failed', 'ai.chat.replyStopped');
+  if (code === 'cancel_unconfirmed') return out('failed', 'ai.chat.stopUnconfirmed');
   if (code === 'stream_interrupted' || code === 'stream_protocol') return out('failed', 'ai.chat.replyInterrupted');
   return out('failed', 'ai.error.failed');
 }
