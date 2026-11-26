@@ -9,7 +9,7 @@ import { LiftDb } from '@/db/db';
 import { kvGet, saveRecord } from '@/db/repo';
 import { EXERCISES } from '@/data/exercises';
 import { createProgram } from '@/domain/program/program';
-import { applySessionAdjustment, adjustmentLines, revertSessionAdjustment } from '@/domain/sessionAdjust';
+import { applySessionAdjustment, adjustmentLines, DISCOMFORT_KEEPS_SWAP, revertSessionAdjustment } from '@/domain/sessionAdjust';
 import * as ops from '@/domain/sessionOps';
 import { suggestionFor } from '@/domain/program/session';
 import { defaultAccountState } from '@/state/defaults';
@@ -198,6 +198,36 @@ describe('PR #23 review: discomfort is never erased, undo never mixes exercises,
     expect(back.session.exercises).toEqual(cur.exercises);
   });
 
+  it('undo never erases discomfort flagged on the replacement: in-place swap', () => {
+    const cur = liveSession(plan()); // se-row untouched → swapped in place
+    const r = applySessionAdjustment(cur, swap(), byId);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.undo.replaced?.seId).toBe('se-row');
+    const flagged = ops.setDiscomfort(r.session, 'se-row', true); // before any set is completed
+    expect(flagged.exercises[1].sets.some((x) => x.completed)).toBe(false);
+    const back = revertSessionAdjustment(flagged, r.undo);
+    expect(back).toEqual({ ok: false, reason: DISCOMFORT_KEEPS_SWAP });
+    // The flag survives into history.
+    const done = ops.finishSession(flagged, Date.now());
+    expect(done.exercises.find((e) => e.exerciseId === DB_BENCH.id)?.discomfort).toBe(true);
+  });
+
+  it('undo never erases discomfort flagged on the replacement: separate-row swap', () => {
+    const cur = liveSession(plan()); // se-bench has completed sets → the replacement gets its own row
+    const r = applySessionAdjustment(cur, swap({ swap: { sessionExerciseId: 'se-bench', fromExerciseId: BENCH.id, fromName: BENCH.name, toExerciseId: DB_BENCH.id, toName: DB_BENCH.name } }), byId);
+    if (!r.ok) throw new Error(r.reason);
+    const addedId = r.undo.addedSeId!;
+    expect(addedId).toBeTruthy();
+    const flagged = ops.setDiscomfort(r.session, addedId, true);
+    const back = revertSessionAdjustment(flagged, r.undo);
+    expect(back).toEqual({ ok: false, reason: DISCOMFORT_KEEPS_SWAP });
+    const done = ops.finishSession(flagged, Date.now());
+    expect(done.exercises.find((e) => e.id === addedId)?.discomfort).toBe(true);
+    // Without the flag the same undo works (the check is specific to discomfort).
+    const ok = revertSessionAdjustment(r.session, r.undo);
+    expect(ok.ok).toBe(true);
+  });
+
   it('shorten → swap → undo the shortening is refused: a barbell load never lands on its dumbbell replacement', () => {
     const cur = liveSession(plan());
     // Bench untouched: 3 sets prefilled at 100 kg.
@@ -274,6 +304,18 @@ describe('apply / undo on the device', () => {
     expect(await db.programs.get(p.id)).toEqual(programBefore);
     expect(activeRecordFor(await loadAdjustRecords(db), before.id)).toBeNull();
     expect((await kvGet<Record<string, { revertedAt?: number }>>(AI_SESSION_ADJUST_KEY, db))!['msg-1'].revertedAt).toBeTypeOf('number');
+  });
+
+  it('on the device: Undo after discomfort was flagged on the replacement is refused and the flag stays', async () => {
+    const p = await saveRecord('programs', plan(), db);
+    const before = await saveRecord('sessions', liveSession(p), db);
+    expect(await applyAdjustment(db, swap(), byId, [])).toEqual({ ok: true });
+    const applied = (await db.sessions.get(before.id))!;
+    await saveRecord('sessions', ops.setDiscomfort(applied, 'se-row', true), db);
+    expect(await revertAdjustment(db, 'msg-2')).toEqual({ ok: false, reason: DISCOMFORT_KEEPS_SWAP });
+    const after = (await db.sessions.get(before.id))!;
+    expect(after.exercises[1]).toMatchObject({ exerciseId: DB_BENCH.id, discomfort: true });
+    expect(activeRecordFor(await loadAdjustRecords(db), before.id)?.actionId).toBe('msg-2'); // still applied, not marked undone
   });
 
   it('a swap is applied and undone on the device the same way', async () => {

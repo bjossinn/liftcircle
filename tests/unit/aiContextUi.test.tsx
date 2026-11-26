@@ -65,7 +65,7 @@ import type { Exercise, LoggedSet, Program, ProgramVersion, WorkoutSession } fro
 import AiChatPage from '@/features/coaching/AiChatPage';
 import SessionPage from '@/features/train/SessionPage';
 import SummaryPage from '@/features/train/SummaryPage';
-import { AI_PENDING_KEY } from '@/features/coaching/ai/model';
+import { AI_DRAFT_KEY, AI_PENDING_KEY } from '@/features/coaching/ai/model';
 import { AI_ATTACHED_REQUEST_KEY, AI_COACH_REQUEST_KEY, openCoachWith, type CoachRequest } from '@/features/coaching/ai/workoutContext';
 import { applyAdjustment } from '@/features/coaching/ai/sessionAdjustStore';
 import type { SessionAdjustmentAction, WorkoutContext } from '../../supabase/functions/_shared/ai/workout';
@@ -452,6 +452,99 @@ describe('Coach: contextual requests, the workout card and first-use consent', (
     click(button('Send'));
     await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1));
     expect(sendArg().workout).toBeUndefined();
+  });
+
+  /* ---------------------------------------------------- PR #23 second review: generated text after Training turns off */
+  const TRAINING_OFF = { ...SETTINGS_ON, scopes: { ...SETTINGS_ON.scopes, training: false } };
+  const GENERATED = `Explain this: why does the app suggest “Add weight → 62.5 kg × 8” for ${BENCH.name} today?`;
+  const explainReq = (over: Partial<CoachRequest> = {}): CoachRequest =>
+    ({ intent: 'explain', sessionId: 'sess-live', focusId: 'se-bench', shownTarget: 'Add weight → 62.5 kg × 8', createdAt: Date.now(), userId: 'user-1', ...over });
+
+  it('(a) Training turned off with a waiting workout question: its generated text and attachment are both removed; nothing workout-related is sent', async () => {
+    await seed();
+    // State left by a deferred Explain while Training was on: the generated text in the composer, the attachment kept.
+    await kvSet(AI_DRAFT_KEY, GENERATED, db());
+    await kvSet(AI_ATTACHED_REQUEST_KEY, explainReq({ text: GENERATED }), db());
+    api.getSettings.mockResolvedValue(TRAINING_OFF);
+    coach();
+    await waitFor(() => expect(text()).toContain('Training sharing is off, so your question about that workout wasn’t sent.'));
+    await waitFor(() => expect(composer().value).toBe(''));
+    expect(chip()).toBeNull();
+    expect(await kvGet(AI_ATTACHED_REQUEST_KEY, db())).toBeNull();
+    expect(await kvGet(AI_DRAFT_KEY, db())).toBe('');
+    // A reload doesn't bring any of it back.
+    act(() => root!.unmount());
+    el!.remove();
+    coach();
+    await waitFor(() => expect(el!.querySelector('#ai-composer')).not.toBeNull());
+    await tick(60);
+    expect(composer().value).toBe('');
+    expect(text()).not.toContain('62.5 kg × 8');
+    fireInput(composer(), 'unrelated question');
+    click(button('Send'));
+    await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1));
+    expect(sendArg()).toMatchObject({ text: 'unrelated question' });
+    expect(sendArg().workout).toBeUndefined();
+    expect(JSON.stringify(api.send.mock.calls)).not.toMatch(/62\.5|bench press/i);
+  });
+
+  it('(a) only the generated text goes: what the user wrote around it stays; an edited version of it goes too', async () => {
+    await seed();
+    await kvSet(AI_DRAFT_KEY, `Also my knees feel fine.\n${GENERATED}`, db());
+    await kvSet(AI_ATTACHED_REQUEST_KEY, explainReq({ text: GENERATED }), db());
+    api.getSettings.mockResolvedValue(TRAINING_OFF);
+    coach();
+    await waitFor(() => expect(composer().value).toBe('Also my knees feel fine.'));
+    expect(chip()).toBeNull();
+    act(() => root!.unmount());
+    el!.remove();
+    await kvSet(AI_DRAFT_KEY, `${GENERATED.replace('Explain this:', 'Quick one:')}`, db()); // edited from the generated text
+    await kvSet(AI_ATTACHED_REQUEST_KEY, explainReq({ text: GENERATED }), db());
+    coach();
+    await waitFor(() => expect(text()).toContain('Training sharing is off'));
+    await waitFor(() => expect(composer().value).toBe(''));
+    expect(api.send).not.toHaveBeenCalled();
+  });
+
+  it('(b) a failed workout question can’t be retried after Training is turned off: shown as not sendable, Remove only, nothing sent', async () => {
+    await seed();
+    await kvSet(AI_PENDING_KEY, {
+      id: '00000000-0000-4000-8000-000000000777', text: GENERATED, mode: 'chat', status: 'failed', error: 'You appear to be offline.',
+      createdAt: new Date().toISOString(), userId: 'user-1', request: explainReq(),
+    }, db());
+    api.getSettings.mockResolvedValue(TRAINING_OFF);
+    coach();
+    await waitFor(() => expect(text()).toContain('Not sent: Training sharing is off, so this workout question can’t be sent.'));
+    expect(buttons().some((b) => norm(b.textContent) === 'Retry')).toBe(false);
+    expect(buttons().some((b) => norm(b.textContent) === 'Edit')).toBe(false);
+    await tick(80);
+    expect(api.send).not.toHaveBeenCalled();
+    click(button('Remove'));
+    await waitFor(async () => expect(await kvGet(AI_PENDING_KEY, db())).toBeNull());
+    expect(text()).not.toContain('62.5 kg × 8');
+    expect(composer().value).toBe(''); // never put back in the composer either
+    expect(api.send).not.toHaveBeenCalled();
+  });
+
+  it('(b) a workout question left "sending" by a closed tab isn’t re-sent after Training is turned off', async () => {
+    await seed();
+    await kvSet(AI_PENDING_KEY, { id: '00000000-0000-4000-8000-000000000778', text: GENERATED, mode: 'chat', status: 'sending', createdAt: new Date().toISOString(), userId: 'user-1', request: explainReq() }, db());
+    api.getSettings.mockResolvedValue(TRAINING_OFF);
+    coach();
+    await waitFor(() => expect(text()).toContain('Training sharing is off, so this workout question can’t be sent.'));
+    expect(buttons().some((b) => norm(b.textContent) === 'Retry')).toBe(false);
+    await tick(80);
+    expect(api.send).not.toHaveBeenCalled();
+  });
+
+  it('with Training on, the same failed workout question still retries normally (with a fresh snapshot)', async () => {
+    await seed();
+    await kvSet(AI_PENDING_KEY, { id: '00000000-0000-4000-8000-000000000779', text: GENERATED, mode: 'chat', status: 'failed', createdAt: new Date().toISOString(), userId: 'user-1', request: explainReq() }, db());
+    coach();
+    click(await waitFor(() => button('Retry')));
+    await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1));
+    expect(sendArg()).toMatchObject({ id: '00000000-0000-4000-8000-000000000779', text: GENERATED });
+    expect(sendArg().workout).toMatchObject({ intent: 'explain', focusId: 'se-bench' });
   });
 
   it('a deferred attachment survives a reload, comes back with Edit after a failed send, and is rebuilt fresh when sent', async () => {

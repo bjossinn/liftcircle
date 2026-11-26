@@ -55,6 +55,9 @@ import type { ActivityLog, CoachStyle, Exercise, ID, ISODate, Program, WeightUni
 import { AiBadge, AiGuest, AiUnavailable, availabilityCopy, BackButton, ShareButton, ShareWithCoachDialog } from './ai/parts';
 import { EmptyChatArt } from '@/components/illustrations';
 
+/** Why a workout question can't be sent or retried while Training sharing is off. */
+const TRAINING_OFF_PENDING = 'Training sharing is off, so this workout question can’t be sent. Switch on Training in training assistant settings, or remove it.';
+
 /** This build's switched-on areas, so links to hidden screens (find a coach, the feed) don't render as buttons. */
 const appFeatures = (): GuideFeatures => ({ coachMarketplace: isFeatureEnabled('coachMarketplace'), socialFeed: isFeatureEnabled('socialFeed') });
 
@@ -282,6 +285,11 @@ function Chat({
     const { signal } = mine.ctrl;
     const stillMine = () => !signal.aborted && owner.current === mine;
     setSendError(null);
+    // A workout question (it names exercises and targets) is never sent while Training isn't shared.
+    if (p.request && !trainingRef.current) {
+      persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING });
+      return;
+    }
     const sending: PendingSend = { ...p, userId: mine.userId, status: 'sending', error: undefined };
     persistPending(sending);
     try {
@@ -289,7 +297,11 @@ function Chat({
       const unsynced = await syncBeforeAi(db);
       // A workout attachment is rebuilt from the device right before each send (so a retry or a send after a reload
       // carries the latest sets), and only while Training is shared.
-      const workout = p.request && trainingRef.current ? (await prepareCoachRequest(db, p.request, exerciseByIdRef.current))?.workout : undefined;
+      const workout = p.request ? (await prepareCoachRequest(db, p.request, exerciseByIdRef.current))?.workout : undefined;
+      if (p.request && !trainingRef.current) {
+        persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING }); // switched off while syncing: never sent
+        return;
+      }
       // A replay of a message still being answered waits for that answer (same id) instead of failing. Cancelled (never
       // sent) if the account changed or the chat closed meanwhile.
       const res = await sendWhileInProgress(() => {
@@ -356,6 +368,8 @@ function Chat({
   exerciseByIdRef.current = exerciseById;
   const [attached, setAttached] = useState<{ req: CoachRequest; name: string; finished: boolean } | null>(null);
   const [trainingOffNotice, setTrainingOffNotice] = useState(false);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   /** Set or clear the deferred attachment (state + device storage). */
   const setAttachedReq = useCallback(
     (req: CoachRequest | null) => {
@@ -377,8 +391,7 @@ function Chat({
     requestTaken.current = true;
     void (async () => {
       const kept = await loadAttachedRequest(db, userId);
-      if (kept && trainingOn) setAttachedReq(kept);
-      else if (kept) setAttachedReq(null); // sharing was turned off: drop it
+      if (kept && trainingOn) setAttachedReq(kept); // (with Training off, the effect below removes it and its text)
       const req = await takeCoachRequest(db, userId);
       if (!req) return;
       if (!trainingOn) {
@@ -390,18 +403,52 @@ function Chat({
       if (!pending && !blocked) start(prepared.text, 'chat', false, req);
       else {
         updateDraft(prepared.text);
-        setAttachedReq(req);
+        // The generated text is remembered with the attachment, so it can be removed again if sharing is turned off.
+        setAttachedReq({ ...req, text: prepared.text });
       }
     })();
   }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps -- once, when ready
+
+  // Training sharing off (on open, or switched off while here): a waiting workout question goes completely — its
+  // attachment and the text that was written for it (that text names exercises and targets).
+  useEffect(() => {
+    if (!ready || trainingOn) return;
+    let cancelled = false;
+    void (async () => {
+      const kept = await loadAttachedRequest(db, userId);
+      if (cancelled || !kept) return;
+      setAttachedReq(null);
+      const d = draftRef.current;
+      // Its generated text is removed; a draft that no longer contains it verbatim was edited from it, so it goes too.
+      const next = kept.text && d.includes(kept.text) ? d.replace(kept.text, '').trim() : '';
+      if (next !== d) updateDraft(next);
+      setTrainingOffNotice(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, trainingOn]); // eslint-disable-line react-hooks/exhaustive-deps -- db/userId are stable for this screen
+
+  /** The unconfirmed message is a workout question and Training isn't shared: it can't be retried, only removed. */
+  const pendingBlocked = !!pending?.request && !trainingOn;
   function retry() {
-    if (pending && !blocked) void run(pending);
+    if (!pending || blocked) return;
+    if (pendingBlocked) {
+      persistPending({ ...pending, status: 'failed', error: TRAINING_OFF_PENDING });
+      return;
+    }
+    void run(pending);
+  }
+  function removePending() {
+    persistPending(null);
+    setSendError(null);
   }
   function editPending() {
     if (!pending) return;
+    if (pendingBlocked) return removePending(); // its text names exercises and targets: never put back to send
     updateDraft(draft ? `${draft}\n${pending.text}` : pending.text);
     // Its workout attachment comes back with the text (it lived on the pending message until now).
-    if (pending.request && trainingOn) setAttachedReq(pending.request);
+    if (pending.request && trainingOn) setAttachedReq({ ...pending.request, text: pending.text });
     persistPending(null);
     setSendError(null);
     inputRef.current?.focus();
@@ -543,7 +590,9 @@ function Chat({
                   onShare={() => setShare({ key: m.id, text: extractOpenLinks(m.content, appFeatures()).text })}
                   onRetry={retry}
                   onEdit={editPending}
+                  onRemove={removePending}
                   retryDisabled={blocked}
+                  workoutBlocked={m.pending ? pendingBlocked : false}
                 />
               ))}
             </ol>
@@ -718,7 +767,7 @@ interface WeekCtx {
 }
 
 function MessageItem({
-  m, week, pending, proposal, coach, onShare, onRetry, onEdit, retryDisabled,
+  m, week, pending, proposal, coach, onShare, onRetry, onEdit, onRemove, retryDisabled, workoutBlocked,
 }: {
   m: AiChatMessage;
   week: WeekCtx;
@@ -728,7 +777,10 @@ function MessageItem({
   onShare: () => void;
   onRetry: () => void;
   onEdit: () => void;
+  onRemove: () => void;
   retryDisabled: boolean;
+  /** A workout question that can't be sent because Training isn't shared: Remove instead of Retry / Edit. */
+  workoutBlocked?: boolean;
 }) {
   const nav = useNavigate();
   if (m.role === 'user') {
@@ -744,7 +796,15 @@ function MessageItem({
               Sending…
             </span>
           )}
-          {pending?.status === 'failed' && (
+          {pending?.status === 'failed' && workoutBlocked && (
+            <div className="mt-1 flex flex-wrap items-center justify-end gap-1">
+              <span className="text-xs text-danger">Not sent: {TRAINING_OFF_PENDING}</span>
+              <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={onRemove}>
+                Remove
+              </Button>
+            </div>
+          )}
+          {pending?.status === 'failed' && !workoutBlocked && (
             <div className="mt-1 flex flex-wrap items-center justify-end gap-1">
               <span className="text-xs text-danger">Not sent{pending.error ? `: ${pending.error}` : ''}</span>
               <Button size="sm" variant="secondary" icon={<RotateCcw className="size-4" />} onClick={onRetry} disabled={retryDisabled}>

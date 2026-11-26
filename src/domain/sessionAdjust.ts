@@ -13,8 +13,9 @@
  *    workout still records the discomfort and progression keeps holding that exercise.
  *
  * Every apply returns an undo record holding exactly what was removed or replaced, so Undo restores it even after more
- * sets were logged elsewhere in the workout. Undo refuses (with a reason) only when a set was already logged on
- * something it would remove.
+ * sets were logged elsewhere in the workout. Undo refuses (with a reason) when a set was already logged on something it
+ * would remove, when that row has since become another exercise, or when the replacement was flagged "Felt discomfort"
+ * (a discomfort flag is never erased).
  */
 import type { SessionAdjustmentAction } from '../../supabase/functions/_shared/ai/workout';
 import type { Exercise, ID, LoggedSet, SessionExercise, WorkoutSession } from './types';
@@ -131,6 +132,9 @@ export function applySessionAdjustment(session: WorkoutSession, action: SessionA
   return { ok: true, session: renumber({ ...session, exercises }), undo };
 }
 
+/** Undo would delete or overwrite the row holding a "Felt discomfort" flag; that safety signal is never erased. */
+export const DISCOMFORT_KEEPS_SWAP = 'You flagged discomfort on the new exercise, so the swap stays (the flag is kept for your next sessions).';
+
 export function revertSessionAdjustment(session: WorkoutSession, undo: SessionAdjustmentUndo): RevertResult {
   if (!session || session.deletedAt || session.id !== undo.sessionId) return { ok: false, reason: 'This workout is no longer on this device.' };
   if (session.status !== 'active') return { ok: false, reason: 'This workout is already finished, so it can’t be undone here. Edit it from your history instead.' };
@@ -146,10 +150,12 @@ export function revertSessionAdjustment(session: WorkoutSession, undo: SessionAd
     if (!cur) return { ok: false, reason: 'That exercise was removed from the workout since.' };
     if (cur.exerciseId !== undo.replaced.toExerciseId) return { ok: false, reason: 'That exercise was changed again since, so this swap can’t be undone.' };
     if (cur.sets.some((x) => x.completed)) return { ok: false, reason: 'You’ve logged sets on the new exercise, so the swap stays.' };
+    if (cur.discomfort) return { ok: false, reason: DISCOMFORT_KEEPS_SWAP };
   }
   if (undo.addedSeId) {
     const added = exercises.find((e) => e.id === undo.addedSeId);
     if (added?.sets.some((x) => x.completed)) return { ok: false, reason: 'You’ve logged sets on the new exercise, so the swap stays.' };
+    if (added?.discomfort) return { ok: false, reason: DISCOMFORT_KEEPS_SWAP };
   }
 
   if (undo.replaced) exercises = exercises.map((e) => (e.id === undo.replaced!.seId ? { ...undo.replaced!.before, order: e.order } : e));

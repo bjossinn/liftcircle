@@ -33,6 +33,8 @@ export interface CoachRequest {
   shownTarget?: string;
   createdAt: number;
   userId?: string;
+  /** A request waiting in the composer: the message text written for it (removed if Training sharing is turned off). */
+  text?: string;
 }
 
 /** Store the request and open the Coach tab (it sends it). */

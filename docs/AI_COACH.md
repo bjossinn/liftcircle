@@ -467,7 +467,9 @@ From the Claude + ChatGPT cross-review of 25 Nov 2026 (`tests/unit/aiCorrectness
   waits in the composer with "Today's workout attached". That attachment is kept on the device (and on a failed send,
   so Edit brings it back) until it's sent or removed, and the snapshot is rebuilt right before every send.
 - **Training sharing gates all of it.** With Training off (including when it's switched off on the first-use consent
-  screen) the chat writes no generated message, attaches nothing and sends nothing; it shows a notice instead. Offline,
+  screen) the chat writes no generated message, attaches nothing and sends nothing; it shows a notice instead. A
+  workout question already waiting in the composer loses both its attachment and the text written for it, and a
+  failed or unconfirmed workout question can't be retried (only removed) until Training is shared again. Offline,
   sharing can't be checked, so the request waits for the next online open.
 - **Server.** `_shared/ai/workout.ts` parses the snapshot as untrusted data (clamped, unknown fields dropped) and shows
   it to the model inside `<user_data kind="workout">`, only when Training is shared. New tool
@@ -482,7 +484,8 @@ From the Claude + ChatGPT cross-review of 25 Nov 2026 (`tests/unit/aiCorrectness
   assistant" banner) restores what was removed or replaced, in the exact original order. It refuses if that row has
   since been swapped to another exercise, so one exercise's load never lands on another. A "Felt discomfort" row is
   never deleted by shorten nor moved by a swap: it keeps its flag (so the finished workout records it and progression
-  keeps holding that exercise), and the replacement gets its own row. Analytics: `ai_action_used` with
+  keeps holding that exercise), and the replacement gets its own row. Undo also refuses once
+  the replacement itself is flagged, so a discomfort flag is never erased. Analytics: `ai_action_used` with
   `action_type: 'session_adjustment'` (proposed / applied / reverted).
 - **Consent.** One screen (`ai/AiConsent.tsx`), shown in the Coach tab on first use and at `/coaching/ai/setup`. It says
   what the assistant sees and does, has an optional "Change what it can see" panel, and turns it on with Supportive
