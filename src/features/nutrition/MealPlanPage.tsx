@@ -31,7 +31,7 @@ export default function MealPlanPage() {
   const toast = useToast();
   const today = todayISO(account.settings.timeZone);
   const thisWeek = startOfWeek(today, account.settings.weekStart);
-  // ?week=YYYY-MM-DD (e.g. from the training assistant's "Customize first") opens that week.
+  // ?week=YYYY-MM-DD (e.g. from the training assistant's "Add and edit") opens that week.
   const [params] = useSearchParams();
   const [weekStart, setWeekStart] = useState(() => {
     const w = params.get('week');

@@ -20,7 +20,7 @@ import type { NutritionStatus } from './dataStatus.ts';
 // @ts-ignore see above
 import { mealPlanBlocker } from './dataStatus.ts';
 // @ts-ignore see above
-import { buildMealPlanAction, dietOk, explainNoRecipes, parseQuery, totalMinutes, wordsMatch } from './meals.ts';
+import { buildMealPlanAction, excludedIngredientIds, explainNoRecipes, parseQuery, stemWord, totalMinutes, wordsMatch } from './meals.ts';
 import type { NormProgram } from './validate.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { decideTarget, missingEquipment, normalizeProposedProgram, validateForUser, validateProposedProgram } from './validate.ts';
@@ -208,6 +208,11 @@ export interface ToolContext {
   nutrition?: NutritionStatus;
   /** The user's account state (diet, targets) — read for the meal planner and recipe ranking, never sent wholesale. */
   account?: AccountStatePayload | null;
+  /**
+   * The user's own words for this request (the message, plus the original request for a follow-up). Their diet words and
+   * exclusions are enforced by find_recipes and propose_meal_plan even when the model's tool input leaves them out.
+   */
+  requestText?: string;
 }
 
 export interface ToolOutcome {
@@ -285,37 +290,68 @@ async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Pr
   const [recipes, ingredients] = await Promise.all([ctx.db.getRecipes(), ctx.db.getIngredients()]);
   const ing = new Map(ingredients.map((i) => [i.id, i]));
   const intent = parseQuery(typeof input.query === 'string' ? input.query : '');
+  // Restrictions the USER stated count even if the model's query dropped them ("no nuts" → query "breakfast ideas").
+  if (ctx.requestText) {
+    const said = parseQuery(ctx.requestText);
+    intent.diet = [...new Set([...intent.diet, ...said.diet])];
+    intent.exclude = {
+      allergens: [...new Set([...intent.exclude.allergens, ...said.exclude.allergens])],
+      words: [...new Set([...intent.exclude.words, ...said.exclude.words])],
+      raw: [...new Set([...intent.exclude.raw, ...said.exclude.raw])],
+      days: [],
+    };
+    intent.words = intent.words.filter((w) => !said.exclude.raw.some((r) => stemWord(r) === w));
+  }
   const meal = typeof input.meal === 'string' && ['breakfast', 'lunch', 'dinner', 'snack'].includes(input.meal) ? input.meal : intent.meal;
   const minP = typeof input.min_protein_g === 'number' ? input.min_protein_g : intent.highProtein ? (meal === 'snack' ? 15 : 25) : null;
   const max = Math.min(5, Math.max(1, typeof input.max_results === 'number' ? Math.round(input.max_results) : 3));
 
-  // 1. The user's own constraints (allergens, diet, dislikes, cook time) — never relaxed.
+  // 1. Hard constraints — never relaxed: the user's own settings (allergens, diet, dislikes, cook time) PLUS what this
+  //    request rules out ("vegan", "gluten-free", "no fish", "án hneta"). Only the softer parts of a request (words,
+  //    meal type, quick, protein) are loosened in step 2.
+  const fromRequest = intent.diet.length > 0 || intent.exclude.allergens.length > 0 || intent.exclude.words.length > 0;
+  const hard: UserFacts = fromRequest
+    ? {
+        ...ctx.facts,
+        dietTags: [...new Set([...ctx.facts.dietTags, ...intent.diet])],
+        allergens: [...new Set([...ctx.facts.allergens, ...intent.exclude.allergens])],
+        dislikedIngredientIds: [...new Set([...ctx.facts.dislikedIngredientIds, ...excludedIngredientIds(intent.exclude.words, ingredients)])],
+      }
+    : ctx.facts;
   const allowed: { r: RefRecipe; omit: string[]; swaps?: { from: string; to: string }[]; macros: ReturnType<typeof perServingMacros>; minutes: number; liked: boolean }[] = [];
   for (const r of recipes) {
     const minutes = totalMinutes(r);
-    if (ctx.facts.maxCookMinutes != null && minutes > ctx.facts.maxCookMinutes) continue;
-    const fit = recipeFits(r, ing, ctx.facts);
+    if (hard.maxCookMinutes != null && minutes > hard.maxCookMinutes) continue;
+    const fit = recipeFits(r, ing, hard);
     if (!fit.ok) continue;
-    allowed.push({ r, omit: fit.omit, swaps: fit.swaps, macros: perServingMacros(r, ing, fit.omit, fit.swaps), minutes, liked: likedRecipe(r, ing, ctx.facts) });
+    allowed.push({ r, omit: fit.omit, swaps: fit.swaps, macros: perServingMacros(r, ing, fit.omit, fit.swaps), minutes, liked: likedRecipe(r, ing, hard) });
   }
   if (!allowed.length) {
     const reason = explainNoRecipes(
-      { allergens: ctx.facts.allergens, dietTags: ctx.facts.dietTags, disliked: ctx.facts.dislikedIngredientIds, maxMinutes: ctx.facts.maxCookMinutes, meal: null, proteinExcluded: ctx.facts.proteinExcluded },
-      recipes, ing, ctx.facts,
+      { allergens: hard.allergens, dietTags: hard.dietTags, disliked: hard.dislikedIngredientIds, maxMinutes: hard.maxCookMinutes, meal: null, proteinExcluded: hard.proteinExcluded },
+      recipes, ing, hard,
     );
-    return { content: JSON.stringify({ results: [], reason, note: 'The user\'s own settings exclude every recipe. Explain this reason; don\'t invent recipes.' }) };
+    return {
+      content: JSON.stringify({
+        results: [],
+        reason,
+        note: fromRequest
+          ? 'Nothing in the catalog fits the user\'s settings together with the restrictions in this request. Say so plainly and name the reason; never relax a restriction and never invent recipes.'
+          : 'The user\'s own settings exclude every recipe. Explain this reason; don\'t invent recipes.',
+      }),
+    };
   }
 
   // 2. What this search asked for, loosened step by step until something matches (never past the user's constraints).
   const want = (x: (typeof allowed)[number], o: { words: boolean; meal: boolean; extras: boolean }) =>
     (!o.meal || !meal || x.r.meal === meal) &&
-    (!o.extras || ((!intent.quick || x.minutes <= 15) && dietOk(x.r, intent.diet, ing) && (minP == null || x.macros.protein_g >= minP))) &&
+    (!o.extras || ((!intent.quick || x.minutes <= 15) && (minP == null || x.macros.protein_g >= minP))) &&
     (!o.words || wordsMatch(x.r, intent.words, ing));
   const steps = [
     { words: true, meal: true, extras: true, note: null as string | null },
     { words: false, meal: true, extras: true, note: intent.words.length ? `No recipe matched "${intent.words.join(' ')}"; these are the closest fits for the rest of the request.` : null },
-    { words: false, meal: true, extras: false, note: 'Nothing matched every part of the request; these are the best fits for the user\'s targets for that meal.' },
-    { words: false, meal: false, extras: false, note: 'Nothing matched the request; these are the best fits for the user\'s targets.' },
+    { words: false, meal: true, extras: false, note: `Nothing matched every part of the request; these are the best fits for the user's targets for that meal${fromRequest ? ' (its diet and "no …" restrictions still apply)' : ''}.` },
+    { words: false, meal: false, extras: false, note: `Nothing matched the request; these are the best fits for the user's targets${fromRequest ? ' (its diet and "no …" restrictions still apply)' : ''}.` },
   ];
   let picked: typeof allowed = [];
   let note: string | null = null;
@@ -470,6 +506,7 @@ async function proposeMealPlan(input: Record<string, unknown>, ctx: ToolContext)
   const [recipes, ingredients] = mealPlanBlocker(nutrition) ? [[], []] : await Promise.all([ctx.db.getRecipes(), ctx.db.getIngredients()]);
   const { action, errors, adjusted } = buildMealPlanAction(input, {
     facts: ctx.facts, account: ctx.account ?? null, today: ctx.today ?? new Date().toISOString().slice(0, 10), nutrition, messageId: ctx.messageId ?? '', recipes, ingredients,
+    requestText: ctx.requestText,
   });
   if (!action) return { content: JSON.stringify({ status: 'not_built', errors, note: 'Tell the user exactly this reason (with its link if any). Do not invent meals.' }), isError: true };
   ctx.state.mealPlan = action;

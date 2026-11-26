@@ -7,7 +7,7 @@
  * - `admin` = service-role client, used ONLY for the service-only RPCs (usage counter, exchange record/lookup).
  */
 import type {
-  AccountStatePayload, ActiveProgramRow, AiDb, AiSettingsRow, FoodLogPayload, GoalPayload, MeasurementPayload, RefExercise,
+  AccountStatePayload, ActiveProgramRow, AiAction, AiDb, AiSettingsRow, FoodLogPayload, GoalPayload, MeasurementPayload, RefExercise,
   RefIngredient, RefRecipe, SessionPayload, StoredExchange, StoredMessage, UsageRow,
 } from './types.ts';
 
@@ -47,6 +47,24 @@ async function cachedRef<T>(key: string, load: () => Promise<T[]>): Promise<T[]>
   const rows = await load();
   refCache.set(key, { at: Date.now(), rows });
   return rows;
+}
+
+interface HistoryRow {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+  proposal_id: string | null;
+  grounding?: unknown;
+  action?: unknown;
+}
+
+/** One stored ai_messages row → StoredMessage. Grounding keeps only strings; action only a JSON object with a kind. */
+export function historyMessage(r: HistoryRow): StoredMessage {
+  const grounding = Array.isArray(r.grounding) ? r.grounding.filter((g): g is string => typeof g === 'string') : [];
+  const a = r.action;
+  const action = a && typeof a === 'object' && !Array.isArray(a) && typeof (a as { kind?: unknown }).kind === 'string' ? (a as AiAction) : null;
+  return { id: r.id, role: r.role, content: r.content, createdAt: r.created_at, proposalId: r.proposal_id, grounding, action };
 }
 
 export function createSupabaseAiDb(user: SbClient, admin: SbClient): AiDb {
@@ -105,12 +123,12 @@ export function createSupabaseAiDb(user: SbClient, admin: SbClient): AiDb {
       ));
     },
     async getHistory(uid, after, limit) {
-      let q = user.from('ai_messages').select('id, role, content, created_at, proposal_id').eq('user_id', uid);
+      // `action` and `grounding` are needed by follow-ups (conversation.ts findOpenRequest: was the request delivered?)
+      // and by the sharing-change check (context.ts: what was shared when the previous reply was written).
+      let q = user.from('ai_messages').select('id, role, content, created_at, proposal_id, grounding, action').eq('user_id', uid);
       if (after) q = q.gt('created_at', after);
-      const rows = await run<{ id: string; role: 'user' | 'assistant'; content: string; created_at: string; proposal_id: string | null }[]>(
-        q.order('seq', { ascending: false }).limit(Math.min(50, limit)),
-      );
-      return (rows ?? []).reverse().map((r) => ({ id: r.id, role: r.role, content: r.content, createdAt: r.created_at, proposalId: r.proposal_id }) satisfies StoredMessage);
+      const rows = await run<HistoryRow[]>(q.order('seq', { ascending: false }).limit(Math.min(50, limit)));
+      return (rows ?? []).reverse().map(historyMessage);
     },
     async recordExchange(uid, input) {
       const r = await run<StoredExchange>(admin.rpc('ai_record_exchange', {

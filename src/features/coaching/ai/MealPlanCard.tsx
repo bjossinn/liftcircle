@@ -145,8 +145,10 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
               <Button size="sm" variant="primary" loading={busy} disabled={existing === undefined} onClick={() => void apply()}>
                 Add to my meal plan
               </Button>
+              {/* Adds the plan, then opens it to edit. (It used to say "Customize first", which read as a draft, but the
+                  meal plan screen has no draft mode, so the label now says what happens; Undo stays on this card.) */}
               <Button size="sm" variant="secondary" disabled={busy || existing === undefined} onClick={() => void apply(() => nav(`/nutrition/plan?week=${s.weekStart}`))}>
-                Customize first
+                Add and edit
               </Button>
             </div>
           </>

@@ -184,7 +184,7 @@ logging and manual targets only, no automatic prescriptions.
     plan, it stays a suggestion for them.
   - **Meal plans** (Nutrition shared with the AI and a protein target set): a card shows each day's meals and its
     totals against your targets. **Add to my meal plan** adds it to that week (if those days already have meals, choose
-    **Replace these days** or **Only empty days**); **Customize first** adds it and opens the meal plan screen so you
+    **Replace these days** or **Only empty days**); **Add and edit** adds it and opens the meal plan screen so you
     can swap or adjust. **Undo** puts the days back as they were.
   - **Recipes:** recipe ideas come as cards (name, time, protein per serving) with **Open**, **Add to plan…** (pick a
     day this week and a meal) and **Save**. The coach doesn't type out recipes in chat: it names the dish, says why it
