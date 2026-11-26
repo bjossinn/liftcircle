@@ -323,7 +323,7 @@ async function answer(a: Answering): Promise<CoachResult> {
       for (const tu of toolUses.slice(0, 4)) {
         const out = await runTool(tu.name, tu.input, {
           db: deps.db, facts: ctx.facts, catalog: ctx.catalog, state, week: ctx.week, trainingShared: ctx.trainingShared, messageId: id,
-          today: ctx.today, nutrition: ctx.nutrition, account: ctx.account, requestText, workout: ctx.workout, lang: toolLang,
+          today: ctx.today, nutrition: ctx.nutrition, account: ctx.account, requestText, userText: text, workout: ctx.workout, lang: toolLang,
         });
         results.push({ type: 'tool_result', tool_use_id: tu.id, content: out.content, ...(out.isError ? { is_error: true } : {}) });
       }

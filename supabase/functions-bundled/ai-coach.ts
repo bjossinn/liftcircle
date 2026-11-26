@@ -3265,6 +3265,12 @@ function classifyRequest(text) {
   if (EXPLAIN(t, f)) return "explain";
   return null;
 }
+function asksAboutExistingPlan(text) {
+  const kind = classifyRequest(text);
+  if (kind !== "explain_existing_meal_plan" && kind !== "explain_existing_program") return null;
+  if (tokensOf(text).some((w) => MODIFY.test(w))) return null;
+  return kind === "explain_existing_meal_plan" ? "meal_plan" : "program";
+}
 var PAIN_TOKENS = set([...V.pain_discomfort.tokens, "aum", "aumur", "aumt", "auma", "aumir", "pain", "painful", "hurts", "hurt", "sore", "injured", "injury", "ache", "aches", "aching"]);
 var PAIN_PHRASES = V.pain_discomfort.phrases.map(toks);
 var PAIN_NEGATIVE = V.pain_discomfort.negativePhrases.map(toks);
@@ -5800,6 +5806,8 @@ var NEGATOR_WORDS = /* @__PURE__ */ new Set([
   "no",
   "without",
   "avoid",
+  "avoids",
+  "avoiding",
   "not",
   "never",
   "nothing",
@@ -6531,9 +6539,54 @@ var ALLERGY_WORD = (w) => /^(?:allerg(?:y|ies|ic)|intoleran(?:ce|t))$/.test(w) |
 var CONDITION_LEAD = /* @__PURE__ */ new Set(["for", "with", "if", "given", "since", "because", "due", "fyrir", "me\xF0", "ef"]);
 var POSSESSIVE = /* @__PURE__ */ new Set(["my", "our", "minn", "min", "mitt", "minum", "minni", "mina", "minnar", "mins", "okkar"]);
 var SELF_QUESTION = (w) => /^(?:er|eru|am|are|do|does|have|has|is)$/.test(w[0] ?? "") && FIRST_PERSON.has(w[1] ?? "");
+var FOOD_REQUEST = new Set([
+  "eat",
+  "eats",
+  "eating",
+  "cook",
+  "cooking",
+  "recommend",
+  "recommends",
+  "recommended",
+  "recommendation",
+  "recommendations",
+  "suggest",
+  "suggestion",
+  "suggestions",
+  "breakfast",
+  "breakfasts",
+  "brunch",
+  "lunch",
+  "lunches",
+  "dinner",
+  "dinners",
+  "supper",
+  "snack",
+  "snacks",
+  "meal",
+  "meals",
+  "recipe",
+  "recipes",
+  "food",
+  "foods",
+  "dish",
+  "dishes",
+  "menu",
+  "idea",
+  "ideas",
+  "options",
+  ...IS_VOCAB.recipes.tokens,
+  ...IS_VOCAB.meal_plan.tokens,
+  ...Object.values(IS_VOCAB.meal_slots.map).flat(),
+  ...IS_VOCAB.recipes.phrases.flatMap((p) => p.split(" ")).filter((w) => /^(?:borða|elda)/.test(w))
+].map(foldIs));
+var DEFINITIONAL = (w) => /^(?:what|what's|what’s|whats|hvað)$/.test(w[0] ?? "") && /^(?:is|are|does|do|er|eru|þyðir)$/.test(w[1] ?? "") || w.some((x) => /^(?:mean|means|meant|define|definition|þyðir)$/.test(x));
 function allergyCondition(w) {
+  if (!w.some(ALLERGY_WORD)) return false;
   const self = SELF_QUESTION(w) ? 3 : 0;
-  return w.some((x, k) => ALLERGY_WORD(x) && w.some((y, n) => POSSESSIVE.has(y) || n < k && n >= self && CONDITION_LEAD.has(y)));
+  if (w.some((x, k) => ALLERGY_WORD(x) && w.some((y, n) => POSSESSIVE.has(y) || n < k && n >= self && CONDITION_LEAD.has(y)))) return true;
+  if (w.some((x) => FOOD_REQUEST.has(x))) return true;
+  return !self && !DEFINITIONAL(w);
 }
 function questionClauses(tokens) {
   const mask = tokens.map(() => false);
@@ -6578,6 +6631,7 @@ function parseExclusionTokens(text) {
   const t = stripNegatedDiets(fold2(markIsWords(text)));
   const tokens = t.match(TOKEN_RE) ?? [];
   const consumed = /* @__PURE__ */ new Set();
+  const wantedWith = /* @__PURE__ */ new Set();
   const items = [];
   const isWord = (w) => !!w && /^[a-z0-9æðþ'’-]+$/.test(w);
   const question = questionClauses(tokens);
@@ -6614,7 +6668,10 @@ function parseExclusionTokens(text) {
       if (!first) {
         const c0 = clarifierAt(j);
         if (!c0?.extender && AFFIRM_START.has(tokens[j])) break;
-        if (!withScope && !c0 && POSITIVE_WITH.has(tokens[j])) break;
+        if (!withScope && !c0 && POSITIVE_WITH.has(tokens[j])) {
+          wantedWith.add(j);
+          break;
+        }
       }
       for (; ; ) {
         const c = clarifierAt(j);
@@ -6694,15 +6751,17 @@ function parseExclusionTokens(text) {
       }
     });
   }
-  return { items, tokens, consumed };
+  return { items, tokens, consumed, wantedWith };
 }
 var WANT_VERBS = /* @__PURE__ */ new Set(["love", "loves", "want", "wants", "enjoy", "prefer", "adore", "crave", "vil", "viljum", "vilja", "elska", "elskum", "langar", "likar", "endilega", "gjarnan"]);
 var LIKE_SUBJECT = /* @__PURE__ */ new Set(["i", "we", "i'd", "i\u2019d", "we'd", "we\u2019d", "would", "really", "also", "do", "still"]);
 var GOOD_WORDS = /* @__PURE__ */ new Set(["gott", "go\xF0", "go\xF0ur", "go\xF0ar", "go\xF0ir", "frab\xE6rt", "frab\xE6r", "\xE6\xF0i", "best"]);
-function affirmedWanted(tokens, k, question) {
+function affirmedWanted(tokens, k, question, wantedWith = /* @__PURE__ */ new Set()) {
   if (question[k]) return false;
   let s = k;
   while (s > 0 && !isClauseEnd(tokens, s - 1)) s--;
+  const withAt = [...wantedWith].filter((p) => p >= s - 1 && p < k).sort((a, b) => b - a)[0];
+  if (withAt !== void 0) s = withAt;
   let e = k;
   while (e < tokens.length && !isClauseEnd(tokens, e)) e++;
   if (tokens[e] === "?") return false;
@@ -6714,20 +6773,25 @@ function affirmedWanted(tokens, k, question) {
     const negated = allergenMentions(tokens.slice(c + 1, e).join(" "));
     if (negated.includes("peanuts") || negated.includes("tree_nuts")) return false;
   }
+  if (withAt !== void 0) {
+    if (k - withAt > 3 || tokens.slice(withAt + 1, k).some((w) => !/^[a-z0-9æðþ'’-]+$/.test(w) || SEP_WORDS.has(w))) return false;
+    for (let c = k + 1; c < e; c++) if (COPULA.has(tokens[c])) return copulaAffirms(tokens, c);
+    return true;
+  }
   const before = tokens.slice(s, k);
   if (before.some((w, n) => WANT_VERBS.has(w) || w === "like" && LIKE_SUBJECT.has(before[n - 1] ?? "") || w === "finnst" && tokens.slice(k, e).some((x) => GOOD_WORDS.has(x)))) return true;
   for (let c = k + 1; c < e; c++) if (COPULA.has(tokens[c])) return copulaAffirms(tokens, c);
   return false;
 }
 function parseExclusions(text) {
-  const { items, tokens, consumed } = parseExclusionTokens(text);
+  const { items, tokens, consumed, wantedWith } = parseExclusionTokens(text);
   const allergens = /* @__PURE__ */ new Set();
   const words = /* @__PURE__ */ new Set();
   const days = /* @__PURE__ */ new Set();
   const raw = /* @__PURE__ */ new Set();
   let lactose = false;
   const question = questionClauses(tokens);
-  const peanutsWanted = tokens.some((w, k) => !consumed.has(k) && PEANUT_WORD(w) && affirmedWanted(tokens, k, question));
+  const peanutsWanted = tokens.some((w, k) => !consumed.has(k) && PEANUT_WORD(w) && affirmedWanted(tokens, k, question, wantedWith));
   const explicitPeanuts = items.some((it) => it.kind === "allergens" && it.allergens.includes("peanuts") && !it.implied?.includes("peanuts"));
   for (const it of items) {
     it.tokens.forEach((w) => raw.add(w));
@@ -7969,7 +8033,20 @@ function proposeSessionAdjustment(input, ctx) {
   };
 }
 var NO_NUTRITION = { shared: false, enabled: null, autoDisabled: false, proteinG: null, kcal: null, macros: false };
+function onlyAsksAbout(ctx) {
+  const latest = ctx.userText ?? ctx.requestText;
+  if (!latest || asksAboutExistingPlan(latest) !== "meal_plan") return null;
+  const noun = "meal plan";
+  return {
+    content: JSON.stringify({
+      status: "no_action",
+      note: `The user asked a question about their existing ${noun}; they did not ask to create or change one. Nothing was built. Do not call this tool again in this reply: answer their question about the existing ${noun} in text.`
+    })
+  };
+}
 async function proposeMealPlan(input, ctx) {
+  const onlyAsks = onlyAsksAbout(ctx);
+  if (onlyAsks) return onlyAsks;
   ctx.state.mealPlanAttempts = (ctx.state.mealPlanAttempts ?? 0) + 1;
   if (ctx.state.mealPlanAttempts > 2) {
     return { content: JSON.stringify({ status: "rejected", errors: ["Only one meal plan (plus one corrected attempt) per reply."] }), isError: true };
@@ -8508,6 +8585,7 @@ Before any meal plan or recipes: ${clarificationNote(clarify)}` : baseSystem;
           nutrition: ctx.nutrition,
           account: ctx.account,
           requestText,
+          userText: text,
           workout: ctx.workout,
           lang: toolLang
         });

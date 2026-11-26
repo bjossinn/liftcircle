@@ -231,7 +231,7 @@ export interface Exclusions {
 //    separator, "<food> is fine" / "er í lagi", or the end of the list (punctuation, "but"/"en", a new clause).
 //    tests/unit/aiCorrectness.test.ts enforces this: every allergen a corpus phrase mentions must be ruled out unless the
 //    row explicitly declares it wanted.
-const NEGATOR_WORDS = new Set(['no', 'without', 'avoid', 'not', 'never', 'nothing', 'neither', 'minus', 'except', 'excluding', 'exclude', 'skip', 'nor',
+const NEGATOR_WORDS = new Set(['no', 'without', 'avoid', 'avoids', 'avoiding', 'not', 'never', 'nothing', 'neither', 'minus', 'except', 'excluding', 'exclude', 'skip', 'nor',
   'none', 'zero', "don't", 'don’t', 'dont', "doesn't", 'doesn’t', 'doesnt', "won't", 'won’t', 'wont', "can't", 'can’t', 'cant', 'cannot',
   'engan', 'enga', 'engar', 'engir', 'engin', 'enginn', 'engum', 'engri', 'engra', 'engrar', 'engu', 'ekkert', 'ekki', 'sleppa', 'sleppum', 'sleppi', 'nema', 'utan',
   // Icelandic negators from the approved vocabulary (isLexicon.ts negation.negators), folded.
@@ -522,17 +522,38 @@ const CONDITION_LEAD = new Set(['for', 'with', 'if', 'given', 'since', 'because'
 const POSSESSIVE = new Set(['my', 'our', 'minn', 'min', 'mitt', 'minum', 'minni', 'mina', 'minnar', 'mins', 'okkar']);
 /** An inverted question about oneself opens the clause: "Er ég með …?", "Am I allergic …?", "Do I have …?". */
 const SELF_QUESTION = (w: string[]) => /^(?:er|eru|am|are|do|does|have|has|is)$/.test(w[0] ?? '') && FIRST_PERSON.has(w[1] ?? '');
+/** Words that make a question ask what to EAT — food, meals, recipes, a recommendation: "What should someone allergic to
+ *  peanuts eat for breakfast?", "Which recipes …", "Hvað getur einhver með hnetuofnæmi borðað í morgunmat?". Icelandic
+ *  forms come from the approved vocabulary only (recipe and meal-plan tokens, meal slots, the eat/cook verbs of the recipe
+ *  phrases). */
+const FOOD_REQUEST = new Set([
+  'eat', 'eats', 'eating', 'cook', 'cooking', 'recommend', 'recommends', 'recommended', 'recommendation', 'recommendations', 'suggest', 'suggestion',
+  'suggestions', 'breakfast', 'breakfasts', 'brunch', 'lunch', 'lunches', 'dinner', 'dinners', 'supper', 'snack', 'snacks', 'meal', 'meals', 'recipe', 'recipes',
+  'food', 'foods', 'dish', 'dishes', 'menu', 'idea', 'ideas', 'options',
+  ...IS_VOCAB.recipes.tokens, ...IS_VOCAB.meal_plan.tokens, ...Object.values(IS_VOCAB.meal_slots.map).flat(),
+  ...IS_VOCAB.recipes.phrases.flatMap((p) => p.split(' ')).filter((w) => /^(?:borða|elda)/.test(w)),
+].map(foldIs));
+/** A purely definitional question: "What is a peanut allergy?", "Hvað er hnetuofnæmi?", "What does lactose intolerance
+ *  mean?", "Hvað þýðir glútenóþol?". */
+const DEFINITIONAL = (w: string[]) =>
+  (/^(?:what|what's|what’s|whats|hvað)$/.test(w[0] ?? '') && /^(?:is|are|does|do|er|eru|þyðir)$/.test(w[1] ?? '')) ||
+  w.some((x) => /^(?:mean|means|meant|define|definition|þyðir)$/.test(x));
 /**
- * The question clause carries an allergy as a CONDITION ("What breakfast do you recommend for my peanut allergy?", "Hvað
- * mælirðu með í morgunmat ef maður er með mjólkurofnæmi?", "Which snack is best with a nut allergy?"): it states a
- * restriction, which must hold for the answer. Only a question whose TOPIC is the allergy or the food ("Hvað er
- * hnetuofnæmi?", "What is a peanut allergy?", "Is peanut butter healthy?") or the inverted self-question ("Er ég með
- * ofnæmi fyrir mjólk?", "Am I allergic to milk?") declares nothing. When in doubt — a possessive anywhere, a condition
- * word before the allergy — the restriction is kept (safety first).
+ * Does a question clause that mentions an allergy or intolerance carry it as a RESTRICTION on the answer? Yes whenever
+ * the question asks what to eat, recommends food, recipes or meals — whoever the allergy belongs to ("What should someone
+ * allergic to peanuts eat for breakfast?", "What breakfast can someone allergic to peanuts eat?", "What do you recommend
+ * for my peanut allergy?", "Hvað mælirðu með í morgunmat ef maður er með mjólkurofnæmi?", "Hvað getur einhver með
+ * hnetuofnæmi borðað?"), and whenever a possessive or a condition word attaches it. Only a purely definitional question
+ * ("What is a peanut allergy?", "Hvað er hnetuofnæmi?", "Hvað er ofnæmi fyrir jarðhnetum?") or the inverted
+ * self-question ("Er ég með ofnæmi fyrir mjólk?", "Am I allergic to milk?", "Do I have a nut allergy?") declares nothing.
+ * Anything else — when unsure — keeps the restriction (safety first).
  */
 function allergyCondition(w: string[]): boolean {
+  if (!w.some(ALLERGY_WORD)) return false;
   const self = SELF_QUESTION(w) ? 3 : 0;
-  return w.some((x, k) => ALLERGY_WORD(x) && w.some((y, n) => POSSESSIVE.has(y) || (n < k && n >= self && CONDITION_LEAD.has(y))));
+  if (w.some((x, k) => ALLERGY_WORD(x) && w.some((y, n) => POSSESSIVE.has(y) || (n < k && n >= self && CONDITION_LEAD.has(y))))) return true;
+  if (w.some((x) => FOOD_REQUEST.has(x))) return true;
+  return !self && !DEFINITIONAL(w);
 }
 /** True for every token inside a clause that only ASKS about a food, diet or nutrient. */
 function questionClauses(tokens: string[]): boolean[] {
@@ -595,6 +616,9 @@ interface ExclusionParse {
   tokens: string[];
   /** Token indices used by a negation or one of its items. */
   consumed: Set<number>;
+  /** Token indices of a positive "with"/"með" that ended a negative list after a separator ("án hneta, MEÐ hnetusmjöri",
+   *  "no nuts, WITH peanut butter"): it opens an affirmative wanted-food clause. */
+  wantedWith: Set<number>;
 }
 
 /** The token-stream pass (see the comment above NEGATOR_WORDS). */
@@ -605,6 +629,7 @@ function parseExclusionTokens(text: string): ExclusionParse {
   const t = stripNegatedDiets(fold(markIsWords(text)));
   const tokens = t.match(TOKEN_RE) ?? [];
   const consumed = new Set<number>();
+  const wantedWith = new Set<number>();
   const items: Item[] = [];
   const isWord = (w: string | undefined) => !!w && /^[a-z0-9æðþ'’-]+$/.test(w);
   // A question about a food ("Hvað eru jarðhnetur?", "Hvað er hnetuofnæmi?") declares nothing — in its own clause only
@@ -652,7 +677,10 @@ function parseExclusionTokens(text: string): ExclusionParse {
         // or another affirmative word ends it ("No fish, I like chicken").
         const c0 = clarifierAt(j);
         if (!c0?.extender && AFFIRM_START.has(tokens[j])) break;
-        if (!withScope && !c0 && POSITIVE_WITH.has(tokens[j])) break;
+        if (!withScope && !c0 && POSITIVE_WITH.has(tokens[j])) {
+          wantedWith.add(j);
+          break;
+        }
       }
       // Leading fillers, clarifiers and (right after the negation) verbs: "without ANY nuts", "nothing WITH nuts",
       // ", INCLUDING peanuts", "or CONTAINING milk", "don't EAT fish".
@@ -743,7 +771,7 @@ function parseExclusionTokens(text: string): ExclusionParse {
       }
     });
   }
-  return { items, tokens, consumed };
+  return { items, tokens, consumed, wantedWith };
 }
 
 /** Verbs of wanting / liking that make a clause an explicit request FOR a food ("I love …", "ég vil …", "við elskum …"). */
@@ -757,10 +785,14 @@ const GOOD_WORDS = new Set(['gott', 'goð', 'goður', 'goðar', 'goðir', 'frab�
  * fine", "hnetusmjör er í lagi"), contains no negation, and is not a question. Anything less — a question, a negated
  * statement ("is not okay", "ekki í lagi"), a bare mention — is not permission to relax a restriction.
  */
-function affirmedWanted(tokens: string[], k: number, question: boolean[]): boolean {
+function affirmedWanted(tokens: string[], k: number, question: boolean[], wantedWith: Set<number> = new Set()): boolean {
   if (question[k]) return false;
   let s = k;
   while (s > 0 && !isClauseEnd(tokens, s - 1)) s--;
+  // A positive "með"/"with" that ended a negative list after a separator opens the wanted clause ("Morgunmatur án hneta,
+  // MEÐ hnetusmjöri", "án hneta og með hnetusmjöri"): the clause starts there, and the "með" itself affirms.
+  const withAt = [...wantedWith].filter((p) => p >= s - 1 && p < k).sort((a, b) => b - a)[0];
+  if (withAt !== undefined) s = withAt;
   let e = k;
   while (e < tokens.length && !isClauseEnd(tokens, e)) e++;
   // "?" ending the clause: asked, not stated.
@@ -776,6 +808,13 @@ function affirmedWanted(tokens: string[], k: number, question: boolean[]): boole
     const negated = allergenMentions(tokens.slice(c + 1, e).join(' '));
     if (negated.includes('peanuts') || negated.includes('tree_nuts')) return false;
   }
+  if (withAt !== undefined) {
+    // Only the food itself (and its own modifiers) may stand between "með" and it: "með hnetusmjöri", "with crunchy
+    // peanut butter" — not "með ekki …".
+    if (k - withAt > 3 || tokens.slice(withAt + 1, k).some((w) => !/^[a-z0-9æðþ'’-]+$/.test(w) || SEP_WORDS.has(w))) return false;
+    for (let c = k + 1; c < e; c++) if (COPULA.has(tokens[c])) return copulaAffirms(tokens, c);
+    return true;
+  }
   const before = tokens.slice(s, k);
   if (before.some((w, n) => WANT_VERBS.has(w) || (w === 'like' && LIKE_SUBJECT.has(before[n - 1] ?? '')) || (w === 'finnst' && tokens.slice(k, e).some((x) => GOOD_WORDS.has(x))))) return true;
   for (let c = k + 1; c < e; c++) if (COPULA.has(tokens[c])) return copulaAffirms(tokens, c);
@@ -784,7 +823,7 @@ function affirmedWanted(tokens: string[], k: number, question: boolean[]): boole
 
 /** Parse what a request rules out: allergen groups, other foods and weekdays. Pass the user's text as written. */
 export function parseExclusions(text: string): Exclusions {
-  const { items, tokens, consumed } = parseExclusionTokens(text);
+  const { items, tokens, consumed, wantedWith } = parseExclusionTokens(text);
   const allergens = new Set<Allergen>();
   const words = new Set<string>();
   const days = new Set<string>();
@@ -795,7 +834,7 @@ export function parseExclusions(text: string): Exclusions {
   // hnetusmjör") and nothing rules them out. A mere mention never relaxes it: not a question ("Hvað með hnetusmjör?"), not
   // a negated statement ("peanut butter is not okay", "hnetusmjör er ekki í lagi"), not an unconsumed list remnant.
   const question = questionClauses(tokens);
-  const peanutsWanted = tokens.some((w, k) => !consumed.has(k) && PEANUT_WORD(w) && affirmedWanted(tokens, k, question));
+  const peanutsWanted = tokens.some((w, k) => !consumed.has(k) && PEANUT_WORD(w) && affirmedWanted(tokens, k, question, wantedWith));
   const explicitPeanuts = items.some((it) => it.kind === 'allergens' && it.allergens.includes('peanuts') && !it.implied?.includes('peanuts'));
   for (const it of items) {
     it.tokens.forEach((w) => raw.add(w));

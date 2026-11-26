@@ -383,6 +383,19 @@ export function classifyRequest(text: string): RequestKind | null {
   return null;
 }
 
+/**
+ * The message only ASKS about the user's existing meal plan or program ("Hversu mikið prótein er í matseðlinum mínum?",
+ * "How much protein is in my meal plan?", "Af hverju er æfingaáætlunin mín svona?") and asks for no change to it: a tool
+ * proposal (propose_meal_plan / propose_program_change) must not create or replace one then. A change verb anywhere
+ * ("… and change it", "Breyttu matseðlinum") makes it a request again (null).
+ */
+export function asksAboutExistingPlan(text: string): 'meal_plan' | 'program' | null {
+  const kind = classifyRequest(text);
+  if (kind !== 'explain_existing_meal_plan' && kind !== 'explain_existing_program') return null;
+  if (tokensOf(text).some((w) => MODIFY.test(w))) return null;
+  return kind === 'explain_existing_meal_plan' ? 'meal_plan' : 'program';
+}
+
 /** The minutes a today's-workout request states (null: not stated — ask, never invent). */
 export function sessionMinutes(text: string): number | null {
   return minutesIn(text);

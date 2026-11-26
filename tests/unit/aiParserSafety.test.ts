@@ -466,3 +466,130 @@ describe('P2-6 (review 2): a wanted peanut butter with a modifier stays wanted; 
     });
   }
 });
+
+/* ================================================================== review 3: P1 */
+// A question that asks what to EAT keeps every allergy / intolerance / avoidance phrase in it as a restriction, whoever
+// it is about and without a possessive or a condition word. Only definitional and self-diagnostic questions declare nothing.
+describe('P1 (review 3): an allergy in a what-to-eat question is a restriction, whoever it is about', () => {
+  const nuts = union(peanutIds, treeNutIds);
+  const CASES: { msg: string; neutral: string; allergens: Al[]; lang: 'is' | 'en' }[] = [
+    { msg: 'What should someone allergic to peanuts eat for breakfast?', neutral: 'What should someone eat for breakfast?', allergens: ['peanuts'], lang: 'en' },
+    { msg: 'What breakfast can someone allergic to peanuts eat?', neutral: 'What breakfast can someone eat?', allergens: ['peanuts'], lang: 'en' },
+    { msg: 'What can a person with a peanut allergy eat for breakfast?', neutral: 'What can a person eat for breakfast?', allergens: ['peanuts'], lang: 'en' },
+    { msg: 'What should my kid with a peanut allergy eat for breakfast?', neutral: 'What should my kid eat for breakfast?', allergens: ['peanuts'], lang: 'en' },
+    { msg: 'Which breakfast recipes are good for a friend who is allergic to peanuts?', neutral: 'Which breakfast recipes are good for a friend?', allergens: ['peanuts'], lang: 'en' },
+    { msg: 'What should people with a nut allergy have for breakfast?', neutral: 'What should people have for breakfast?', allergens: ['peanuts', 'tree_nuts'], lang: 'en' },
+    { msg: 'What should someone who avoids peanuts eat for breakfast?', neutral: 'What should someone eat for breakfast?', allergens: ['peanuts'], lang: 'en' },
+    { msg: 'Hvað getur einhver með hnetuofnæmi borðað í morgunmat?', neutral: 'Hvað mælirðu með í morgunmat?', allergens: ['peanuts', 'tree_nuts'], lang: 'is' },
+    { msg: 'Hvað er gott í morgunmat fyrir fólk með hnetuofnæmi?', neutral: 'Hvað er gott í morgunmat?', allergens: ['peanuts', 'tree_nuts'], lang: 'is' },
+  ];
+  const INFORMATIONAL = ['What is a peanut allergy?', 'Hvað er hnetuofnæmi?', 'Hvað er ofnæmi fyrir jarðhnetum?', 'Hvað eru jarðhnetur?', 'Is peanut butter healthy?',
+    'Am I allergic to peanuts?', 'Do I have a nut allergy?', 'Er ég með ofnæmi fyrir jarðhnetum?', 'What does peanut allergy mean?'];
+
+  it('parser: the restriction is kept; definitional and self-diagnostic questions declare nothing', () => {
+    for (const c of CASES) {
+      expect([...parseExclusions(c.msg).allergens].sort(), c.msg).toEqual([...c.allergens].sort());
+      expect(parseQuery(c.msg).exclude.allergens, c.msg).toEqual(expect.arrayContaining(c.allergens));
+      // The allergen is never a search word.
+      expect(parseQuery(c.msg).words.filter((w) => /peanut|hnet|nut/.test(w)), c.msg).toEqual([]);
+      expect(parseExclusions(c.neutral).allergens, c.neutral).toEqual([]);
+    }
+    for (const msg of INFORMATIONAL) expect(parseExclusions(msg).allergens, msg).toEqual([]);
+  });
+
+  for (const c of CASES) {
+    it(`handler + catalog (${c.lang}): "${c.msg}"`, async () => {
+      const ruledOut = c.allergens.includes('tree_nuts') ? nuts : peanutIds;
+      await proveExcluded(`peanuts: ${c.msg}`, peanutIds, c.neutral, c.msg, c.lang === 'is' ? IS_PLAN : EN_PLAN, undefined, ruledOut);
+    });
+  }
+
+  it('the reviewer cases on the full catalog: the peanut-butter smoothies appear without the allergy and never with it', async () => {
+    const PB = ['chocolate-peanut-protein-smoothie', 'vegan-peanut-strawberry-smoothie'];
+    for (const id of PB) expect(ALL_RECIPES.find((x) => x.id === id), id).toBeDefined();
+    for (const [msg, neutral] of [CASES[0], CASES[1]].map((c) => [c.msg, c.neutral])) {
+      const base = await findRecipes({ query: 'peanut butter smoothie', max_results: 10 }, neutral, ALL_RECIPES);
+      expect(base.map((c) => c.id).filter((id) => PB.includes(id)).length, `${neutral}: baseline`).toBeGreaterThan(0);
+      const cards = await findRecipes({ query: 'peanut butter smoothie', max_results: 10 }, msg, ALL_RECIPES);
+      expect(cards.map((c) => c.id).filter((id) => PB.includes(id)), msg).toEqual([]);
+      for (const c of cards) expect(cardIngredients(c, ALL_RECIPES).filter((id) => peanutIds.has(id)), `${msg}: ${c.id}`).toEqual([]);
+      const h = await chat(msg, [toolUse('find_recipes', { query: 'peanut butter smoothie', max_results: 10 }), text('Here are some ideas.')]);
+      for (const c of h.action?.recipes ?? []) expect(cardIngredients(c, ALL_RECIPES).filter((id) => peanutIds.has(id)), `${msg}: handler ${c.id}`).toEqual([]);
+      expect((h.action?.recipes ?? []).map((c) => c.id).filter((id) => PB.includes(id)), msg).toEqual([]);
+    }
+  });
+
+  it('definitional and self-diagnostic questions do not restrict: peanut recipes are still found', async () => {
+    const { r, safe } = dangerous(peanutIds);
+    for (const msg of INFORMATIONAL) {
+      expect((await findRecipes({ query: r.name, max_results: 5 }, msg, [r, safe])).map((c) => c.id), msg).toContain(r.id);
+    }
+  });
+});
+
+/* ================================================================== review 3: P2 (wanted peanut butter, Icelandic "með") */
+describe('P2 (review 3): "án hneta, með hnetusmjöri" keeps peanut butter wanted; tree nuts stay out', () => {
+  it('parser', () => {
+    for (const msg of ['Morgunmatur án hneta, með hnetusmjöri', 'Morgunmatur án hneta og með hnetusmjöri']) {
+      expect(parseExclusions(msg).allergens, msg).toEqual(['tree_nuts']);
+      expect(parseQuery(msg).words, msg).toContain('peanut butter');
+    }
+    // "ekkert með … eða með …" stays negative throughout; a negated or asked "með" relaxes nothing.
+    for (const msg of ['Engar hnetur, ekkert með hnetusmjöri eða með möndlum', 'Engar hnetur, með hnetusmjöri?', 'Án hneta, með hnetusmjöri er ekki í lagi'])
+      expect(parseExclusions(msg).allergens, msg).toEqual(expect.arrayContaining(['peanuts', 'tree_nuts']));
+  });
+
+  it('handler + catalog: "Morgunmatur án hneta, með hnetusmjöri" returns a peanut-butter recipe and never tree nuts', async () => {
+    const msg = 'Morgunmatur án hneta, með hnetusmjöri';
+    const cards = await findRecipes({ query: 'peanut butter', max_results: 5 }, msg, ALL_RECIPES);
+    expect(cards.some((c) => cardIngredients(c, ALL_RECIPES).some((id) => peanutIds.has(id))), 'peanut butter found (tool)').toBe(true);
+    for (const c of cards) expect(cardIngredients(c, ALL_RECIPES).filter((id) => treeNutIds.has(id)), c.id).toEqual([]);
+    const h = await chat(msg, [toolUse('find_recipes', { query: 'peanut butter', max_results: 5 }), text('Hér eru hugmyndir.')]);
+    expect((h.action?.recipes ?? []).some((c) => cardIngredients(c, ALL_RECIPES).some((id) => peanutIds.has(id))), 'peanut butter found (handler)').toBe(true);
+    for (const c of h.action?.recipes ?? []) expect(cardIngredients(c, ALL_RECIPES).filter((id) => treeNutIds.has(id)), `handler ${c.id}`).toEqual([]);
+    await proveExcluded(`tree nuts: ${msg}`, treeNutIds, 'Morgunmatur', msg, IS_PLAN);
+  });
+
+  it('handler + catalog: "Engar hnetur, ekkert með hnetusmjöri eða með möndlum" rules out peanuts and tree nuts', async () => {
+    const msg = 'Engar hnetur, ekkert með hnetusmjöri eða með möndlum';
+    const nuts = union(peanutIds, treeNutIds);
+    await proveExcluded(`peanuts: ${msg}`, peanutIds, 'Morgunmatur', msg, IS_PLAN, undefined, nuts);
+    await proveExcluded(`tree nuts: ${msg}`, treeNutIds, 'Morgunmatur', msg, IS_PLAN, undefined, nuts);
+  });
+});
+
+/* ================================================================== review 3: P2 (forced propose_meal_plan) */
+describe('P2 (review 3): a model-issued propose_meal_plan never creates a plan for a question about my plan', () => {
+  for (const [msg, create] of [
+    ['Hversu mikið prótein er í matseðlinum mínum?', 'Gerðu matseðil fyrir næstu viku'],
+    ['How much protein is in my meal plan?', 'Make me a meal plan for next week'],
+    ['Er matseðillinn minn vegan?', 'Breyttu matseðlinum mínum'],
+  ] as const) {
+    it(`forced tool: "${msg}" gets no plan, "${create}" gets one`, async () => {
+      const asked = await chat(msg, [toolUse('propose_meal_plan', { week: 'next' }), text('Um 180 g.')]);
+      expect(asked.action ?? null, msg).toBeNull();
+      const made = await chat(create, [toolUse('propose_meal_plan', { week: 'next' }), text('Hér er planið.')]);
+      expect(made.action?.kind, create).toBe('meal_plan');
+    });
+  }
+
+  it('the tool result tells the model to answer about the existing meal plan; program proposals are not blocked', async () => {
+    const acc = account();
+    const ctx = (userText: string) => ({ db: conversationDb(ALL_RECIPES, acc), facts: facts(), catalog: new Map(), state: { proposal: null, proposalAttempts: 0 } as ToolState,
+      messageId: mid(3), nutrition: nutritionStatus(acc, true), account: acc, today: TODAY, requestText: userText, userText });
+    const meal = ctx('Hversu mikið prótein er í matseðlinum mínum?');
+    const out = await runTool('propose_meal_plan', { week: 'next' }, meal);
+    expect(JSON.parse(out.content).status).toBe('no_action');
+    expect(meal.state.mealPlan ?? null).toBeNull();
+    // Program proposals are not guarded: a complaint about the program can still get a change offered.
+    for (const msg of ['Why is my program 5 days? I can only train 3', 'Hversu mörg sett eru í æfingaáætluninni minni?']) {
+      const prog = ctx(msg);
+      const p = await runTool('propose_program_change', { program: { name: 'X', days: [] } }, prog);
+      expect(JSON.parse(p.content).status, msg).not.toBe('no_action');
+      expect(prog.state.proposal, msg).not.toBeNull();
+    }
+    // A request to make one is not blocked.
+    const make = ctx('Gerðu matseðil fyrir næstu viku');
+    expect(JSON.parse((await runTool('propose_meal_plan', { week: 'next' }, make)).content).status).toBe('offered');
+  });
+});

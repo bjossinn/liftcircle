@@ -27,6 +27,8 @@ import type { NutritionStatus } from './dataStatus.ts';
 import { mealPlanBlocker } from './dataStatus.ts';
 // @ts-ignore see above
 import { buildMealPlanAction, clarificationNote, excludedIngredientIds, explainNoRecipes, parseQuery, requestClarification, stemWord, totalMinutes, wordsMatch } from './meals.ts';
+// @ts-ignore see above
+import { asksAboutExistingPlan } from './requestSignals.ts';
 import type { NormProgram } from './validate.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { decideTarget, missingEquipment, normalizeProposedProgram, validateForUser, validateProposedProgram } from './validate.ts';
@@ -247,6 +249,9 @@ export interface ToolContext {
    * exclusions are enforced by find_recipes and propose_meal_plan even when the model's tool input leaves them out.
    */
   requestText?: string;
+  /** The user's latest message alone (requestText without the original request of a follow-up). A question about the
+   *  user's existing plan or program in it ("Hversu mikið prótein er í matseðlinum mínum?") never creates or replaces one. */
+  userText?: string;
   /** The live-workout snapshot sent with this message (null when none, or when Training isn't shared). */
   workout?: WorkoutContext | null;
   /**
@@ -782,7 +787,23 @@ function proposeSessionAdjustment(input: Record<string, unknown>, ctx: ToolConte
 /* ------------------------------------------------------------------ meal plans */
 const NO_NUTRITION: NutritionStatus = { shared: false, enabled: null, autoDisabled: false, proteinG: null, kcal: null, macros: false };
 
+/** A question about the user's existing meal plan (requestSignals.asksAboutExistingPlan): propose_meal_plan
+ *  does nothing and tells the model to answer the question about what already exists. */
+function onlyAsksAbout(ctx: ToolContext): ToolOutcome | null {
+  const latest = ctx.userText ?? ctx.requestText;
+  if (!latest || asksAboutExistingPlan(latest) !== 'meal_plan') return null;
+  const noun = 'meal plan';
+  return {
+    content: JSON.stringify({
+      status: 'no_action',
+      note: `The user asked a question about their existing ${noun}; they did not ask to create or change one. Nothing was built. Do not call this tool again in this reply: answer their question about the existing ${noun} in text.`,
+    }),
+  };
+}
+
 async function proposeMealPlan(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutcome> {
+  const onlyAsks = onlyAsksAbout(ctx);
+  if (onlyAsks) return onlyAsks;
   ctx.state.mealPlanAttempts = (ctx.state.mealPlanAttempts ?? 0) + 1;
   if (ctx.state.mealPlanAttempts > 2) {
     return { content: JSON.stringify({ status: 'rejected', errors: ['Only one meal plan (plus one corrected attempt) per reply.'] }), isError: true };
