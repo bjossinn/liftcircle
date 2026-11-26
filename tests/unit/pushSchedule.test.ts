@@ -72,7 +72,8 @@ describe('workout reminders (next 14 days)', () => {
   it('one reminder per planned training day, none on rest days, opening Today with the session name', () => {
     const jobs = workoutReminderJobs(base);
     expect(jobs.map((j) => j.dedupeKey)).toEqual(['reminder:2026-10-26', 'reminder:2026-10-28', 'reminder:2026-10-30', 'reminder:2026-11-02', 'reminder:2026-11-04', 'reminder:2026-11-06']);
-    expect(jobs[0].payload).toEqual({ title: 'Hard Earned', body: 'Upper A today. Ready for a session?', url: '/', tag: 'workout' });
+    // No style mirrored yet → Supportive, the default (roadmap item 7).
+    expect(jobs[0].payload).toEqual({ title: 'Hard Earned', body: 'Upper A today, whenever you’re ready.', url: '/', tag: 'workout' });
     expect(jobs.every((j) => local(j.fireAt).endsWith('12:00'))).toBe(true);
     expect(jobs.some((j) => j.dedupeKey === 'reminder:2026-10-27')).toBe(false); // Tuesday rest day
   });
@@ -125,7 +126,7 @@ describe('missed-session nudges', () => {
     const first = jobs[0];
     expect(first.dedupeKey).toBe('nudge:2026-10-26');
     expect(local(first.fireAt)).toBe('Tue 15:00');
-    expect(first.payload.body).toBe('Upper A is still open from yesterday. Can you fit it in today? Even 20 minutes counts.');
+    expect(first.payload.body).toBe('Upper A is still open from yesterday, and that’s okay. A short session today still counts.'); // Supportive default
   });
 
   it('done, skipped or moved days get no nudge; upcoming days get one in advance (cancelled once trained)', () => {
@@ -150,7 +151,9 @@ describe('missed-session nudges', () => {
 describe('coach-style texts', () => {
   const STYLES: CoachStyle[] = ['supportive', 'balanced', 'strict'];
   it('reminder and nudge follow the style; Strict nudge matches the brief, Supportive stays kind', () => {
-    expect(reminderText('Upper A')).toBe('Upper A today. Ready for a session?');
+    expect(reminderText('Upper A')).toBe('Upper A today, whenever you’re ready.'); // Supportive is the default
+    expect(reminderText('Upper A', 'balanced')).toBe('Upper A today. Ready for a session?');
+    expect(missedText('Upper A', 'balanced')).toBe('Upper A is still open from yesterday. Can you fit it in today? Even 20 minutes counts.');
     expect(missedText('Upper A', 'strict')).toBe('Upper A is still open from yesterday. Do the first two exercises today: 20 minutes counts.');
     expect(missedText('Upper A', 'supportive')).not.toMatch(/excuse|missed/i);
     expect(new Set(STYLES.map((s) => reminderText('Upper A', s))).size).toBe(3);

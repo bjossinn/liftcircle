@@ -3,8 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import clsx from 'clsx';
 import {
-  AlertTriangle, ArrowDown, ArrowUp, Check, ChevronDown, Info, Link2, Minus, MoreHorizontal, MoreVertical, Pause, Play, Plus, Repeat, SkipForward,
-  StickyNote, Trash2, Timer, Undo2, RotateCcw,
+  AlertTriangle, ArrowDown, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleHelp, Info, Link2, Minus, MoreHorizontal, MoreVertical, Pause, Play, Plus, Repeat,
+  SkipForward, StickyNote, Trash2, Timer, Undo2, RotateCcw, Wrench,
 } from 'lucide-react';
 import { useApp, useDb } from '@/state/app';
 import { saveRecord, deleteRecord, alive } from '@/db/repo';
@@ -31,6 +31,10 @@ import { cheerForSet, recordForSet, restOverCheer } from '@/domain/coachCheers';
 import { celebrate } from '@/components/celebrate';
 import type { ToastOptions } from '@/components/toast';
 import { cancelRestPush, useRestPush } from '@/pwa/pushScheduler';
+import { kvGet } from '@/db/repo';
+import { openCoachWith, SHORT_ON_TIME_MINUTES, type CoachRequest } from '@/features/coaching/ai/workoutContext';
+import { activeRecordFor, AI_SESSION_ADJUST_KEY, revertAdjustment, type AdjustRecords } from '@/features/coaching/ai/sessionAdjustStore';
+import { trackAiAction } from '@/analytics/analytics';
 
 /**
  * Persist a change; resolves true when saved (or nothing needed saving), false when the device couldn't store it.
@@ -124,10 +128,18 @@ function useRestOverCheer(opts: {
   useEffect(() => {
     if (!opts.enabled || endsAt == null || !sessionId) return;
     const key = `${sessionId}:${endsAt}`;
+    let t: ReturnType<typeof setTimeout> | undefined;
     const fire = () => {
       const o = latest.current;
       const s = o.session;
-      if (!s || s.rest?.endsAt !== endsAt || Date.now() < endsAt) return;
+      if (!s || s.rest?.endsAt !== endsAt) return;
+      // A timer can fire a few ms before the wall-clock deadline (cached event-loop clock, busy main thread): try again
+      // right after it instead of dropping the popup.
+      if (Date.now() < endsAt) {
+        clearTimeout(t);
+        t = setTimeout(fire, endsAt - Date.now() + 1);
+        return;
+      }
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       if (restCheerShown(key)) return;
       markRestCheer(key);
@@ -136,7 +148,7 @@ function useRestOverCheer(opts: {
       o.lastLine.current = cheer.line;
       o.show(cheer.line, { variant: 'coach' });
     };
-    const t = setTimeout(fire, Math.max(0, endsAt - Date.now()));
+    t = setTimeout(fire, Math.max(0, endsAt - Date.now()));
     document.addEventListener('visibilitychange', fire);
     return () => {
       clearTimeout(t);
@@ -149,10 +161,15 @@ export default function SessionPage() {
   const { id = '' } = useParams();
   const nav = useNavigate();
   const toast = useToast();
-  const { db, account, updateAccount } = useApp();
+  const { db, account, updateAccount, auth, backendConfigured } = useApp();
   const settings = account.settings;
   const cheers = cheersEnabled(settings);
-  const coachStyle: CoachStyle = settings.coachStyle ?? 'balanced';
+  // Supportive is the default tone everywhere (the server's setting is mirrored here once the assistant loads).
+  const coachStyle: CoachStyle = settings.coachStyle ?? 'supportive';
+  // Contextual Coach entry points need the training assistant, i.e. a signed-in account on a configured backend.
+  const aiEntry = backendConfigured && auth.status === 'signed_in';
+  const [ask, setAsk] = useState<null | 'time' | 'swap' | 'explain'>(null);
+  const adjustRecs = useLiveQuery(async () => (await kvGet<AdjustRecords>(AI_SESSION_ADJUST_KEY, db).catch(() => undefined)) ?? {}, [db]);
   const lastCheer = useRef<string | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const { session, update, saveError } = useSessionEditor(id);
@@ -331,6 +348,26 @@ export default function SessionPage() {
 
   const fitsUser = constraints && hasConstraints(constraints) ? (e: Exercise) => fitsConstraints(e, constraints) : undefined;
 
+  /** Open the Coach with this workout attached. Typed values are saved first, so the coach sees them. */
+  const askCoach = async (req: Omit<CoachRequest, 'createdAt' | 'sessionId' | 'userId'>) => {
+    setAsk(null);
+    registry.flushAll();
+    await update(() => null); // waits for every queued save
+    await openCoachWith(db, nav, { ...req, sessionId: session.id, userId: auth.userId });
+  };
+  const applied = activeRecordFor(adjustRecs, session.id);
+  const undoApplied = async () => {
+    if (!applied) return;
+    registry.flushAll();
+    const r = await revertAdjustment(db, applied.actionId, update);
+    if (!r.ok) toast.show(r.reason, { tone: 'warn' });
+    else {
+      void trackAiAction(db, 'session_adjustment', 'reverted');
+      toast.show('Today’s workout is back as it was.');
+    }
+  };
+  const withSetsLeft = session.exercises.filter((e) => e.sets.some((x) => !x.completed && x.type !== 'warmup'));
+
   return (
     <DraftRegistryContext.Provider value={registry}>
     <div className="min-h-dvh pb-[calc(160px+env(safe-area-inset-bottom))]">
@@ -376,6 +413,27 @@ export default function SessionPage() {
             </Button>
           </div>
         )}
+        {applied && (
+          <div role="status" className="rounded-xl bg-accent-soft border border-accent/40 px-4 py-3 text-sm flex items-center gap-3">
+            <Bot className="size-4 text-accent shrink-0" aria-hidden />
+            <span className="flex-1">
+              Changed for today by your training assistant{applied.summary.length ? `: ${applied.summary.join(', ')}` : ''}. Your plan stays the same.
+            </span>
+            <Button size="sm" variant="ghost" icon={<Undo2 className="size-4" />} onClick={() => void undoApplied()}>
+              Undo
+            </Button>
+          </div>
+        )}
+        {aiEntry && session.exercises.length > 0 && (
+          <div role="group" aria-label="Ask your coach" className="flex items-center gap-2 overflow-x-auto -mx-1 px-1">
+            <span className="shrink-0 text-xs text-muted inline-flex items-center gap-1">
+              <Bot className="size-3.5" aria-hidden /> Ask coach
+            </span>
+            <AskChip icon={<Timer className="size-4" aria-hidden />} label="Short on time" onClick={() => setAsk('time')} disabled={!withSetsLeft.length} />
+            <AskChip icon={<Wrench className="size-4" aria-hidden />} label="Equipment busy" onClick={() => setAsk('swap')} disabled={!withSetsLeft.length} />
+            <AskChip icon={<CircleHelp className="size-4" aria-hidden />} label="Explain this" onClick={() => setAsk('explain')} />
+          </div>
+        )}
         {session.exercises.length === 0 && (
           <EmptyState icon={<Plus className="size-6" />} title="Add your first exercise" body="Search the library or create your own." action={<Button variant="primary" onClick={() => setPicker({ mode: 'add' })}>Add exercise</Button>} />
         )}
@@ -398,6 +456,7 @@ export default function SessionPage() {
               const from = get(se.exerciseId);
               setPicker({ mode: 'swap', exId: se.id, suggest: from ? substitutionCandidates(from, list, constraints) : [] });
             }}
+            onAsk={aiEntry ? (intent, shownTarget) => void askCoach({ intent, focusId: se.id, ...(shownTarget ? { shownTarget } : {}) }) : undefined}
           />
         ))}
         {session.exercises.length > 0 && (
@@ -459,6 +518,43 @@ export default function SessionPage() {
         </div>
       </Sheet>
 
+      <Sheet open={ask === 'time'} onClose={() => setAsk(null)} title="How much time do you have left?">
+        <p className="text-sm text-muted mb-3">Your coach keeps the main lifts and trims the rest. You’ll see the changes before anything is applied, and your plan stays the same.</p>
+        <div className="grid grid-cols-3 gap-2" role="group" aria-label="Minutes left">
+          {SHORT_ON_TIME_MINUTES.map((m) => (
+            <Button key={m} onClick={() => void askCoach({ intent: 'shorten', minutes: m })}>
+              {m} min
+            </Button>
+          ))}
+        </div>
+      </Sheet>
+      <Sheet open={ask === 'swap'} onClose={() => setAsk(null)} title="Which equipment is busy?">
+        <p className="text-sm text-muted mb-2">Your coach suggests a swap that fits your equipment, for today only.</p>
+        <div className="flex flex-col -mx-1">
+          {withSetsLeft.map((se) => (
+            <MenuItem key={se.id} icon={<Wrench className="size-5 text-muted" />} label={get(se.exerciseId)?.name ?? 'Exercise'} trailing={<ChevronRight className="size-4 text-faint" />} onClick={() => void askCoach({ intent: 'swap', focusId: se.id })} />
+          ))}
+        </div>
+      </Sheet>
+      <Sheet open={ask === 'explain'} onClose={() => setAsk(null)} title="What should your coach explain?">
+        <div className="flex flex-col -mx-1">
+          {session.exercises.map((se) => {
+            const ex = get(se.exerciseId);
+            const shown = ex ? shownTargetFor(se, ex, history, settings, account.profile.experience) : undefined;
+            return (
+              <MenuItem
+                key={se.id}
+                icon={<CircleHelp className="size-5 text-muted" />}
+                label={ex?.name ?? 'Exercise'}
+                sub={shown}
+                trailing={<ChevronRight className="size-4 text-faint" />}
+                onClick={() => void askCoach({ intent: 'explain', focusId: se.id, ...(shown ? { shownTarget: shown } : {}) })}
+              />
+            );
+          })}
+        </div>
+      </Sheet>
+
       <FinishSheet open={finishOpen} session={session} onClose={() => setFinishOpen(false)} onFinish={finish} />
 
       <ConfirmDialog
@@ -500,6 +596,8 @@ function ExerciseBlock(props: {
   sessionId: string;
   onComplete: (set: LoggedSet, showErrors: (e: FieldErrors | null) => void) => void;
   onSwap: () => void;
+  /** Ask the training assistant about this exercise (contextual entry points); absent without the assistant. */
+  onAsk?: (intent: 'swap' | 'explain', shownTarget?: string) => void;
 }) {
   const { se, ex, settings, update, history, experience } = props;
   const unit = settings.units.weight;
@@ -587,6 +685,7 @@ function ExerciseBlock(props: {
           update={update}
           onSwap={props.onSwap}
           onCustomize={() => sectionRef.current?.querySelector<HTMLInputElement>('[data-set-pending="true"] input')?.focus()}
+          onExplain={props.onAsk ? () => props.onAsk!('explain', shownTarget(suggestion, ex, unit)) : undefined}
         />
       )}
 
@@ -658,6 +757,16 @@ function ExerciseBlock(props: {
       <Sheet open={menu} onClose={() => setMenu(false)} title={ex?.name ?? 'Exercise'}>
         <div className="flex flex-col">
           <MenuItem icon={<Repeat className="size-5" />} label="Swap exercise" onClick={() => (setMenu(false), props.onSwap())} />
+          {props.onAsk && se.sets.some((x) => !x.completed && x.type !== 'warmup') && (
+            <MenuItem icon={<Wrench className="size-5" />} label="Equipment busy? Ask coach" onClick={() => (setMenu(false), props.onAsk!('swap'))} />
+          )}
+          {props.onAsk && (
+            <MenuItem
+              icon={<CircleHelp className="size-5" />}
+              label="Explain this"
+              onClick={() => (setMenu(false), props.onAsk!('explain', ex && suggestion && suggestion.action !== 'hold' ? shownTarget(suggestion, ex, unit) : undefined))}
+            />
+          )}
           <MenuItem icon={<ArrowUp className="size-5" />} label="Move up" disabled={props.index === 0} onClick={() => void update((s) => ops.moveExercise(s, se.id, -1))} />
           <MenuItem icon={<ArrowDown className="size-5" />} label="Move down" disabled={props.index === props.count - 1} onClick={() => void update((s) => ops.moveExercise(s, se.id, 1))} />
           <MenuItem
@@ -724,6 +833,8 @@ function ProgressionCard(props: {
   update: Mut;
   onSwap: () => void;
   onCustomize: () => void;
+  /** "Ask coach": open the training assistant with this recommendation and the workout attached. */
+  onExplain?: () => void;
 }) {
   const { suggestion: sg, se, ex, unit, lastWorking } = props;
   const [hidden, setHidden] = useState(false);
@@ -803,6 +914,11 @@ function ProgressionCard(props: {
                 See alternatives
               </button>
             ) : null}
+            {props.onExplain && (
+              <button className="font-medium text-accent underline min-h-8" onClick={props.onExplain}>
+                Ask coach
+              </button>
+            )}
           </div>
         </div>
         <button className="text-muted underline min-h-11 px-1" onClick={() => setHidden(true)} aria-label="Hide this tip (your sets stay as they are)">
@@ -1003,21 +1119,59 @@ function SetMenu(props: {
   );
 }
 
-function MenuItem({ icon, label, onClick, href, disabled, danger }: { icon: React.ReactNode; label: string; onClick?: () => void; href?: string; disabled?: boolean; danger?: boolean }) {
+function MenuItem({ icon, label, sub, trailing, onClick, href, disabled, danger }: { icon: React.ReactNode; label: string; sub?: string; trailing?: React.ReactNode; onClick?: () => void; href?: string; disabled?: boolean; danger?: boolean }) {
   const cls = clsx('flex items-center gap-3 min-h-12 px-2 rounded-xl text-left hover:bg-surface-2 disabled:text-disabled-ink disabled:hover:bg-transparent', danger && 'text-danger');
+  const body = sub || trailing ? (
+    <>
+      <span className="flex-1 min-w-0">
+        <span className="block">{label}</span>
+        {sub && <span className="block text-xs text-muted truncate">{sub}</span>}
+      </span>
+      {trailing}
+    </>
+  ) : (
+    label
+  );
   if (href)
     return (
       <Link to={href} className={cls}>
         {icon}
-        {label}
+        {body}
       </Link>
     );
   return (
     <button className={cls} onClick={onClick} disabled={disabled}>
       {icon}
+      {body}
+    </button>
+  );
+}
+
+/** A compact chip for the "Ask coach" row. */
+function AskChip({ icon, label, onClick, disabled }: { icon: React.ReactNode; label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="shrink-0 min-h-10 px-3 rounded-full border border-accent/40 bg-accent-soft text-sm font-medium inline-flex items-center gap-1.5 hover:bg-surface-2 disabled:opacity-50"
+    >
+      {icon}
       {label}
     </button>
   );
+}
+
+/** The recommendation as the progression card shows it ("Add weight → 62.5 kg × 8"), for "Explain this". */
+function shownTarget(sg: Suggestion | null, ex: Exercise | undefined, unit: WeightUnit): string | undefined {
+  if (!sg || !ex || sg.action === 'hold') return undefined;
+  const target = sg.action === 'calibrate' ? null : nextTargetLabel(sg, ex, unit);
+  return `${ACTION_LABELS[sg.action]}${target ? ` → ${target}` : ''}`;
+}
+function shownTargetFor(se: SessionExercise, ex: Exercise, history: WorkoutSession[], settings: Settings, experience?: Experience): string | undefined {
+  if (!se.prescription) return undefined;
+  const sg = suggestionFor({ exerciseId: se.exerciseId, ...se.prescription }, ex, history, settings, experience).suggestion;
+  return shownTarget(sg, ex, settings.units.weight);
 }
 
 /* =============================================================== Rest bar */

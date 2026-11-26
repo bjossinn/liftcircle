@@ -4,6 +4,7 @@
  * Server: supabase/migrations/2026102900000{1..}_*.sql, supabase/functions/{ai-coach,geocode,finalize-coach-media}.
  * Spec of tables/RPCs/states: docs/COACHING_INTERFACES.md.
  */
+import type { WorkoutContext } from '../../supabase/functions/_shared/ai/workout';
 import type { CoachStyle, ID, ISODate, ProgramVersion } from '@/domain/types';
 
 /* ================================================================ coaches */
@@ -343,7 +344,7 @@ export interface AiSettings {
   scopesChangedAt?: string | null;
   /** User-visible, user-editable notes the AI may use. Cleared/edited by the user only. */
   profileNotes: string;
-  /** How hard the coach pushes (migration 20261031000001). Missing on older servers → 'balanced'. */
+  /** How hard the coach pushes (migration 20261031000001). Supportive is the default; missing or unknown → 'supportive'. */
   coachStyle: CoachStyle;
 }
 
@@ -380,7 +381,8 @@ export interface AiApi {
   history(limit?: number): Promise<AiMessage[]>;
   /** Idempotent on id. Server builds context from the authenticated user's permitted records only. */
   /** `unsynced`: changes still only on this device after the pre-send sync (the coach is told its view may miss them). */
-  send(input: { id: ID; text: string; mode?: 'chat' | 'checkin_review'; unsynced?: number }): Promise<{ reply: AiMessage; proposal?: ProgramProposal | null }>;
+  /** `workout`: a snapshot of the workout the message was sent from (contextual entry points, roadmap item 7). */
+  send(input: { id: ID; text: string; mode?: 'chat' | 'checkin_review'; unsynced?: number; workout?: WorkoutContext }): Promise<{ reply: AiMessage; proposal?: ProgramProposal | null }>;
   clearHistory(): Promise<void>;
   listProposals(): Promise<ProgramProposal[]>;
   respondProposal(id: ID, accept: boolean, applied?: { programId: ID; version: number }): Promise<void>;

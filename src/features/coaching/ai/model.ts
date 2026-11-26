@@ -5,6 +5,7 @@
  */
 import type { AiAvailability, AiMessage, AiScopes, AiSettings, AiUsage, ProgramProposal } from '@/backend/coachingContract';
 import type { CoachStyle, Program } from '@/domain/types';
+import type { WorkoutContext } from '../../../../supabase/functions/_shared/ai/workout';
 
 /* ------------------------------------------------------------ local keys */
 /** Unsent composer text (string). Survives reloads and offline. */
@@ -26,6 +27,8 @@ export interface PendingSend {
   id: string;
   text: string;
   mode: AiMode;
+  /** Snapshot of the workout the message was sent from (contextual entry points); resent unchanged on Retry. */
+  workout?: WorkoutContext;
   status: 'sending' | 'failed';
   error?: string;
   createdAt: string;
@@ -70,6 +73,8 @@ export const ALWAYS_SENT = 'Your messages in this conversation (the most recent 
 export const NEVER_SENT = 'Your email, photos, social posts and friends, messages with a human coach, coach notes, and private notes about injuries.';
 
 /* --------------------------------------------------------- coach style */
+/** Supportive is the default everywhere (consent screen, settings, server prompt and ai_settings_json). */
+export const DEFAULT_COACH_STYLE: CoachStyle = 'supportive';
 export const COACH_STYLE_INFO: { key: CoachStyle; title: string; body: string }[] = [
   { key: 'supportive', title: 'Supportive', body: 'Gentle and encouraging. It never pushes: if you want a day off, it checks in kindly and accepts your call.' },
   { key: 'balanced', title: 'Balanced', body: 'Encouraging with light accountability. If you want to skip, it asks what’s up and suggests a shorter version.' },

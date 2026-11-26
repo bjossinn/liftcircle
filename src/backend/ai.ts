@@ -13,6 +13,7 @@ import type { ID } from '@/domain/types';
 import type { WeekPlan } from '@/domain/program/schedule';
 import { toMealPlanSuggestion, toRecipeSuggestions, type MealPlanSuggestion, type RecipeSuggestions } from '@/domain/nutrition/aiActions';
 import type { AiApi, AiAvailability, AiMessage, AiSettings, AiUsage, ProgramProposal } from './coachingContract';
+import type { SessionAdjustmentAction, WorkoutContext } from '../../supabase/functions/_shared/ai/workout';
 import { backendConfigured, requireSupabase } from './supabase';
 import { BackendError, toBackendError } from './syncRemote';
 
@@ -127,9 +128,16 @@ function toSettings(raw: Record<string, unknown> | null): AiSettings | null {
 
 /**
  * An AI message plus the optional fields: collapsed "Why this?" reasoning and at most one structured action — a this-week
- * plan, a meal plan suggestion or recipe cards (ai_messages.action; unknown or malformed kinds are dropped).
+ * plan, a today-only workout change, a meal plan suggestion or recipe cards (ai_messages.action; unknown or malformed
+ * kinds are dropped).
  */
-export type AiChatMessage = AiMessage & { why?: string | null; weekPlan?: WeekPlan | null; mealPlan?: MealPlanSuggestion | null; recipes?: RecipeSuggestions | null };
+export type AiChatMessage = AiMessage & {
+  why?: string | null;
+  weekPlan?: WeekPlan | null;
+  sessionAdjustment?: SessionAdjustmentAction | null;
+  mealPlan?: MealPlanSuggestion | null;
+  recipes?: RecipeSuggestions | null;
+};
 
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const strs = (v: unknown, max = 8) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, max) : []);
@@ -162,10 +170,47 @@ export function toWeekPlan(raw: unknown): WeekPlan | null {
   };
 }
 
+const idStr = (v: unknown) => typeof v === 'string' && v.length > 0 && v.length <= 100;
+const shortStr = (v: unknown, max = 120) => (typeof v === 'string' ? v.slice(0, max) : '');
+
+/** Defensive parse of a stored session_adjustment action (anything malformed → null, never applicable). */
+export function toSessionAdjustment(raw: unknown): SessionAdjustmentAction | null {
+  const a = (raw && typeof raw === 'object' ? raw : null) as Record<string, unknown> | null;
+  if (!a || a.kind !== 'session_adjustment' || !idStr(a.id) || !idStr(a.sessionId)) return null;
+  if (a.change !== 'shorten' && a.change !== 'swap') return null;
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object').slice(0, 20) : []);
+  const removeSets = list(a.removeSets)
+    .filter((x) => idStr(x.sessionExerciseId) && typeof x.count === 'number' && x.count >= 1 && x.count <= 20)
+    .map((x) => ({ sessionExerciseId: String(x.sessionExerciseId), name: shortStr(x.name) || 'Exercise', count: Math.round(x.count as number) }));
+  const dropExercises = list(a.dropExercises).filter((x) => idStr(x.sessionExerciseId)).map((x) => ({ sessionExerciseId: String(x.sessionExerciseId), name: shortStr(x.name) || 'Exercise' }));
+  const sw = (a.swap && typeof a.swap === 'object' ? a.swap : null) as Record<string, unknown> | null;
+  const swap = sw && idStr(sw.sessionExerciseId) && idStr(sw.fromExerciseId) && idStr(sw.toExerciseId)
+    ? { sessionExerciseId: String(sw.sessionExerciseId), fromExerciseId: String(sw.fromExerciseId), fromName: shortStr(sw.fromName) || 'Exercise', toExerciseId: String(sw.toExerciseId), toName: shortStr(sw.toName) || 'Exercise' }
+    : undefined;
+  if (a.change === 'swap' && !swap) return null;
+  if (a.change === 'shorten' && !removeSets.length && !dropExercises.length) return null;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : undefined);
+  return {
+    kind: 'session_adjustment',
+    id: String(a.id),
+    sessionId: String(a.sessionId),
+    change: a.change,
+    ...(num(a.minutes) != null ? { minutes: num(a.minutes) } : {}),
+    ...(num(a.estimatedMinutes) != null ? { estimatedMinutes: num(a.estimatedMinutes) } : {}),
+    ...(a.change === 'swap' ? { swap } : {}),
+    removeSets: a.change === 'shorten' ? removeSets : [],
+    dropExercises: a.change === 'shorten' ? dropExercises : [],
+    summary: shortStr(a.summary, 300),
+    warnings: strs(a.warnings, 4),
+  };
+}
+
 function toMessage(raw: Record<string, unknown>): AiChatMessage {
   return {
     ...(typeof raw.why === 'string' && raw.why.trim() ? { why: raw.why } : {}),
-    ...(raw.action ? { weekPlan: toWeekPlan(raw.action), mealPlan: toMealPlanSuggestion(raw.action), recipes: toRecipeSuggestions(raw.action) } : {}),
+    ...(raw.action
+      ? { weekPlan: toWeekPlan(raw.action), sessionAdjustment: toSessionAdjustment(raw.action), mealPlan: toMealPlanSuggestion(raw.action), recipes: toRecipeSuggestions(raw.action) }
+      : {}),
     id: String(raw.id),
     role: raw.role === 'assistant' ? 'assistant' : 'user',
     content: String(raw.content ?? ''),
@@ -238,13 +283,14 @@ export const aiApi: AiApi = {
     return (rows ?? []).map(toMessage);
   },
 
-  async send(input: { id: ID; text: string; mode?: 'chat' | 'checkin_review'; unsynced?: number }) {
+  async send(input: { id: ID; text: string; mode?: 'chat' | 'checkin_review'; unsynced?: number; workout?: WorkoutContext }) {
     const r = await invoke<{ reply: Record<string, unknown>; proposal?: Record<string, unknown> | null }>({
       action: 'send',
       id: input.id,
       text: input.text,
       mode: input.mode ?? 'chat',
       ...(input.unsynced ? { unsynced: input.unsynced } : {}),
+      ...(input.workout ? { workout: input.workout } : {}),
     });
     return { reply: toMessage(r.reply), proposal: r.proposal ? toProposal(r.proposal) : null };
   },

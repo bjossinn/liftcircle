@@ -127,12 +127,12 @@ export function reminderTime(i: ReminderTimeInput): string {
 }
 
 /* ------------------------------------------------------------------ texts (coach style) */
-export function reminderText(name: string, style: CoachStyle = 'balanced'): string {
+export function reminderText(name: string, style: CoachStyle = 'supportive'): string {
   if (style === 'supportive') return `${name} today, whenever you’re ready.`;
   if (style === 'strict') return `${name} today. Start with the first exercise.`;
   return `${name} today. Ready for a session?`;
 }
-export function missedText(name: string, style: CoachStyle = 'balanced'): string {
+export function missedText(name: string, style: CoachStyle = 'supportive'): string {
   if (style === 'supportive') return `${name} is still open from yesterday, and that’s okay. A short session today still counts.`;
   if (style === 'strict') return `${name} is still open from yesterday. Do the first two exercises today: 20 minutes counts.`;
   return `${name} is still open from yesterday. Can you fit it in today? Even 20 minutes counts.`;

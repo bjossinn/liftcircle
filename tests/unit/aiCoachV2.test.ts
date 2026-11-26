@@ -484,7 +484,7 @@ describe('MOCKED ai-coach v3: coach styles reach the prompt', () => {
     expect(system).toMatch(/Coach style: STRICT/);
     expect(system).toMatch(/Push back firmly on reasons like "no time" or "don't feel like it" \(never on tiredness: rule 9\)/);
     expect(system).not.toMatch(/reasons like "too tired"/);
-    expect(system).toMatch(/If the user says they're tired, too tired, exhausted, wiped out or drained .*: respond supportively, never push back/);
+    expect(system).toMatch(/If the user says they're tired, too tired, fatigued, exhausted, wiped out or drained .*: respond supportively, never push back/);
     expect(system).toMatch(/The newest message says the user is tired\. Whatever the coach style: be supportive/);
     expect(system).toMatch(/minimum version as the plan \(e\.g\. "first two exercises, 20 minutes/);
     expect(system).toMatch(/Offer a minimum version, e\.g\. "just the first two exercises, 20 minutes"/);

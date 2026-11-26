@@ -2,7 +2,7 @@
  * ai-coach request handling (pure; the Deno entry point injects env, fetch and the data accessor).
  *
  *   POST {action:'status'}                          → availability + today's usage
- *   POST {action:'send', id, text, mode}            → {reply, proposal}
+ *   POST {action:'send', id, text, mode, workout?}  → {reply, proposal}   (workout: live-workout snapshot, workout.ts)
  *
  * The caller's identity is ONLY the `uid` argument (the verified JWT subject). Any other field in the body
  * (userId, clientId, scopes, …) is ignored. Order for 'send': input check → configured? → settings
@@ -15,7 +15,9 @@ import { buildContext } from './context.ts';
 // @ts-ignore see above
 import { addUsage, AiUnavailableError, createMessage, estimateCostUsd, PROVIDER_NAMES, resolveProvider, type ProviderId } from './provider.ts';
 // @ts-ignore see above
-import { MAX_TOOL_ROUNDS, runTool, TOOL_DEFS, type ToolState } from './tools.ts';
+import { alternativesFor, buildSessionAdjustment, MAX_TOOL_ROUNDS, runTool, TOOL_DEFS, type ToolState } from './tools.ts';
+// @ts-ignore see above
+import { describeSessionAdjustment, parseWorkoutContext, type WorkoutContext } from './workout.ts';
 // @ts-ignore see above
 import { splitWhy, tidyReply, wordCount } from './reply.ts';
 // @ts-ignore see above
@@ -134,12 +136,14 @@ function textOf(content: ContentBlock[]): string {
 }
 
 async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>): Promise<CoachResult> {
-  // Only these four fields are read from the request.
+  // Only these fields are read from the request.
   const id = typeof body.id === 'string' ? body.id : '';
   const text = typeof body.text === 'string' ? body.text.trim() : '';
   const mode: 'chat' | 'checkin_review' = body.mode === 'checkin_review' ? 'checkin_review' : 'chat';
   // Changes still only on the user's device after the app's pre-send sync (1.0.3 sync barrier); a count, nothing else.
   const unsynced = Math.max(0, Math.min(1000, Math.round(Number(body.unsynced) || 0)));
+  // A snapshot of the workout the message was sent from (contextual entry points); untrusted data, parsed and clamped.
+  const workout = parseWorkoutContext(body.workout);
   if (!UUID_RE.test(id)) return err(400, 'bad_request', 'A valid message id is required.');
   if (!text) return err(400, 'bad_request', 'Write a message first.');
   if (text.length > MAX_TEXT) return err(400, 'bad_request', `Messages can be at most ${MAX_TEXT} characters.`);
@@ -206,7 +210,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
     return r;
   };
   try {
-    return await answer({ deps, uid, id, text, mode, unsynced, prov, settings, tally, fail, recordOnce });
+    return await answer({ deps, uid, id, text, mode, unsynced, workout, prov, settings, tally, fail, recordOnce });
   } catch (e) {
     await fail();
     throw e;
@@ -221,6 +225,7 @@ interface Answering {
   text: string;
   mode: 'chat' | 'checkin_review';
   unsynced: number;
+  workout: WorkoutContext | null;
   prov: NonNullable<ReturnType<typeof resolveProvider>>;
   settings: AiSettingsRow;
   tally: { inputTokens: number; outputTokens: number };
@@ -229,15 +234,15 @@ interface Answering {
 }
 
 async function answer(a: Answering): Promise<CoachResult> {
-  const { deps, uid, id, text, mode, unsynced, prov, settings, tally, fail, recordOnce } = a;
+  const { deps, uid, id, text, mode, unsynced, workout, prov, settings, tally, fail, recordOnce } = a;
   const now = deps.now?.() ?? new Date();
   const started = Date.now();
   // Hidden product areas (coach marketplace, social feed) stay out of the app guide and its links.
   const features = guideFeaturesFromEnv(deps.env);
-  const ctx = await buildContext({ db: deps.db, uid, settings, text, mode, now, unsynced, features });
+  const ctx = await buildContext({ db: deps.db, uid, settings, text, mode, now, unsynced, features, workout });
   const model = prov.model;
   const maxTokens = intEnv(deps, 'AI_MAX_OUTPUT_TOKENS', 1200, 64, 8192);
-  const state: ToolState = { proposal: null, proposalAttempts: 0, weekPlan: null, weekAttempts: 0, mealPlan: null, mealPlanAttempts: 0, recipes: null };
+  const state: ToolState = { proposal: null, proposalAttempts: 0, weekPlan: null, weekAttempts: 0, mealPlan: null, mealPlanAttempts: 0, recipes: null, sessionAdjustment: null };
   // The user's own words for this request — for a short follow-up ("ok, try now") also the original request — so tools
   // and the meal-plan fallback keep the user's restrictions even when the model's tool input drops them.
   const requestText = ctx.followUp && ctx.openRequest ? `${ctx.openRequest.text}\n${text}` : text;
@@ -287,7 +292,7 @@ async function answer(a: Answering): Promise<CoachResult> {
       for (const tu of toolUses.slice(0, 4)) {
         const out = await runTool(tu.name, tu.input, {
           db: deps.db, facts: ctx.facts, catalog: ctx.catalog, state, week: ctx.week, trainingShared: ctx.trainingShared, messageId: id,
-          today: ctx.today, nutrition: ctx.nutrition, account: ctx.account, requestText,
+          today: ctx.today, nutrition: ctx.nutrition, account: ctx.account, requestText, workout: ctx.workout,
         });
         results.push({ type: 'tool_result', tool_use_id: tu.id, content: out.content, ...(out.isError ? { is_error: true } : {}) });
       }
@@ -338,9 +343,32 @@ async function answer(a: Answering): Promise<CoachResult> {
     }
   }
 
-  // One structured action per reply: a this-week schedule change, else a meal plan, else recipe cards.
-  const weekPlan = state.weekPlan ?? null;
-  const action: AiAction | null = weekPlan ?? state.mealPlan ?? state.recipes ?? null;
+  // "Short on time" / "Equipment busy" from the workout screen must end in a real, checked change to today's workout: if
+  // the model answered without propose_session_adjustment, the server builds it from the request (main lifts kept /
+  // the first suitable alternative). If nothing valid exists, the model's text stands on its own.
+  const live = ctx.workout;
+  if (live && live.status === 'active' && !state.sessionAdjustment && (live.intent === 'shorten' || live.intent === 'swap')) {
+    const focus = live.exercises.find((e) => e.id === live.focusId);
+    const from = focus ? ctx.catalog.get(focus.exerciseId) : undefined;
+    const tries: Record<string, unknown>[] =
+      live.intent === 'shorten'
+        ? [{ change: 'shorten', minutes: live.minutesLeft }]
+        : from && focus ? alternativesFor(from, ctx.catalog, ctx.facts).slice(0, 8).map((c) => ({ change: 'swap', session_exercise_id: focus.id, to_exercise_id: c.id })) : [];
+    for (const input of tries) {
+      const built = buildSessionAdjustment(input, { catalog: ctx.catalog, facts: ctx.facts, messageId: id, workout: live, trainingShared: ctx.trainingShared });
+      if (built.action) {
+        state.sessionAdjustment = built.action;
+        deps.log?.('ai_session_adjustment_fallback', { change: built.action.change });
+        break;
+      }
+    }
+  }
+
+  // One structured action per reply: today's workout change, else a this-week schedule change, else a meal plan, else
+  // recipe cards.
+  const weekPlan = state.sessionAdjustment ? null : state.weekPlan ?? null;
+  const sessionAdjustment = state.sessionAdjustment ?? null;
+  const action: AiAction | null = sessionAdjustment ?? weekPlan ?? state.mealPlan ?? state.recipes ?? null;
   const p = state.proposal;
 
   // The card is the single source of truth: replace text that contradicts (or restates) it with a one-line summary.
@@ -378,7 +406,9 @@ async function answer(a: Answering): Promise<CoachResult> {
   const links = validateOpenLinks(reply, known, features);
   reply = links.text;
   if (!reply) {
-    reply = weekPlan
+    reply = sessionAdjustment
+      ? describeSessionAdjustment(sessionAdjustment, lang)
+      : weekPlan
       ? summarizeWeekPlan(weekPlan, ctx.today, ctx.facts.weekStart, lang)
       : state.mealPlan
         ? summarizeMealPlan(state.mealPlan, ctx.today, ctx.facts.weekStart, lang)
@@ -428,6 +458,9 @@ async function answer(a: Answering): Promise<CoachResult> {
   const storedReply = { ...(recorded.reply as StoredMessage) };
   if (!recorded.duplicate && !('why' in storedReply)) storedReply.why = why;
   if (!recorded.duplicate && !('action' in storedReply)) storedReply.action = action;
+  // A database without the 2026-11-28 migration drops the new session_adjustment kind; still return it for this reply
+  // (it then can't be shown again after a reload, which the app handles: the change is only for today anyway).
+  if (!recorded.duplicate && sessionAdjustment && !storedReply.action) storedReply.action = sessionAdjustment;
   return {
     status: 200,
     body: { reply: storedReply, proposal: (recorded.proposal ?? null) as ProposalJson | null, duplicate: Boolean(recorded.duplicate) },

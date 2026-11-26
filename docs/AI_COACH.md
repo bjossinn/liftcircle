@@ -456,6 +456,33 @@ From the Claude + ChatGPT cross-review of 25 Nov 2026 (`tests/unit/aiCorrectness
 - **Independent allergen fixture** (`tests/unit/aiAllergenFixture.test.ts`): allergen class words and specific foods
   (EN + IS) specified by hand, so a word missing from the parser's dictionary can't also be missing from the check.
 
+## 4f. State-aware coach (roadmap item 7)
+
+- **Contextual entry points.** The workout logger has an "Ask coach" row (Short on time → minutes left; Equipment busy →
+  which exercise; Explain this → which exercise) plus "Equipment busy? Ask coach" / "Explain this" in each exercise's
+  menu and "Ask coach" on the progression card. The workout summary has "Explain" next to each next target. Signed-in
+  accounts only. Tapping stores a request on the device (`ai/workoutContext.ts`) and opens the Coach tab, which sends a
+  visible message once, with a fresh snapshot of that workout (`send({ …, workout })`; exercises, targets, done sets,
+  plan priorities, elapsed time). It goes through the same sync barrier as every send. If it can't send yet, the text
+  waits in the composer with "Today's workout attached".
+- **Server.** `_shared/ai/workout.ts` parses the snapshot as untrusted data (clamped, unknown fields dropped) and shows
+  it to the model inside `<user_data kind="workout">`, only when Training is shared. New tool
+  `propose_session_adjustment`: `swap` (catalog alternative that fits equipment, exclusions and areas to go easy on)
+  or `shorten` (main and secondary lifts share the time first, accessories go first; completed sets never change).
+  If the model answers a Short on time / Equipment busy request without the tool, the server builds the change itself.
+  Stored as `ai_messages.action` kind `session_adjustment` (migration `20261128000001`); before that migration the
+  action is still returned for the reply.
+- **App.** The card "Apply to today's workout" changes only that live `WorkoutSession` (`src/domain/sessionAdjust.ts`);
+  the plan and its templates are never touched. Undo (card, or the logger's "Changed for today by your training
+  assistant" banner) restores what was removed or replaced. Analytics: `ai_action_used` with
+  `action_type: 'session_adjustment'` (proposed / applied / reverted).
+- **Consent.** One screen (`ai/AiConsent.tsx`), shown in the Coach tab on first use and at `/coaching/ai/setup`. It says
+  what the assistant sees and does, has an optional "Change what it can see" panel, and turns it on with Supportive
+  tone (an earlier choice is kept on re-consent). Tone, notes and data access are changed later in settings.
+- **Supportive default, checked everywhere.** Server prompt (`asCoachStyle`), `ai_settings` column default and
+  `ai_settings_json` (NULL reads as supportive since `20261128000001`), client parsing, the consent screen, and the
+  offline mirrors (logger cheers, push texts, welcome). Tiredness and fatigue are never weak reasons in any style.
+
 ## 5. Testing status
 
 | What | How | Status |

@@ -314,6 +314,78 @@ describe('Coach tab', () => {
     expect(switcher()).not.toBeNull();
   });
 
+  /* ---------------------------------------------------- PR #22 review follow-ups (roadmap item 7) */
+  const retryBtn = () => el!.querySelector<HTMLButtonElement>('button[aria-label="Retry loading coaching"]');
+  const remount = async (path = '/coach', page = CoachTabPage) => {
+    await act(async () => root!.unmount());
+    el!.remove();
+    await render(createElement(page), path);
+  };
+
+  it('first load fails with nothing known: the Coaching entry stays, with Retry (not treated as "no coaching")', async () => {
+    h.relsFail = true;
+    await render(createElement(CoachTabPage), '/coach');
+    await chatReady();
+    await waitFor(() => expect(switcher()).not.toBeNull());
+    expect(hrefs(switcher()!)).toEqual(['/coach', '/coaching']);
+    expect(retryBtn()).not.toBeNull();
+    // Retry once the network is back: a confirmed empty answer hides the channel.
+    h.relsFail = false;
+    await act(async () => retryBtn()!.click());
+    await waitFor(() => expect(switcher()).toBeNull());
+    expect(retryBtn()).toBeNull();
+  });
+
+  it('first load fails, Retry succeeds with an existing coach: the switcher stays and Retry goes away', async () => {
+    h.relsFail = true;
+    await render(createElement(CoachTabPage), '/coach');
+    await waitFor(() => expect(retryBtn()).not.toBeNull());
+    h.relsFail = false;
+    h.rels = [rel({ status: 'active', unread: 2 })];
+    await act(async () => retryBtn()!.click());
+    await waitFor(() => expect(norm(switcher()?.querySelector('a[href="/coaching"]')?.textContent)).toBe('Coaching2'));
+    expect(retryBtn()).toBeNull();
+  });
+
+  it('a fresh tab during a network error keeps an existing client’s Coaching switcher (last answer saved on this device)', async () => {
+    h.rels = [rel({ status: 'active' })];
+    await render(createElement(CoachTabPage), '/coach');
+    await waitFor(() => expect(switcher()).not.toBeNull());
+    clearCoachChannelCache({ keepStored: true }); // a new tab: nothing in memory
+    h.relsFail = true;
+    await remount();
+    expect(switcher()).not.toBeNull(); // shown from the first render, no flicker
+    await tick(80);
+    expect(switcher()).not.toBeNull();
+    expect(retryBtn()).toBeNull(); // known answer: nothing uncertain
+  });
+
+  it('a confirmed "no coaching" is remembered: a later network error doesn’t add the switcher back', async () => {
+    await render(createElement(CoachTabPage), '/coach');
+    await chatReady();
+    await tick(60);
+    expect(switcher()).toBeNull();
+    clearCoachChannelCache({ keepStored: true });
+    h.relsFail = true;
+    await remount();
+    await tick(80);
+    expect(switcher()).toBeNull();
+  });
+
+  it('guests see the marketplace switcher on /coach when the coach marketplace is on (configured backend only)', async () => {
+    vi.stubEnv('VITE_ENABLE_COACH_MARKETPLACE', 'true');
+    h.auth = 'guest';
+    await render(createElement(CoachTabPage), '/coach');
+    await waitFor(() => expect(switcher()).not.toBeNull());
+    expect(hrefs(switcher()!)).toEqual(['/coach', '/coaching']);
+    expect(retryBtn()).toBeNull();
+    // The personal version (no backend) never shows it.
+    h.backend = false;
+    await remount();
+    await tick(60);
+    expect(switcher()).toBeNull();
+  });
+
   it('the Coaching hub has the switcher back to the assistant, and opens the assistant in the Coach tab', async () => {
     h.rels = [rel({ status: 'active' })];
     await render(createElement(CoachingHubPage), '/coaching');

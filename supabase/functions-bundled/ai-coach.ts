@@ -405,8 +405,8 @@ function matchGuidePath(path, known, features) {
     let ok = true;
     for (let i = 0; i < gp.length && ok; i++) {
       if (gp[i].startsWith(":")) {
-        const id = decodeURIComponentSafe(parts2[i]);
-        ok = !!id && ID_RE.test(id) && (!known || !!(g.param && known[g.param]?.has(id)));
+        const id2 = decodeURIComponentSafe(parts2[i]);
+        ok = !!id2 && ID_RE.test(id2) && (!known || !!(g.param && known[g.param]?.has(id2)));
       } else ok = gp[i] === parts2[i];
     }
     if (ok) return g;
@@ -537,7 +537,7 @@ function isFollowUp(text) {
 }
 function mentionsTiredness(text) {
   const t = fold(text);
-  return /\b(?:tired(?! of\b)|exhausted|wiped(?: out)?|drained|knackered|shattered|worn out|burn(?:t|ed) out|no energy|sleepy|fatigued)\b/.test(t) || /(?<![a-zæðþ])(?:þreytt[a-zæðþ]*(?![a-zæðþ])(?! a\b)|uppgefin|orkulaus|orkulitil|syfjuð|syfjaður|buin a þvi|buinn a þvi|alveg buin|alveg buinn|lufin|lufinn)/.test(t);
+  return /\b(?:tired(?! of\b)|exhausted|wiped(?: out)?|drained|knackered|shattered|worn out|burn(?:t|ed) out|no energy|sleepy|fatigued?|low on energy)\b/.test(t) || /(?<![a-zæðþ])(?:þreytt[a-zæðþ]*(?![a-zæðþ])(?! a\b)|uppgefin|orkulaus|orkulitil|syfjuð|syfjaður|buin a þvi|buinn a þvi|alveg buin|alveg buinn|lufin|lufinn)/.test(t);
 }
 var BLOCK_RE = /\/coaching\/ai\/settings|\/nutrition\/targets|\[\[open:\/settings|\[\[open:\/onboarding|can['’]t see|cannot see|isn['’]t shared|not shared/i;
 function fulfilled(intent, reply) {
@@ -597,6 +597,166 @@ function sharingChange(prev, now) {
   return { added: keys.filter((k) => now[k] && !prev[k]), revoked: keys.some((k) => prev[k] && !now[k]) };
 }
 
+// supabase/functions/_shared/ai/workout.ts
+var WORKOUT_INTENTS = ["shorten", "swap", "explain"];
+var WORKOUT_LIMITS = { exercises: 20, sets: 15, name: 80, shownTarget: 160, minMinutes: 5, maxMinutes: 180 };
+var obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : null;
+var str = (v, max) => typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max) : "";
+var num = (v, min, max) => typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : void 0;
+var id = (v) => typeof v === "string" && /^[A-Za-z0-9:_.-]{1,100}$/.test(v) ? v : "";
+var optNum = (v, min, max) => v === null ? null : num(v, min, max);
+function parseWorkoutContext(raw) {
+  const o = obj(raw);
+  if (!o) return null;
+  const sessionId = id(o.sessionId);
+  const intent = WORKOUT_INTENTS.includes(o.intent) ? o.intent : null;
+  if (!sessionId || !intent || !Array.isArray(o.exercises)) return null;
+  const exercises = [];
+  for (const r of o.exercises.slice(0, WORKOUT_LIMITS.exercises)) {
+    const e = obj(r);
+    if (!e || !id(e.id) || !id(e.exerciseId)) continue;
+    const t = obj(e.target);
+    const target = t && num(t.sets, 1, 20) != null ? {
+      sets: Math.round(num(t.sets, 1, 20)),
+      repMin: Math.round(num(t.repMin, 0, 100) ?? 0),
+      repMax: Math.round(num(t.repMax, 0, 100) ?? 0),
+      ...num(t.targetRir, 0, 10) != null ? { targetRir: num(t.targetRir, 0, 10) } : {},
+      restSec: Math.round(num(t.restSec, 0, 900) ?? 90),
+      ...num(t.durationSec, 1, 7200) != null ? { durationSec: Math.round(num(t.durationSec, 1, 7200)) } : {}
+    } : void 0;
+    const sets = (Array.isArray(e.sets) ? e.sets : []).slice(0, WORKOUT_LIMITS.sets).map((x) => {
+      const s = obj(x) ?? {};
+      return {
+        type: ["warmup", "normal", "drop", "timed", "failure"].includes(s.type) ? s.type : "normal",
+        done: s.done === true,
+        ...optNum(s.weightKg, -500, 1e3) !== void 0 ? { weightKg: optNum(s.weightKg, -500, 1e3) } : {},
+        ...optNum(s.reps, 0, 1e3) !== void 0 ? { reps: optNum(s.reps, 0, 1e3) } : {},
+        ...optNum(s.durationSec, 0, 36e3) !== void 0 ? { durationSec: optNum(s.durationSec, 0, 36e3) } : {}
+      };
+    });
+    exercises.push({
+      id: id(e.id),
+      exerciseId: id(e.exerciseId),
+      name: str(e.name, WORKOUT_LIMITS.name) || "Exercise",
+      sets,
+      ...target ? { target } : {},
+      ...e.priority === 1 || e.priority === 2 || e.priority === 3 ? { priority: e.priority } : {},
+      ...e.discomfort === true ? { discomfort: true } : {}
+    });
+  }
+  const minutesLeft = num(o.minutesLeft, WORKOUT_LIMITS.minMinutes, WORKOUT_LIMITS.maxMinutes);
+  const focusId = id(o.focusId);
+  const shownTarget = str(o.shownTarget, WORKOUT_LIMITS.shownTarget);
+  return {
+    sessionId,
+    status: o.status === "completed" ? "completed" : "active",
+    name: str(o.name, WORKOUT_LIMITS.name) || "Workout",
+    date: typeof o.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.date) ? o.date : "",
+    elapsedMin: Math.round(num(o.elapsedMin, 0, 24 * 60) ?? 0),
+    intent,
+    ...minutesLeft != null ? { minutesLeft: Math.round(minutesLeft) } : {},
+    ...focusId && exercises.some((e) => e.id === focusId) ? { focusId } : {},
+    ...shownTarget ? { shownTarget } : {},
+    exercises
+  };
+}
+var isWorking = (s) => s.type !== "warmup";
+function setSeconds(t) {
+  const work = t?.durationSec ? t.durationSec + 10 : ((t?.repMin ?? 8) + (t?.repMax ?? 12)) / 2 * 4 + 10;
+  return Math.round(work + (t?.restSec ?? 90));
+}
+var EXERCISE_SETUP_SEC = 90;
+function pendingWorking(e) {
+  return e.sets.filter((s) => !s.done && isWorking(s)).length;
+}
+function remainingMinutes(ctx) {
+  let sec = 0;
+  for (const e of ctx.exercises) {
+    const n = pendingWorking(e);
+    if (!n) continue;
+    if (!e.sets.some((s) => s.done)) sec += EXERCISE_SETUP_SEC;
+    sec += n * setSeconds(e.target);
+  }
+  return Math.ceil(sec / 60);
+}
+function planShorten(ctx, minutes) {
+  const budget = Math.max(0, minutes) * 60;
+  const items = ctx.exercises.map((e, order) => ({ e, order, pending: pendingWorking(e), kept: 0, started: e.sets.some((s) => s.done), cost: setSeconds(e.target) })).filter((x) => x.pending > 0).sort((a, b) => (a.e.priority ?? 2) - (b.e.priority ?? 2) || a.order - b.order);
+  let used = 0;
+  const tiers = [items.filter((x) => (x.e.priority ?? 2) < 3), items.filter((x) => x.e.priority === 3)];
+  for (const tier of tiers) {
+    for (let progress = true; progress; ) {
+      progress = false;
+      for (const x of tier) {
+        if (x.kept >= x.pending) continue;
+        const add = x.cost + (x.kept === 0 && !x.started ? EXERCISE_SETUP_SEC : 0);
+        if (used + add > budget) continue;
+        used += add;
+        x.kept++;
+        progress = true;
+      }
+    }
+  }
+  const removeSets = [];
+  const dropExercises = [];
+  for (const x of [...items].sort((a, b) => a.order - b.order)) {
+    if (x.kept >= x.pending) continue;
+    if (x.kept === 0 && !x.started) dropExercises.push({ sessionExerciseId: x.e.id, name: x.e.name });
+    else removeSets.push({ sessionExerciseId: x.e.id, name: x.e.name, count: x.pending - x.kept });
+  }
+  return { removeSets, dropExercises, estimatedMinutes: Math.ceil(used / 60), fits: removeSets.length === 0 && dropExercises.length === 0 };
+}
+var fmtKg = (kg, unit) => unit === "lb" ? `${Math.round(kg / 0.45359237 * 10) / 10} lb` : `${Math.round(kg * 100) / 100} kg`;
+function setText(s, unit) {
+  const parts2 = [];
+  if (s.weightKg != null) parts2.push(fmtKg(s.weightKg, unit));
+  if (s.reps != null) parts2.push(`${s.reps} reps`);
+  if (s.durationSec != null) parts2.push(`${s.durationSec} s`);
+  return `${s.type === "warmup" ? "warm-up " : ""}${parts2.join(" \xD7 ") || "not filled in"}`;
+}
+function workoutLines(ctx, unit, clean = (s) => s) {
+  const head = ctx.status === "completed" ? `Workout just finished: ${clean(ctx.name)}${ctx.date ? ` (${ctx.date})` : ""}, ${ctx.elapsedMin} min.` : `Workout in progress right now: ${clean(ctx.name)}${ctx.date ? ` (${ctx.date})` : ""}, started ${ctx.elapsedMin} min ago. About ${remainingMinutes(ctx)} min of work is left as planned.`;
+  const lines = [head, "Exercises in order ([session exercise id] name (exercise id): target; logged sets):"];
+  for (const e of ctx.exercises) {
+    const t = e.target;
+    const target = t ? `${t.sets} \xD7 ${t.durationSec ? `${t.durationSec} s` : t.repMin === t.repMax ? t.repMin : `${t.repMin}\u2013${t.repMax}`}${t.targetRir != null ? `, ${t.targetRir} RIR` : ""}, rest ${t.restSec} s` : "free logging";
+    const done = e.sets.filter((s) => s.done);
+    const working = e.sets.filter(isWorking).length;
+    const doneWorking = done.filter(isWorking).length;
+    const pr = e.priority === 1 ? ", main lift" : e.priority === 3 ? ", accessory" : "";
+    lines.push(
+      `- [${e.id}] ${clean(e.name)} (${e.exerciseId}): ${target}${pr}; ${doneWorking} of ${working} working sets done${done.length ? ` (${done.map((s) => setText(s, unit)).join(", ")})` : ""}${e.discomfort ? "; discomfort flagged" : ""}`
+    );
+  }
+  if (ctx.intent === "shorten" && ctx.minutesLeft) lines.push(`The user has about ${ctx.minutesLeft} minutes left.`);
+  const focus = ctx.focusId ? ctx.exercises.find((e) => e.id === ctx.focusId) : void 0;
+  if (focus) lines.push(`The question is about: [${focus.id}] ${clean(focus.name)}.`);
+  if (ctx.shownTarget) lines.push(`The app showed this recommendation: ${clean(ctx.shownTarget)}`);
+  return lines;
+}
+function workoutInstruction(ctx) {
+  const where = ctx.status === "completed" ? "their workout summary" : "the workout screen, mid-workout";
+  const base = `The newest message was sent from ${where}, with a snapshot of that workout attached (<user_data kind="workout">). Use it: you know which exercises are done, what is left and the targets. Changes you suggest are for TODAY'S WORKOUT ONLY: the saved plan, its templates and future sessions never change.`;
+  if (ctx.intent === "shorten") {
+    return `${base} The user is short on time${ctx.minutesLeft ? ` (about ${ctx.minutesLeft} minutes left)` : ""}. Call propose_session_adjustment with change "shorten"${ctx.minutesLeft ? ` and minutes ${ctx.minutesLeft}` : ""}: the server keeps the main lifts and trims accessories and later sets to fit. Short on time is a normal reason in every coach style: be practical, never guilt. Then reply in one or two short lines; the card lists the changes ("Apply to today's workout").`;
+  }
+  if (ctx.intent === "swap") {
+    return `${base} The equipment for the exercise in question is busy. Call exercise_alternatives for its exercise id, pick the best alternative that trains the same thing, then call propose_session_adjustment with change "swap", session_exercise_id and to_exercise_id. Reply in one or two short lines naming the swap; the card shows it ("Apply to today's workout").`;
+  }
+  return `${base} The user asked to explain a recommendation. Explain in plain words why the app suggests it, using the "Next targets" lines and the logged sets (effort, reps against the target range, discomfort). Quote the app's numbers exactly; never invent a different next weight. Don't change anything and don't call propose_session_adjustment.`;
+}
+function describeSessionAdjustment(a, lang = "en") {
+  if (a.change === "swap" && a.swap) {
+    return lang === "is" ? `\xCD dag: ${a.swap.toName} \xED sta\xF0 ${a.swap.fromName}. \xDDttu \xE1 \u201EApply to today's workout\u201C til a\xF0 breyta \xE6fingunni \xED dag. Plani\xF0 breytist ekki.` : `For today: ${a.swap.toName} instead of ${a.swap.fromName}. Tap Apply to today's workout to make the swap. Your plan stays the same.`;
+  }
+  const sets = a.removeSets.reduce((n, r) => n + r.count, 0);
+  const bits = [];
+  if (a.dropExercises.length) bits.push(lang === "is" ? `sleppa ${a.dropExercises.map((d) => d.name).join(", ")}` : `skip ${a.dropExercises.map((d) => d.name).join(", ")}`);
+  if (sets) bits.push(lang === "is" ? `${sets} f\xE6rri sett` : `${sets} fewer set${sets === 1 ? "" : "s"}`);
+  const est = a.estimatedMinutes != null ? lang === "is" ? ` (um ${a.estimatedMinutes} m\xEDn. eftir)` : ` (about ${a.estimatedMinutes} min left)` : "";
+  return lang === "is" ? `Styttri \xE6fing \xED dag: ${bits.join(" og ") || "engar breytingar"}${est}. \xDDttu \xE1 \u201EApply to today's workout\u201C. Plani\xF0 breytist ekki.` : `A shorter workout for today: ${bits.join(" and ") || "no changes"}${est}. Tap Apply to today's workout to use it. Your plan stays the same.`;
+}
+
 // supabase/functions/_shared/nutrition/catalog.ts
 var current = { byId: /* @__PURE__ */ new Map(), recipes: [], pieceLabels: {} };
 function setNutritionCatalog(c) {
@@ -652,8 +812,8 @@ function normalizeProteinPrefs(p) {
   const liked = PROTEIN_GROUPS.filter((g) => p?.liked?.includes(g) && !excluded.includes(g));
   return { liked, excluded };
 }
-function proteinGroupOf(id, byId = catalog().byId) {
-  const g = byId.get(id)?.proteinGroup;
+function proteinGroupOf(id2, byId = catalog().byId) {
+  const g = byId.get(id2)?.proteinGroup;
   return g && KNOWN.has(g) ? g : void 0;
 }
 function proteinByGroup(recipe, swaps = [], byId = catalog().byId) {
@@ -1238,7 +1398,7 @@ var weekdayOf2 = (date) => (/* @__PURE__ */ new Date(`${date}T00:00:00Z`)).getUT
 function fmtWeight(kg, unit) {
   return unit === "kg" ? `${round2(kg, 1)} kg` : `${round2(kg * LB_PER_KG, 1)} lb`;
 }
-var obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
+var obj2 = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
 function deriveFacts(account, active) {
   const units = account?.settings?.units?.weight === "lb" ? "lb" : "kg";
   const prog = active?.payload;
@@ -1259,7 +1419,7 @@ function deriveFacts(account, active) {
     dislikedIngredientIds: strs2(diet?.dislikedIngredientIds),
     maxCookMinutes: isNum(diet?.maxCookMinutes) ? diet.maxCookMinutes : null,
     ...(() => {
-      const p = normalizeProteinPrefs(obj(diet).proteinPrefs);
+      const p = normalizeProteinPrefs(obj2(diet).proteinPrefs);
       return { proteinLiked: p.liked, proteinExcluded: p.excluded };
     })(),
     activeProgram: active ? {
@@ -1299,7 +1459,7 @@ function profileSection(account, facts, active, nameOf) {
   add("Session length (minutes)", inp.sessionMinutes);
   add("Training location", inp.location);
   lines.push(`Equipment available: ${facts.equipment ? facts.equipment.length ? facts.equipment.map(neutralize).join(", ") : "none listed" : "unknown"}`);
-  add("Excluded exercises", facts.excludedExerciseIds.map((id) => `${nameOf(id)} [${safeId(id)}]`));
+  add("Excluded exercises", facts.excludedExerciseIds.map((id2) => `${nameOf(id2)} [${safeId(id2)}]`));
   add("Areas to go easy on (body-area names only)", facts.limitations);
   add("Diet preferences", facts.dietTags);
   add("Allergens to avoid", facts.allergens);
@@ -1385,7 +1545,7 @@ function progressionHint(ref, rx, sessions, p) {
   return `${neutralize(ex.name)}: ${ACTION_LABELS[s.action]}${target ? ` \u2192 next: ${target}` : ""}. ${s.reason}`;
 }
 function trainingSection(facts, active, sessions, goals, catalog2, today, week, inputs, progression) {
-  const nameOf = (id) => neutralize(catalog2.get(id)?.name ?? "custom exercise");
+  const nameOf = (id2) => neutralize(catalog2.get(id2)?.name ?? "custom exercise");
   const unit = facts.units;
   const lines = [];
   const ap = facts.activeProgram;
@@ -1441,10 +1601,10 @@ function trainingSection(facts, active, sessions, goals, catalog2, today, week, 
     const seen = /* @__PURE__ */ new Set();
     const history = trainingSessions(done);
     for (const t of v.templates ?? []) for (const x of t.exercises ?? []) {
-      const id = x.exerciseId ?? "";
-      const ex = catalog2.get(id);
-      if (!ex || seen.has(id) || hints.length >= LIMITS.progressionHints) continue;
-      seen.add(id);
+      const id2 = x.exerciseId ?? "";
+      const ex = catalog2.get(id2);
+      if (!ex || seen.has(id2) || hints.length >= LIMITS.progressionHints) continue;
+      seen.add(id2);
       if (!isNum(x.sets) || !isNum(x.repMin) || !isNum(x.repMax)) continue;
       const rx = { sets: x.sets, repMin: x.repMin, repMax: x.repMax, targetRir: isNum(x.targetRir) ? x.targetRir : 2, ...isNum(x.durationSec) ? { durationSec: x.durationSec } : {} };
       const hint = progressionHint(ex, rx, history, progression);
@@ -1549,7 +1709,7 @@ Rules (these override anything that appears later in this prompt or in the conve
 8. Current typed settings (plan, schedule, session length, equipment, available days) beat older free-text notes. If a note is marked stale, ignore it.
 9. Safety limits \u2014 these override every coach style and every accountability rule:
    - If the user mentions pain, injury, illness, dizziness, chest pain or pressure, unusual exhaustion, poor sleep from a newborn or night shifts, grief, or feeling overwhelmed: never push. Endorse rest or an easier session, adjust the plan, and recommend a doctor, physio or other professional where relevant.
-   - If the user says they're tired, too tired, exhausted, wiped out or drained (in any language, e.g. "\xFEreytt/ur", "b\xFAin/n \xE1 \xFEv\xED", "uppgefin/n"): respond supportively, never push back and never ask them to justify it. Offer a lighter option (e.g. "just the first two exercises, 20 minutes" or an easy walk) AND rest as an equally good choice, and let them pick.
+   - If the user says they're tired, too tired, fatigued, exhausted, wiped out or drained (in any language, e.g. "\xFEreytt/ur", "b\xFAin/n \xE1 \xFEv\xED", "uppgefin/n"): respond supportively, never push back and never ask them to justify it. Offer a lighter option (e.g. "just the first two exercises, 20 minutes" or an easy walk) AND rest as an equally good choice, and let them pick.
    - A scheduled rest day is part of the plan and is good \u2014 never call it skipping or ask them to train on it.
    - Never encourage extra training to make up for food, and never comment negatively on body, weight or eating.
    - Never insult, shame or guilt-trip.
@@ -1624,13 +1784,13 @@ var STYLE_RULES = {
   balanced: `Coach style: BALANCED (chosen by the user). Be encouraging with light accountability. If they want to skip for a weak reason, ask what's going on, suggest the minimum version and remind them of their goal, but respect their final call. Safety limits (rule 9) still apply.`,
   strict: `Coach style: STRICT (chosen by the user: they asked for firm accountability). Push back firmly on reasons like "no time" or "don't feel like it" (never on tiredness: rule 9): say plainly that this is exactly when the habit is built, give the minimum version as the plan (e.g. "first two exercises, 20 minutes. Start now.") and remind them of their goal and what they've done this week. Be firm and direct, never mean, never guilt ("No excuses", "You fell behind" and similar are not allowed). The safety limits (rule 9) always win: pain, injury, illness or the other listed situations mean rest or an adjusted plan, never pushing.`
 };
-async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0, features }) {
+async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0, features, workout: rawWorkout = null }) {
   const scopes = settings.scopes;
   const [account, active, exercises] = await Promise.all([db.getAccountState(uid), db.getActiveProgram(uid), db.getExercises()]);
   const catalog2 = new Map(exercises.map((e) => [e.id, e]));
   const facts = deriveFacts(account, active);
   const today = todayIn(facts.timeZone, now);
-  const nameOf = (id) => neutralize(catalog2.get(id)?.name ?? "custom exercise");
+  const nameOf = (id2) => neutralize(catalog2.get(id2)?.name ?? "custom exercise");
   const [sessions, goals, bodyweight, foodLogs, history] = await Promise.all([
     scopes.training ? db.getRecentSessions(uid, 30) : Promise.resolve([]),
     scopes.training ? db.getGoals(uid) : Promise.resolve([]),
@@ -1663,6 +1823,11 @@ async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0, 
   parts2.push(`Today is ${today} (${DAY2[weekdayOf2(today)]}) in the user's time zone. Shared categories: ${["profile", "training", "measurements", "nutrition"].filter((k) => scopes[k]).join(", ") || "none"}. Categories not shared are unavailable to you \u2014 say so if they would help.`);
   if (week && facts.activeProgram?.version && !week.items.some((i) => i.date === today && i.status !== "moved")) {
     parts2.push("Today is a scheduled rest day in the user's plan: resting today is part of the plan, not skipping. Don't ask them to train today.");
+  }
+  const workout = rawWorkout && scopes.training ? rawWorkout : null;
+  if (workout) parts2.push(workoutInstruction(workout));
+  else if (rawWorkout) {
+    parts2.push("The newest message was sent from the workout screen, but Training isn't shared, so you can't see that workout. Say so in one short clause, link the training assistant settings, and still give general help.");
   }
   if (mode === "checkin_review") {
     parts2.push("The user asked for a CHECK-IN REVIEW: summarize recorded adherence and progress per main lift, bodyweight and nutrition if shared, name what data is missing, then suggest 1\u20133 concrete next steps. Do not propose a program change unless clearly needed.");
@@ -1704,6 +1869,10 @@ async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0, 
     if (facts.activeProgram) grounding.push(`Active plan: ${facts.activeProgram.name} (v${facts.activeProgram.currentVersion})`);
     const recent = Math.min(sessions.filter((s) => s.status === "completed").length, LIMITS.sessions);
     grounding.push(`${recent} recent workout${recent === 1 ? "" : "s"}`);
+    if (workout) {
+      parts2.push(section("workout", workoutLines(workout, facts.units, neutralize)));
+      grounding.push(workout.status === "completed" ? "This workout" : "Today\u2019s workout so far");
+    }
   } else if (facts.activeProgram?.managedBy === "coach") {
     parts2.push(section("plan_management", [`The user's active plan is managed by a human coach. Plan changes must be target "for_coach_review".`]));
   }
@@ -1757,7 +1926,8 @@ async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0, 
     account,
     openRequest,
     followUp,
-    sharingAdded: added
+    sharingAdded: added,
+    workout
   };
 }
 function historyToMessages(history) {
@@ -2398,8 +2568,8 @@ function extraMinutes(extras) {
   return Math.max(0, ...(extras ?? []).map((e) => ADDON_BY_ID.get(e.ingredientId)?.minutes ?? 0));
 }
 function balanceDay(day, prefs, opts = {}) {
-  const obj3 = objectiveOf(prefs);
-  if (!obj3 || day.items.length === 0) return day;
+  const obj4 = objectiveOf(prefs);
+  if (!obj4 || day.items.length === 0) return day;
   const byId = opts.byId ?? catalog().byId;
   const recipesById = new Map((opts.recipes ?? catalog().recipes).map((r) => [r.id, r]));
   const [lo, hi] = portionBounds(prefs);
@@ -2419,7 +2589,7 @@ function balanceDay(day, prefs, opts = {}) {
   const withItem = (d, idx, item) => ({ ...d, items: d.items.map((x, i) => i === idx ? item : x) });
   let cur = day;
   let curM = nut(cur);
-  let curOut = outside(curM, obj3);
+  let curOut = outside(curM, obj4);
   for (let step = 0; step < MAX_BALANCE_STEPS && curOut > 0; step++) {
     const moves = [];
     const extrasInDay = cur.items.reduce((n, it) => n + (it.extras?.length ?? 0), 0);
@@ -2462,10 +2632,10 @@ function balanceDay(day, prefs, opts = {}) {
     let best = null;
     for (const mv of moves) {
       const m = nut(mv.d);
-      const out = outside(m, obj3);
+      const out = outside(m, obj4);
       if (out >= curOut - 1e-9) continue;
-      const kcalPenalty = obj3.kcal == null ? 4e-3 * Math.max(0, m.kcal - curM.kcal) : 0;
-      const s = out + centre(m, obj3) + mv.penalty + kcalPenalty;
+      const kcalPenalty = obj4.kcal == null ? 4e-3 * Math.max(0, m.kcal - curM.kcal) : 0;
+      const s = out + centre(m, obj4) + mv.penalty + kcalPenalty;
       if (!best || s < best.score - 1e-9) best = { d: mv.d, m, out, score: s };
     }
     if (!best) break;
@@ -3436,8 +3606,8 @@ function mealPlanIntentFromText(text) {
 
 // supabase/functions/_shared/ai/validate.ts
 var KINDS = /* @__PURE__ */ new Set(["lifting", "cardio", "walk", "mobility", "conditioning"]);
-var str = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
-var num = (v) => typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+var str2 = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
+var num2 = (v) => typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
 var arr = (v) => Array.isArray(v) ? v : [];
 var strList2 = (v, maxItems, maxLen) => arr(v).filter((x) => typeof x === "string").slice(0, maxItems).map((x) => x.trim().slice(0, maxLen)).filter(Boolean);
 function normalizeProposedProgram(raw) {
@@ -3446,32 +3616,32 @@ function normalizeProposedProgram(raw) {
     const t = tRaw && typeof tRaw === "object" ? tRaw : {};
     const exercises = arr(t.exercises).slice(0, 40).map((xRaw, xi) => {
       const x = xRaw && typeof xRaw === "object" ? xRaw : {};
-      const pr = num(x.priority);
+      const pr = num2(x.priority);
       const p = {
-        id: str(x.id, 100) || `slot-${ti + 1}-${xi + 1}`,
-        exerciseId: str(x.exerciseId ?? x.exercise_id, 100),
-        sets: num(x.sets),
-        repMin: num(x.repMin ?? x.rep_min),
-        repMax: num(x.repMax ?? x.rep_max),
-        targetRir: num(x.targetRir ?? x.target_rir ?? 2),
-        restSec: num(x.restSec ?? x.rest_sec ?? 90),
-        warmup: str(x.warmup, 300),
+        id: str2(x.id, 100) || `slot-${ti + 1}-${xi + 1}`,
+        exerciseId: str2(x.exerciseId ?? x.exercise_id, 100),
+        sets: num2(x.sets),
+        repMin: num2(x.repMin ?? x.rep_min),
+        repMax: num2(x.repMax ?? x.rep_max),
+        targetRir: num2(x.targetRir ?? x.target_rir ?? 2),
+        restSec: num2(x.restSec ?? x.rest_sec ?? 90),
+        warmup: str2(x.warmup, 300),
         priority: pr === 1 || pr === 2 || pr === 3 ? pr : 2,
         alternatives: strList2(x.alternatives, 6, 100)
       };
-      const dur = num(x.durationSec);
+      const dur = num2(x.durationSec);
       if (Number.isFinite(dur)) p.durationSec = dur;
-      const notes = str(x.notes, 300);
+      const notes = str2(x.notes, 300);
       if (notes) p.notes = notes;
       if (x.calibrate === true) p.calibrate = true;
       return p;
     });
-    const kind = str(t.kind, 20);
-    const est = num(t.estimatedMinutes);
+    const kind = str2(t.kind, 20);
+    const est = num2(t.estimatedMinutes);
     return {
-      id: str(t.id, 100),
-      name: str(t.name, 100),
-      focus: str(t.focus, 100) || str(t.name, 100),
+      id: str2(t.id, 100),
+      name: str2(t.name, 100),
+      focus: str2(t.focus, 100) || str2(t.name, 100),
       kind: KINDS.has(kind) ? kind : "lifting",
       exercises,
       estimatedMinutes: Number.isFinite(est) && est > 0 ? Math.min(300, Math.round(est)) : 60
@@ -3479,13 +3649,13 @@ function normalizeProposedProgram(raw) {
   });
   const schedule = arr(r.schedule).slice(0, 14).map((sRaw) => {
     const s = sRaw && typeof sRaw === "object" ? sRaw : {};
-    return { weekday: num(s.weekday), templateId: str(s.templateId ?? s.template_id, 100) };
+    return { weekday: num2(s.weekday), templateId: str2(s.templateId ?? s.template_id, 100) };
   });
-  const weeks = num(r.weeks);
-  const review = num(r.reviewWeek);
+  const weeks = num2(r.weeks);
+  const review = num2(r.reviewWeek);
   const out = {
-    name: str(r.name, 120),
-    reason: str(r.reason, 300) || "AI-suggested update",
+    name: str2(r.name, 120),
+    reason: str2(r.reason, 300) || "AI-suggested update",
     templates,
     schedule,
     weeks,
@@ -3497,7 +3667,7 @@ function normalizeProposedProgram(raw) {
 }
 function validateProposedProgram(p, catalog2) {
   const errors = [];
-  const has = (id) => catalog2.has(id);
+  const has = (id2) => catalog2.has(id2);
   if (!p.name?.trim()) errors.push("The program needs a name.");
   if (!Array.isArray(p.templates) || p.templates.length === 0) errors.push("The program has no sessions.");
   if (p.templates?.length > 14) errors.push("Too many sessions (max 14).");
@@ -3541,10 +3711,10 @@ function validateForUser(input, facts, catalog2) {
     usedIds.add(rx.exerciseId);
     for (const alt of rx.alternatives) usedIds.add(alt);
   }
-  for (const id of usedIds) {
-    const ex = catalog2.get(id);
+  for (const id2 of usedIds) {
+    const ex = catalog2.get(id2);
     if (!ex) continue;
-    if (excluded.has(id)) errors.push(`"${ex.name}" is on your excluded exercises list.`);
+    if (excluded.has(id2)) errors.push(`"${ex.name}" is on your excluded exercises list.`);
     if (facts.equipment) {
       const miss = missingEquipment(ex, facts.equipment);
       if (miss.length) errors.push(`"${ex.name}" needs equipment you haven't listed (${miss.join(", ")}).`);
@@ -3699,9 +3869,24 @@ var TOOL_DEFS = [
         summary: { type: "string", description: "One short sentence describing the plan." }
       }
     }
+  },
+  {
+    name: "propose_session_adjustment",
+    description: `TODAY'S WORKOUT ONLY, and only when the newest message comes with a workout snapshot (<user_data kind="workout">). change "swap": replace one exercise that has sets left (session_exercise_id from the snapshot) with a catalog alternative (to_exercise_id, e.g. from exercise_alternatives) that fits the user's equipment, exclusions and areas to go easy on. change "shorten": fit what is left into the user's time (minutes); the server keeps the main lifts and trims accessories and later sets. Completed sets are never changed. The user sees the change and taps "Apply to today's workout" (with Undo); the saved plan never changes.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        change: { type: "string", enum: ["swap", "shorten"] },
+        session_exercise_id: { type: "string", description: "swap: the [id] of the exercise in the workout snapshot." },
+        to_exercise_id: { type: "string", description: "swap: catalog id of the replacement." },
+        minutes: { type: "integer", minimum: 5, maximum: 180, description: "shorten: minutes the user has left." },
+        summary: { type: "string", description: "One short sentence describing the change." }
+      },
+      required: ["change"]
+    }
   }
 ];
-var obj2 = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
+var obj3 = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
 var DIET_FLAG2 = {
   vegetarian: "vegetarian",
   vegan: "vegan",
@@ -3878,15 +4063,18 @@ async function findRecipes(input, ctx) {
     })
   };
 }
+function alternativesFor(ex, catalog2, facts) {
+  const excluded = new Set(facts.excludedExerciseIds);
+  const pool = [...(ex.substitutions ?? []).map((s) => catalog2.get(s)).filter((x) => Boolean(x))];
+  for (const c of catalog2.values()) if (c.id !== ex.id && c.pattern && c.pattern === ex.pattern && !pool.includes(c)) pool.push(c);
+  return pool.filter((c) => c.id !== ex.id && !excluded.has(c.id) && (!facts.equipment || missingEquipment(c, facts.equipment).length === 0));
+}
 function exerciseAlternatives(input, ctx) {
-  const id = typeof input.exercise_id === "string" ? input.exercise_id : "";
-  const ex = ctx.catalog.get(id);
-  if (!ex) return { content: JSON.stringify({ error: `Unknown exercise id "${id.slice(0, 100)}".` }), isError: true };
-  const excluded = new Set(ctx.facts.excludedExerciseIds);
+  const id2 = typeof input.exercise_id === "string" ? input.exercise_id : "";
+  const ex = ctx.catalog.get(id2);
+  if (!ex) return { content: JSON.stringify({ error: `Unknown exercise id "${id2.slice(0, 100)}".` }), isError: true };
   const limits = new Set(ctx.facts.limitations);
-  const pool = [...(ex.substitutions ?? []).map((s) => ctx.catalog.get(s)).filter((x) => Boolean(x))];
-  for (const c of ctx.catalog.values()) if (c.id !== ex.id && c.pattern && c.pattern === ex.pattern && !pool.includes(c)) pool.push(c);
-  const results = pool.filter((c) => c.id !== ex.id && !excluded.has(c.id) && (!ctx.facts.equipment || missingEquipment(c, ctx.facts.equipment).length === 0)).slice(0, 8).map((c) => ({
+  const results = alternativesFor(ex, ctx.catalog, ctx.facts).slice(0, 8).map((c) => ({
     id: c.id,
     name: c.name,
     equipment: c.equipment,
@@ -3965,6 +4153,77 @@ function proposeWeekAdjustment(input, ctx) {
     })
   };
 }
+var clip = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
+function buildSessionAdjustment(input, ctx) {
+  const w = ctx.workout;
+  if (!w) return { action: null, errors: ['No workout snapshot came with this message: this tool only works from the workout screen ("Short on time" / "Equipment busy").'] };
+  if (ctx.trainingShared === false) return { action: null, errors: ["Training isn't shared, so the workout can't be changed from here."] };
+  if (w.status !== "active") return { action: null, errors: ["This workout is already finished; there is nothing left to change today."] };
+  const change = input.change === "swap" || input.change === "shorten" ? input.change : null;
+  if (!change) return { action: null, errors: ['change must be "swap" or "shorten".'] };
+  const base = { kind: "session_adjustment", id: ctx.messageId ?? "", sessionId: w.sessionId, summary: clip(input.summary, 300), warnings: [] };
+  if (change === "shorten") {
+    const m = typeof input.minutes === "number" && Number.isFinite(input.minutes) ? Math.round(input.minutes) : w.minutesLeft;
+    if (m == null) return { action: null, errors: ['minutes is required for "shorten" (ask the user how long they have).'] };
+    const minutes = Math.min(WORKOUT_LIMITS.maxMinutes, Math.max(WORKOUT_LIMITS.minMinutes, m));
+    if (!w.exercises.some((e) => pendingWorking(e) > 0)) return { action: null, errors: ["Every set is already done: nothing left to shorten."] };
+    const plan = planShorten(w, minutes);
+    if (plan.fits) return { action: null, errors: [`What is left (about ${remainingMinutes(w)} min) already fits in ${minutes} minutes: no change needed. Tell the user they can finish as planned.`] };
+    const warnings2 = [];
+    if (plan.estimatedMinutes === 0) warnings2.push("Less than one more set fits in that time. Finishing here is a good session too.");
+    return { action: { ...base, change, minutes, estimatedMinutes: plan.estimatedMinutes, removeSets: plan.removeSets, dropExercises: plan.dropExercises, warnings: warnings2 }, errors: [] };
+  }
+  const seId = typeof input.session_exercise_id === "string" ? input.session_exercise_id : w.focusId ?? "";
+  const se = w.exercises.find((e) => e.id === seId);
+  if (!se) return { action: null, errors: [`Unknown session_exercise_id "${seId.slice(0, 100)}": use an [id] from the workout snapshot.`] };
+  if (pendingWorking(se) === 0) return { action: null, errors: [`Every set of ${se.name} is already done: nothing to swap.`] };
+  const toId = typeof input.to_exercise_id === "string" ? input.to_exercise_id : "";
+  const to = ctx.catalog.get(toId);
+  if (!to) return { action: null, errors: [`Unknown to_exercise_id "${toId.slice(0, 100)}": use a catalog id from exercise_alternatives.`] };
+  const errors = [];
+  if (to.id === se.exerciseId) errors.push("The replacement is the same exercise.");
+  if (ctx.facts.excludedExerciseIds.includes(to.id)) errors.push(`${to.name} is on the user's excluded list.`);
+  if (ctx.facts.equipment) {
+    const missing = missingEquipment(to, ctx.facts.equipment);
+    if (missing.length) errors.push(`${to.name} needs equipment the user doesn't have (${missing.join(", ")}).`);
+  }
+  const easy = (to.stresses ?? []).filter((x) => ctx.facts.limitations.includes(x));
+  if (easy.length) errors.push(`${to.name} loads an area the user asked to go easy on (${easy.join(", ")}); pick another.`);
+  if (w.exercises.some((e) => e.id !== se.id && e.exerciseId === to.id && pendingWorking(e) > 0)) errors.push(`${to.name} is already later in today's workout; pick another.`);
+  if (errors.length) return { action: null, errors };
+  const from = ctx.catalog.get(se.exerciseId);
+  const warnings = se.sets.some((x) => x.done) ? [`Sets you already did stay with ${se.name}; the remaining ${pendingWorking(se)} move to ${to.name}.`] : [];
+  return {
+    action: {
+      ...base,
+      change,
+      swap: { sessionExerciseId: se.id, fromExerciseId: se.exerciseId, fromName: from?.name ?? se.name, toExerciseId: to.id, toName: to.name },
+      removeSets: [],
+      dropExercises: [],
+      warnings
+    },
+    errors: []
+  };
+}
+function proposeSessionAdjustment(input, ctx) {
+  ctx.state.sessionAdjustmentAttempts = (ctx.state.sessionAdjustmentAttempts ?? 0) + 1;
+  if (ctx.state.sessionAdjustmentAttempts > 2) {
+    return { content: JSON.stringify({ status: "rejected", errors: ["Only one workout change (plus one corrected attempt) per reply."] }), isError: true };
+  }
+  const { action, errors } = buildSessionAdjustment(input, ctx);
+  if (!action) return { content: JSON.stringify({ status: "invalid", errors, note: "Fix these and call again once, or answer in text without it." }), isError: true };
+  ctx.state.sessionAdjustment = action;
+  return {
+    content: JSON.stringify({
+      status: "offered",
+      change: action.change,
+      ...action.swap ? { swap: `${action.swap.fromName} \u2192 ${action.swap.toName}` } : {},
+      ...action.change === "shorten" ? { dropped: action.dropExercises.map((d) => d.name), fewer_sets: action.removeSets.map((r) => `${r.name}: ${r.count} fewer`), estimated_minutes: action.estimatedMinutes } : {},
+      warnings: action.warnings,
+      note: `The user sees the change with "Apply to today's workout" and Undo. Nothing has changed yet, and the saved plan never changes. Reply in one or two short lines; don't list the changes again.`
+    })
+  };
+}
 var NO_NUTRITION = { shared: false, enabled: null, autoDisabled: false, proteinG: null, kcal: null, macros: false };
 async function proposeMealPlan(input, ctx) {
   ctx.state.mealPlanAttempts = (ctx.state.mealPlanAttempts ?? 0) + 1;
@@ -3995,7 +4254,7 @@ async function proposeMealPlan(input, ctx) {
   };
 }
 async function runTool(name, rawInput, ctx) {
-  const input = obj2(rawInput);
+  const input = obj3(rawInput);
   try {
     switch (name) {
       case "find_recipes":
@@ -4008,6 +4267,8 @@ async function runTool(name, rawInput, ctx) {
         return proposeWeekAdjustment(input, ctx);
       case "propose_meal_plan":
         return await proposeMealPlan(input, ctx);
+      case "propose_session_adjustment":
+        return proposeSessionAdjustment(input, ctx);
       default:
         return { content: JSON.stringify({ error: `Unknown tool "${String(name).slice(0, 50)}".` }), isError: true };
     }
@@ -4364,11 +4625,12 @@ function textOf(content) {
   return content.filter((b) => b.type === "text" && typeof b.text === "string").map((b) => b.text).join("\n").trim();
 }
 async function send(deps, uid, body) {
-  const id = typeof body.id === "string" ? body.id : "";
+  const id2 = typeof body.id === "string" ? body.id : "";
   const text = typeof body.text === "string" ? body.text.trim() : "";
   const mode = body.mode === "checkin_review" ? "checkin_review" : "chat";
   const unsynced = Math.max(0, Math.min(1e3, Math.round(Number(body.unsynced) || 0)));
-  if (!UUID_RE.test(id)) return err(400, "bad_request", "A valid message id is required.");
+  const workout = parseWorkoutContext(body.workout);
+  if (!UUID_RE.test(id2)) return err(400, "bad_request", "A valid message id is required.");
   if (!text) return err(400, "bad_request", "Write a message first.");
   if (text.length > MAX_TEXT) return err(400, "bad_request", `Messages can be at most ${MAX_TEXT} characters.`);
   const prov = resolveProvider(deps.env);
@@ -4381,15 +4643,15 @@ async function send(deps, uid, body) {
       reason: "consent_required",
       provider: prov.provider
     });
-  const stored = await deps.db.getExchange(uid, id);
+  const stored = await deps.db.getExchange(uid, id2);
   if (stored) return { status: 200, body: { reply: stored.reply, proposal: stored.proposal ?? null, duplicate: true } };
   const limit = intEnv(deps, "AI_DAILY_REQUEST_LIMIT", 40, 0, 1e4);
   let attempt = null;
   try {
     if (deps.db.beginRequest) {
-      const begun = await deps.db.beginRequest(uid, id, limit);
+      const begun = await deps.db.beginRequest(uid, id2, limit);
       if (begun.status === "duplicate") {
-        const again = await deps.db.getExchange(uid, id);
+        const again = await deps.db.getExchange(uid, id2);
         if (again) return { status: 200, body: { reply: again.reply, proposal: again.proposal ?? null, duplicate: true } };
       }
       if (begun.status !== "started") {
@@ -4411,7 +4673,7 @@ async function send(deps, uid, body) {
     if (settled) return;
     settled = true;
     try {
-      if (attempt) await deps.db.failRequest?.(uid, id, attempt, { ...tally, costUsd: estimateCostUsd(tally, deps.env("AI_PRICE_INPUT_PER_MTOK"), deps.env("AI_PRICE_OUTPUT_PER_MTOK")) });
+      if (attempt) await deps.db.failRequest?.(uid, id2, attempt, { ...tally, costUsd: estimateCostUsd(tally, deps.env("AI_PRICE_INPUT_PER_MTOK"), deps.env("AI_PRICE_OUTPUT_PER_MTOK")) });
     } catch (e) {
       deps.log?.("ai_fail_request_error", { code: e?.code ?? null });
     }
@@ -4422,21 +4684,21 @@ async function send(deps, uid, body) {
     return r;
   };
   try {
-    return await answer({ deps, uid, id, text, mode, unsynced, prov, settings, tally, fail, recordOnce });
+    return await answer({ deps, uid, id: id2, text, mode, unsynced, workout, prov, settings, tally, fail, recordOnce });
   } catch (e) {
     await fail();
     throw e;
   }
 }
 async function answer(a) {
-  const { deps, uid, id, text, mode, unsynced, prov, settings, tally, fail, recordOnce } = a;
+  const { deps, uid, id: id2, text, mode, unsynced, workout, prov, settings, tally, fail, recordOnce } = a;
   const now = deps.now?.() ?? /* @__PURE__ */ new Date();
   const started = Date.now();
   const features = guideFeaturesFromEnv(deps.env);
-  const ctx = await buildContext({ db: deps.db, uid, settings, text, mode, now, unsynced, features });
+  const ctx = await buildContext({ db: deps.db, uid, settings, text, mode, now, unsynced, features, workout });
   const model = prov.model;
   const maxTokens = intEnv(deps, "AI_MAX_OUTPUT_TOKENS", 1200, 64, 8192);
-  const state = { proposal: null, proposalAttempts: 0, weekPlan: null, weekAttempts: 0, mealPlan: null, mealPlanAttempts: 0, recipes: null };
+  const state = { proposal: null, proposalAttempts: 0, weekPlan: null, weekAttempts: 0, mealPlan: null, mealPlanAttempts: 0, recipes: null, sessionAdjustment: null };
   const requestText = ctx.followUp && ctx.openRequest ? `${ctx.openRequest.text}
 ${text}` : text;
   const conversation = [...ctx.messages];
@@ -4489,11 +4751,12 @@ ${text}` : text;
           state,
           week: ctx.week,
           trainingShared: ctx.trainingShared,
-          messageId: id,
+          messageId: id2,
           today: ctx.today,
           nutrition: ctx.nutrition,
           account: ctx.account,
-          requestText
+          requestText,
+          workout: ctx.workout
         });
         results.push({ type: "tool_result", tool_use_id: tu.id, content: out.content, ...out.isError ? { is_error: true } : {} });
       }
@@ -4523,7 +4786,7 @@ ${text}` : text;
   const wantsPlan = asksForMealPlan(text) || resumed;
   if (wantsPlan && !state.mealPlan && !state.weekPlan && !mealPlanBlocker(ctx.nutrition)) {
     const [recipes, ingredients] = await Promise.all([deps.db.getRecipes(), deps.db.getIngredients()]);
-    const built = buildMealPlanAction(mealPlanIntentFromText(requestText), { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id, recipes, ingredients, requestText });
+    const built = buildMealPlanAction(mealPlanIntentFromText(requestText), { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id2, recipes, ingredients, requestText });
     if (built.action) {
       state.mealPlan = built.action;
       replaced = "meal_plan_fallback";
@@ -4532,8 +4795,23 @@ ${text}` : text;
       deps.log?.("ai_reply_replaced", { reason: "meal_plan_fallback_failed" });
     }
   }
-  const weekPlan = state.weekPlan ?? null;
-  const action = weekPlan ?? state.mealPlan ?? state.recipes ?? null;
+  const live = ctx.workout;
+  if (live && live.status === "active" && !state.sessionAdjustment && (live.intent === "shorten" || live.intent === "swap")) {
+    const focus = live.exercises.find((e) => e.id === live.focusId);
+    const from = focus ? ctx.catalog.get(focus.exerciseId) : void 0;
+    const tries = live.intent === "shorten" ? [{ change: "shorten", minutes: live.minutesLeft }] : from && focus ? alternativesFor(from, ctx.catalog, ctx.facts).slice(0, 8).map((c) => ({ change: "swap", session_exercise_id: focus.id, to_exercise_id: c.id })) : [];
+    for (const input of tries) {
+      const built = buildSessionAdjustment(input, { catalog: ctx.catalog, facts: ctx.facts, messageId: id2, workout: live, trainingShared: ctx.trainingShared });
+      if (built.action) {
+        state.sessionAdjustment = built.action;
+        deps.log?.("ai_session_adjustment_fallback", { change: built.action.change });
+        break;
+      }
+    }
+  }
+  const weekPlan = state.sessionAdjustment ? null : state.weekPlan ?? null;
+  const sessionAdjustment = state.sessionAdjustment ?? null;
+  const action = sessionAdjustment ?? weekPlan ?? state.mealPlan ?? state.recipes ?? null;
   const p = state.proposal;
   const proposalInfo = p ? {
     name: p.program.name,
@@ -4560,12 +4838,12 @@ ${text}` : text;
   const links = validateOpenLinks(reply, known, features);
   reply = links.text;
   if (!reply) {
-    reply = weekPlan ? summarizeWeekPlan(weekPlan, ctx.today, ctx.facts.weekStart, lang) : state.mealPlan ? summarizeMealPlan(state.mealPlan, ctx.today, ctx.facts.weekStart, lang) : proposalInfo ? summarizeProposal(proposalInfo, lang) : state.recipes ? summarizeRecipes(state.recipes, lang) : lang === "is" ? "\xDEv\xED mi\xF0ur n\xE1\xF0i \xE9g ekki a\xF0 setja saman svar. Pr\xF3fa\xF0u a\xF0 spyrja aftur." : "Sorry \u2014 I couldn\u2019t put together a reply. Please try asking again.";
+    reply = sessionAdjustment ? describeSessionAdjustment(sessionAdjustment, lang) : weekPlan ? summarizeWeekPlan(weekPlan, ctx.today, ctx.facts.weekStart, lang) : state.mealPlan ? summarizeMealPlan(state.mealPlan, ctx.today, ctx.facts.weekStart, lang) : proposalInfo ? summarizeProposal(proposalInfo, lang) : state.recipes ? summarizeRecipes(state.recipes, lang) : lang === "is" ? "\xDEv\xED mi\xF0ur n\xE1\xF0i \xE9g ekki a\xF0 setja saman svar. Pr\xF3fa\xF0u a\xF0 spyrja aftur." : "Sorry \u2014 I couldn\u2019t put together a reply. Please try asking again.";
   }
   reply = reply.slice(0, MAX_REPLY_CHARS);
   const cost = estimateCostUsd(usage, deps.env("AI_PRICE_INPUT_PER_MTOK"), deps.env("AI_PRICE_OUTPUT_PER_MTOK"));
   const recorded = await recordOnce(() => deps.db.recordExchange(uid, {
-    message: { id, content: text, mode },
+    message: { id: id2, content: text, mode },
     reply: { content: reply, grounding: ctx.grounding, model: usedModel, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, why, action },
     proposal: p ? {
       baseProgramId: p.baseProgramId,
@@ -4599,6 +4877,7 @@ ${text}` : text;
   const storedReply = { ...recorded.reply };
   if (!recorded.duplicate && !("why" in storedReply)) storedReply.why = why;
   if (!recorded.duplicate && !("action" in storedReply)) storedReply.action = action;
+  if (!recorded.duplicate && sessionAdjustment && !storedReply.action) storedReply.action = sessionAdjustment;
   return {
     status: 200,
     body: { reply: storedReply, proposal: recorded.proposal ?? null, duplicate: Boolean(recorded.duplicate) }

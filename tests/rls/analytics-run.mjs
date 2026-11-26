@@ -75,7 +75,7 @@ function eq(a, b, msg) {
 
 let admin;
 let app;
-const U = { alice: randomUUID(), bob: randomUUID(), eve: randomUUID() };
+const U = { alice: randomUUID(), bob: randomUUID(), eve: randomUUID(), carol: randomUUID() };
 
 async function as(actor, sql, params = []) {
   await app.query('begin');
@@ -157,9 +157,10 @@ async function main() {
   });
   if (!results.at(-1).ok) return;
 
-  await test('setup', 'the migration is safe to re-run', async () => {
+  await test('setup', 'the migrations are safe to re-run (in order: the allowlist as widened by 20261128000001 stays)', async () => {
     await app.query('begin');
     await app.query(fs.readFileSync(path.join(migDir, '20261127000001_product_analytics.sql'), 'utf8'));
+    await app.query(fs.readFileSync(path.join(migDir, '20261128000001_ai_session_adjustment.sql'), 'utf8'));
     await app.query('commit');
   });
 
@@ -213,6 +214,17 @@ async function main() {
     // Another user's id collision never touches alice's row.
     eq(ok(await rpc('bob', 'log_product_events', { p_events: J([same]) }), 'bob same id'), 0, 'skipped');
     eq(ok(await rpc('bob', 'log_product_events', { p_events: J([ev('first_set_logged')]) }), 'bob first'), 1, 'per user');
+  });
+
+  await test('log', 'ai_action_used accepts the session_adjustment action type (20261128000001) with every outcome; still enum-only', async () => {
+    const outcomes = ['proposed', 'applied', 'reverted'];
+    const n = ok(await rpc('carol', 'log_product_events', { p_events: J(outcomes.map((outcome) => ev('ai_action_used', { action_type: 'session_adjustment', outcome }))) }), 'log');
+    eq(n, 3, 'stored');
+    const rows = await rowsOf(U.carol);
+    eq(rows.map((r) => r.props.outcome).sort(), [...outcomes].sort(), 'outcomes');
+    assert(rows.every((r) => r.props.action_type === 'session_adjustment'), 'action type');
+    eq(ok(await rpc('carol', 'log_product_events', { p_events: J([ev('ai_action_used', { action_type: 'session_adjustment', outcome: 'applied', minutes: '15' })]) }), 'extra key'), 0, 'extra keys still refused');
+    eq(ok(await rpc('carol', 'log_product_events', { p_events: J([ev('ai_action_used', { action_type: 'workout_swap', outcome: 'applied' })]) }), 'unknown type'), 0, 'other values still refused');
   });
 
   await test('privacy', 'health data, chat text, PII, unknown keys and non-enum values are rejected', async () => {

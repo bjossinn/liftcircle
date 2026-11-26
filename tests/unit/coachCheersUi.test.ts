@@ -129,11 +129,13 @@ describe('coach cheers in the logger', () => {
     click(button('Mark set 1 done'));
     await waitFor(() => expect(popups()).toHaveLength(1));
     const [line] = popupText();
-    expect(CHEER_LINES.general.balanced).toContain(line);
+    expect(CHEER_LINES.general.supportive).toContain(line); // no style mirrored yet → Supportive, the default
     expect(popups()[0].closest('[aria-live="polite"]')).toBeTruthy();
     expect(popups()[0].getAttribute('role')).toBe('status');
     expect(document.activeElement).toBe(before);
-    expect(document.body.textContent).not.toContain('Set logged'); // the cheer replaces the plain toast
+    // The cheer replaces the plain toast (checked outside the popup: one Supportive line itself starts "Set logged.").
+    const outsidePopups = [...document.body.querySelectorAll('*')].filter((e) => !e.closest('[data-coach-region]') && e.children.length === 0).map((e) => e.textContent).join(' ');
+    expect(outsidePopups).not.toContain('Set logged');
     // A second ✓ replaces the popup (one at a time) with a different line.
     click(button('Mark set 2 done'));
     await waitFor(() => expect(popupText()[0]).not.toBe(line));
@@ -181,7 +183,7 @@ describe('coach cheers in the logger', () => {
     await start(s);
     expect(popups()).toHaveLength(0);
     await waitFor(() => expect(popupText()[0]).toMatch(/^Rest’s up, Barbell bench press set 2: 62\.5 kg × 8\. /));
-    expect(CHEER_LINES.rest_over.balanced.map((t) => t.replace('{set}', 'Barbell bench press set 2: 62.5 kg × 8'))).toContain(popupText()[0]);
+    expect(CHEER_LINES.rest_over.supportive.map((t) => t.replace('{set}', 'Barbell bench press set 2: 62.5 kg × 8'))).toContain(popupText()[0]);
     click(popups()[0]);
     unmount();
     mount();

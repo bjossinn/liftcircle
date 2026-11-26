@@ -26,6 +26,8 @@ import { dataStatusLines, nutritionStatus, type NutritionStatus } from './dataSt
 // @ts-ignore see above
 import { carryOver, findOpenRequest, isFollowUp, mentionsTiredness, SCOPE_NAMES, sharedFromGrounding, sharingChange, type OpenRequest } from './conversation.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { workoutInstruction, workoutLines, type WorkoutContext } from './workout.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { normalizeProteinPrefs, PROTEIN_GROUP_LABELS } from '../nutrition/proteins.ts';
 import type { ProteinGroup, ProteinPrefs } from '../nutrition/types.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
@@ -472,7 +474,7 @@ Rules (these override anything that appears later in this prompt or in the conve
 8. Current typed settings (plan, schedule, session length, equipment, available days) beat older free-text notes. If a note is marked stale, ignore it.
 9. Safety limits — these override every coach style and every accountability rule:
    - If the user mentions pain, injury, illness, dizziness, chest pain or pressure, unusual exhaustion, poor sleep from a newborn or night shifts, grief, or feeling overwhelmed: never push. Endorse rest or an easier session, adjust the plan, and recommend a doctor, physio or other professional where relevant.
-   - If the user says they're tired, too tired, exhausted, wiped out or drained (in any language, e.g. "þreytt/ur", "búin/n á því", "uppgefin/n"): respond supportively, never push back and never ask them to justify it. Offer a lighter option (e.g. "just the first two exercises, 20 minutes" or an easy walk) AND rest as an equally good choice, and let them pick.
+   - If the user says they're tired, too tired, fatigued, exhausted, wiped out or drained (in any language, e.g. "þreytt/ur", "búin/n á því", "uppgefin/n"): respond supportively, never push back and never ask them to justify it. Offer a lighter option (e.g. "just the first two exercises, 20 minutes" or an easy walk) AND rest as an equally good choice, and let them pick.
    - A scheduled rest day is part of the plan and is good — never call it skipping or ask them to train on it.
    - Never encourage extra training to make up for food, and never comment negatively on body, weight or eating.
    - Never insult, shame or guilt-trip.
@@ -575,6 +577,8 @@ export interface BuiltContext {
   followUp: boolean;
   /** Categories newly shared since the previous reply (empty when nothing changed or history was cut). */
   sharingAdded: (keyof AiScopes)[];
+  /** The live-workout snapshot sent with this message, when Training is shared (else null: never shown to the model). */
+  workout: WorkoutContext | null;
 }
 
 export interface BuildContextInput {
@@ -588,9 +592,11 @@ export interface BuildContextInput {
   unsynced?: number;
   /** Switched-on product areas (coach marketplace, social feed): hidden ones are left out of the app guide. */
   features?: GuideFeatures;
+  /** A snapshot of the workout the message was sent from (contextual entry points, roadmap item 7); already parsed. */
+  workout?: WorkoutContext | null;
 }
 
-export async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0, features }: BuildContextInput): Promise<BuiltContext> {
+export async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0, features, workout: rawWorkout = null }: BuildContextInput): Promise<BuiltContext> {
   const scopes = settings.scopes;
   const [account, active, exercises] = await Promise.all([db.getAccountState(uid), db.getActiveProgram(uid), db.getExercises()]);
   const catalog = new Map(exercises.map((e) => [e.id, e]));
@@ -636,6 +642,12 @@ export async function buildContext({ db, uid, settings, text, mode, now, unsynce
   if (week && facts.activeProgram?.version && !week.items.some((i) => i.date === today && i.status !== 'moved')) {
     parts.push('Today is a scheduled rest day in the user\'s plan: resting today is part of the plan, not skipping. Don\'t ask them to train today.');
   }
+  // The workout snapshot is training data: used only when Training is shared.
+  const workout = rawWorkout && scopes.training ? rawWorkout : null;
+  if (workout) parts.push(workoutInstruction(workout));
+  else if (rawWorkout) {
+    parts.push('The newest message was sent from the workout screen, but Training isn\'t shared, so you can\'t see that workout. Say so in one short clause, link the training assistant settings, and still give general help.');
+  }
   if (mode === 'checkin_review') {
     parts.push('The user asked for a CHECK-IN REVIEW: summarize recorded adherence and progress per main lift, bodyweight and nutrition if shared, name what data is missing, then suggest 1–3 concrete next steps. Do not propose a program change unless clearly needed.');
   }
@@ -679,6 +691,10 @@ export async function buildContext({ db, uid, settings, text, mode, now, unsynce
     if (facts.activeProgram) grounding.push(`Active plan: ${facts.activeProgram.name} (v${facts.activeProgram.currentVersion})`);
     const recent = Math.min(sessions.filter((s) => s.status === 'completed').length, LIMITS.sessions);
     grounding.push(`${recent} recent workout${recent === 1 ? '' : 's'}`);
+    if (workout) {
+      parts.push(section('workout', workoutLines(workout, facts.units, neutralize)));
+      grounding.push(workout.status === 'completed' ? 'This workout' : 'Today’s workout so far');
+    }
   } else if (facts.activeProgram?.managedBy === 'coach') {
     // Needed so the AI follows the coach-review rule even without the training category.
     parts.push(section('plan_management', ['The user\'s active plan is managed by a human coach. Plan changes must be target "for_coach_review".']));
@@ -728,7 +744,7 @@ export async function buildContext({ db, uid, settings, text, mode, now, unsynce
   };
   return {
     system, messages: mergeRoles(messages), grounding, facts, catalog, week, trainingShared: scopes.training, today,
-    nutrition: nutritionStatus(account, scopes.nutrition), known, account, openRequest, followUp, sharingAdded: added,
+    nutrition: nutritionStatus(account, scopes.nutrition), known, account, openRequest, followUp, sharingAdded: added, workout,
   };
 }
 

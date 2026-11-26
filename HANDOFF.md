@@ -2,6 +2,16 @@
 
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
+
+## 28 Nov 2026: State-aware training assistant (roadmap item 7)
+
+- One additive migration: `supabase/migrations/20261128000001_ai_session_adjustment.sql`. It stores the new
+  `session_adjustment` action, adds it to the analytics allowlist, and makes a NULL coach style read as Supportive.
+- Deploy Supabase applies it on merge, then deploys the `ai-coach` function (migrations run first). The dashboard bundle
+  `supabase/functions-bundled/ai-coach.ts` is regenerated for manual deploys. If the function goes out before the
+  migration, the workout card still shows for that reply but isn't stored.
+- Details: docs/AI_COACH.md §4f.
+
 ## 1 Nov 2026: Icelandic replies from the training assistant (v1.0.1)
 
 - The assistant's prompt now says to reply in the user's language and to write natural Icelandic (docs/AI_COACH.md §4c).

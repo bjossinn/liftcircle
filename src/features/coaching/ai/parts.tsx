@@ -10,7 +10,7 @@ import type { AiAvailability, AiScopes, CoachingRelationship } from '@/backend/c
 import type { CoachStyle } from '@/domain/types';
 import { uuid } from '@/lib/id';
 import { BRAND } from '@/config/brand';
-import { ALWAYS_SENT, clip, COACH_MESSAGE_MAX, COACH_STYLE_INFO, COACH_STYLE_SAFETY, NEVER_SENT, SCOPE_INFO } from './model';
+import { ALWAYS_SENT, clip, COACH_MESSAGE_MAX, COACH_STYLE_INFO, COACH_STYLE_SAFETY, DEFAULT_COACH_STYLE, NEVER_SENT, SCOPE_INFO } from './model';
 
 export function BackButton({ to }: { to?: string }) {
   const nav = useNavigate();
@@ -102,7 +102,7 @@ export function AiGuest() {
 
 /** Supportive / Balanced / Strict, with what each one means. */
 export function CoachStylePicker({ value, onChange, disabled }: { value: CoachStyle; onChange: (next: CoachStyle) => void; disabled?: boolean }) {
-  const info = COACH_STYLE_INFO.find((s) => s.key === value) ?? COACH_STYLE_INFO[1];
+  const info = COACH_STYLE_INFO.find((s) => s.key === value) ?? COACH_STYLE_INFO.find((s) => s.key === DEFAULT_COACH_STYLE)!;
   return (
     <div className={disabled ? 'opacity-60 pointer-events-none' : undefined} aria-disabled={disabled || undefined}>
       <Segmented<CoachStyle> label="Assistant style" value={value} onChange={onChange} options={COACH_STYLE_INFO.map((s) => ({ value: s.key, label: s.title }))} />

@@ -7,12 +7,18 @@
  *   - propose_week_adjustment: a temporary, this-week-only schedule change (which planned sessions, on which
  *                              dates) validated against the real plan and this week's completed workouts;
  *   - propose_meal_plan:       a meal plan for this or next week from catalog recipes and protein sides that pass
- *                              THIS user's allergen/diet/dislike filters (needs Nutrition shared + a protein target).
+ *                              THIS user's allergen/diet/dislike filters (needs Nutrition shared + a protein target);
+ *   - propose_session_adjustment: TODAY'S WORKOUT ONLY (when the message came with a live-workout snapshot): swap one
+ *                              exercise for a catalog alternative that fits the user, or shorten what is left to fit a
+ *                              time budget. Validated here; applied on the device to that one session, never the plan.
  * find_recipes results are also kept as recipe cards (recipe_suggestions action). Every action is a suggestion the
  * user previews and applies on the device; nothing here writes to the user's records.
  * No tool reads or writes other users' data, settings, permissions, messages or coach records.
  */
-import type { AccountStatePayload, AiDb, MealPlanAction, RecipeSuggestionsAction, RefExercise, RefIngredient, RefRecipe, UserFacts, WeekAdjustmentAction } from './types.ts';
+import type { AccountStatePayload, AiDb, MealPlanAction, RecipeSuggestionsAction, RefExercise, RefIngredient, RefRecipe, SessionAdjustmentAction, UserFacts, WeekAdjustmentAction } from './types.ts';
+import type { WorkoutContext } from './workout.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { pendingWorking, planShorten, remainingMinutes, WORKOUT_LIMITS } from './workout.ts';
 import type { WeekState } from './week.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { validateWeekAdjustment } from './week.ts';
@@ -170,6 +176,22 @@ export const TOOL_DEFS = [
       },
     },
   },
+  {
+    name: 'propose_session_adjustment',
+    description:
+      "TODAY'S WORKOUT ONLY, and only when the newest message comes with a workout snapshot (<user_data kind=\"workout\">). change \"swap\": replace one exercise that has sets left (session_exercise_id from the snapshot) with a catalog alternative (to_exercise_id, e.g. from exercise_alternatives) that fits the user's equipment, exclusions and areas to go easy on. change \"shorten\": fit what is left into the user's time (minutes); the server keeps the main lifts and trims accessories and later sets. Completed sets are never changed. The user sees the change and taps \"Apply to today's workout\" (with Undo); the saved plan never changes.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        change: { type: 'string', enum: ['swap', 'shorten'] },
+        session_exercise_id: { type: 'string', description: 'swap: the [id] of the exercise in the workout snapshot.' },
+        to_exercise_id: { type: 'string', description: 'swap: catalog id of the replacement.' },
+        minutes: { type: 'integer', minimum: 5, maximum: 180, description: 'shorten: minutes the user has left.' },
+        summary: { type: 'string', description: 'One short sentence describing the change.' },
+      },
+      required: ['change'],
+    },
+  },
 ] as const;
 
 export interface PendingProposal {
@@ -191,6 +213,9 @@ export interface ToolState {
   mealPlanAttempts?: number;
   /** Recipe cards from the latest find_recipes call with results. */
   recipes?: RecipeSuggestionsAction | null;
+  /** Today's workout change (swap / shorten). */
+  sessionAdjustment?: SessionAdjustmentAction | null;
+  sessionAdjustmentAttempts?: number;
 }
 
 export interface ToolContext {
@@ -214,6 +239,8 @@ export interface ToolContext {
    * exclusions are enforced by find_recipes and propose_meal_plan even when the model's tool input leaves them out.
    */
   requestText?: string;
+  /** The live-workout snapshot sent with this message (null when none, or when Training isn't shared). */
+  workout?: WorkoutContext | null;
 }
 
 export interface ToolOutcome {
@@ -441,16 +468,20 @@ async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Pr
 }
 
 /* ------------------------------------------------------------------ alternatives */
+/** Listed substitutions first, then the same movement pattern; only equipment the user has, never excluded exercises. */
+export function alternativesFor(ex: RefExercise, catalog: Map<string, RefExercise>, facts: UserFacts): RefExercise[] {
+  const excluded = new Set(facts.excludedExerciseIds);
+  const pool = [...(ex.substitutions ?? []).map((s) => catalog.get(s)).filter((x): x is RefExercise => Boolean(x))];
+  for (const c of catalog.values()) if (c.id !== ex.id && c.pattern && c.pattern === ex.pattern && !pool.includes(c)) pool.push(c);
+  return pool.filter((c) => c.id !== ex.id && !excluded.has(c.id) && (!facts.equipment || missingEquipment(c, facts.equipment).length === 0));
+}
+
 function exerciseAlternatives(input: Record<string, unknown>, ctx: ToolContext): ToolOutcome {
   const id = typeof input.exercise_id === 'string' ? input.exercise_id : '';
   const ex = ctx.catalog.get(id);
   if (!ex) return { content: JSON.stringify({ error: `Unknown exercise id "${id.slice(0, 100)}".` }), isError: true };
-  const excluded = new Set(ctx.facts.excludedExerciseIds);
   const limits = new Set(ctx.facts.limitations);
-  const pool = [...(ex.substitutions ?? []).map((s) => ctx.catalog.get(s)).filter((x): x is RefExercise => Boolean(x))];
-  for (const c of ctx.catalog.values()) if (c.id !== ex.id && c.pattern && c.pattern === ex.pattern && !pool.includes(c)) pool.push(c);
-  const results = pool
-    .filter((c) => c.id !== ex.id && !excluded.has(c.id) && (!ctx.facts.equipment || missingEquipment(c, ctx.facts.equipment).length === 0))
+  const results = alternativesFor(ex, ctx.catalog, ctx.facts)
     .slice(0, 8)
     .map((c) => ({
       id: c.id,
@@ -539,6 +570,90 @@ function proposeWeekAdjustment(input: Record<string, unknown>, ctx: ToolContext)
   };
 }
 
+/* ------------------------------------------------------------------ today's workout */
+const clip = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+
+/**
+ * Validate a today-only workout change against the snapshot, the catalog and the user's constraints. Pure: also used by
+ * the reply fallback (coach.ts) when the model answered a "Short on time" / "Equipment busy" request without the tool.
+ */
+export function buildSessionAdjustment(
+  input: Record<string, unknown>,
+  ctx: Pick<ToolContext, 'catalog' | 'facts' | 'messageId'> & { workout?: WorkoutContext | null; trainingShared?: boolean },
+): { action: SessionAdjustmentAction | null; errors: string[] } {
+  const w = ctx.workout;
+  if (!w) return { action: null, errors: ['No workout snapshot came with this message: this tool only works from the workout screen ("Short on time" / "Equipment busy").'] };
+  if (ctx.trainingShared === false) return { action: null, errors: ['Training isn\'t shared, so the workout can\'t be changed from here.'] };
+  if (w.status !== 'active') return { action: null, errors: ['This workout is already finished; there is nothing left to change today.'] };
+  const change = input.change === 'swap' || input.change === 'shorten' ? input.change : null;
+  if (!change) return { action: null, errors: ['change must be "swap" or "shorten".'] };
+  const base = { kind: 'session_adjustment' as const, id: ctx.messageId ?? '', sessionId: w.sessionId, summary: clip(input.summary, 300), warnings: [] as string[] };
+
+  if (change === 'shorten') {
+    const m = typeof input.minutes === 'number' && Number.isFinite(input.minutes) ? Math.round(input.minutes) : w.minutesLeft;
+    if (m == null) return { action: null, errors: ['minutes is required for "shorten" (ask the user how long they have).'] };
+    const minutes = Math.min(WORKOUT_LIMITS.maxMinutes, Math.max(WORKOUT_LIMITS.minMinutes, m));
+    if (!w.exercises.some((e) => pendingWorking(e) > 0)) return { action: null, errors: ['Every set is already done: nothing left to shorten.'] };
+    const plan = planShorten(w, minutes);
+    if (plan.fits) return { action: null, errors: [`What is left (about ${remainingMinutes(w)} min) already fits in ${minutes} minutes: no change needed. Tell the user they can finish as planned.`] };
+    const warnings: string[] = [];
+    if (plan.estimatedMinutes === 0) warnings.push('Less than one more set fits in that time. Finishing here is a good session too.');
+    return { action: { ...base, change, minutes, estimatedMinutes: plan.estimatedMinutes, removeSets: plan.removeSets, dropExercises: plan.dropExercises, warnings }, errors: [] };
+  }
+
+  const seId = typeof input.session_exercise_id === 'string' ? input.session_exercise_id : w.focusId ?? '';
+  const se = w.exercises.find((e) => e.id === seId);
+  if (!se) return { action: null, errors: [`Unknown session_exercise_id "${seId.slice(0, 100)}": use an [id] from the workout snapshot.`] };
+  if (pendingWorking(se) === 0) return { action: null, errors: [`Every set of ${se.name} is already done: nothing to swap.`] };
+  const toId = typeof input.to_exercise_id === 'string' ? input.to_exercise_id : '';
+  const to = ctx.catalog.get(toId);
+  if (!to) return { action: null, errors: [`Unknown to_exercise_id "${toId.slice(0, 100)}": use a catalog id from exercise_alternatives.`] };
+  const errors: string[] = [];
+  if (to.id === se.exerciseId) errors.push('The replacement is the same exercise.');
+  if (ctx.facts.excludedExerciseIds.includes(to.id)) errors.push(`${to.name} is on the user's excluded list.`);
+  if (ctx.facts.equipment) {
+    const missing = missingEquipment(to, ctx.facts.equipment);
+    if (missing.length) errors.push(`${to.name} needs equipment the user doesn't have (${missing.join(', ')}).`);
+  }
+  const easy = (to.stresses ?? []).filter((x) => ctx.facts.limitations.includes(x));
+  if (easy.length) errors.push(`${to.name} loads an area the user asked to go easy on (${easy.join(', ')}); pick another.`);
+  if (w.exercises.some((e) => e.id !== se.id && e.exerciseId === to.id && pendingWorking(e) > 0)) errors.push(`${to.name} is already later in today's workout; pick another.`);
+  if (errors.length) return { action: null, errors };
+  const from = ctx.catalog.get(se.exerciseId);
+  const warnings = se.sets.some((x) => x.done) ? [`Sets you already did stay with ${se.name}; the remaining ${pendingWorking(se)} move to ${to.name}.`] : [];
+  return {
+    action: {
+      ...base,
+      change,
+      swap: { sessionExerciseId: se.id, fromExerciseId: se.exerciseId, fromName: from?.name ?? se.name, toExerciseId: to.id, toName: to.name },
+      removeSets: [],
+      dropExercises: [],
+      warnings,
+    },
+    errors: [],
+  };
+}
+
+function proposeSessionAdjustment(input: Record<string, unknown>, ctx: ToolContext): ToolOutcome {
+  ctx.state.sessionAdjustmentAttempts = (ctx.state.sessionAdjustmentAttempts ?? 0) + 1;
+  if (ctx.state.sessionAdjustmentAttempts > 2) {
+    return { content: JSON.stringify({ status: 'rejected', errors: ['Only one workout change (plus one corrected attempt) per reply.'] }), isError: true };
+  }
+  const { action, errors } = buildSessionAdjustment(input, ctx);
+  if (!action) return { content: JSON.stringify({ status: 'invalid', errors, note: 'Fix these and call again once, or answer in text without it.' }), isError: true };
+  ctx.state.sessionAdjustment = action;
+  return {
+    content: JSON.stringify({
+      status: 'offered',
+      change: action.change,
+      ...(action.swap ? { swap: `${action.swap.fromName} → ${action.swap.toName}` } : {}),
+      ...(action.change === 'shorten' ? { dropped: action.dropExercises.map((d) => d.name), fewer_sets: action.removeSets.map((r) => `${r.name}: ${r.count} fewer`), estimated_minutes: action.estimatedMinutes } : {}),
+      warnings: action.warnings,
+      note: 'The user sees the change with "Apply to today\'s workout" and Undo. Nothing has changed yet, and the saved plan never changes. Reply in one or two short lines; don\'t list the changes again.',
+    }),
+  };
+}
+
 /* ------------------------------------------------------------------ meal plans */
 const NO_NUTRITION: NutritionStatus = { shared: false, enabled: null, autoDisabled: false, proteinG: null, kcal: null, macros: false };
 
@@ -579,6 +694,8 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolContext)
         return proposeWeekAdjustment(input, ctx);
       case 'propose_meal_plan':
         return await proposeMealPlan(input, ctx);
+      case 'propose_session_adjustment':
+        return proposeSessionAdjustment(input, ctx);
       default:
         return { content: JSON.stringify({ error: `Unknown tool "${String(name).slice(0, 50)}".` }), isError: true };
     }

@@ -5,6 +5,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import MIGRATION_SQL from '../../supabase/migrations/20261127000001_product_analytics.sql?raw';
+// Roadmap item 7 re-defines private.analytics_props_ok (ai_action_used.action_type gains 'session_adjustment').
+import SESSION_ADJUST_SQL from '../../supabase/migrations/20261128000001_ai_session_adjustment.sql?raw';
 import { ACCOUNT_ROW_ID, LiftDb } from '@/db/db';
 import { defaultAccountState } from '@/state/defaults';
 import type { WorkoutSession } from '@/domain/types';
@@ -104,12 +106,15 @@ describe('allowlist boundary (sanitizeEvent)', () => {
     expect(words.every((w) => /^[a-z_0-9]{1,32}$/.test(w))).toBe(true);
   });
 
-  it('matches the server allowlist in the migration (names, keys, values, one-time milestones)', () => {
+  it('matches the server allowlist in the migrations (names, keys, values, one-time milestones)', () => {
     const sql: string = MIGRATION_SQL;
+    // The allowlist as finally defined: the latest migration that (re)creates analytics_props_ok wins, in full.
+    const latest: string = SESSION_ADJUST_SQL;
+    expect(latest).toContain('create or replace function private.analytics_props_ok');
     for (const name of EVENT_NAMES) expect(sql).toContain(`'${name}'`);
     for (const name of EVENT_NAMES) {
       for (const [key, vals] of Object.entries(EVENT_SCHEMA[name].props as Record<string, readonly string[]>)) {
-        const line = sql.split('\n').find((l) => l.includes(`('${name}', '${key}'`));
+        const line = latest.split('\n').find((l) => l.includes(`('${name}', '${key}'`));
         expect(line, `${name}.${key}`).toBeTruthy();
         expect(line).toContain(`array[${vals.map((v) => `'${v}'`).join(', ')}]`);
       }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowRight, Award, CheckCircle2, Clock, Dumbbell, Layers, Repeat } from 'lucide-react';
+import { ArrowRight, Award, CheckCircle2, CircleHelp, Clock, Dumbbell, Layers, Repeat } from 'lucide-react';
 import { useApp } from '@/state/app';
 import { alive } from '@/db/repo';
 import { Badge, Button, Card, EmptyState, Page, SectionTitle, Spinner, Stat } from '@/components/ui';
@@ -15,6 +15,7 @@ import { activityLabel, paceOrSpeed } from '@/domain/activities';
 import { SharePreview } from '@/features/social/SharePreview';
 import { formatLoggedSet } from '@/features/exercises/useExerciseData';
 import { celebrateOnce } from '@/components/celebrate';
+import { openCoachWith } from '@/features/coaching/ai/workoutContext';
 
 /** Only a workout finished in the last few minutes gets the brief celebration; reopening an old summary stays calm. */
 const JUST_FINISHED_MS = 5 * 60 * 1000;
@@ -26,7 +27,9 @@ export default function SummaryPage() {
 }
 
 function WorkoutSummary({ id }: { id: string }) {
-  const { db, account } = useApp();
+  const { db, account, auth, backendConfigured } = useApp();
+  // "Explain" next to a next target opens the training assistant with this workout attached (signed-in accounts only).
+  const aiEntry = backendConfigured && auth.status === 'signed_in';
   const nav = useNavigate();
   const unit = account.settings.units.weight;
   const { byId } = useExercises();
@@ -118,10 +121,22 @@ function WorkoutSummary({ id }: { id: string }) {
               </p>
               {target && (
                 <div className="text-xs mt-1" data-testid="next-target">
-                  <p className="flex items-center gap-1">
+                  <p className="flex items-center gap-1 flex-wrap">
                     <ArrowRight className="size-3.5 text-accent shrink-0" aria-hidden />
                     <span className="font-medium tabular">{target.text}</span>
                     <span className="text-muted">· {target.label}</span>
+                    {aiEntry && (
+                      <button
+                        type="button"
+                        className="ml-auto inline-flex items-center gap-1 min-h-8 px-2 rounded-lg text-accent font-medium hover:bg-surface-2"
+                        aria-label={`Explain the next target for ${ex?.name ?? 'this exercise'}`}
+                        onClick={() =>
+                          void openCoachWith(db, nav, { intent: 'explain', sessionId: session.id, focusId: se.id, shownTarget: `${target.text} (${target.label})`, userId: auth.userId })
+                        }
+                      >
+                        <CircleHelp className="size-3.5" aria-hidden /> Explain
+                      </button>
+                    )}
                   </p>
                   {target.caveat && <p className="text-muted mt-0.5 pl-[18px]">{target.caveat}</p>}
                 </div>

@@ -563,7 +563,7 @@ export interface Cheer {
 
 /** The cheer for a set that was just ticked done, or null (warm-up, set not done, unknown set). */
 export function cheerForSet(i: SetCheerInput): Cheer | null {
-  const style = i.style ?? 'balanced';
+  const style = i.style ?? 'supportive';
   const idx = i.session.exercises.findIndex((e) => e.id === i.seId);
   const se = i.session.exercises[idx];
   const set = se?.sets.find((x) => x.id === i.setId);
@@ -624,7 +624,7 @@ export function nextSet(session: WorkoutSession, byId: Map<ID, Exercise>, unit: 
 }
 
 /** "Rest's up, Bench press set 3: 60 kg × 8. Go when ready." — or null when every set is done. */
-export function restOverCheer(session: WorkoutSession, byId: Map<ID, Exercise>, unit: WeightUnit, style: CoachStyle = 'balanced', last?: string | null, rand?: () => number): Cheer | null {
+export function restOverCheer(session: WorkoutSession, byId: Map<ID, Exercise>, unit: WeightUnit, style: CoachStyle = 'supportive', last?: string | null, rand?: () => number): Cheer | null {
   const n = nextSet(session, byId, unit, session.rest?.forExerciseId);
   if (!n) return null;
   const situation: CheerSituation = n.discomfort ? 'rest_over_discomfort' : 'rest_over';
