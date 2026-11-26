@@ -546,7 +546,7 @@ export interface Settings {
   };
   /**
    * Local mirror of the training assistant style (ai_settings.coach_style, the authority) so offline features such as the
-   * logger's coach cheers can follow it. Optional; undefined means 'balanced'.
+   * logger's coach cheers can follow it. Optional; undefined means 'supportive' (the default).
    */
   coachStyle?: CoachStyle;
   /** `coaching` is optional (added later); undefined means on. The server honours it when creating coaching notifications. */

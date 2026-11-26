@@ -86,7 +86,7 @@ export function buildWelcome(i: WelcomeInput): Welcome {
   const lines: string[] = [];
   const goal = i.scopes.profile && i.goal ? GOAL_LABELS[i.goal] : null;
   const name = i.scopes.profile ? firstName(i.displayName) : null;
-  const style = i.style ?? 'balanced';
+  const style = i.style ?? 'supportive';
   const tod = timeOfDay(i.hour);
   const greeting = `${tod ? `Good ${tod}` : 'Hi'}${name ? `, ${name}` : ''}.`;
   let today: string | null = null;

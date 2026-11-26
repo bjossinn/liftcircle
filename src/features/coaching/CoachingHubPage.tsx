@@ -24,7 +24,7 @@ export default function CoachingHubPage() {
   return (
     <Page title="Coaching" actions={<TopActions />}>
       <div className="mb-3">
-        <CoachSwitcher current="human" unread={human.unread} />
+        <CoachSwitcher current="human" unread={human.unread} onRetry={human.uncertain ? human.retry : undefined} />
       </div>
       {access === 'guest' ? <GuestCoachingIntro /> : access !== 'ok' ? <CoachingAccessNotice access={access} /> : <HubContent />}
     </Page>

@@ -1,3 +1,5 @@
+import type { SessionAdjustmentAction } from './workout.ts';
+
 /**
  * Types for the training assistant server modules (pure; no Deno / npm imports).
  * Payload shapes are the subsets of src/domain/types.ts that the server reads from the private tables'
@@ -20,7 +22,7 @@ export interface AiSettingsRow {
   scopes: AiScopes;
   scopesChangedAt?: string | null;
   profileNotes: string;
-  /** 'supportive' | 'balanced' | 'strict'; absent/unknown → balanced (context.ts asCoachStyle). */
+  /** 'supportive' | 'balanced' | 'strict'; absent/unknown → supportive, the default (context.ts asCoachStyle). */
   coachStyle?: string | null;
 }
 
@@ -34,7 +36,7 @@ export interface StoredMessage {
   grounding?: string[];
   /** Optional reasoning, shown collapsed under "Why this?" (null/absent when the model gave none). */
   why?: string | null;
-  /** Optional structured action attached to the reply (this-week schedule change, meal plan or recipe cards). */
+  /** Optional structured action attached to the reply (this-week schedule change, today's workout change, meal plan or recipe cards). */
   action?: AiAction | null;
 }
 
@@ -100,7 +102,9 @@ export interface RecipeSuggestionsAction {
   }[];
 }
 
-export type AiAction = WeekAdjustmentAction | MealPlanAction | RecipeSuggestionsAction;
+export type { SessionAdjustmentAction } from './workout.ts';
+
+export type AiAction = WeekAdjustmentAction | MealPlanAction | RecipeSuggestionsAction | SessionAdjustmentAction;
 
 /** camelCase ProgramProposal as returned by the SQL helpers (src/backend/coachingContract.ts). */
 export type ProposalJson = Record<string, unknown> & { id: string; status: string; target: string };

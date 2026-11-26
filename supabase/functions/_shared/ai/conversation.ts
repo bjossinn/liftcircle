@@ -36,7 +36,7 @@ export function isFollowUp(text: string): boolean {
 export function mentionsTiredness(text: string): boolean {
   const t = fold(text);
   // "tired of chicken" / "þreytt á kjúklingi" means fed up with something, not low on energy.
-  return /\b(?:tired(?! of\b)|exhausted|wiped(?: out)?|drained|knackered|shattered|worn out|burn(?:t|ed) out|no energy|sleepy|fatigued)\b/.test(t) ||
+  return /\b(?:tired(?! of\b)|exhausted|wiped(?: out)?|drained|knackered|shattered|worn out|burn(?:t|ed) out|no energy|sleepy|fatigued?|low on energy)\b/.test(t) ||
     /(?<![a-zæðþ])(?:þreytt[a-zæðþ]*(?![a-zæðþ])(?! a\b)|uppgefin|orkulaus|orkulitil|syfjuð|syfjaður|buin a þvi|buinn a þvi|alveg buin|alveg buinn|lufin|lufinn)/.test(t);
 }
 

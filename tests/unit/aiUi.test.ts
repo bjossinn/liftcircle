@@ -190,7 +190,7 @@ const SETTINGS_ON: AiSettings = {
   consentAt: '2026-10-01T10:00:00Z',
   scopes: { profile: true, training: true, measurements: false, nutrition: false },
   profileNotes: '',
-  coachStyle: 'balanced',
+  coachStyle: 'supportive', // the default (roadmap item 7)
 };
 
 function renderAt(path: string, el: ReactElement) {
@@ -419,22 +419,38 @@ describe('AI data access', () => {
     await waitFor(() => expect(api.saveSettings).toHaveBeenLastCalledWith({ scopes: { profile: true, training: false, measurements: true, nutrition: false } }));
   });
 
-  it('setup: requires explicit consent and enables with the chosen scopes', async () => {
+  it('setup is a single step: one button turns it on with Supportive and the default scopes (roadmap item 7)', async () => {
     api.getSettings.mockResolvedValue(null);
     api.saveSettings.mockImplementation(async (patch: Partial<AiSettings>) => ({ ...SETTINGS_ON, ...patch }));
     renderAt('/coaching/ai/setup', createElement(AiSetupPage));
-    fireEvent.click(await screen.findByRole('button', { name: 'Get started' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
-    fireEvent.click(await screen.findByRole('switch', { name: 'Nutrition' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    const enable = (await screen.findByRole('button', { name: /Turn on training assistant/ })) as HTMLButtonElement;
-    expect(enable.disabled).toBe(true);
-    fireEvent.click(screen.getByRole('checkbox'));
+    const enable = (await screen.findByRole('button', { name: 'Turn on training assistant' })) as HTMLButtonElement;
+    // No wizard: no steps, no Continue, no separate consent checkbox. The button itself is the agreement.
+    expect(screen.queryByRole('button', { name: 'Get started' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.queryByText(/Step \d of/)).toBeNull();
+    expect(screen.getByText('Tone: Supportive (default)')).toBeTruthy();
+    expect(screen.getByText(/switch to Balanced or Strict any time in training assistant settings/)).toBeTruthy();
+    expect(screen.getByText(/By turning it on, you agree/)).toBeTruthy();
     expect(enable.disabled).toBe(false);
     fireEvent.click(enable);
     await waitFor(() =>
+      expect(api.saveSettings).toHaveBeenCalledWith({
+        enabled: true, paused: false, acceptConsent: true, coachStyle: 'supportive', provider: undefined,
+        scopes: { profile: true, training: true, measurements: false, nutrition: false },
+      }),
+    );
+  });
+
+  it('setup: what it can see can still be changed on the same screen before turning it on', async () => {
+    api.getSettings.mockResolvedValue(null);
+    api.saveSettings.mockImplementation(async (patch: Partial<AiSettings>) => ({ ...SETTINGS_ON, ...patch }));
+    renderAt('/coaching/ai/setup', createElement(AiSetupPage));
+    fireEvent.click(await screen.findByRole('switch', { name: 'Nutrition' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on training assistant' }));
+    await waitFor(() =>
       expect(api.saveSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ enabled: true, acceptConsent: true, scopes: { profile: true, training: true, measurements: false, nutrition: true } }),
+        expect.objectContaining({ enabled: true, acceptConsent: true, coachStyle: 'supportive', scopes: { profile: true, training: true, measurements: false, nutrition: true } }),
       ),
     );
   });
@@ -512,11 +528,7 @@ describe('AI chat v2 (MOCKED aiApi): greeting, Why this?, Apply to this week', (
         createElement(Route, { path: '/coaching/ai/setup', element: createElement(AiSetupPage) }),
         // Setup lands in the Coach tab (/coach), which opens the chat directly.
         createElement(Route, { path: '/coach', element: createElement(AiChatPage) })))));
-    fireEvent.click(await screen.findByRole('button', { name: 'Get started' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
-    fireEvent.click(await screen.findByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: /Turn on training assistant/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn on training assistant' }));
     const w = await screen.findByRole('article', { name: 'Training assistant welcome' });
     await waitFor(() => expect(within(w).getByText(/Full body 3x/)).toBeTruthy());
     expect(api.send).not.toHaveBeenCalled();

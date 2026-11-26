@@ -499,6 +499,36 @@ async function main() {
     fails(await as('alice', `update public.ai_messages set action = '{"kind":"meal_plan"}'::jsonb where id = $1`, [r1.reply.id]), 'client cannot write action', /permission denied/);
   });
 
+  /* ------------------------------------------------------------ v7: today-only workout changes (20261128000001) */
+  await test('exchange-v7', 'stores a session_adjustment action; replay and history return it to the owner only; unknown kinds still dropped', async () => {
+    const SA = randomUUID();
+    const action = {
+      kind: 'session_adjustment', id: SA, sessionId: 'sess-live', change: 'shorten', minutes: 15, estimatedMinutes: 14,
+      removeSets: [{ sessionExerciseId: 'se-row', name: 'Barbell row', count: 1 }], dropExercises: [{ sessionExerciseId: 'se-lat', name: 'Lateral raise' }], summary: '', warnings: [],
+    };
+    const r = ok(await rpc('service', 'ai_record_exchange', withUser(U.alice, { ...exchange(SA, 'Short on time'), p_reply: J({ content: 'Shorter today.', action, grounding: [], model: 'm', inputTokens: 1, outputTokens: 1 }) })), 'record');
+    eq([r.reply.action?.kind, r.reply.action?.change, r.reply.action?.dropExercises?.[0]?.sessionExerciseId], ['session_adjustment', 'shorten', 'se-lat'], 'returned');
+    const again = ok(await rpc('service', 'ai_record_exchange', withUser(U.alice, { ...exchange(SA, 'Short on time'), p_reply: J({ content: 'changed', action: { ...action, change: 'swap' } }) })), 'replay');
+    eq([again.duplicate, again.reply.action?.change], [true, 'shorten'], 'idempotent replay keeps the stored action');
+    const mine = ok(await rpc('alice', 'list_ai_messages', { p_limit: 200 }), 'alice history');
+    assert(mine.some((m) => m.action?.kind === 'session_adjustment' && m.action?.id === SA), 'owner sees it in history');
+    const bobs = ok(await rpc('bob', 'list_ai_messages', { p_limit: 200 }), 'bob history');
+    assert(!JSON.stringify(bobs).includes(SA), 'bob does not see it');
+    assert((await visible('anon', `select id from public.ai_messages where reply_to = $1::uuid`, [SA])) <= 0, 'anon cannot read it');
+    const big = ok(await rpc('service', 'ai_record_exchange', withUser(U.alice, { ...exchange(randomUUID(), 'big'), p_reply: J({ content: 'x', action: { ...action, summary: 'x'.repeat(40000) } }) })), 'oversized');
+    eq(big.reply.action, null, 'the 32 KB size limit still applies');
+    const other = ok(await rpc('service', 'ai_record_exchange', withUser(U.alice, { ...exchange(randomUUID(), 'q'), p_reply: J({ content: 'x', action: { kind: 'program_rewrite' } }) })), 'unknown');
+    eq(other.reply.action, null, 'unknown kinds are still not stored');
+    fails(await rpc('alice', 'ai_record_exchange', withUser(U.alice, { ...exchange(randomUUID(), 'q'), p_reply: J({ content: 'x', action }) })), 'clients cannot record', /permission denied|does not exist/);
+  });
+
+  await test('settings-v7', 'a NULL coach style reads as supportive (the default), a stored choice is unchanged', async () => {
+    await admin.query(`update public.ai_settings set coach_style = null where user_id = $1`, [U.alice]);
+    eq(ok(await rpc('alice', 'get_ai_settings'), 'get').coachStyle, 'supportive', 'null → supportive');
+    await admin.query(`update public.ai_settings set coach_style = 'balanced' where user_id = $1`, [U.alice]);
+    eq(ok(await rpc('alice', 'get_ai_settings'), 'get').coachStyle, 'balanced', 'stored choice kept');
+  });
+
   /* ------------------------------------------------------------ export (portability) */
   await test('export', 'export_my_data includes the caller\'s AI settings, messages, usage and AI proposals — and nobody else\'s', async () => {
     const e = ok(await rpc('alice', 'export_my_data'), 'alice export');

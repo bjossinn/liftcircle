@@ -10,11 +10,12 @@
  * - What is stored per event: event name, the enum properties, a random event id and the time it happened. The
  *   server adds the signed-in user's id. Nothing else.
  *
- * Keep this file and the allowlist in supabase/migrations/20261127000001_product_analytics.sql in step
+ * Keep this file and the allowlist in supabase/migrations/20261127000001_product_analytics.sql (property values as
+ * widened by 20261128000001_ai_session_adjustment.sql) in step
  * (tests/unit/analytics.test.ts checks they match).
  */
 
-export const AI_ACTION_TYPES = ['chat_message', 'checkin_review', 'program_proposal', 'week_plan', 'meal_plan'] as const;
+export const AI_ACTION_TYPES = ['chat_message', 'checkin_review', 'program_proposal', 'week_plan', 'meal_plan', 'session_adjustment'] as const;
 export const AI_OUTCOMES = ['sent', 'proposed', 'applied', 'dismissed', 'reverted'] as const;
 export const WORKOUT_START_SOURCES = ['template', 'repeat', 'empty'] as const;
 export const ONBOARDING_PATHS = ['suggested', 'manual'] as const;

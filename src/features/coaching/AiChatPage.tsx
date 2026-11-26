@@ -9,10 +9,17 @@
  * "Why this?" and one action card: a this-week plan (ai/WeekPlanCard.tsx), a meal plan (ai/MealPlanCard.tsx) or
  * recipe cards (ai/RecipeCards.tsx). AI text and "Why this?" render as a safe Markdown subset (ai/markdown.tsx);
  * valid [[open:/path|Label]] markers become in-app buttons under the message. User messages stay plain text.
+ *
+ * State-aware coach (roadmap item 7): the workout logger and summary open the Coach with a contextual request
+ * (ai/workoutContext.ts). The chat sends it once with a fresh snapshot of that workout attached (or, when it can't send
+ * yet, puts it in the composer with the workout attached, kept on the device until it's sent or removed). Only while
+ * Training is shared: otherwise nothing about the workout is written, attached or sent. A reply may carry a today-only
+ * workout change
+ * (ai/SessionAdjustmentCard.tsx). First use (and a provider change) shows the single-step consent (ai/AiConsent.tsx).
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { ArrowUpRight, Bot, ClipboardCheck, CloudOff, MoreVertical, Pause, Play, RotateCcw, SendHorizontal, Settings2, Sparkles, Trash2, Lightbulb, Pencil, AlertTriangle } from 'lucide-react';
+import { ArrowUpRight, Bot, ClipboardCheck, CloudOff, Dumbbell, MoreVertical, Pause, Play, RotateCcw, SendHorizontal, Settings2, Sparkles, Trash2, Lightbulb, Pencil, AlertTriangle, X } from 'lucide-react';
 import { Badge, Button, ConfirmDialog, IconButton, ListRow, Notice, Sheet, Spinner, cx } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { aiApi, type AiChatMessage } from '@/backend/ai';
@@ -30,6 +37,9 @@ import { buildWelcome, localHour, recentRecord } from './ai/welcome';
 import { WeekPlanCard } from './ai/WeekPlanCard';
 import { MealPlanCard } from './ai/MealPlanCard';
 import { RecipeCards } from './ai/RecipeCards';
+import { SessionAdjustmentCard } from './ai/SessionAdjustmentCard';
+import { AiConsent } from './ai/AiConsent';
+import { AI_ATTACHED_REQUEST_KEY, loadAttachedRequest, prepareCoachRequest, takeCoachRequest, type CoachRequest } from './ai/workoutContext';
 import { syncBeforeAi } from './ai/syncBarrier';
 import { isCancelled, SendCancelled, sendWhileInProgress } from './ai/inProgress';
 import { Markdown } from './ai/markdown';
@@ -44,6 +54,9 @@ import type { LiftDb } from '@/db/db';
 import type { ActivityLog, CoachStyle, Exercise, ID, ISODate, Program, WeightUnit, WorkoutSession } from '@/domain/types';
 import { AiBadge, AiGuest, AiUnavailable, availabilityCopy, BackButton, ShareButton, ShareWithCoachDialog } from './ai/parts';
 import { EmptyChatArt } from '@/components/illustrations';
+
+/** Why a workout question can't be sent or retried while Training sharing is off. */
+const TRAINING_OFF_PENDING = 'Training sharing is off, so this workout question can’t be sent. Switch on Training in training assistant settings, or remove it.';
 
 /** This build's switched-on areas, so links to hidden screens (find a coach, the feed) don't render as buttons. */
 const appFeatures = (): GuideFeatures => ({ coachMarketplace: isFeatureEnabled('coachMarketplace'), socialFeed: isFeatureEnabled('socialFeed') });
@@ -93,6 +106,13 @@ export default function AiChatPage() {
   const s = boot.settings;
   const reconsent = consentOutdated(s, boot.availability);
   const off = (s === null || (s !== undefined && !settingsActive(s, boot.availability))) || (!boot.availability.available && boot.availability.reason === 'disabled');
+  // First use, or the server now uses another AI provider: the single-step consent, right here in the Coach tab.
+  if (off && (s === null || reconsent))
+    return (
+      <ChatShell>
+        <AiConsent availability={boot.availability} settings={s} onEnabled={setSettings} />
+      </ChatShell>
+    );
   if (off)
     return (
       <ChatShell>
@@ -265,16 +285,28 @@ function Chat({
     const { signal } = mine.ctrl;
     const stillMine = () => !signal.aborted && owner.current === mine;
     setSendError(null);
+    // A workout question (it names exercises and targets) is never sent while Training isn't shared.
+    if (p.request && !trainingRef.current) {
+      persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING });
+      return;
+    }
     const sending: PendingSend = { ...p, userId: mine.userId, status: 'sending', error: undefined };
     persistPending(sending);
     try {
       // Sync barrier: push this device's pending changes first (bounded wait), so the coach doesn't act on stale data.
       const unsynced = await syncBeforeAi(db);
+      // A workout attachment is rebuilt from the device right before each send (so a retry or a send after a reload
+      // carries the latest sets), and only while Training is shared.
+      const workout = p.request ? (await prepareCoachRequest(db, p.request, exerciseByIdRef.current))?.workout : undefined;
+      if (p.request && !trainingRef.current) {
+        persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING }); // switched off while syncing: never sent
+        return;
+      }
       // A replay of a message still being answered waits for that answer (same id) instead of failing. Cancelled (never
       // sent) if the account changed or the chat closed meanwhile.
       const res = await sendWhileInProgress(() => {
         if (!stillMine()) throw new SendCancelled();
-        return aiApi.send({ id: p.id, text: p.text, mode: p.mode, ...(unsynced ? { unsynced } : {}) });
+        return aiApi.send({ id: p.id, text: p.text, mode: p.mode, ...(unsynced ? { unsynced } : {}), ...(workout ? { workout } : {}) });
       }, { signal });
       if (!stillMine()) return; // answered for the previous account: it's in that account's history (its Retry gets it back as a duplicate)
       const userMsg: AiMessage = { id: p.id, role: 'user', content: p.text, createdAt: p.createdAt, status: 'sent' };
@@ -290,6 +322,7 @@ function Chat({
       if (res.proposal) void trackAiAction(db, 'program_proposal', 'proposed');
       const reply = res.reply as AiChatMessage;
       if (reply.weekPlan) void trackAiAction(db, 'week_plan', 'proposed');
+      if (reply.sessionAdjustment) void trackAiAction(db, 'session_adjustment', 'proposed');
       if (reply.mealPlan) void trackAiAction(db, 'meal_plan', 'proposed');
       if (usage) setUsage({ requests: usage.requests + 1 });
     } catch (e) {
@@ -308,21 +341,114 @@ function Chat({
   function submit(e?: FormEvent) {
     e?.preventDefault();
     if (!canSend) return;
-    start(draft.trim(), 'chat');
+    // The attachment moves onto the pending message (stored on the device) until the send succeeds.
+    start(draft.trim(), 'chat', true, attachedActive?.req);
+    setAttachedReq(null);
   }
   /** `fromDraft`: the text came from the composer, so clear it (quick replies leave a typed draft alone). */
-  function start(text: string, mode: AiMode, fromDraft = mode === 'chat') {
+  function start(text: string, mode: AiMode, fromDraft = mode === 'chat', request?: CoachRequest) {
     if (blocked) return;
-    const p: PendingSend = { id: uuid(), text, mode, status: 'sending', createdAt: new Date().toISOString(), userId };
+    const p: PendingSend = { id: uuid(), text, mode, status: 'sending', createdAt: new Date().toISOString(), userId, ...(request ? { request } : {}) };
     if (fromDraft) updateDraft('');
     void run(p);
   }
+
+  /*
+   * A contextual request from the workout screen or summary ("Short on time", "Equipment busy", "Explain this"): taken
+   * once, after the conversation, any unconfirmed message and the settings are loaded. Only while Training is shared
+   * (the visible message itself names exercises and targets): otherwise nothing is written or sent, and a notice says
+   * why. Sent right away when possible; otherwise its text goes into the composer with the workout attached, and the
+   * attachment is kept on this device until it's sent or removed.
+   */
+  const trainingOn = settings?.scopes.training === true;
+  const trainingRef = useRef(trainingOn);
+  trainingRef.current = trainingOn;
+  const { byId: exerciseById } = useExercises();
+  const exerciseByIdRef = useRef(exerciseById);
+  exerciseByIdRef.current = exerciseById;
+  const [attached, setAttached] = useState<{ req: CoachRequest; name: string; finished: boolean } | null>(null);
+  const [trainingOffNotice, setTrainingOffNotice] = useState(false);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  /** Set or clear the deferred attachment (state + device storage). */
+  const setAttachedReq = useCallback(
+    (req: CoachRequest | null) => {
+      void kvSet(AI_ATTACHED_REQUEST_KEY, req, db).catch(() => undefined);
+      if (!req) return setAttached(null);
+      void db.sessions.get(req.sessionId).then(
+        (sess) => setAttached(sess && !sess.deletedAt ? { req, name: sess.name, finished: sess.status === 'completed' } : null),
+        () => setAttached(null),
+      );
+    },
+    [db],
+  );
+  // While Training isn't shared an attachment is neither shown nor sent.
+  const attachedActive = trainingOn ? attached : null;
+  const requestTaken = useRef(false);
+  const ready = loaded && history !== undefined && settings !== undefined;
+  useEffect(() => {
+    if (!ready || requestTaken.current) return;
+    requestTaken.current = true;
+    void (async () => {
+      const kept = await loadAttachedRequest(db, userId);
+      if (kept && trainingOn) setAttachedReq(kept); // (with Training off, the effect below removes it and its text)
+      const req = await takeCoachRequest(db, userId);
+      if (!req) return;
+      if (!trainingOn) {
+        setTrainingOffNotice(true);
+        return;
+      }
+      const prepared = await prepareCoachRequest(db, req, exerciseById);
+      if (!prepared || owner.current.userId !== userId) return;
+      if (!pending && !blocked) start(prepared.text, 'chat', false, req);
+      else {
+        updateDraft(prepared.text);
+        // The generated text is remembered with the attachment, so it can be removed again if sharing is turned off.
+        setAttachedReq({ ...req, text: prepared.text });
+      }
+    })();
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps -- once, when ready
+
+  // Training sharing off (on open, or switched off while here): a waiting workout question goes completely — its
+  // attachment and the text that was written for it (that text names exercises and targets).
+  useEffect(() => {
+    if (!ready || trainingOn) return;
+    let cancelled = false;
+    void (async () => {
+      const kept = await loadAttachedRequest(db, userId);
+      if (cancelled || !kept) return;
+      setAttachedReq(null);
+      const d = draftRef.current;
+      // Its generated text is removed; a draft that no longer contains it verbatim was edited from it, so it goes too.
+      const next = kept.text && d.includes(kept.text) ? d.replace(kept.text, '').trim() : '';
+      if (next !== d) updateDraft(next);
+      setTrainingOffNotice(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, trainingOn]); // eslint-disable-line react-hooks/exhaustive-deps -- db/userId are stable for this screen
+
+  /** The unconfirmed message is a workout question and Training isn't shared: it can't be retried, only removed. */
+  const pendingBlocked = !!pending?.request && !trainingOn;
   function retry() {
-    if (pending && !blocked) void run(pending);
+    if (!pending || blocked) return;
+    if (pendingBlocked) {
+      persistPending({ ...pending, status: 'failed', error: TRAINING_OFF_PENDING });
+      return;
+    }
+    void run(pending);
+  }
+  function removePending() {
+    persistPending(null);
+    setSendError(null);
   }
   function editPending() {
     if (!pending) return;
+    if (pendingBlocked) return removePending(); // its text names exercises and targets: never put back to send
     updateDraft(draft ? `${draft}\n${pending.text}` : pending.text);
+    // Its workout attachment comes back with the text (it lived on the pending message until now).
+    if (pending.request && trainingOn) setAttachedReq({ ...pending.request, text: pending.text });
     persistPending(null);
     setSendError(null);
     inputRef.current?.focus();
@@ -401,6 +527,16 @@ function Chat({
           </Notice>
         )}
         {historyNote && <Notice>{historyNote}</Notice>}
+        {trainingOffNotice && (
+          <Notice className="flex gap-2 items-start">
+            <span className="flex-1" role="status">
+              Training sharing is off, so your question about that workout wasn’t sent. To ask about your workouts, switch on Training in training assistant settings.
+            </span>
+            <Button size="sm" onClick={() => nav('/coaching/ai/settings')}>
+              Settings
+            </Button>
+          </Notice>
+        )}
       </div>
 
       {/* conversation */}
@@ -454,7 +590,9 @@ function Chat({
                   onShare={() => setShare({ key: m.id, text: extractOpenLinks(m.content, appFeatures()).text })}
                   onRetry={retry}
                   onEdit={editPending}
+                  onRemove={removePending}
                   retryDisabled={blocked}
+                  workoutBlocked={m.pending ? pendingBlocked : false}
                 />
               ))}
             </ol>
@@ -487,6 +625,17 @@ function Chat({
                 <Lightbulb className="size-3.5 text-muted" aria-hidden /> {q}
               </button>
             ))}
+          </div>
+        )}
+        {attachedActive && (
+          <div className="flex items-center gap-2 pb-2">
+            <span className="inline-flex items-center gap-1.5 min-h-8 rounded-full bg-surface-2 border border-line px-3 text-xs" data-testid="ai-attached-workout">
+              <Dumbbell className="size-3.5 text-accent" aria-hidden />
+              {attachedActive.finished ? 'Workout attached' : 'Today’s workout attached'}: {attachedActive.name}
+            </span>
+            <IconButton size="sm" label="Remove attached workout" onClick={() => setAttachedReq(null)}>
+              <X className="size-4" />
+            </IconButton>
           </div>
         )}
         <form onSubmit={submit} className="flex items-end gap-2">
@@ -618,7 +767,7 @@ interface WeekCtx {
 }
 
 function MessageItem({
-  m, week, pending, proposal, coach, onShare, onRetry, onEdit, retryDisabled,
+  m, week, pending, proposal, coach, onShare, onRetry, onEdit, onRemove, retryDisabled, workoutBlocked,
 }: {
   m: AiChatMessage;
   week: WeekCtx;
@@ -628,7 +777,10 @@ function MessageItem({
   onShare: () => void;
   onRetry: () => void;
   onEdit: () => void;
+  onRemove: () => void;
   retryDisabled: boolean;
+  /** A workout question that can't be sent because Training isn't shared: Remove instead of Retry / Edit. */
+  workoutBlocked?: boolean;
 }) {
   const nav = useNavigate();
   if (m.role === 'user') {
@@ -644,7 +796,15 @@ function MessageItem({
               Sending…
             </span>
           )}
-          {pending?.status === 'failed' && (
+          {pending?.status === 'failed' && workoutBlocked && (
+            <div className="mt-1 flex flex-wrap items-center justify-end gap-1">
+              <span className="text-xs text-danger">Not sent: {TRAINING_OFF_PENDING}</span>
+              <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={onRemove}>
+                Remove
+              </Button>
+            </div>
+          )}
+          {pending?.status === 'failed' && !workoutBlocked && (
             <div className="mt-1 flex flex-wrap items-center justify-end gap-1">
               <span className="text-xs text-danger">Not sent{pending.error ? `: ${pending.error}` : ''}</span>
               <Button size="sm" variant="secondary" icon={<RotateCcw className="size-4" />} onClick={onRetry} disabled={retryDisabled}>
@@ -691,6 +851,7 @@ function MessageItem({
             <Markdown text={whyText} className="text-sm text-muted px-1 pb-1" />
           </details>
         )}
+        {m.sessionAdjustment && <SessionAdjustmentCard action={m.sessionAdjustment} db={week.db} />}
         {m.weekPlan && (
           <WeekPlanCard plan={m.weekPlan} program={week.program} sessions={week.sessions} activities={week.activities} today={week.today} weekStart={week.weekStart} db={week.db} />
         )}

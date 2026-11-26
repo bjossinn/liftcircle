@@ -305,7 +305,7 @@ describe('MOCKED ai-coach v4: programs from the chat', () => {
     expect(m.recorded[0].proposal?.target).toBe('for_coach_review');
   });
 
-  it('tool list includes the meal plan tool', () => {
-    expect(TOOL_DEFS.map((t) => t.name)).toEqual(['find_recipes', 'exercise_alternatives', 'propose_program_change', 'propose_week_adjustment', 'propose_meal_plan']);
+  it('tool list includes the meal plan tool (and, since roadmap item 7, the today-only workout change)', () => {
+    expect(TOOL_DEFS.map((t) => t.name)).toEqual(['find_recipes', 'exercise_alternatives', 'propose_program_change', 'propose_week_adjustment', 'propose_meal_plan', 'propose_session_adjustment']);
   });
 });

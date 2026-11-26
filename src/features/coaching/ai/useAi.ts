@@ -27,7 +27,7 @@ export function useAiBoot() {
   const serverStyle = boot.phase === 'ready' ? boot.settings?.coachStyle : undefined;
   const localStyle = account?.settings?.coachStyle;
   useEffect(() => {
-    if (!accountReady || !updateAccount || !serverStyle || serverStyle === (localStyle ?? 'balanced')) return;
+    if (!accountReady || !updateAccount || !serverStyle || serverStyle === (localStyle ?? 'supportive')) return;
     void updateAccount((a) => ({ ...a, settings: { ...a.settings, coachStyle: serverStyle } })).catch(() => undefined);
   }, [accountReady, serverStyle, localStyle, updateAccount]);
 
