@@ -706,6 +706,11 @@ async function answer(a: Answering): Promise<CoachResult> {
     replaced,
     full_recipe: fullRecipe,
     open_request: ctx.openRequest?.intent ?? null,
+    // Item 10: which prompt produced this (version + hash of the static modules) and the assembled size.
+    prompt_version: ctx.prompt.version,
+    prompt_hash: ctx.prompt.staticHash,
+    system_chars: system.length,
+    output: output,
   });
   // Before the 2026-10-30 migration the database doesn't store why/action; still return them for this reply.
   const storedReply = { ...(recorded.reply as StoredMessage) };

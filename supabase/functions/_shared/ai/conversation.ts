@@ -89,7 +89,9 @@ export function mentionsTiredness(text: string): boolean {
   return false;
 }
 
-const BLOCK_RE = /\/coaching\/ai\/settings|\/nutrition\/targets|\[\[open:\/settings|\[\[open:\/onboarding|can['’]t see|cannot see|isn['’]t shared|not shared/i;
+// Item 10: also a plain "turn on … sharing" reply without a link ("Turn on Nutrition sharing in training assistant
+// settings, then try again." / "Kveiktu á deilingu næringarupplýsinga í stillingum …").
+const BLOCK_RE = /\/coaching\/ai\/settings|\/nutrition\/targets|\[\[open:\/settings|\[\[open:\/onboarding|can['’]t see|cannot see|isn['’]t shared|not shared|turn on \w+ sharing|kveiktu á deilingu|deilir ekki/i;
 
 export interface OpenRequest {
   text: string;
