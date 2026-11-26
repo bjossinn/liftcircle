@@ -15,6 +15,7 @@ import { currentRationale, exerciseCue, exerciseNote, prescriptionText, restText
 import { activityName, cardioNotesText, localizeGeneratedText, sessionDisplayName } from '@/domain/program/localize';
 import { isBeginner } from '@/domain/progression';
 import { weekdayShort } from '@/lib/dates';
+import { rationaleLineText, versionReasonText as proposalReasonText } from '@/domain/program/proposals';
 import { EN, loadText, locale, t as translate, useT, type MessageKey, type Params } from '@/i18n';
 import type { Exercise, Experience, Goal, ID, Prescription, ProgramVersion, SessionTemplate, WeightUnit } from '@/domain/types';
 
@@ -81,7 +82,9 @@ export function versionReasonText(reason: string): string {
     const params = matchTemplate(key, reason);
     if (params) return translate(key, params.sessionName ? { ...params, sessionName: sessionDisplayName({ name: params.sessionName }) } : params);
   }
-  return planTextForDisplay(reason);
+  // Coach/AI/progression/take-over reasons written by applyProposal (exact English), else generated-plan text.
+  const fromProposal = proposalReasonText(reason);
+  return fromProposal !== reason ? fromProposal : planTextForDisplay(reason);
 }
 
 export function KindIcon({ kind, className = 'size-4' }: { kind: SessionTemplate['kind']; className?: string }) {
@@ -642,7 +645,7 @@ export function WhyItFits({ version, defaultOpen = false, experience }: { versio
           )}
           <Card className="px-4 py-3">
             <ul className="flex flex-col gap-2 text-sm list-disc pl-4 marker:text-accent">
-              {currentRationale(version.rationale, isBeginner(experience)).map(planTextForDisplay).map((r) => (
+              {currentRationale(version.rationale, isBeginner(experience)).map((line) => rationaleLineText(planTextForDisplay(line))).map((r) => (
                 <li key={r}>{r}</li>
               ))}
             </ul>

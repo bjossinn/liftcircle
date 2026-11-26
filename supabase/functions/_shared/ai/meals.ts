@@ -148,16 +148,37 @@ export function parseQuery(query: string): QueryIntent {
     if (negated.has(raw) || NEGATORS.has(raw) || QUERY_GLUE.has(raw)) continue;
     // Icelandic food words and phrases, longest first, as catalogue words: "kjúklingabaunum" → chickpea (never chicken),
     // "eggaldini" → aubergine (never egg), "sætar kartöflur" → sweet potato.
+    if (STOP.has(raw) || IS_STOP.has(raw) || raw.length < 3 || DIET_WORDS.some(([re]) => re.test(raw)) || /^(vegan|vegetarian|pescatarian|dairy|gluten|lactose|no|cook|min|under)$/.test(raw)) continue;
+    // "kjötlaus", "hveitilaust", "nut-free", "hnetuofnæmi": restrictions (parsed above), never foods to look for.
+    if (/(?:laus|lausa|laust|lausar|lausir|lausum)$|-free$|(?:ofnæmi|oþol)$/.test(raw)) continue;
+    // Two-word catalogue foods stay one search word ("soy drink" is not every soy recipe, "sweet potato" not every potato).
+    const pair = `${raw} ${tokens[i + 1] ?? ''}`;
+    if (EN_FOOD_PHRASES.has(pair) && !negated.has(tokens[i + 1])) {
+      words.push(pair);
+      i++;
+      continue;
+    }
     const lex = lexFoodAt(tokens, i);
     if (lex && !lex.tokens.some((w) => negated.has(w))) {
       words.push(stem(lex.english));
       i += lex.tokens.length - 1;
       continue;
     }
-    if (STOP.has(raw) || IS_STOP.has(raw) || raw.length < 3 || DIET_WORDS.some(([re]) => re.test(raw)) || /^(vegan|vegetarian|pescatarian|dairy|gluten|lactose|no|cook|min|under)$/.test(raw)) continue;
     words.push(stem(raw));
   }
   return { words: [...new Set(words)].slice(0, 6), meal, diet, quick, highProtein, maxMinutes, exclude };
+}
+
+/** Wanted foods a diet in the same request rules out ("Vegan matseðill með kjúklingi"): ask which to keep — never drop the
+ *  diet or the food silently. Catalogue words of the conflicting wanted foods; empty when there is no conflict. */
+export function requestConflicts(text: string): string[] {
+  const q = parseQuery(text);
+  if (!q.diet.length) return [];
+  const meat = ['chicken', 'turkey', 'beef', 'pork', 'lamb', 'mince', 'ham', 'bacon', 'meat', 'red meat', 'poultry'];
+  const fish = ['fish', 'salmon', 'cod', 'tuna', 'haddock', 'mackerel', 'saithe', 'herring', 'prawn', 'shrimp', 'shellfish', 'white fish', 'oily fish'];
+  const animal = [...meat, ...fish, 'egg', 'milk', 'cheese', 'skyr', 'yogurt', 'butter', 'whey', 'dairy'];
+  const banned = new Set(q.diet.includes('vegan') ? animal : q.diet.includes('vegetarian') ? [...meat, ...fish] : q.diet.includes('pescatarian') ? meat : []);
+  return q.words.filter((w) => banned.has(w) || banned.has(`${w}s`));
 }
 
 /* ------------------------------------------------------------------ exclusions ("no fish", "án hneta") */
@@ -370,8 +391,13 @@ const ALLERGEN_FOOD_EN: [string, string][] = [
   ['sild', 'herring'], ['krabb', 'crab'], ['hum', 'lobster'], ['rug', 'rye'], ['bygg', 'barley'], ['tofu', 'tofu'], ['tempeh', 'tempeh'], ['sojasos', 'soy sauce'],
   ['sojamjolk', 'soy drink'], ['tahini', 'tahini'], ['spelt', 'spelt'],
 ];
+/** Dish names with no catalogue word ("sunnudagssteik", "laugardagsnammi"): any inflection ("sunnudagssteikar") is
+ *  matched by its base form, so a catalogue item of that name is still ruled out. Long compounds only. */
+const NAMED_DISHES = [...LEX.ingredientTerms.sunday_roast, ...LEX.ingredientTerms.saturday_candy].map(foldIs).filter((f) => !/(?:ina|ið)$/.test(f));
 /** One folded word as a catalogue word (lexicon, then the prefix stems), or undefined. */
 function wordEnglish(w: string): string | undefined {
+  const dish = NAMED_DISHES.find((d) => w.startsWith(d));
+  if (dish) return dish;
   const lex = LEX_FOOD.get(w);
   if (lex?.exact) return lex.english;
   if (LEX_ALLERGEN_FOOD.has(w) || w === 'sojamjolk') {
@@ -395,12 +421,17 @@ function lexFoodAt(tokens: string[], i: number): { english: string; tokens: stri
   const english = wordEnglish(tokens[i]);
   return english ? { english, tokens: [tokens[i]] } : null;
 }
+/** Two-word catalogue foods (as catalog ingredient names spell them), kept together as one search word. */
+const EN_FOOD_PHRASES = new Set(['peanut butter', 'sweet potato', 'soy sauce', 'soy drink', 'soy milk', 'soy yogurt', 'egg white', 'red meat', 'white fish', 'oily fish',
+  'rye bread', 'cottage cheese', 'greek yogurt', 'coconut milk', 'black beans', 'kidney beans', 'white beans', 'green beans', 'spring onion', 'smoked salmon',
+  'rice noodles', 'egg noodles', 'oat drink', 'pea protein', 'whey protein', 'chia seeds', 'pumpkin seeds', 'sunflower seeds', 'sesame oil', 'sunday roast']);
 /** Icelandic words that only shape a request; never search words. */
 const IS_STOP = new Set([
   ...IS_VOCAB.recipes.tokens, ...IS_VOCAB.meal_plan.tokens,
   'ég', 'mig', 'mér', 'vil', 'vantar', 'langar', 'finndu', 'sýndu', 'geturðu', 'getur', 'hvað', 'get', 'er', 'eru', 'það', 'þetta', 'fyrir', 'og', 'eða', 'takk',
   'hugmynd', 'hugmyndir', 'hugmyndum', 'eitthvað', 'góður', 'góð', 'gott', 'góða', 'mjög', 'líka', 'bara', 'kvöld', 'dag', 'dagsins', 'viku', 'vikuna', 'næstu',
   'finnst', 'elska', 'borða', 'elda', 'eldað', 'búa', 'til', 'búðu', 'gerðu', 'settu', 'saman', 'rétti', 'rétt', 'réttir', 'réttum', 'máltíð', 'máltíðir', 'máltíðum',
+  'lagi', 'allt', 'fer', 'hinn', 'morgun', 'borðaði', 'þoli', 'þolir', 'ofnæmi', 'óþol', 'matinn', 'matnum', 'mat', 'matur', 'svo', 'helst', 'gjarnan',
 ].map(foldIs));
 const FREE_RE = new RegExp(`(?<![${L}])([a-zæðþ]+)[\\s-]free(?![${L}])|(?<![${L}])([a-zæðþ]{3,}?)laus(?:ir|ar|an|um|ri|a|t)?(?![${L}])`, 'g');
 const TOKEN_RE = /[a-z0-9æðþ'’-]+|[.,;:!?\n()/&]/g;
@@ -945,7 +976,7 @@ export function mealPlanIntentFromText(text: string): MealPlanIntent {
   const positive = wantedDays(text).filter((d) => !ex.days.includes(d));
   if (positive.length) intent.days = positive;
   else if (ex.days.length) intent.days = WEEKDAYS_EN.filter((d) => !ex.days.includes(d));
-  if (/\b(quick|fast|no[\s-]?cook)\b|\bfljot|\bsnogg/.test(t)) intent.quick = true;
+  if (/\b(quick|fast|no[\s-]?cook)\b|(?<![a-zæðþ])(?<!ekki )(?:fljot|snogg)/.test(t)) intent.quick = true;
   const diet = dietTagsIn(t);
   if (diet.length) intent.diet = diet;
   // Foods and allergens ruled out, as phrases ("tree nuts", "red onion") — buildMealPlanAction maps them again.

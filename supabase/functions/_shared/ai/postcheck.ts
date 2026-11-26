@@ -9,6 +9,8 @@ import type { MealPlanAction, RecipeSuggestionsAction, WeekAdjustmentAction } fr
 import { humanDate, shortDate } from './humanDates.ts';
 import type { Lang } from './lang.ts';
 // @ts-ignore see above
+import { foldIs, IS_VOCAB } from './isLexicon.ts';
+// @ts-ignore see above
 import { listText, sharedT } from '../i18n/core.ts';
 
 const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
@@ -65,19 +67,41 @@ export function summarizeProposal(p: ProposalSummaryInput, lang: Lang = 'en'): s
 /* ------------------------------------------------------------------ conflict detection */
 interface DayToken { at: number; weekdays: number[] }
 
+// Icelandic weekday names as WHOLE tokens (every case form in the approved vocabulary, plus the dative "-degi"), so
+// "sunnudagssteik" or "laugardagsnammi" is never a day; and "í dag" / "á morgun" / "á hinn morgun" (folded).
+const IS_DAY_RE = (() => {
+  const forms: [string, number][] = [];
+  Object.values(IS_VOCAB.weekdays.map).forEach((list, k) => {
+    const wd = (k + 1) % 7; // monday … sunday → 1 … 0
+    for (const f of list) if (!f.endsWith('.')) forms.push([foldIs(f), wd]);
+    const stem = foldIs(list[1]).replace(/ag$/, '');
+    forms.push([`${stem}egi`, wd], [`${stem}eginum`, wd]);
+  });
+  forms.sort((a, b) => b[0].length - a[0].length);
+  return { re: new RegExp(`(?<![a-zæðþ])(${forms.map(([f]) => f).join('|')}|a hinn morgun|a morgun|i dag)(?![a-zæðþ])`, 'g'), day: new Map(forms) };
+})();
+/** English day words, whole tokens only: "fries", "satay", "monkfish", "sundae" and "thus" are not days. */
+const EN_DAY_RE = /\b(today|tomorrow|mon(?:days?)?|tue(?:s|sdays?)?|wed(?:nesdays?)?|thu(?:rs?|rsdays?)?|fri(?:days?)?|sat(?:urdays?)?|sun(?:days?)?)\.?(?![a-z])|\b(\d{4}-\d{2}-\d{2})\b/g;
+
 function dayTokens(seg: string, today: string): DayToken[] {
   const out: DayToken[] = [];
-  const re = /\b(today|tomorrow|(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?)\b|\b(\d{4}-\d{2}-\d{2})\b/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(seg))) {
+  EN_DAY_RE.lastIndex = 0;
+  while ((m = EN_DAY_RE.exec(seg))) {
     let wd: number | null = null;
     if (m[1] === 'today') wd = wdOf(today);
     else if (m[1] === 'tomorrow') wd = (wdOf(today) + 1) % 7;
-    else if (m[2]) wd = WEEKDAYS.indexOf(m[2]);
-    else if (m[3]) wd = wdOf(m[3]);
+    else if (m[1]) wd = WEEKDAYS.indexOf(m[1].slice(0, 3));
+    else if (m[2]) wd = wdOf(m[2]);
     if (wd != null && wd >= 0) out.push({ at: m.index, weekdays: [wd] });
   }
-  return out;
+  IS_DAY_RE.re.lastIndex = 0;
+  while ((m = IS_DAY_RE.re.exec(seg))) {
+    const w = m[1];
+    const wd = w === 'i dag' ? wdOf(today) : w === 'a morgun' ? (wdOf(today) + 1) % 7 : w === 'a hinn morgun' ? (wdOf(today) + 2) % 7 : IS_DAY_RE.day.get(w)!;
+    out.push({ at: m.index, weekdays: [wd] });
+  }
+  return out.sort((a, b) => a.at - b.at);
 }
 
 /** Pairs each mentioned name with the first day after it (before the next name), else the nearest day before it. */
@@ -106,7 +130,10 @@ function namedDays(seg: string, names: string[], today: string): { name: string;
 }
 
 const segments = (text: string) => text.split(/(?<=[.!?])\s+|\n+/).filter((s) => s.trim());
-const SKIP_WORDS = /\b(skip|skipped|skipping|drop|dropped|miss|missed|instead|rest|off|not)\b/;
+// English, and the Icelandic skip words of the approved vocabulary ("sleppa", "fellur niður", "hvíldardagur", "í staðinn"), folded.
+const SKIP_WORDS = new RegExp(
+  `\\b(skip|skipped|skipping|drop|dropped|miss|missed|instead|rest|off|not)\\b|(?<![a-zæðþ])(?:${IS_VOCAB.postprocessing.skipWords.map(foldIs).sort((a, b) => b.length - a.length).join('|')})(?![a-zæðþ])`,
+);
 
 /** Reason the reply contradicts the week plan, or null. */
 export function weekPlanConflict(reply: string, a: WeekAdjustmentAction, today: string): string | null {
@@ -148,11 +175,16 @@ export function proposalConflict(reply: string, p: ProposalSummaryInput, today: 
 }
 
 /* ------------------------------------------------------------------ full recipes in chat */
-const QTY = /\b\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l|tbsp|tsp|cups?|oz|tablespoons?|teaspoons?|cloves?|slices?)\b/i;
+// English units, and the Icelandic ones of the approved vocabulary ("2 dl", "1 tsk.", "3 geirar", "2 sneiðar").
+const QTY = new RegExp(
+  `(?<![\\p{L}\\p{N}])\\d+(?:[.,]\\d+)?\\s*(?:tbsp|tsp|cups?|oz|tablespoons?|teaspoons?|cloves?|slices?|${[...IS_VOCAB.postprocessing.quantityUnits].sort((a, b) => b.length - a.length).map((u) => u.replace('.', '\\.')).join('|')})(?![\\p{L}])`,
+  'iu',
+);
+const RECIPE_HEADING = new RegExp(`^\\s*(?:#+\\s*)?\\**\\s*(ingredients|method|instructions|directions|steps|${IS_VOCAB.postprocessing.recipeHeadings.join('|')})\\s*\\**:?\\s*\\**\\s*$`, 'iu');
 /** True when the text writes out a recipe (ingredient list with quantities, or an Ingredients/Method section). */
 export function looksLikeFullRecipe(text: string): boolean {
   const lines = String(text ?? '').split('\n');
-  const heading = lines.some((l) => /^\s*(?:#+\s*)?\**\s*(ingredients|method|instructions|directions|steps)\s*\**:?\s*\**\s*$/i.test(l));
+  const heading = lines.some((l) => RECIPE_HEADING.test(l));
   const qtyLines = lines.filter((l) => /^\s*([-*•]|\d+[.)])\s+/.test(l) && QTY.test(l)).length;
   return heading || qtyLines >= 3;
 }

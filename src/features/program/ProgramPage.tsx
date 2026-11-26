@@ -19,7 +19,8 @@ import { splitKeyOfVersion } from '@/domain/program/splits';
 import { SPLITS } from '@/domain/program/templates';
 import { formatDate, todayISO, WEEKDAY_SHORT } from '@/lib/dates';
 import type { Program, ProgramVersion, SessionTemplate } from '@/domain/types';
-import { PlanLegend, RenameSheet, SessionCard, WeekStrip, WhyItFits } from './parts';
+import { PlanLegend, RenameSheet, SessionCard, versionReasonText, WeekStrip, WhyItFits } from './parts';
+import { dateTimeText } from '@/i18n';
 
 export default function ProgramPage() {
   const nav = useNavigate();
@@ -303,7 +304,7 @@ export default function ProgramPage() {
             <li key={ver.version}>
               <ListRow
                 title={`Version ${ver.version}${ver.version === program.currentVersion ? ' (current)' : ''}`}
-                subtitle={`${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(ver.createdAt))} · ${ver.reason}`}
+                subtitle={`${dateTimeText(ver.createdAt, account.settings.timeZone, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${versionReasonText(ver.reason)}`}
                 right={
                   ver.version !== program.currentVersion ? (
                     <Button size="sm" onClick={() => setRestoreTarget(ver)}>
