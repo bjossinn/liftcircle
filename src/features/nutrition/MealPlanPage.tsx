@@ -20,6 +20,7 @@ import {
   rankedCandidates, removePlanItem, replacePlanDay, swapMeal, updatePlanItem, type PlanDayStatus, type PlanPrefs,
 } from '@/domain/nutrition/mealplan';
 import { AllergenNote, prefsFromAccount, useWeekPlan } from './shared';
+import { recipeLink } from './recipeLink';
 import { NoMealPlanArt } from '@/components/illustrations';
 import { ProteinPicker, ProteinsForm, proteinPrefsSummary } from './ProteinPicker';
 
@@ -119,7 +120,8 @@ export default function MealPlanPage() {
                     <li key={it.id} className="flex items-center gap-1 pl-4 pr-1 py-2 min-h-16">
                       <div className="min-w-0 flex-1">
                         <div className="text-xs text-muted">{MEAL_LABELS[it.slot]}</div>
-                        <Link to={`/nutrition/recipes/${r.id}`} className="text-[15px] font-medium hover:underline block truncate">
+                        {/* The item's ingredient swaps travel with the link, so removed ingredients stay removed. */}
+                        <Link to={recipeLink(r.id, it.swaps)} className="text-[15px] font-medium hover:underline block truncate">
                           {r.name}
                         </Link>
                         {it.extras?.length ? (

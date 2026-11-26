@@ -1,5 +1,5 @@
 /** Ways to begin a workout. Only one session can be active at a time. */
-import type { Exercise, ID, ISODate, SessionTemplate, Settings, WorkoutSession } from '@/domain/types';
+import type { Exercise, Experience, ID, ISODate, SessionTemplate, Settings, WorkoutSession } from '@/domain/types';
 import type { LiftDb } from '@/db/db';
 import { alive, saveRecord } from '@/db/repo';
 import { buildSessionFromTemplate } from '@/domain/program/session';
@@ -18,6 +18,8 @@ export interface StartCtx {
   db: LiftDb;
   settings: Settings;
   catalog: Exercise[];
+  /** Account profile experience level: drives the beginner progression rule when pre-filling loads. */
+  experience?: Experience;
 }
 
 /** Lifting template → active session. Cardio/walk/mobility templates are logged as activities instead. */
@@ -39,6 +41,7 @@ export async function startFromTemplate(
     plannedDate: meta.plannedDate,
     date: todayISO(tz),
     timeZone: tz,
+    experience: ctx.experience,
   });
   session.templateId = t.id;
   return saveRecord('sessions', session, ctx.db);

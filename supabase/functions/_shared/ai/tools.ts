@@ -94,7 +94,6 @@ export const TOOL_DEFS = [
             name: { type: 'string' },
             weeks: { type: 'integer', minimum: 1, maximum: 52 },
             reviewWeek: { type: 'integer', minimum: 1, maximum: 52 },
-            progressionNotes: { type: 'string' },
             rationale: { type: 'array', items: { type: 'string' } },
             warnings: { type: 'array', items: { type: 'string' } },
             templates: {

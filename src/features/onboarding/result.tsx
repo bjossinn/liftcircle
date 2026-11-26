@@ -209,7 +209,7 @@ export function ResultStep({
         </div>
       </Card>
 
-      <WhyItFits version={version} defaultOpen={false} />
+      <WhyItFits version={version} defaultOpen={false} experience={a.experience} />
 
       <SectionTitle>Sessions</SectionTitle>
       <PlanLegend />

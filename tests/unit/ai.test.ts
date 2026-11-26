@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { handleAiCoach, type CoachDeps } from '../../supabase/functions/_shared/ai/coach';
-import { buildContext, deriveFacts, neutralize, progressionHint } from '../../supabase/functions/_shared/ai/context';
+import { buildContext, deriveFacts, neutralize, progressionHint, trainingSessions } from '../../supabase/functions/_shared/ai/context';
 import { AiUnavailableError, createMessage, estimateCostUsd } from '../../supabase/functions/_shared/ai/provider';
 import { runTool, type ToolState } from '../../supabase/functions/_shared/ai/tools';
 import { decideTarget, normalizeProposedProgram, validateForUser, validateProposedProgram } from '../../supabase/functions/_shared/ai/validate';
@@ -223,7 +223,7 @@ describe('MOCKED ai-coach: context isolation (only the authenticated user, only 
     const { db } = makeDb({ [A]: userA() });
     const s = userA().settings!;
     const ctx = await buildContext({ db, uid: A, settings: s, text: 'hi', mode: 'chat', now: new Date('2026-10-29T10:00:00Z') });
-    expect(ctx.system).toContain('increase to 32 kg'); // dumbbell default increment 2 kg, top of range twice
+    expect(ctx.system).toContain('Increase load → next: 32 kg × 8 reps'); // dumbbell default increment 2 kg, top of range twice (engine output)
     expect(ctx.system).toContain('protein 144 g/day');
     expect(ctx.system).toContain('1 entries without protein');
     expect(ctx.system).toMatch(/2026-10-27: nothing logged/);
@@ -550,17 +550,57 @@ describe('MOCKED ai-coach: availability, limits, retries, idempotency', () => {
   });
 });
 
-describe('MOCKED ai-coach: progression rule mirror', () => {
-  it('matches src/domain/progression.ts double progression for loaded lifts', () => {
+describe('MOCKED ai-coach: progression comes from the shared engine', () => {
+  it('quotes the engine (src/domain/progression.ts) for loaded lifts: two sessions normally, one for beginners', () => {
     const ex = EXERCISES[0];
     const set = (w: number, r: number) => ({ type: 'normal', weightKg: w, reps: r, completed: true });
-    const s = (w: number, r: number) => ({ exerciseId: ex.id, sets: [set(w, r), set(w, r), set(w, r)] });
+    let t = Date.parse('2026-11-20T17:00:00Z');
+    const s = (w: number, r: number, extra: object = {}) => ({ id: `s${t}`, status: 'completed', date: '2026-11-20', startedAt: (t -= 86_400_000), exercises: [{ exerciseId: ex.id, sets: [set(w, r), set(w, r), set(w, r)], ...extra }] });
     const rx = { sets: 3, repMin: 6, repMax: 8, targetRir: 2 };
-    expect(progressionHint(ex, rx, [s(80, 8), s(80, 8)], 'kg')).toContain('increase to 82.5 kg');
-    expect(progressionHint(ex, rx, [s(80, 8), s(80, 7)], 'kg')).toContain('repeat this load');
-    expect(progressionHint(ex, rx, [s(80, 7)], 'kg')).toContain('add one rep');
-    expect(progressionHint(ex, rx, [{ ...s(80, 8), discomfort: true }, s(80, 8)], 'kg')).toContain('no load increase');
-    expect(progressionHint(ex, rx, [s(80, 8), s(80, 8)], 'lb')).toContain('increase to 180 lb'); // 176.4 lb → next 5 lb step
+    const hint = (rows: ReturnType<typeof s>[], unit: 'kg' | 'lb' = 'kg', beginner = false) => progressionHint(ex, rx, trainingSessions(rows), { unit, beginner });
+    expect(hint([s(80, 8), s(80, 8)])).toContain('Increase load → next: 82.5 kg × 6 reps');
+    expect(hint([s(80, 8), s(80, 7)])).toMatch(/^.*: Hold → next: 80 kg × 8 reps\. Top of the range on every set/);
+    expect(hint([s(80, 8), s(80, 7)], 'kg', true)).toContain('Increase load → next: 82.5 kg × 6 reps'); // beginner: one session
+    expect(hint([s(80, 7)])).toContain('Add reps → next: 80 kg');
+    expect(hint([s(80, 8, { discomfort: true }), s(80, 8)])).toContain('No increase');
+    expect(hint([s(80, 8), s(80, 8)], 'lb')).toContain('next: 180 lb × 6 reps'); // 176.4 lb → next 5 lb step
+  });
+});
+
+describe('MOCKED ai-coach: one experience source for the beginner rule (review P1)', () => {
+  // Current account experience 'advanced'; the plan's saved onboarding answer says 'new'. One successful 3×12 @ 30 kg.
+  const conflicting = (experience: string, profileShared: boolean) => {
+    const a = userA();
+    a.account!.profile!.experience = experience;
+    a.program!.payload.inputs = { ...a.program!.payload.inputs, experience: 'new' };
+    a.sessions = [a.sessions[0]];
+    a.settings!.scopes = { ...a.settings!.scopes, profile: profileShared };
+    return a;
+  };
+  const ctxFor = async (a: UserData) => (await buildContext({ db: makeDb({ [A]: a }).db, uid: A, settings: a.settings!, text: 'What weight next on bench?', mode: 'chat', now: new Date('2026-10-29T10:00:00Z') })).system;
+  const benchLine = (system: string) => system.split('\n').find((l) => l.startsWith('- Dumbbell bench press:')) ?? '';
+
+  it('profile shared: uses the account’s CURRENT experience (the app’s source), not the plan’s saved answer', async () => {
+    const sys = await ctxFor(conflicting('advanced', true));
+    expect(benchLine(sys)).toContain('Hold → next: 30 kg × 12 reps'); // what the app shows for an advanced user
+    expect(sys).not.toContain('32 kg');
+    expect(sys).not.toMatch(/beginner rule/);
+    const beginner = await ctxFor(conflicting('new', true));
+    expect(benchLine(beginner)).toContain('Increase load → next: 32 kg × 8 reps');
+  });
+
+  it('profile not shared: no definitive load where the experience level would change it (never the stale plan answer)', async () => {
+    const sys = await ctxFor(conflicting('advanced', false));
+    expect(benchLine(sys)).toContain('next target not available here');
+    expect(benchLine(sys)).not.toMatch(/\d+ kg/);
+    expect(sys).not.toContain('32 kg');
+    expect(sys).toContain('this user\'s experience level isn\'t shared with you');
+  });
+
+  it('profile not shared: still states the load when both rules agree (two successful sessions)', async () => {
+    const a = conflicting('advanced', false);
+    a.sessions = userA().sessions;
+    expect(benchLine(await ctxFor(a))).toContain('Increase load → next: 32 kg × 8 reps');
   });
 });
 

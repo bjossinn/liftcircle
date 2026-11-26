@@ -4,6 +4,7 @@
  */
 import type { Equipment, Experience, Goal, LimitationArea, Prescription } from '@/domain/types';
 import { WEEKDAY_SHORT } from '@/lib/dates';
+import { progressionRuleText } from '@/domain/progression';
 
 export const RIR_PLAIN =
   'RIR means “reps in reserve”: stop each set with about that many reps left in the tank. RIR 2–3 = you could have done 2–3 more good reps.';
@@ -129,8 +130,28 @@ export function exerciseNote(rx: Pick<Prescription, 'notes'>): string | null {
 export const DURATION_RATIONALE =
   'Estimated session times include a 5-minute general warm-up, setup, ramp-up sets and rest between sets.';
 
-export const PROGRESSION_RATIONALE =
+/** How load progression works for this user: worded by the progression engine itself (one rule, one description). */
+export function progressionRationale(beginner: boolean): string {
+  return progressionRuleText(beginner);
+}
+
+/** The progression sentence generated plans saved before 1.0.3 (kept only to recognise it in stored rationale). */
+const LEGACY_PROGRESSION_RATIONALE =
   'Progression uses double progression: when you reach the top of the rep range on every set at the target effort in two sessions (if you don’t log effort, we ask you to confirm it first), we suggest the smallest practical load increase and you start again near the bottom of the range.';
+
+/** True for the progression sentence the generator writes (any version) — never for a coach's own notes. */
+export function isGeneratedProgressionText(r: string): boolean {
+  return r === LEGACY_PROGRESSION_RATIONALE || r === progressionRuleText(true) || r === progressionRuleText(false);
+}
+
+/**
+ * A saved plan's rationale for display: the generated progression sentence is replaced by the engine's CURRENT text
+ * for this user (plans store text, and the rule or the user's experience level may have changed since). Everything
+ * else, including human-coach progression notes, is shown as saved.
+ */
+export function currentRationale(rationale: readonly string[], beginner: boolean): string[] {
+  return rationale.map((r) => (isGeneratedProgressionText(r) ? progressionRationale(beginner) : r));
+}
 
 export function limitationRationale(limits: LimitationArea[]): string {
   return `We left out exercises that commonly load your ${listText(limits.map((l) => LIMITATION_TEXT[l]))}. This isn’t a diagnosis. If something you enjoy feels fine, you can swap it back in. If pain persists, consider a qualified professional.`;

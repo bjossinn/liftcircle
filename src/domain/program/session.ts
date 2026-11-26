@@ -3,10 +3,10 @@
  * warm-up sets for main lifts and working sets pre-filled from progression suggestions and the
  * previous comparable performance. Suggestions only pre-fill; nothing is completed until the user logs it.
  */
-import type { EnteredValue, Exercise, ID, ISODate, LoggedSet, Prescription, SessionExercise, SessionTemplate, Settings, WeightUnit, WorkoutSession } from '@/domain/types';
+import type { EnteredValue, Exercise, Experience, ID, ISODate, LoggedSet, Prescription, SessionExercise, SessionTemplate, Settings, WeightUnit, WorkoutSession } from '@/domain/types';
 import { uuid } from '@/lib/id';
-import { fromKg, lbToKg, round } from '@/domain/units';
-import { comparableHistory, incrementFor, suggestNext, workingSets, type Suggestion } from '@/domain/progression';
+import { fromKg, round } from '@/domain/units';
+import { comparableHistory, incrementFor, isBeginner, lastPerformed, plateIncrementKg, suggestNext, workingSets, type Suggestion } from '@/domain/progression';
 import { warmupSetCount } from './generator';
 import { warmupSets } from '@/domain/warmups';
 
@@ -19,6 +19,8 @@ export interface BuildCtx {
   plannedDate?: ISODate;
   date: ISODate;
   timeZone: string;
+  /** The user's experience level (account profile); 'new' / 'returning' turn on the beginner progression rule. */
+  experience?: Experience;
 }
 
 function entered(kg: number | null | undefined, unit: WeightUnit): EnteredValue | undefined {
@@ -26,18 +28,21 @@ function entered(kg: number | null | undefined, unit: WeightUnit): EnteredValue 
   return { value: round(fromKg(kg, unit), unit === 'kg' ? 2 : 1), unit };
 }
 
-/** Plate increment from settings for barbell-type lifts; other equipment uses its own increment. */
-function settingsIncrementKg(ex: Exercise, settings: Settings): number | undefined {
-  const barbell = ex.equipment.includes('barbell') || ex.equipment.includes('smith');
-  if (!barbell || ex.tracking !== 'weight_reps' || ex.increment) return undefined;
-  return settings.units.weight === 'kg' ? settings.workout.plateIncrementKg : lbToKg(settings.workout.plateIncrementLb);
-}
-
-/** Progression suggestion for one prescription given the user's completed history. */
-export function suggestionFor(rx: Prescription, ex: Exercise, history: WorkoutSession[], settings: Settings): { suggestion: Suggestion; last?: SessionExercise } {
+/**
+ * Progression suggestion for one prescription given the user's completed history (the engine in
+ * src/domain/progression.ts; this only supplies the user's unit, plate increment and beginner flag).
+ */
+export function suggestionFor(
+  rx: Pick<Prescription, 'exerciseId' | 'sets' | 'repMin' | 'repMax' | 'targetRir' | 'durationSec'>,
+  ex: Exercise,
+  history: WorkoutSession[],
+  settings: Settings,
+  experience?: Experience,
+): { suggestion: Suggestion; last?: SessionExercise } {
   const comparable = comparableHistory(history, rx.exerciseId);
-  const suggestion = suggestNext(ex, rx, comparable, { unit: settings.units.weight, incrementKg: settingsIncrementKg(ex, settings) });
-  return { suggestion, last: comparable[0] };
+  const unit = settings.units.weight;
+  const suggestion = suggestNext(ex, rx, comparable, { unit, incrementKg: plateIncrementKg(ex, unit, settings.workout), beginner: isBeginner(experience) });
+  return { suggestion, last: lastPerformed(comparable, ex) };
 }
 
 export function buildSessionFromTemplate(t: SessionTemplate, ctx: BuildCtx): WorkoutSession {
@@ -52,7 +57,7 @@ export function buildSessionFromTemplate(t: SessionTemplate, ctx: BuildCtx): Wor
       const sets: LoggedSet[] = Array.from({ length: rx.sets }, () => ({ id: uuid(), type: 'normal', weightKg: null, reps: null, completed: false }));
       return { id: uuid(), exerciseId: rx.exerciseId, order, prescription, sets };
     }
-    const { suggestion, last } = suggestionFor(rx, ex, ctx.history, ctx.settings);
+    const { suggestion, last } = suggestionFor(rx, ex, ctx.history, ctx.settings, ctx.experience);
     const lastSets = last ? workingSets(last) : [];
     const timed = ex.tracking === 'duration' || ex.tracking === 'distance_time';
     const usesLoad = ex.tracking === 'weight_reps' || ex.tracking === 'assisted' || ex.tracking === 'bodyweight_plus' || (ex.tracking === 'distance_time' && ex.load !== 'none');

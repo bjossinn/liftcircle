@@ -32,7 +32,7 @@ export function useStarters() {
   const { list } = useExercises();
   const nav = useNavigate();
   const toast = useToast();
-  const ctx = { db, settings: account.settings, catalog: list };
+  const ctx = { db, settings: account.settings, catalog: list, experience: account.profile.experience };
   const go = (s: WorkoutSession) => nav(`/train/session/${s.id}`);
   const fail = (e: unknown) => toast.show((e as Error).message || 'Couldn’t start the workout', { tone: 'error' });
 

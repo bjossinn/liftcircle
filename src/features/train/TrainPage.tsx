@@ -5,6 +5,7 @@ import { Activity, BookOpen, CalendarDays, ChevronRight, ClipboardList, Dumbbell
 import { useApp } from '@/state/app';
 import { alive } from '@/db/repo';
 import { Button, Card, ListRow, Page, SectionTitle, Sheet, Spinner } from '@/components/ui';
+import { exercisesDone } from '@/domain/stats';
 import { TopActions } from '@/app/TopActions';
 import { useActiveProgram, useAllSessions, useStarters } from './hooks';
 import { currentVersion } from '@/domain/program/program';
@@ -133,7 +134,7 @@ export default function TrainPage() {
             <ListRow
               key={s.id}
               title={s.name}
-              subtitle={`${formatDate(s.date)} · ${s.exercises.length} exercises · ${formatMinutes(((s.endedAt ?? s.startedAt) - s.startedAt - s.pausedTotalMs) / 1000)}`}
+              subtitle={`${formatDate(s.date)} · ${exercisesDone(s)} exercises · ${formatMinutes(((s.endedAt ?? s.startedAt) - s.startedAt - s.pausedTotalMs) / 1000)}`}
               onClick={() => {
                 setRepeatOpen(false);
                 void repeat(s);

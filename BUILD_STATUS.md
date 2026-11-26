@@ -77,7 +77,7 @@ An independent review of the sync, auth and logger code found 6 real bugs: lost-
 - **Settings:** units, theme, week start, time zone, rest/workout defaults, notifications, discoverability, sharing/auto-share, nutrition toggle, data page, demo dataset in its own database.
 - **Onboarding:** 12 steps with saved progress and validation; review and edit; result screen with rationale; alternatives and regenerate; a manual path; under-18 and individualized-nutrition rules.
 - **Program generator:** deterministic, 1–6 lifting-day splits, easy-day fill, endurance-first plans, time budget trimming, calibration (no load guessing), a 6–8 week block with a review week, missed-session rescheduling, version history, and manual/custom routines.
-- **Progression:** double progression, plus separate rules for bodyweight, assisted, timed and distance work, a "review recovery" flag on decline, and discomfort suppression.
+- **Progression:** double progression (one successful session for beginners), plus separate rules for bodyweight, assisted, timed and distance work, a "review recovery" flag on decline, and discomfort suppression. Single source of truth: `supabase/functions/_shared/training/progression.ts`, re-exported by `src/domain/progression.ts`; the workout summary's "Next:" line, the in-workout tip and the training assistant all use it, and coach cheers state facts only.
 - **Exercise library:** 105 original exercises with search, filters, favourites, recent, custom exercises, a substitution flow and load-convention notes.
 - **Workout logger**
   - One-tap ✓ with undo; values carry to the next set; quick ± load; copy set; warm-up, drop and timed sets; RPE/RIR; supersets; reorder and swap; notes; discomfort flag.

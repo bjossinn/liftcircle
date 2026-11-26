@@ -6,6 +6,11 @@
  *    and pick one short line (≤ 12 words) in the user's coach style.
  *  - restOverCheer: when the rest timer ends, name the next set ("Rest's up, Bench press set 3: 60 kg × 8. Go when ready.").
  *
+ * Facts only: cheers name what just happened (a record, the reps reached, sets or the workout completed) and never give
+ * progression advice ("heavier next time", "add weight", "go lighter next time"). Next loads come only from the
+ * progression engine (src/domain/progression.ts), shown as "Next:" on the workout summary. Discomfort lines may still
+ * say to go easy or swap the exercise in THIS session — that's safety, not progression.
+ *
  * Rules: warm-up sets get nothing; an exercise flagged "Felt discomfort" only ever gets caring lines; never a line
  * about body weight or food; the same line is never picked twice in a row (pass the previous line as `last`).
  */
@@ -18,7 +23,7 @@ export type CheerSituation = 'pr' | 'top_of_range' | 'last_set_exercise' | 'last
 type Lines = Record<CoachStyle, string[]>;
 
 /**
- * {record} = the record ("60 kg × 8"), {next} = next exercise name, {set} = next set description.
+ * {record} = the record ("60 kg × 8"), {reps} = reps just done, {next} = next exercise name, {set} = next set description.
  * Each list has 15+ lines; every line stays ≤ 12 words with typical names filled in.
  */
 export const CHEER_LINES: Record<CheerSituation, Lines> = {
@@ -68,7 +73,7 @@ export const CHEER_LINES: Record<CheerSituation, Lines> = {
       'New PR, {record}. Earned it. Keep working.',
       '{record}. That’s a record. Next set, same focus.',
       'PR at {record}. That’s how it’s done.',
-      'New best: {record}. Raise the bar again.',
+      'New best: {record}. That’s earned.',
       '{record}. Record. Now finish the job.',
       'Personal record: {record}. Discipline pays.',
       'That’s a PR, {record}. No slowing down.',
@@ -78,57 +83,59 @@ export const CHEER_LINES: Record<CheerSituation, Lines> = {
       '{record}. New PR. Respect. Keep going.',
     ],
   },
+  // Facts only: the reps just done and that they reach the top of the range. Never "heavier next time": whether the
+  // load moves is the progression engine's call (src/domain/progression.ts), shown as "Next:" on the workout summary.
   top_of_range: {
     supportive: [
-      'That’s the top of the range, weight goes up next time.',
-      'Top of the range. You’re ready for a bit more next time.',
-      'All the reps you aimed for. Next time, a little heavier.',
-      'Top of your range, lovely. Small step up next session.',
-      'You hit the top reps. Time to add a little weight soon.',
-      'Every rep you planned, and then some. Nicely done.',
-      'Top of the range, you’re getting stronger.',
-      'Max reps reached. A small increase is coming next time.',
-      'You topped out the range. Gentle step up next session.',
-      'Top reps hit. Your body is adapting beautifully.',
-      'Full range done. Next time we nudge the weight.',
-      'That’s the top of the range. Well earned.',
-      'All reps in. You’re ready to progress.',
-      'Top of the range again, steady progress.',
-      'Top reps. Next session, slightly heavier.',
+      '{reps} reps, the top of your range. Lovely.',
+      'Top of the range: {reps} reps. Nicely done.',
+      'Every rep you aimed for, {reps} of them.',
+      '{reps} reps. You reached the top of the range.',
+      'All {reps} reps done. Beautifully steady.',
+      'Top of the range, {reps} reps. Well earned.',
+      'You hit {reps} reps, the top of your range.',
+      '{reps} reps logged. That’s the top of the range.',
+      'Top of the range reached: {reps} reps. Lovely work.',
+      '{reps} clean reps. The top of your range.',
+      'That’s {reps} reps, right at the top. Well done.',
+      'Full range done: {reps} reps.',
+      '{reps} reps, every one of them. Lovely.',
+      'Top of the range again, {reps} reps.',
+      'You reached {reps} reps. Nicely done.',
     ],
     balanced: [
-      'That’s the top of the range, weight goes up next time.',
-      'Top of the range. Add weight next session.',
-      'Max reps hit. Time to go heavier next time.',
-      'Range topped out. Load goes up next workout.',
-      'Top reps, nice. Next time, a bit more weight.',
-      'You owned that range. Heavier next time.',
-      'Top of the range, progress unlocked.',
-      'All reps done. Next session, bump the weight.',
-      'That’s the ceiling of the range. Time to raise it.',
-      'Top reps. The weight should move up next time.',
-      'Range maxed. Earned yourself a heavier set.',
-      'Top of the range. That’s how progress happens.',
-      'Full reps. Next time, a small jump in weight.',
-      'You hit the top. Weight goes up soon.',
-      'Top of the range again, nice and solid.',
+      '{reps} reps, top of the range.',
+      'Top of the range: {reps} reps. Nice.',
+      '{reps} reps logged. Range maxed.',
+      'Max reps hit: {reps}.',
+      '{reps} reps. That’s the top of the range.',
+      'Top of the range, {reps} reps. Strong set.',
+      'You owned that range: {reps} reps.',
+      '{reps} reps done. Solid.',
+      'That’s the ceiling of the range: {reps} reps.',
+      'Top reps: {reps}. Nice work.',
+      'Range maxed at {reps} reps.',
+      '{reps} reps. Clean and complete.',
+      'Full reps: {reps}. Well done.',
+      'You hit the top: {reps} reps.',
+      'Top of the range again, {reps} reps.',
     ],
     strict: [
-      'That’s the top of the range, weight goes up next time.',
-      'Top of the range. Too easy, go heavier next time.',
-      'Max reps. Next session, more weight. No hesitation.',
-      'Range topped. Time to earn the next plate.',
-      'Top reps. You’ve outgrown this weight.',
-      'All reps in. Add load next time.',
-      'Top of the range. Raise the bar next session.',
-      'Range done. Comfortable means it’s time to go heavier.',
-      'Top reps. Next time the weight goes up.',
-      'That’s the top. Stop coasting, add weight next time.',
-      'Max reps hit. Heavier next session, that’s the deal.',
-      'Top of the range. Progress demands more weight.',
-      'Full reps. Next workout, step up the load.',
-      'You topped it. Now make the next one harder.',
-      'Range maxed. Heavier is the only direction.',
+      '{reps} reps. Top of the range.',
+      'Top of the range: {reps} reps. Logged.',
+      '{reps} reps. Every one counted.',
+      'Max reps: {reps}. That’s the work.',
+      '{reps} reps. Range done.',
+      'All {reps} reps in. Good.',
+      'Top reps: {reps}. No shortcuts.',
+      '{reps} reps, full range. Earned.',
+      'Range topped at {reps} reps.',
+      '{reps} reps. That’s the standard.',
+      'Max reps hit: {reps}. Stay sharp.',
+      '{reps} reps logged. Same focus on the next set.',
+      'Top of the range: {reps}. Discipline.',
+      '{reps} reps. Done right.',
+      'Range maxed: {reps} reps. Solid.',
     ],
   },
   last_set_exercise: {
@@ -222,7 +229,7 @@ export const CHEER_LINES: Record<CheerSituation, Lines> = {
     strict: [
       'Last one done, finish strong.',
       'Final set. Done. That’s how it’s done.',
-      'Workout complete. Same again next time.',
+      'Workout complete. Every set logged.',
       'All sets in. Earned, not given.',
       'Last set done. Log it and recover properly.',
       'That’s the work. Hit Finish.',
@@ -232,7 +239,7 @@ export const CHEER_LINES: Record<CheerSituation, Lines> = {
       'Workout finished. Now recover, then repeat.',
       'All sets done. That’s showing up.',
       'Last set done. You kept your word.',
-      'Final set. Complete. Next session, same focus.',
+      'Final set. Complete. Focus held to the end.',
       'That’s everything. Solid. Don’t skip the next one.',
       'Done. Another one in the bank.',
     ],
@@ -241,11 +248,11 @@ export const CHEER_LINES: Record<CheerSituation, Lines> = {
     supportive: [
       'Every rep counts. You’re doing great.',
       'A few short, that’s okay. Listen to your body.',
-      'Good effort. Some days are heavier than others.',
+      'Good effort. Some days are tougher than others.',
       'That’s fine. Progress isn’t a straight line.',
       'You showed up and did the work. That matters.',
       'Short of the target, no worries. Take a full rest.',
-      'Totally okay. Maybe a little lighter next set?',
+      'Totally okay. Every set teaches you something.',
       'Good work. The reps will come back.',
       'Not every set hits the number. You’re still building.',
       'Nice try. Rest well before the next one.',
@@ -263,7 +270,7 @@ export const CHEER_LINES: Record<CheerSituation, Lines> = {
       'Tough set. Reset and attack the next one.',
       'Under target, no problem. Focus on form.',
       'Almost. Next set, aim for the bottom of the range.',
-      'Shy of the target. Maybe drop the weight a touch.',
+      'Shy of the target. Reset and go again.',
       'Good fight. Rest well and go again.',
       'Short today. Still progress. Keep pushing.',
       'Few reps short. Breathe and reset.',
@@ -285,7 +292,7 @@ export const CHEER_LINES: Record<CheerSituation, Lines> = {
       'Missed reps. Stay locked in, next set.',
       'Under target. You know you have more.',
       'Short set. Make the next one right.',
-      'Below target. Lower the weight if needed, but hit reps.',
+      'Below target. Reset and own the next set.',
       'That fell short. No coasting on the next.',
       'Target missed. Fix it next set.',
     ],
@@ -573,7 +580,7 @@ export function cheerForSet(i: SetCheerInput): Cheer | null {
 
   const rx = se.prescription;
   const repBased = !!rx && !rx.durationSec && set.reps != null;
-  if (repBased && rx!.repMax > 0 && set.reps! >= rx!.repMax) return say('top_of_range');
+  if (repBased && rx!.repMax > 0 && set.reps! >= rx!.repMax) return say('top_of_range', { reps: String(set.reps) });
   if (repBased && rx!.repMin > 0 && set.reps! < rx!.repMin) return say('below_target');
 
   if (working(se).every((x) => x.completed)) {
