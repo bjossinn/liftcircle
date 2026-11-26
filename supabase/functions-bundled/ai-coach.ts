@@ -579,6 +579,7 @@ function catalog() {
 }
 
 // supabase/functions/_shared/nutrition/proteins.ts
+var LEFT_OUT = "__left_out__";
 var PROTEIN_GROUPS = [
   "chicken",
   "turkey",
@@ -658,6 +659,7 @@ function featuredProteinGroups(recipe, swaps = [], byId = catalog().byId) {
 function recipeProteinGroups(recipe, swaps = [], byId = catalog().byId) {
   const set = /* @__PURE__ */ new Set();
   for (const ri of recipe.ingredients) {
+    if (ri.optional && swaps.some((s) => s.from === ri.ingredientId && s.to === LEFT_OUT)) continue;
     const sw = swaps.find((s) => s.from === ri.ingredientId && byId.has(s.to));
     const g = proteinGroupOf(sw ? sw.to : ri.ingredientId, byId);
     if (g) set.add(g);
@@ -1549,12 +1551,13 @@ function substitutionRatio(fromId, toId, byId = catalog().byId) {
   return 1;
 }
 function resolveIngredients(recipe, swaps = [], byId = catalog().byId) {
-  return recipe.ingredients.map((ri) => {
+  return recipe.ingredients.flatMap((ri) => {
+    if (ri.optional && swaps.some((s) => s.from === ri.ingredientId && s.to === LEFT_OUT)) return [];
     const sw = swaps.find((s) => s.from === ri.ingredientId && byId.has(s.to));
     if (sw && sw.to !== ri.ingredientId) {
-      return { ri, ingredientId: sw.to, ingredient: byId.get(sw.to), grams: ri.grams * substitutionRatio(sw.from, sw.to, byId), swappedFrom: ri.ingredientId };
+      return [{ ri, ingredientId: sw.to, ingredient: byId.get(sw.to), grams: ri.grams * substitutionRatio(sw.from, sw.to, byId), swappedFrom: ri.ingredientId }];
     }
-    return { ri, ingredientId: ri.ingredientId, ingredient: byId.get(ri.ingredientId), grams: ri.grams };
+    return [{ ri, ingredientId: ri.ingredientId, ingredient: byId.get(ri.ingredientId), grams: ri.grams }];
   });
 }
 function recipeNutrition(recipe, opts = {}) {
@@ -2703,7 +2706,7 @@ function explainNoRecipes(c, recipes, ing, facts) {
       if (!i) return false;
       if (!x.optional && i.proteinGroup && k.proteinExcluded?.includes(i.proteinGroup)) return false;
       const bad = (i.allergens ?? []).some((a) => k.allergens.includes(a)) || k.disliked.includes(i.id) || k.dietTags.some((t) => DIET_FLAG[t] && i.diet?.[DIET_FLAG[t]] !== true);
-      return !bad || x.optional;
+      return !bad;
     });
   });
   void facts;
@@ -3207,19 +3210,22 @@ function recipeFits(recipe, ing, facts, swappable = /* @__PURE__ */ new Set()) {
     const i = ing.get(ri.ingredientId);
     if (!i) return { ok: false, omit };
     if (fits(i)) continue;
+    if (!swappable.has(i.id) || !fits({ ...i, id: "" })) return { ok: false, omit };
     if (ri.optional) {
       omit.push(i.name);
       omitIds.push(i.id);
       continue;
     }
-    const onlyAsked = swappable.has(i.id) && !i.proteinGroup && fits({ ...i, id: "" });
-    const to = onlyAsked ? (recipe.substitutions ?? []).find((s) => s.ingredientId === i.id)?.alternatives.map((a) => ing.get(a)).find((a) => !!a && fits(a)) : void 0;
+    const to = !i.proteinGroup ? (recipe.substitutions ?? []).find((s) => s.ingredientId === i.id)?.alternatives.map((a) => ing.get(a)).find((a) => !!a && fits(a)) : void 0;
     if (!to) return { ok: false, omit };
     asked.push({ from: i.id, to: to.id });
   }
   const extra = { ...omitIds.length ? { omitIds } : {} };
   if (facts.proteinExcluded?.length) {
-    const made = asked.length ? { ...recipe, ingredients: (recipe.ingredients ?? []).map((ri) => ({ ...ri, ingredientId: asked.find((s) => s.from === ri.ingredientId)?.to ?? ri.ingredientId })) } : recipe;
+    const made = asked.length || omitIds.length ? {
+      ...recipe,
+      ingredients: (recipe.ingredients ?? []).filter((ri) => !omitIds.includes(ri.ingredientId)).map((ri) => ({ ...ri, ingredientId: asked.find((s) => s.from === ri.ingredientId)?.to ?? ri.ingredientId }))
+    } : recipe;
     const swaps = proteinFitSwaps(
       made,
       facts.proteinExcluded,
@@ -3239,9 +3245,10 @@ var LIKED_GRAMS = 8;
 function perServingMacros(recipe, ing, omitNames = [], swaps = []) {
   const tot = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
   for (const ri of recipe.ingredients ?? []) {
-    const i = ing.get(swaps.find((s2) => s2.from === ri.ingredientId)?.to ?? ri.ingredientId);
+    const to = swaps.find((s2) => s2.from === ri.ingredientId)?.to;
+    const i = ing.get(to ?? ri.ingredientId);
     if (!i || omitNames.includes(i.name) || ri.optional) continue;
-    const f = (ri.grams ?? 0) / 100;
+    const f = (ri.grams ?? 0) * (to ? substitutionRatio(ri.ingredientId, to, ing) : 1) / 100;
     tot.kcal += (i.per100g.kcal ?? 0) * f;
     tot.protein += (i.per100g.protein ?? 0) * f;
     tot.carbs += (i.per100g.carbs ?? 0) * f;
@@ -3866,6 +3873,7 @@ async function send(deps, uid, body) {
   const stored = await deps.db.getExchange(uid, id);
   if (stored) return { status: 200, body: { reply: stored.reply, proposal: stored.proposal ?? null, duplicate: true } };
   const limit = intEnv(deps, "AI_DAILY_REQUEST_LIMIT", 40, 0, 1e4);
+  let attempt = null;
   try {
     if (deps.db.beginRequest) {
       const begun = await deps.db.beginRequest(uid, id, limit);
@@ -3877,6 +3885,7 @@ async function send(deps, uid, body) {
         deps.log?.("ai_in_progress", {});
         return err(409, "in_progress", "Still answering this message. It will appear in a moment.", { reason: "in_progress" });
       }
+      attempt = begun.attempt;
     } else await deps.db.checkAndCountUsage(uid, limit);
   } catch (e) {
     if (e?.code === "PT429") {
@@ -3891,7 +3900,7 @@ async function send(deps, uid, body) {
     if (settled) return;
     settled = true;
     try {
-      await deps.db.failRequest?.(uid, id, { ...tally, costUsd: estimateCostUsd(tally, deps.env("AI_PRICE_INPUT_PER_MTOK"), deps.env("AI_PRICE_OUTPUT_PER_MTOK")) });
+      if (attempt) await deps.db.failRequest?.(uid, id, attempt, { ...tally, costUsd: estimateCostUsd(tally, deps.env("AI_PRICE_INPUT_PER_MTOK"), deps.env("AI_PRICE_OUTPUT_PER_MTOK")) });
     } catch (e) {
       deps.log?.("ai_fail_request_error", { code: e?.code ?? null });
     }
@@ -4131,15 +4140,17 @@ function createSupabaseAiDb(user, admin2) {
       if (error) {
         if (error.code === "PGRST202" || error.code === "42883") {
           await this.checkAndCountUsage(uid, limit);
-          return { status: "started" };
+          return { status: "started", attempt: null };
         }
         throw new DbError(error.message || "Usage check failed", error.code);
       }
-      const st = data?.status;
-      return st === "duplicate" || st === "in_progress" ? { status: st } : { status: "started", remaining: Number(data?.remaining ?? 0) };
+      const d = data ?? {};
+      if (d.status === "duplicate" || d.status === "in_progress") return { status: d.status };
+      if (d.status !== "started" || typeof d.attempt !== "string") throw new DbError("Unexpected response from ai_begin_request.");
+      return { status: "started", attempt: d.attempt, ...typeof d.remaining === "number" ? { remaining: d.remaining } : {} };
     },
-    async failRequest(uid, messageId, usage) {
-      const { error } = await admin2.rpc("ai_fail_request", { p_user: uid, p_message_id: messageId, p_usage: usage });
+    async failRequest(uid, messageId, attempt, usage) {
+      const { error } = await admin2.rpc("ai_fail_request", { p_user: uid, p_message_id: messageId, p_attempt: attempt, p_usage: usage });
       if (error && error.code !== "PGRST202" && error.code !== "42883") throw new DbError(error.message || "Usage update failed", error.code);
     },
     async getUsage(uid, day) {
@@ -4187,13 +4198,9 @@ function createSupabaseAiDb(user, admin2) {
       return (rows ?? []).reverse().map(historyMessage);
     },
     async recordExchange(uid, input) {
-      const r = await run(admin2.rpc("ai_record_exchange", {
-        p_user: uid,
-        p_message: input.message,
-        p_reply: input.reply,
-        p_proposal: input.proposal,
-        p_usage: input.usage
-      }));
+      const args = { p_user: uid, p_message: input.message, p_reply: input.reply, p_proposal: input.proposal, p_usage: input.usage };
+      const settled = await admin2.rpc("ai_record_exchange_settled", args);
+      const r = settled.error && (settled.error.code === "PGRST202" || settled.error.code === "42883") ? await run(admin2.rpc("ai_record_exchange", args)) : await run(Promise.resolve(settled));
       if (!r) throw new DbError("Could not store the reply.");
       return r;
     },

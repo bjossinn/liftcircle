@@ -12,13 +12,32 @@ export const IN_PROGRESS_ATTEMPTS = 38;
 
 export const isInProgress = (e: unknown) => (e as { code?: unknown } | null)?.code === 'in_progress';
 
+/** Thrown when the send was cancelled (the chat closed, or the signed-in account changed). */
+export class SendCancelled extends Error {
+  readonly code = 'cancelled';
+  constructor() {
+    super('Cancelled.');
+  }
+}
+export const isCancelled = (e: unknown) => e instanceof SendCancelled;
+
+/** `signal`: cancels before the next attempt and during the wait between attempts (never sends after it fires). */
 export async function sendWhileInProgress<T>(
   send: () => Promise<T>,
-  opts: { delayMs?: number; attempts?: number; sleep?: (ms: number) => Promise<void> } = {},
+  opts: { delayMs?: number; attempts?: number; sleep?: (ms: number) => Promise<void>; signal?: AbortSignal } = {},
 ): Promise<T> {
-  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const attempts = opts.attempts ?? IN_PROGRESS_ATTEMPTS;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => {
+    const t = setTimeout(done, ms);
+    function done() {
+      clearTimeout(t);
+      opts.signal?.removeEventListener('abort', done);
+      resolve();
+    }
+    opts.signal?.addEventListener('abort', done);
+  }));
   for (let i = 0; ; i++) {
+    if (opts.signal?.aborted) throw new SendCancelled();
     try {
       return await send();
     } catch (e) {

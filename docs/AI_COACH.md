@@ -419,14 +419,17 @@ From the Claude + ChatGPT cross-review of 25 Nov 2026 (`tests/unit/aiCorrectness
 
 ## 4e. Follow-ups (1.0.3, PR 1b)
 
-- **One generation per message.** `ai_begin_request` (migration `20261126000001`) reserves the message id while it is
-  answered: a replay of the same id gets 409 `in_progress` (no second generation, no second card, not counted); once
-  answered, a replay returns the stored reply (`duplicate`). The app waits on `in_progress` and asks again with the same
-  id (`features/coaching/ai/inProgress.ts`, about 2 minutes). A reservation older than 3 minutes counts as abandoned.
-- **Failed requests.** If a request fails (provider down, error, storing the answer failed), `ai_fail_request` gives the
-  daily allowance back (once, only while the reservation is held) and books tokens from rounds that did complete in
-  `ai_usage.failed_*` — never as a successful exchange. Until the migration is applied the function falls back to the
-  old counting (`ai_check_and_count_usage`, no refund).
+- **One generation and one charge per message.** `public.ai_requests` (migration `20261126000001`) keeps, per user
+  message, the current attempt id, whether it holds a charge, and its state (running → succeeded | failed; the full
+  transition table is at the top of the migration). `ai_begin_request` starts an attempt: a replay while it runs gets
+  409 `in_progress` (no second generation, not counted); after 3 minutes a retry takes over the abandoned attempt with
+  the SAME charge (no new charge, no limit check); an answered message is `duplicate`. The app waits on `in_progress`
+  and asks again with the same id (`features/coaching/ai/inProgress.ts`, cancellable).
+- **Failed requests.** `ai_fail_request(user, message, attempt, usage)` acts only if that attempt still owns the
+  running request: the request is given back and tokens from completed rounds go to `ai_usage.failed_*`, once. A stale
+  attempt, a repeated call or a request already answered is a no-op. Success is settled in the same transaction as the
+  stored answer (`ai_record_exchange_settled`), so a lost response after a stored answer never refunds. Until the
+  migration is applied the function falls back to `ai_check_and_count_usage` / `ai_record_exchange` (no refunds).
 - **Training setup note.** With a saved typed plan the old "Training setup:" line in the notes is always replaced by
   one built from the plan (days, session length, equipment); if it disagreed, the coach is told the plan is current and
   to ask before relying on the old note.
@@ -439,10 +442,13 @@ From the Claude + ChatGPT cross-review of 25 Nov 2026 (`tests/unit/aiCorrectness
   still English.
 - **Tiredness.** "Too tired" (EN/IS, not "tired of chicken") always gets a supportive answer with a lighter option and
   rest as equal choices, in every coach style; the default style for new users is now **supportive**.
-- **"Pancakes without blueberries".** find_recipes leaves optional ingredients out, and swaps a non-optional
-  ingredient the request names for a substitute the recipe lists (never allergens, diet, proteins or the user's own
-  dislikes — those still exclude the recipe). The cards show "Without blueberries" / "X instead of Y", and Open and
-  Add to plan carry the swaps.
+- **"Pancakes without blueberries".** find_recipes may leave out an OPTIONAL ingredient, or swap a non-optional,
+  non-protein one for a substitute the recipe lists, only when THIS request named it and it isn't restricted. A recipe
+  that would need an allergen, diet, own-dislike or protein ingredient left out is rejected (review of PR #17). The
+  card's changes travel as swaps, a left-out ingredient as `{ from, to: LEFT_OUT }` (honoured for optional ingredients
+  only), through Open (recipe screen, Log this meal, Add to meal plan) and Add to plan (plan nutrition, shopping list).
+  Card macros use the app's quantity conversion for swaps.
+- **Pending sends** belong to the account that wrote them and are cancelled on account change or when the chat closes.
 - **Independent allergen fixture** (`tests/unit/aiAllergenFixture.test.ts`): allergen class words and specific foods
   (EN + IS) specified by hand, so a word missing from the parser's dictionary can't also be missing from the check.
 

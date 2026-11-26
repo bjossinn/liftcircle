@@ -303,7 +303,8 @@ export interface RecordExchangeInput {
  * argument and must filter by it (the Supabase implementation also uses the user's JWT, so RLS applies).
  * There are deliberately no methods for coach messages, coach notes/feedback, social data or other users.
  */
-export type BeginRequestResult = { status: 'started'; remaining?: number } | { status: 'duplicate' } | { status: 'in_progress' };
+/** `attempt` identifies this run of the request; only it may settle the request as failed (null: older database). */
+export type BeginRequestResult = { status: 'started'; attempt: string | null; remaining?: number } | { status: 'duplicate' } | { status: 'in_progress' };
 
 export interface AiDb {
   getSettings(uid: string): Promise<AiSettingsRow | null>;
@@ -317,10 +318,11 @@ export interface AiDb {
    */
   beginRequest?(uid: string, messageId: string, limit: number): Promise<BeginRequestResult>;
   /**
-   * A request that failed: releases the reservation, gives the daily request back and books tokens from completed rounds
-   * as FAILED usage (never as successful usage). Optional, like beginRequest.
+   * Attempt `attempt` failed: if it still owns the running request, the request is given back and tokens from completed
+   * rounds are booked as FAILED usage (never as successful usage). A no-op for an older attempt, a request already
+   * settled (failed or succeeded) and repeated calls. Optional, like beginRequest.
    */
-  failRequest?(uid: string, messageId: string, usage: { inputTokens: number; outputTokens: number; costUsd: number | null }): Promise<void>;
+  failRequest?(uid: string, messageId: string, attempt: string, usage: { inputTokens: number; outputTokens: number; costUsd: number | null }): Promise<void>;
   getUsage(uid: string, day: string): Promise<UsageRow | null>;
   getAccountState(uid: string): Promise<AccountStatePayload | null>;
   getActiveProgram(uid: string): Promise<ActiveProgramRow | null>;

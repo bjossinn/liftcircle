@@ -11,8 +11,9 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { handleAiCoach, thanksLine, type CoachDeps } from '../../supabase/functions/_shared/ai/coach';
-import { runTool, type ToolState } from '../../supabase/functions/_shared/ai/tools';
+import { perServingMacros, runTool, type ToolState } from '../../supabase/functions/_shared/ai/tools';
 import { mentionsTiredness } from '../../supabase/functions/_shared/ai/conversation';
+import { createSupabaseAiDb, type SbClient } from '../../supabase/functions/_shared/ai/supabaseDb';
 import { detectLang, replyLang } from '../../supabase/functions/_shared/ai/lang';
 import { humanDate, humanizeDates, shortDate } from '../../supabase/functions/_shared/ai/humanDates';
 import { summarizeMealPlan, summarizeProposal, summarizeRecipes, summarizeWeekPlan } from '../../supabase/functions/_shared/ai/postcheck';
@@ -21,9 +22,10 @@ import type {
   RefIngredient, RefRecipe, StoredExchange, StoredMessage, UserFacts, WeekAdjustmentAction,
 } from '../../supabase/functions/_shared/ai/types';
 import { syncBeforeAi } from '@/features/coaching/ai/syncBarrier';
-import { sendWhileInProgress } from '@/features/coaching/ai/inProgress';
+import { SendCancelled, sendWhileInProgress } from '@/features/coaching/ai/inProgress';
 import { toRecipeSuggestions } from '@/domain/nutrition/aiActions';
-import { changesText, recipeHref } from '@/features/coaching/ai/RecipeCards';
+import { cardSwaps, changesText, recipeHref } from '@/features/coaching/ai/RecipeCards';
+import { LEFT_OUT, recipeNutrition, resolveIngredients, substitutionRatio } from '@/domain/nutrition/recipes';
 import { linkSwaps } from '@/features/nutrition/RecipeDetailPage';
 import { RECIPES, RECIPES_BY_ID } from '@/data/recipes';
 import { INGREDIENTS } from '@/data/ingredients';
@@ -42,19 +44,29 @@ function account(): AccountStatePayload {
   };
 }
 
-/** In-memory AiDb with the 1.0.3 reservation semantics (mirrors ai_begin_request / ai_fail_request). */
-function fakeDb(opts: { limit?: number; reservation?: boolean; recordThrows?: boolean } = {}) {
+/**
+ * In-memory AiDb with the same request state machine as the SQL (migration 20261126000001): one row per message with
+ * the current attempt, its charge and state (running | succeeded | failed); 3-minute takeover keeps the charge; only
+ * the current running attempt can fail (refund + failed tokens, once); storing the answer settles success atomically.
+ * `record`: 'ok' | 'throws' (nothing stored) | 'lost' (stored and settled, then the response is lost).
+ */
+function fakeDb(opts: { reservation?: boolean; record?: 'ok' | 'throws' | 'lost' } = {}) {
   const settings: AiSettingsRow = { enabled: true, paused: false, consentAt: '2026-10-01T00:00:00Z', scopes: ALL, scopesChangedAt: null, profileNotes: '' };
   const exchanges = new Map<string, StoredExchange>();
-  const inflight = new Set<string>();
+  const requests = new Map<string, { attempt: string; state: 'running' | 'succeeded' | 'failed'; charged: boolean; startedAt: number }>();
   const usage = { requests: 0, failedRequests: 0, failedInput: 0, failedOutput: 0, failCalls: 0 };
   const recorded: RecordExchangeInput[] = [];
+  const clock = { now: 0 };
+  let attempts = 0;
+  const charge = (limit: number | null) => {
+    if (limit != null && usage.requests >= limit) throw Object.assign(new Error('You’ve reached today’s limit.'), { code: 'PT429' });
+    usage.requests++;
+  };
   const db: AiDb = {
     getSettings: async () => settings,
     getExchange: async (_u, id) => exchanges.get(id) ?? null,
     checkAndCountUsage: async (_u, limit) => {
-      if (usage.requests >= limit) throw Object.assign(new Error('limit'), { code: 'PT429' });
-      usage.requests++;
+      charge(limit);
       return limit - usage.requests;
     },
     getUsage: async (_u, day) => ({ day, requests: usage.requests, inputTokens: 0, outputTokens: 0, costUsd: null }),
@@ -66,12 +78,18 @@ function fakeDb(opts: { limit?: number; reservation?: boolean; recordThrows?: bo
     getFoodLogs: async () => [],
     getHistory: async () => [],
     recordExchange: async (_u, input) => {
-      if (opts.recordThrows) throw new Error('db down');
+      if (opts.record === 'throws') throw new Error('db down');
       recorded.push(input);
-      inflight.delete(input.message.id);
       const reply: StoredMessage = { id: mid(900 + recorded.length), role: 'assistant', content: input.reply.content, createdAt: NOW.toISOString(), grounding: input.reply.grounding, proposalId: null, action: input.reply.action ?? null };
       const ex = { reply, proposal: null, duplicate: false };
       exchanges.set(input.message.id, ex);
+      // ai_record_exchange_settled: success is part of the same transaction as the stored answer.
+      const row = requests.get(input.message.id);
+      if (row && row.state !== 'succeeded') {
+        if (!row.charged) charge(null);
+        Object.assign(row, { state: 'succeeded', charged: true });
+      }
+      if (opts.record === 'lost') throw new Error('response lost');
       return ex;
     },
     getExercises: async () => [],
@@ -80,22 +98,30 @@ function fakeDb(opts: { limit?: number; reservation?: boolean; recordThrows?: bo
   };
   if (opts.reservation !== false) {
     db.beginRequest = async (_u, id, limit): Promise<BeginRequestResult> => {
-      if (exchanges.has(id)) return { status: 'duplicate' };
-      if (inflight.has(id)) return { status: 'in_progress' };
-      if (usage.requests >= limit) throw Object.assign(new Error('You’ve reached today’s limit.'), { code: 'PT429' });
-      usage.requests++;
-      inflight.add(id);
-      return { status: 'started', remaining: limit - usage.requests };
+      const row = requests.get(id);
+      if (exchanges.has(id) || row?.state === 'succeeded') return { status: 'duplicate' };
+      const attempt = `attempt-${++attempts}`;
+      if (row?.state === 'running') {
+        if (clock.now - row.startedAt < 3 * 60_000) return { status: 'in_progress' };
+        Object.assign(row, { attempt, startedAt: clock.now }); // takeover: same charge
+        return { status: 'started', attempt };
+      }
+      charge(limit);
+      requests.set(id, { attempt, state: 'running', charged: true, startedAt: clock.now });
+      return { status: 'started', attempt, remaining: limit - usage.requests };
     };
-    db.failRequest = async (_u, id, u) => {
+    db.failRequest = async (_u, id, attempt, u) => {
       usage.failCalls++;
-      if (inflight.delete(id)) usage.requests = Math.max(0, usage.requests - 1);
+      const row = requests.get(id);
+      if (!row || row.attempt !== attempt || row.state !== 'running') return; // not ours / already settled: no-op
+      if (row.charged) usage.requests--;
+      Object.assign(row, { state: 'failed', charged: false });
       usage.failedRequests++;
       usage.failedInput += u.inputTokens;
       usage.failedOutput += u.outputTokens;
     };
   }
-  return { db, usage, recorded, inflight, exchanges };
+  return { db, usage, recorded, requests, exchanges, clock };
 }
 
 const reply = (t: string, inT = 10, outT = 10) => ({ id: 'm', model: 'claude-test', content: [{ type: 'text', text: t }], stop_reason: 'end_turn', usage: { input_tokens: inT, output_tokens: outT } });
@@ -171,6 +197,25 @@ describe('1. a replay of a message still being answered never starts a second ge
     expect(n).toBe(3);
   });
 
+  it('PR #17 P2: polling is cancellable — an abort during the wait ends it at once, and nothing is sent after it', async () => {
+    const ctrl = new AbortController();
+    let calls = 0;
+    const t0 = Date.now();
+    const p = sendWhileInProgress(async () => {
+      calls++;
+      if (calls === 1) setTimeout(() => ctrl.abort(), 20); // e.g. the account changes while waiting
+      throw Object.assign(new Error('busy'), { code: 'in_progress' });
+    }, { signal: ctrl.signal }); // real 5 s wait between attempts
+    await expect(p).rejects.toBeInstanceOf(SendCancelled);
+    expect(calls).toBe(1);
+    expect(Date.now() - t0).toBeLessThan(1000);
+    const aborted = new AbortController();
+    aborted.abort();
+    const never = vi.fn(async () => 'x');
+    await expect(sendWhileInProgress(never, { signal: aborted.signal })).rejects.toBeInstanceOf(SendCancelled);
+    expect(never).not.toHaveBeenCalled();
+  });
+
   it('older database without the reservation RPC: falls back to counting (previous behaviour)', async () => {
     const f = fakeDb({ reservation: false });
     const p = provider([reply('Hi.')]);
@@ -201,11 +246,48 @@ describe('2–3. a failed request: tokens booked as failed, allowance given back
     expect((await handleAiCoach(d(provider([reply('x')]).fetch), U, send('Third', 8))).status).toBe(429);
   });
 
-  it('storing the answer fails → error, the request is refunded exactly once', async () => {
-    const f = fakeDb({ recordThrows: true });
+  it('storing the answer fails (nothing stored) → error, the request is refunded exactly once', async () => {
+    const f = fakeDb({ record: 'throws' });
     const p = provider([reply('Answer.', 50, 20)]);
     await expect(handleAiCoach(deps(f.db, p.fetch), U, send('Hello', 9))).rejects.toThrow('db down');
-    expect(f.usage).toMatchObject({ requests: 0, failCalls: 1, failedInput: 50, failedOutput: 20 });
+    expect(f.usage).toMatchObject({ requests: 0, failCalls: 1, failedRequests: 1, failedInput: 50, failedOutput: 20 });
+  });
+
+  it('answer stored but the response is lost → the failure call is a no-op: no refund, no failed tokens', async () => {
+    const f = fakeDb({ record: 'lost' });
+    const p = provider([reply('Answer.', 50, 20)]);
+    await expect(handleAiCoach(deps(f.db, p.fetch), U, send('Hello', 20))).rejects.toThrow('response lost');
+    expect(f.usage).toMatchObject({ requests: 1, failCalls: 1, failedRequests: 0, failedInput: 0 });
+    expect(f.requests.get(mid(20))).toMatchObject({ state: 'succeeded', charged: true });
+    // A replay then returns the stored answer.
+    expect((await handleAiCoach(deps(f.db, provider([]).fetch), U, send('Hello', 20))).body).toMatchObject({ duplicate: true });
+  });
+
+  it('expired reservation, limit 1: the retry takes over the SAME charge (no 429, one slot)', async () => {
+    const f = fakeDb();
+    await f.db.beginRequest!(U, mid(21), 1); // a worker that died after charging
+    f.clock.now += 4 * 60_000;
+    const res = await handleAiCoach(deps(f.db, provider([reply('Here you go.')]).fetch, { AI_DAILY_REQUEST_LIMIT: '1' }), U, send('Hello', 21));
+    expect(res.status).toBe(200);
+    expect(f.usage.requests).toBe(1);
+    expect(f.requests.get(mid(21))).toMatchObject({ state: 'succeeded', attempt: 'attempt-2' });
+  });
+
+  it('takeover then the old worker fails: no refund of the newer attempt; the newer attempt’s own failure refunds once; repeats are no-ops', async () => {
+    const f = fakeDb();
+    const first = await f.db.beginRequest!(U, mid(22), 5);
+    f.clock.now += 4 * 60_000;
+    const second = await f.db.beginRequest!(U, mid(22), 5);
+    expect([first.status, second.status]).toEqual(['started', 'started']);
+    const a1 = (first as { attempt: string }).attempt;
+    const a2 = (second as { attempt: string }).attempt;
+    const none = { inputTokens: 0, outputTokens: 0, costUsd: null };
+    await f.db.failRequest!(U, mid(22), a1, { ...none, inputTokens: 99 });
+    expect(f.usage).toMatchObject({ requests: 1, failedRequests: 0, failedInput: 0 });
+    expect(f.requests.get(mid(22))).toMatchObject({ state: 'running', attempt: a2, charged: true });
+    await f.db.failRequest!(U, mid(22), a2, { ...none, inputTokens: 10 });
+    await f.db.failRequest!(U, mid(22), a2, { ...none, inputTokens: 10 });
+    expect(f.usage).toMatchObject({ requests: 0, failedRequests: 1, failedInput: 10 });
   });
 
   it('a successful exchange is not touched by the failure path', async () => {
@@ -214,6 +296,38 @@ describe('2–3. a failed request: tokens booked as failed, allowance given back
     expect((await handleAiCoach(deps(f.db, p.fetch), U, send('Hello', 10))).status).toBe(200);
     expect(f.usage).toMatchObject({ requests: 1, failCalls: 0 });
     expect(f.recorded[0].reply).toMatchObject({ inputTokens: 70, outputTokens: 9 });
+  });
+});
+
+describe('Supabase adapter: request RPCs (and the fallback before the migration)', () => {
+  const client = (answers: Record<string, { data: unknown; error: { code?: string; message?: string } | null }>) => {
+    const calls: { fn: string; args?: Record<string, unknown> }[] = [];
+    const c: SbClient = { from: () => ({}), rpc: (fn, args) => { calls.push({ fn, args }); return Promise.resolve(answers[fn] ?? { data: null, error: { code: 'PGRST202', message: 'missing' } }); } };
+    return { db: createSupabaseAiDb(c, c), calls };
+  };
+  const ex = { reply: { id: 'r', role: 'assistant', content: 'x', createdAt: '' }, proposal: null, duplicate: false };
+  const input = { message: { id: mid(1), content: 'q', mode: 'chat' as const }, reply: { content: 'x', grounding: [], model: 'm', inputTokens: 1, outputTokens: 1 }, proposal: null, usage: { inputTokens: 1, outputTokens: 1, costUsd: null } };
+
+  it('records through ai_record_exchange_settled (success settled atomically); falls back to ai_record_exchange when missing', async () => {
+    const a = client({ ai_record_exchange_settled: { data: ex, error: null } });
+    expect(await a.db.recordExchange(U, input)).toEqual(ex);
+    expect(a.calls.map((c) => c.fn)).toEqual(['ai_record_exchange_settled']);
+    const b = client({ ai_record_exchange: { data: ex, error: null } });
+    expect(await b.db.recordExchange(U, input)).toEqual(ex);
+    expect(b.calls.map((c) => c.fn)).toEqual(['ai_record_exchange_settled', 'ai_record_exchange']);
+    const c = client({ ai_record_exchange_settled: { data: null, error: { code: '22023', message: 'Reply is empty.' } } });
+    await expect(c.db.recordExchange(U, input)).rejects.toThrow('Reply is empty.');
+    expect(c.calls.map((x) => x.fn)).toEqual(['ai_record_exchange_settled']); // a real error is not retried the old way
+  });
+
+  it('begin returns the attempt id; fail passes it; before the migration: count only, attempt null', async () => {
+    const a = client({ ai_begin_request: { data: { status: 'started', attempt: 'att-1', remaining: 3 }, error: null }, ai_fail_request: { data: { settled: true }, error: null } });
+    expect(await a.db.beginRequest!(U, mid(1), 5)).toEqual({ status: 'started', attempt: 'att-1', remaining: 3 });
+    await a.db.failRequest!(U, mid(1), 'att-1', { inputTokens: 1, outputTokens: 2, costUsd: null });
+    expect(a.calls[1]).toEqual({ fn: 'ai_fail_request', args: { p_user: U, p_message_id: mid(1), p_attempt: 'att-1', p_usage: { inputTokens: 1, outputTokens: 2, costUsd: null } } });
+    const b = client({ ai_check_and_count_usage: { data: 4, error: null } });
+    expect(await b.db.beginRequest!(U, mid(1), 5)).toEqual({ status: 'started', attempt: null });
+    expect(b.calls.map((c) => c.fn)).toEqual(['ai_begin_request', 'ai_check_and_count_usage']);
   });
 });
 
@@ -323,9 +437,10 @@ describe('8. "pancakes without blueberries"', () => {
     const out = JSON.parse((await runTool('find_recipes', { query: q, max_results: 5 }, { db, facts: { ...facts, ...over }, catalog: new Map(), state, messageId: 'm1', requestText: q } as never)).content);
     return { out, cards: state.recipes!.recipes };
   }
-  /** The ingredient ids a suggested recipe is actually made with (optional ones left out, swaps applied). */
+  /** The ingredient ids the APP makes a suggested recipe with: the card's swaps (as Open / Add to plan pass them)
+   *  through the production resolver used by the recipe screen, logging, plan nutrition and the shopping list. */
   const madeWith = (c: RecipeSuggestionsAction['recipes'][number]) =>
-    RECIPES_BY_ID.get(c.id)!.ingredients.filter((i) => !c.omit?.includes(i.ingredientId)).map((i) => c.swaps?.find((s) => s.from === i.ingredientId)?.to ?? i.ingredientId);
+    resolveIngredients(RECIPES_BY_ID.get(c.id)!, cardSwaps(toRecipeSuggestions({ kind: 'recipe_suggestions', id: 'x', recipes: [c] })!.recipes[0])).map((r) => r.ingredientId);
 
   it.each(['Pancakes without blueberries', 'pönnukökur án bláberja'])('%s → pancakes only, blueberries left out where optional, none made with blueberries', async (q) => {
     const { out, cards } = await find(q);
@@ -360,6 +475,44 @@ describe('8. "pancakes without blueberries"', () => {
     for (const c of cards) expect(madeWith(c)).not.toContain('raspberries');
   });
 
+  it('PR #17 P1-1: with a milk allergy, "Turkey meatballs without pasta" never admits a recipe by leaving out optional parmesan', async () => {
+    const allergic = await find('Meatballs without pasta', { allergens: ['milk'], maxCookMinutes: null });
+    expect(allergic.cards.length).toBeGreaterThan(0);
+    expect(allergic.cards.map((c) => c.id)).not.toContain('baked-turkey-meatballs-spaghetti');
+    for (const c of allergic.cards) {
+      expect(c.omit ?? []).toEqual([]); // nothing restricted is ever omitted
+      for (const id of madeWith(c)) expect(ING.get(id)?.allergens ?? []).not.toContain('milk');
+      for (const id of RECIPES_BY_ID.get(c.id)!.ingredients.map((i) => i.ingredientId)) if (!c.swaps?.some((s) => s.from === id)) expect(ING.get(id)?.allergens ?? []).not.toContain('milk');
+    }
+    // Without the allergy the recipe comes back with the pasta swapped and the parmesan kept.
+    const free = await find('Meatballs without pasta', { maxCookMinutes: null });
+    const m = free.cards.find((c) => c.id === 'baked-turkey-meatballs-spaghetti')!;
+    expect(m).toMatchObject({ swaps: [{ from: 'pasta-dry', to: 'rice-white-dry' }] });
+    expect(m.omit).toBeUndefined();
+    // Asking to leave the (unrestricted) parmesan out omits it.
+    const noParm = await find('meatballs without parmesan', { maxCookMinutes: null });
+    expect(noParm.cards.find((c) => c.id === 'baked-turkey-meatballs-spaghetti')).toMatchObject({ omit: ['parmesan'] });
+  });
+
+  it('PR #17 P2: card macros use the app’s quantity conversion for swaps (same numbers as the recipe screen)', async () => {
+    const ingMap = new Map(INGREDIENTS.map((i) => [i.id, i])) as unknown as Map<string, RefIngredient>;
+    // Every catalog substitution whose amount changes (dry ↔ cooked, bread ↔ crispbread, …).
+    const cases = RECIPES.flatMap((r) => r.substitutions.flatMap((sub) => sub.alternatives
+      .filter((to) => r.ingredients.some((i) => i.ingredientId === sub.ingredientId && !i.optional) && substitutionRatio(sub.ingredientId, to) !== 1)
+      .map((to) => ({ r, swap: { from: sub.ingredientId, to } }))));
+    expect(cases.length).toBeGreaterThan(3);
+    expect(cases.some((c) => c.swap.from === 'egg-noodles-dry' && c.swap.to === 'rice-noodles-cooked')).toBe(true);
+    for (const { r, swap } of cases) {
+      const card = perServingMacros(r as unknown as RefRecipe, ingMap, [], [swap]);
+      const app = recipeNutrition({ ...r, ingredients: r.ingredients.filter((i) => !i.optional) }, { swaps: [swap] }).perServing;
+      expect(Math.abs(card.kcal - app.kcal), `${r.id} ${swap.from}>${swap.to}`).toBeLessThanOrEqual(1);
+      expect(Math.abs(card.carbs_g - app.carbs), `${r.id} ${swap.from}>${swap.to}`).toBeLessThan(0.2);
+    }
+    const { out, cards } = await find('Meatballs without pasta', { maxCookMinutes: null });
+    const m = cards.find((c) => c.id === 'baked-turkey-meatballs-spaghetti')!;
+    expect(out.results.find((x: { id: string }) => x.id === m.id).made_with).toEqual([`${ING.get('rice-white-dry')!.name} instead of ${ING.get('pasta-dry')!.name}`]);
+  });
+
   it('the card keeps valid omit/swaps, drops anything else, and says what changed; Open carries the swaps', () => {
     const parsed = toRecipeSuggestions({
       kind: 'recipe_suggestions', id: 'a',
@@ -371,9 +524,13 @@ describe('8. "pancakes without blueberries"', () => {
     expect(c.omit).toEqual(['blueberries']); // egg is not optional in this recipe
     expect(c.swaps).toEqual([{ from: 'skyr-plain', to: 'cottage-cheese' }]); // not a listed substitute / second swap for the same ingredient dropped
     expect(changesText(c)).toBe('Without blueberries · Cottage cheese, low-fat instead of skyr, plain');
-    expect(recipeHref(c)).toBe('/nutrition/recipes/skyr-oat-pancakes?swap=skyr-plain:cottage-cheese');
+    expect(cardSwaps(c)).toEqual([{ from: 'skyr-plain', to: 'cottage-cheese' }, { from: 'blueberries', to: LEFT_OUT }]);
+    expect(recipeHref(c)).toBe(`/nutrition/recipes/skyr-oat-pancakes?swap=skyr-plain:cottage-cheese,blueberries:${LEFT_OUT}`);
     expect(recipeHref({ id: 'skyr-oat-pancakes' })).toBe('/nutrition/recipes/skyr-oat-pancakes');
     expect(linkSwaps(RECIPES_BY_ID.get('skyr-oat-pancakes')!, 'skyr-plain:cottage-cheese,egg:tofu-firm,x:y')).toEqual([{ from: 'skyr-plain', to: 'cottage-cheese' }]);
+    // Only an OPTIONAL ingredient can be left out through a link.
+    expect(linkSwaps(RECIPES_BY_ID.get('skyr-oat-pancakes')!, `blueberries:${LEFT_OUT},egg:${LEFT_OUT}`)).toEqual([{ from: 'blueberries', to: LEFT_OUT }]);
+    expect(resolveIngredients(RECIPES_BY_ID.get('skyr-oat-pancakes')!, [{ from: 'egg', to: LEFT_OUT }]).map((x) => x.ingredientId)).toContain('egg');
     expect(linkSwaps(RECIPES_BY_ID.get('skyr-oat-pancakes')!, null)).toEqual([]);
   });
 });

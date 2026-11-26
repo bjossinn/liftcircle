@@ -26,6 +26,8 @@ import type { NormProgram } from './validate.ts';
 import { decideTarget, missingEquipment, normalizeProposedProgram, validateForUser, validateProposedProgram } from './validate.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { likedBonus, proteinFitSwaps } from '../nutrition/proteins.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { substitutionRatio } from '../nutrition/recipes.ts';
 import type { Ingredient, ProteinGroup, Recipe } from '../nutrition/types.ts';
 
 /** find_recipes → propose_meal_plan (→ one corrected attempt) → final text. */
@@ -252,16 +254,18 @@ export function recipeFits(
     const i = ing.get(ri.ingredientId);
     if (!i) return { ok: false, omit }; // unknown ingredient → can't vouch for allergens
     if (fits(i)) continue;
+    // Only an ingredient THIS request named, and that is otherwise fine (no allergen, diet or own-dislike problem), may be
+    // left out or swapped. Anything restricted rules the recipe out, optional or not: the app shows and plans whole
+    // recipes, so an omitted allergen could come back (review of PR #17).
+    // (`swappable` never holds the user's own dislikes; clearing the id skips only the request's own exclusion.)
+    if (!swappable.has(i.id) || !fits({ ...i, id: '' })) return { ok: false, omit };
     if (ri.optional) {
       omit.push(i.name);
       omitIds.push(i.id);
       continue;
     }
-    // Only a request-excluded ingredient that is otherwise fine (no allergen/diet/own-dislike problem) can be swapped.
-    // (`swappable` never holds the user's own dislikes; clearing the id skips only the request's own exclusion.)
     // Proteins are never swapped this way: "no meat" / "no fish" rules out "Turkey pitta", not turns it into a tofu one.
-    const onlyAsked = swappable.has(i.id) && !i.proteinGroup && fits({ ...i, id: '' });
-    const to = onlyAsked
+    const to = !i.proteinGroup
       ? (recipe.substitutions ?? []).find((s) => s.ingredientId === i.id)?.alternatives.map((a) => ing.get(a)).find((a): a is RefIngredient => !!a && fits(a))
       : undefined;
     if (!to) return { ok: false, omit };
@@ -271,8 +275,13 @@ export function recipeFits(
   // Proteins marked "not for me": the same rule as the app (main protein excluded → out; any other use needs an allowed swap).
   if (facts.proteinExcluded?.length) {
     // Checked on the recipe as it will be made (request swaps applied), so a swap never brings an excluded protein in.
-    const made = asked.length
-      ? { ...recipe, ingredients: (recipe.ingredients ?? []).map((ri) => ({ ...ri, ingredientId: asked.find((s) => s.from === ri.ingredientId)?.to ?? ri.ingredientId })) }
+    const made = asked.length || omitIds.length
+      ? {
+          ...recipe,
+          ingredients: (recipe.ingredients ?? [])
+            .filter((ri) => !omitIds.includes(ri.ingredientId))
+            .map((ri) => ({ ...ri, ingredientId: asked.find((s) => s.from === ri.ingredientId)?.to ?? ri.ingredientId })),
+        }
       : recipe;
     const swaps = proteinFitSwaps(
       made as unknown as Recipe,
@@ -297,9 +306,11 @@ const LIKED_GRAMS = 8;
 export function perServingMacros(recipe: RefRecipe, ing: Map<string, RefIngredient>, omitNames: string[] = [], swaps: { from: string; to: string }[] = []) {
   const tot = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
   for (const ri of recipe.ingredients ?? []) {
-    const i = ing.get(swaps.find((s) => s.from === ri.ingredientId)?.to ?? ri.ingredientId);
+    const to = swaps.find((s) => s.from === ri.ingredientId)?.to;
+    const i = ing.get(to ?? ri.ingredientId);
     if (!i || omitNames.includes(i.name) || ri.optional) continue; // optional extras not counted
-    const f = (ri.grams ?? 0) / 100;
+    // A swap uses the app's quantity conversion (e.g. dry couscous → cooked quinoa), so the card matches the recipe screen.
+    const f = ((ri.grams ?? 0) * (to ? substitutionRatio(ri.ingredientId, to, ing as unknown as Map<string, Ingredient>) : 1)) / 100;
     tot.kcal += (i.per100g.kcal ?? 0) * f;
     tot.protein += (i.per100g.protein ?? 0) * f;
     tot.carbs += (i.per100g.carbs ?? 0) * f;

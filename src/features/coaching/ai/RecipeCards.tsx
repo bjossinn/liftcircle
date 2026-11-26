@@ -16,7 +16,7 @@ import { useToast } from '@/components/toast';
 import { useApp } from '@/state/app';
 import { newRecord, saveRecord } from '@/db/repo';
 import { addDays, formatDate, startOfWeek, todayISO } from '@/lib/dates';
-import { MEAL_LABELS, MEAL_ORDER } from '@/domain/nutrition/recipes';
+import { LEFT_OUT, MEAL_LABELS, MEAL_ORDER, type Swap } from '@/domain/nutrition/recipes';
 import { addPlanItem, removePlanItem, updatePlanItem } from '@/domain/nutrition/mealplan';
 import { INGREDIENTS_BY_ID } from '@/data/ingredients';
 import type { RecipeSuggestions } from '@/domain/nutrition/aiActions';
@@ -34,10 +34,16 @@ export function changesText(r: Pick<Recipe, 'omit' | 'swaps'>): string {
   ];
   return parts.join(' · ');
 }
+/** The card's changes as recipe swaps: substitutes, plus optional ingredients left out (LEFT_OUT). These travel with
+ *  Open (recipe screen → Log this meal / Add to meal plan) and Add to plan (plan item → nutrition, shopping list). */
+export function cardSwaps(r: Pick<Recipe, 'omit' | 'swaps'>): Swap[] {
+  return [...(r.swaps ?? []), ...(r.omit ?? []).filter((x) => !r.swaps?.some((s) => s.from === x)).map((from) => ({ from, to: LEFT_OUT }))];
+}
 /** Recipe screen link; swaps travel as ?swap=from:to,… (the recipe screen accepts only substitutes it lists). */
-export function recipeHref(r: Pick<Recipe, 'id' | 'swaps'>): string {
+export function recipeHref(r: Pick<Recipe, 'id' | 'omit' | 'swaps'>): string {
   const base = `/nutrition/recipes/${encodeURIComponent(r.id)}`;
-  return r.swaps?.length ? `${base}?swap=${r.swaps.map((s) => `${encodeURIComponent(s.from)}:${encodeURIComponent(s.to)}`).join(',')}` : base;
+  const sw = cardSwaps(r);
+  return sw.length ? `${base}?swap=${sw.map((s) => `${encodeURIComponent(s.from)}:${encodeURIComponent(s.to)}`).join(',')}` : base;
 }
 
 export function RecipeCards({ suggestions }: { suggestions: RecipeSuggestions }) {
@@ -113,7 +119,8 @@ function AddToPlanSheet({ r, onClose }: { r: Recipe; onClose: () => void }) {
         plan ?? { weekStart, days: Array.from({ length: 7 }, (_, i) => ({ date: addDays(weekStart, i), items: [] })), shoppingChecked: [] };
       let next = addPlanItem(base, date, slot, r.id, 1);
       const added = next.days.find((x) => x.date === date)?.items.at(-1);
-      if (added && r.swaps?.length) next = updatePlanItem(next, date, added.id, { swaps: r.swaps });
+      const swaps = cardSwaps(r);
+      if (added && swaps.length) next = updatePlanItem(next, date, added.id, { swaps });
       const saved = await saveRecord('meal_plans', plan ? ({ ...plan, ...next } as MealPlan) : newRecord(next), db);
       onClose();
       toast.show(`${r.name} added to ${formatDate(date, { weekday: 'long' })}`, {

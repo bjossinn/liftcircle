@@ -29,6 +29,8 @@ export interface PendingSend {
   status: 'sending' | 'failed';
   error?: string;
   createdAt: string;
+  /** The account that wrote it (1.0.3): never sent under another signed-in account. */
+  userId?: string;
 }
 
 export interface QueuedAck {

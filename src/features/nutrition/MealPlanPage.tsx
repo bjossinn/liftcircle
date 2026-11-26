@@ -13,7 +13,7 @@ import type { Allergen, BudgetPref, DietPrefs, DietTag, ID, MealPlan, MealPlanEx
 import { INGREDIENTS, INGREDIENTS_BY_ID } from '@/data/ingredients';
 import { RECIPES, RECIPES_BY_ID } from '@/data/recipes';
 import {
-  ALLERGEN_LABELS, DIET_TAG_LABELS, MEAL_LABELS, MEAL_ORDER, allowedSubstitutes, displayMacro, recipeMatches, recipeMinutes,
+  ALLERGEN_LABELS, DIET_TAG_LABELS, MEAL_LABELS, MEAL_ORDER, allowedSubstitutes, displayMacro, recipeMatches, recipeMinutes, LEFT_OUT,
 } from '@/domain/nutrition/recipes';
 import {
   addPlanItem, allowedAddOns, balancePlan, extraText, generateMealPlan, planItemNutrition, planStatus, planWarnings, PORTION_STEP, PROTEIN_ADDONS,
@@ -526,7 +526,7 @@ function ItemEditor({
                 <option value={ri.ingredientId}>{INGREDIENTS_BY_ID.get(ri.ingredientId)?.name} (original)</option>
                 {[...new Set([...subs(ri.ingredientId), ...(cur !== ri.ingredientId ? [cur] : [])])].map((a) => (
                   <option key={a} value={a}>
-                    {INGREDIENTS_BY_ID.get(a)?.name}
+                    {a === LEFT_OUT ? 'Left out' : INGREDIENTS_BY_ID.get(a)?.name}
                   </option>
                 ))}
               </Select>

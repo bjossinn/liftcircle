@@ -468,7 +468,7 @@ export function explainNoRecipes(c: ConstraintSet, recipes: RefRecipe[], ing: Ma
         if (!x.optional && i.proteinGroup && k.proteinExcluded?.includes(i.proteinGroup)) return false;
         const bad = (i.allergens ?? []).some((a) => k.allergens.includes(a)) || k.disliked.includes(i.id) ||
           k.dietTags.some((t) => DIET_FLAG[t] && i.diet?.[DIET_FLAG[t] as keyof NonNullable<RefIngredient['diet']>] !== true);
-        return !bad || x.optional;
+        return !bad; // optional ones too: find_recipes rejects a recipe that would need one left out (1.0.3)
       });
     });
   void facts;

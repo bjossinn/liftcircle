@@ -30,7 +30,7 @@ import { WeekPlanCard } from './ai/WeekPlanCard';
 import { MealPlanCard } from './ai/MealPlanCard';
 import { RecipeCards } from './ai/RecipeCards';
 import { syncBeforeAi } from './ai/syncBarrier';
-import { sendWhileInProgress } from './ai/inProgress';
+import { isCancelled, SendCancelled, sendWhileInProgress } from './ai/inProgress';
 import { Markdown } from './ai/markdown';
 import { extractOpenLinks } from '../../../supabase/functions/_shared/ai/appGuide';
 import { humanizeDates } from '../../../supabase/functions/_shared/ai/humanDates';
@@ -129,7 +129,16 @@ function Chat({
 }) {
   const nav = useNavigate();
   const toast = useToast();
-  const { db, online, account } = useApp();
+  const { db, online, account, auth } = useApp();
+  const userId = auth.userId;
+  // Sends in flight belong to this account and this screen: an account switch or leaving the chat cancels them (they
+  // never go out, or land, under another account).
+  const owner = useRef<{ userId: string | undefined; ctrl: AbortController }>({ userId, ctrl: new AbortController() });
+  useEffect(() => {
+    const ctrl = new AbortController();
+    owner.current = { userId, ctrl };
+    return () => ctrl.abort();
+  }, [userId, db]);
   const coach = useActiveCoach();
   const program = useActiveProgram();
   const sessions = useAllSessions();
@@ -168,7 +177,9 @@ function Chat({
       if (cancelled) return;
       setDraft(typeof d === 'string' ? d : '');
       // A message left "sending" by a closed tab was never confirmed: offer Retry with the same id.
-      if (p) setPending(p.status === 'sending' ? { ...p, status: 'failed', error: 'Not confirmed yet. Tap Retry to send it again.' } : p);
+      // (A message written under another account is never offered here.)
+      const mine = p && (!p.userId || p.userId === userId) ? p : null;
+      setPending(mine ? (mine.status === 'sending' ? { ...mine, status: 'failed', error: 'Not confirmed yet. Tap Retry to send it again.' } : mine) : null);
       setLoaded(true);
       if (!online) {
         setHistory(cache ?? []);
@@ -181,7 +192,7 @@ function Chat({
         setHistory(h);
         setHistoryNote(null);
         void kvSet(AI_HISTORY_CACHE_KEY, h.slice(-100), db).catch(() => undefined);
-        if (p && h.some((m) => m.id === p.id)) {
+        if (mine && h.some((m) => m.id === mine.id)) {
           setPending(null);
           void kvSet(AI_PENDING_KEY, null, db).catch(() => undefined);
         }
@@ -194,7 +205,7 @@ function Chat({
     return () => {
       cancelled = true;
     };
-  }, [db, online]);
+  }, [db, online, userId]);
 
   const conversation = useMemo(() => mergeConversation(history ?? [], pending), [history, pending]);
 
@@ -221,14 +232,23 @@ function Chat({
 
   /* ------------------------------------------------------------- send */
   async function run(p: PendingSend) {
+    const mine = owner.current;
+    if (p.userId && p.userId !== mine.userId) return;
+    const { signal } = mine.ctrl;
+    const stillMine = () => !signal.aborted && owner.current === mine;
     setSendError(null);
-    const sending: PendingSend = { ...p, status: 'sending', error: undefined };
+    const sending: PendingSend = { ...p, userId: mine.userId, status: 'sending', error: undefined };
     persistPending(sending);
     try {
       // Sync barrier: push this device's pending changes first (bounded wait), so the coach doesn't act on stale data.
       const unsynced = await syncBeforeAi(db);
-      // A replay of a message still being answered waits for that answer (same id) instead of failing.
-      const res = await sendWhileInProgress(() => aiApi.send({ id: p.id, text: p.text, mode: p.mode, ...(unsynced ? { unsynced } : {}) }));
+      // A replay of a message still being answered waits for that answer (same id) instead of failing. Cancelled (never
+      // sent) if the account changed or the chat closed meanwhile.
+      const res = await sendWhileInProgress(() => {
+        if (!stillMine()) throw new SendCancelled();
+        return aiApi.send({ id: p.id, text: p.text, mode: p.mode, ...(unsynced ? { unsynced } : {}) });
+      }, { signal });
+      if (!stillMine()) return; // answered for the previous account: it's in that account's history (its Retry gets it back as a duplicate)
       const userMsg: AiMessage = { id: p.id, role: 'user', content: p.text, createdAt: p.createdAt, status: 'sent' };
       setHistory((h) => {
         const next = upsertMessages(h ?? [], [userMsg, res.reply]);
@@ -239,6 +259,7 @@ function Chat({
       persistPending(null);
       if (usage) setUsage({ requests: usage.requests + 1 });
     } catch (e) {
+      if (isCancelled(e) || !stillMine()) return; // the pending copy stays in this account's storage: Retry later
       const c = classifyAiError(e);
       setSendError(c);
       persistPending({ ...p, status: 'failed', error: c.message });
@@ -258,7 +279,7 @@ function Chat({
   /** `fromDraft`: the text came from the composer, so clear it (quick replies leave a typed draft alone). */
   function start(text: string, mode: AiMode, fromDraft = mode === 'chat') {
     if (blocked) return;
-    const p: PendingSend = { id: uuid(), text, mode, status: 'sending', createdAt: new Date().toISOString() };
+    const p: PendingSend = { id: uuid(), text, mode, status: 'sending', createdAt: new Date().toISOString(), userId };
     if (fromDraft) updateDraft('');
     void run(p);
   }

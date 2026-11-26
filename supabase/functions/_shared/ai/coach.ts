@@ -161,6 +161,8 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   if (stored) return { status: 200, body: { reply: stored.reply, proposal: stored.proposal ?? null, duplicate: true } };
 
   const limit = intEnv(deps, 'AI_DAILY_REQUEST_LIMIT', 40, 0, 10_000);
+  // This run's attempt id: only it may settle the request as failed (a newer attempt may have taken over).
+  let attempt: string | null = null;
   try {
     // Reserve this message id and count it (1.0.3). A replay while the first request is still running must not start a
     // second generation (double cost, and a second action card for the same message).
@@ -174,6 +176,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
         deps.log?.('ai_in_progress', {});
         return err(409, 'in_progress', 'Still answering this message. It will appear in a moment.', { reason: 'in_progress' });
       }
+      attempt = begun.attempt;
     } else await deps.db.checkAndCountUsage(uid, limit);
   } catch (e) {
     if ((e as { code?: string })?.code === 'PT429') {
@@ -184,14 +187,15 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   }
 
   // Failure accounting (1.0.3): a request that fails gives its daily allowance back, and tokens from provider rounds that
-  // did complete are booked as FAILED usage — never as a successful exchange.
+  // did complete are booked as FAILED usage — never as a successful exchange. The database decides: the call is a no-op
+  // unless this attempt still owns the running request (so a lost response after the answer was stored never refunds).
   const tally = { inputTokens: 0, outputTokens: 0 };
   let settled = false;
   const fail = async () => {
     if (settled) return;
     settled = true;
     try {
-      await deps.db.failRequest?.(uid, id, { ...tally, costUsd: estimateCostUsd(tally, deps.env('AI_PRICE_INPUT_PER_MTOK'), deps.env('AI_PRICE_OUTPUT_PER_MTOK')) });
+      if (attempt) await deps.db.failRequest?.(uid, id, attempt, { ...tally, costUsd: estimateCostUsd(tally, deps.env('AI_PRICE_INPUT_PER_MTOK'), deps.env('AI_PRICE_OUTPUT_PER_MTOK')) });
     } catch (e) {
       deps.log?.('ai_fail_request_error', { code: (e as { code?: string })?.code ?? null });
     }
