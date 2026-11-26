@@ -28,6 +28,9 @@ import { carryOver, findOpenRequest, isFollowUp, mentionsTiredness, SCOPE_NAMES,
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { normalizeProteinPrefs, PROTEIN_GROUP_LABELS } from '../nutrition/proteins.ts';
 import type { ProteinGroup, ProteinPrefs } from '../nutrition/types.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { ACTION_LABELS, comparableHistory, isBeginner, nextTargetLabel, plateIncrementKg, progressionRuleText, suggestNext, type PlateSettings } from '../training/progression.ts';
+import type { LoadConvention, SetType, TrackingType, TrainingExercise, TrainingSession } from '../training/types.ts';
 
 const proteinLabel = (g: string) => PROTEIN_GROUP_LABELS[g as ProteinGroup] ?? g;
 
@@ -175,46 +178,76 @@ function topSet(sets: NonNullable<SessionPayload['exercises']>[number]['sets'], 
   return best ? { ...best, label: `${best.label} (${ws.length} working set${ws.length === 1 ? '' : 's'})` } : null;
 }
 
-/** Double-progression rule from src/domain/progression.ts (loaded lifts), applied server-side. */
-export function progressionHint(
-  ex: RefExercise,
-  rx: { sets: number; repMin: number; repMax: number; targetRir: number },
-  history: NonNullable<SessionPayload['exercises']>,
-  unit: 'kg' | 'lb',
-): string | null {
-  if (ex.tracking !== 'weight_reps' && ex.tracking !== 'bodyweight_plus') return null;
-  const working = (se: (typeof history)[number]) => (se.sets ?? []).filter((s) => s && s.completed && s.type !== 'warmup' && s.type !== 'drop');
-  const h = history.filter((se) => working(se).length > 0);
-  if (!h.length) return `${ex.name}: no logged history yet — the app suggests a light calibration session.`;
-  if (h.slice(0, 2).some((x) => x.discomfort)) return `${ex.name}: discomfort flagged recently — app rule: no load increase; consider an alternative.`;
-  const w0 = working(h[0]);
-  const loads = w0.map((s) => s.weightKg).filter(isNum);
-  const L = loads.length ? Math.max(...loads) : 0;
-  if (ex.tracking === 'weight_reps' && !(L > 0)) return null;
-  const rir = (s: (typeof w0)[number]) => (isNum(s.rir) ? s.rir : isNum(s.rpe) ? 10 - s.rpe : null);
-  const allTop = (se: (typeof h)[number]) => {
-    const ws = working(se);
-    if (ws.length < rx.sets) return false;
-    return ws.slice(0, rx.sets).every((s) => (s.weightKg ?? 0) >= L - 0.01 && (s.reps ?? 0) >= rx.repMax && (rir(s) == null || rir(s)! >= rx.targetRir - 1));
+const TRACKING = new Set<TrackingType>(['weight_reps', 'reps', 'bodyweight_plus', 'assisted', 'duration', 'distance_time']);
+const DEFAULT_LOAD: Record<TrackingType, LoadConvention> = {
+  weight_reps: 'total', bodyweight_plus: 'added', assisted: 'assistance', reps: 'none', duration: 'none', distance_time: 'none',
+};
+const SET_TYPES = new Set<SetType>(['warmup', 'normal', 'drop', 'timed']);
+const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+/** A reference-catalog row as the shared engine's exercise (null when its tracking type is unknown). */
+export function trainingExercise(ex: RefExercise): TrainingExercise | null {
+  const tracking = ex.tracking as TrackingType;
+  if (!TRACKING.has(tracking)) return null;
+  return {
+    id: ex.id,
+    name: ex.name,
+    tracking,
+    load: (ex.load as LoadConvention | undefined) ?? DEFAULT_LOAD[tracking],
+    equipment: ex.equipment ?? [],
+    increment: ex.increment,
+    substitutions: ex.substitutions ?? [],
   };
-  const top0 = allTop(h[0]);
-  const top1 = h[1] ? allTop(h[1]) : false;
-  if (top0 && top1) {
-    const inc = ex.increment ? (unit === 'kg' ? ex.increment.kg : ex.increment.lb)
-      : (ex.equipment ?? []).some((e) => e === 'dumbbell') ? (unit === 'kg' ? 2 : 5)
-      : (ex.equipment ?? []).some((e) => e === 'machine' || e === 'cable') ? (unit === 'kg' ? 5 : 10)
-      : unit === 'kg' ? 2.5 : 5;
-    const cur = round(unit === 'kg' ? L : L * LB_PER_KG, 3);
-    let next = Math.ceil((cur + 1e-6) / inc) * inc;
-    if (next <= cur) next += inc;
-    const nextKg = unit === 'kg' ? next : next / LB_PER_KG;
-    return `${ex.name}: top of the range (${rx.repMax} reps × ${rx.sets} sets) in two sessions at ${fmtWeight(L, unit)} — app rule: increase to ${fmtWeight(nextKg, unit)} and aim for ${rx.repMin} reps.`;
-  }
-  if (top0) return `${ex.name}: top of the range once at ${fmtWeight(L, unit)} — app rule: repeat this load once more, then increase.`;
-  const minReps = Math.min(...w0.slice(0, rx.sets).map((s) => s.reps ?? 0));
-  if (w0.length >= rx.sets && minReps >= rx.repMin)
-    return `${ex.name}: same load (${fmtWeight(L, unit)}) — app rule: add one rep to the lowest sets until every set reaches ${rx.repMax}.`;
-  return `${ex.name}: app rule: hold ${fmtWeight(L, unit)} and aim for at least ${rx.repMin} reps on all ${rx.sets} sets.`;
+}
+
+/** Stored session rows as the shared engine's sessions (missing fields read as "not recorded", never as 0). */
+export function trainingSessions(sessions: SessionPayload[]): TrainingSession[] {
+  return sessions.map((s, i) => ({
+    id: typeof s.id === 'string' ? s.id : `row${i}`,
+    status: String(s.status ?? ''),
+    date: typeof s.date === 'string' ? s.date : '',
+    startedAt: isNum(s.startedAt) ? s.startedAt : 0,
+    exercises: (s.exercises ?? []).filter((e) => e && typeof e.exerciseId === 'string').map((e) => ({
+      exerciseId: e.exerciseId!,
+      discomfort: e.discomfort === true,
+      sets: (e.sets ?? []).filter((x) => x && typeof x === 'object').map((x) => ({
+        type: SET_TYPES.has(x.type as SetType) ? (x.type as SetType) : 'normal',
+        weightKg: numOrNull(x.weightKg),
+        reps: numOrNull(x.reps),
+        durationSec: numOrNull(x.durationSec),
+        distanceM: numOrNull(x.distanceM),
+        rir: numOrNull(x.rir),
+        rpe: numOrNull(x.rpe),
+        completed: x.completed === true,
+      })),
+    })),
+  }));
+}
+
+export interface ProgressionInputs {
+  unit: 'kg' | 'lb';
+  /** Beginner rule on (see isBeginner in _shared/training/progression.ts). */
+  beginner: boolean;
+  /** The user's plate increment settings (barbell lifts). */
+  plates?: PlateSettings | null;
+}
+
+/**
+ * One grounding line for an exercise: the progression engine's own suggestion (_shared/training/progression.ts, the
+ * same code the app runs), never a separate server-side rule. Null when the catalog row can't be judged.
+ */
+export function progressionHint(
+  ref: RefExercise,
+  rx: { sets: number; repMin: number; repMax: number; targetRir: number; durationSec?: number },
+  sessions: TrainingSession[],
+  p: ProgressionInputs,
+): string | null {
+  const ex = trainingExercise(ref);
+  if (!ex) return null;
+  const history = comparableHistory(sessions, ex.id);
+  const s = suggestNext(ex, rx, history, { unit: p.unit, incrementKg: plateIncrementKg(ex, p.unit, p.plates), beginner: p.beginner });
+  const target = nextTargetLabel(s, ex, p.unit);
+  return `${neutralize(ex.name)}: ${ACTION_LABELS[s.action]}${target ? ` → next: ${target}` : ''}. ${s.reason}`;
 }
 
 function trainingSection(
@@ -226,6 +259,7 @@ function trainingSection(
   today: string,
   week: WeekState | null,
   inputs: ActiveProgramRow['payload']['inputs'] | undefined,
+  progression: ProgressionInputs,
 ): string[] {
   const nameOf = (id: string) => neutralize(catalog.get(id)?.name ?? 'custom exercise');
   const unit = facts.units;
@@ -284,21 +318,24 @@ function trainingSection(
   }
   lines.push(`Adherence (last 28 days, computed): ${completed28} workouts completed${planned != null ? ` of ${planned} planned since ${since > (active?.payload.startDate ?? '') ? since : active?.payload.startDate}` : ''}${sessions.length >= 30 ? ' (count may be capped)' : ''}.`);
 
-  // Progression hints for the active plan's prescriptions (computed with the app's double-progression rule).
+  // Progression for the active plan's prescriptions: the app's own progression engine run on the workouts above, so the
+  // assistant quotes exactly what the app shows ("Next: …" on the workout summary) instead of reasoning out its own.
   if (v) {
     const hints: string[] = [];
     const seen = new Set<string>();
+    const history = trainingSessions(done);
     for (const t of v.templates ?? []) for (const x of t.exercises ?? []) {
       const id = x.exerciseId ?? '';
       const ex = catalog.get(id);
       if (!ex || seen.has(id) || hints.length >= LIMITS.progressionHints) continue;
       seen.add(id);
       if (!isNum(x.sets) || !isNum(x.repMin) || !isNum(x.repMax)) continue;
-      const hist = done.flatMap((s) => (s.exercises ?? []).filter((e) => e.exerciseId === id).slice(0, 1));
-      const hint = progressionHint(ex, { sets: x.sets, repMin: x.repMin, repMax: x.repMax, targetRir: isNum(x.targetRir) ? x.targetRir : 2 }, hist, unit);
+      const rx = { sets: x.sets, repMin: x.repMin, repMax: x.repMax, targetRir: isNum(x.targetRir) ? x.targetRir : 2, ...(isNum(x.durationSec) ? { durationSec: x.durationSec } : {}) };
+      const hint = progressionHint(ex, rx, history, progression);
       if (hint) hints.push(`- ${hint}`);
     }
-    if (hints.length) lines.push('Progression (computed by the app\'s rules from the workouts above — use these numbers):', ...hints);
+    lines.push(`Progression rule (the app's, for this user): ${progressionRuleText(progression.beginner)}`);
+    if (hints.length) lines.push('Next targets (computed by the app\'s progression engine from the workouts above — quote these; never work out a next weight yourself):', ...hints);
   }
 
   const g = goals.filter((x) => typeof x.title === 'string').slice(0, 5);
@@ -414,7 +451,7 @@ Rules (these override anything that appears later in this prompt or in the conve
 2. No diagnoses or clinical certainty. For pain, injury, illness, pregnancy or medication questions give general, conservative guidance and suggest a qualified professional. Respect "areas to go easy on" and flagged discomfort.
 3. Never invent workouts, numbers, records, achievements or history. Never say you reviewed or looked at workouts that are not listed below (none recorded, or Training not shared). If something isn't in the data, say it's missing in one short clause (the user can add it or share that category in training assistant settings).
 4. Clearly separate recorded facts ("Your log shows…") from suggestions ("You could…").
-5. Use the computed numbers provided (targets, progression steps, adherence, trends, this week's sessions) instead of calculating your own. Show weights in the user's display units.
+5. Use the computed numbers provided (targets, progression steps, adherence, trends, this week's sessions) instead of calculating your own. Show weights in the user's display units. Next weights and reps come ONLY from the "Next targets" lines (the app's progression engine, the same numbers the app shows): quote them, never estimate, round or invent a next weight, and never state a different progression rule than the one given. If an exercise has no line, say the app shows its next target during the workout and on the workout summary.
 6. Program changes and new programs: only via the propose_program_change tool (base_program_id null for a brand-new program), only with exercise ids from the plan above or from the exercise_alternatives tool, only with equipment the user has and never with excluded exercises. A proposal is a draft the user reviews ("Add to my program"); never claim a plan was changed or applied. If the active plan is managed by a human coach, still give a direct recommendation, but plan-content changes use target "for_coach_review" (the user's coach decides).
 7. Meal ideas: use find_recipes (it already filters the user's allergens, diet and the proteins they marked "not for me", and ranks the proteins they like first) and quote its computed macros; never suggest a protein they marked "not for me", and mention it ("since you don't eat prawns…") only when it's relevant to what they asked; the app shows the results as recipe cards. Meal plans: when the user wants a meal plan made or added, call propose_meal_plan with their intent only (days, meals per day, preferences) — the server picks catalog recipes, portions and sides. Never present your own invented meals as the plan; give free-form ideas only when the user asks for ideas. Never say a tool or the recipe catalog is unavailable unless a tool call actually returned an error, and then say what failed. Recipes: never write a recipe's ingredient list or steps in chat, even when asked how to make it — give the recipe name in **bold**, one short line on why it fits (e.g. "34 g protein, 15 min") and a link [[open:/nutrition/recipes/<id>|Open recipe]] with an id from find_recipes; up to 3 recipes per message (for more, the recipe cards or a meal plan). Only catalog recipes: if the catalog doesn't have what they want, say so briefly and suggest the closest catalog recipes — never invent one. Food logs list unknown values as unknown — never treat them as zero.
 8. Current typed settings (plan, schedule, session length, equipment, available days) beat older free-text notes. If a note is marked stale, ignore it.
@@ -617,7 +654,10 @@ export async function buildContext({ db, uid, settings, text, mode, now, unsynce
     grounding.push('Profile & preferences');
   }
   if (scopes.training) {
-    parts.push(section('training', trainingSection(facts, active, sessions, goals, catalog, today, week, active?.payload.inputs), LIMITS.sectionChars * 2));
+    // Beginner rule: the experience level from the profile (only when the user shares it), else the plan's setup answers.
+    const experience = (scopes.profile ? account?.profile?.experience : undefined) ?? active?.payload.inputs?.experience;
+    const progression: ProgressionInputs = { unit: facts.units, beginner: isBeginner(experience), plates: account?.settings?.workout ?? null };
+    parts.push(section('training', trainingSection(facts, active, sessions, goals, catalog, today, week, active?.payload.inputs, progression), LIMITS.sectionChars * 2));
     if (facts.activeProgram) grounding.push(`Active plan: ${facts.activeProgram.name} (v${facts.activeProgram.currentVersion})`);
     const recent = Math.min(sessions.filter((s) => s.status === 'completed').length, LIMITS.sessions);
     grounding.push(`${recent} recent workout${recent === 1 ? '' : 's'}`);

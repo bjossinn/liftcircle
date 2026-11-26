@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { handleAiCoach, type CoachDeps } from '../../supabase/functions/_shared/ai/coach';
-import { buildContext, deriveFacts, neutralize, progressionHint } from '../../supabase/functions/_shared/ai/context';
+import { buildContext, deriveFacts, neutralize, progressionHint, trainingSessions } from '../../supabase/functions/_shared/ai/context';
 import { AiUnavailableError, createMessage, estimateCostUsd } from '../../supabase/functions/_shared/ai/provider';
 import { runTool, type ToolState } from '../../supabase/functions/_shared/ai/tools';
 import { decideTarget, normalizeProposedProgram, validateForUser, validateProposedProgram } from '../../supabase/functions/_shared/ai/validate';
@@ -223,7 +223,7 @@ describe('MOCKED ai-coach: context isolation (only the authenticated user, only 
     const { db } = makeDb({ [A]: userA() });
     const s = userA().settings!;
     const ctx = await buildContext({ db, uid: A, settings: s, text: 'hi', mode: 'chat', now: new Date('2026-10-29T10:00:00Z') });
-    expect(ctx.system).toContain('increase to 32 kg'); // dumbbell default increment 2 kg, top of range twice
+    expect(ctx.system).toContain('Increase load → next: 32 kg × 8 reps'); // dumbbell default increment 2 kg, top of range twice (engine output)
     expect(ctx.system).toContain('protein 144 g/day');
     expect(ctx.system).toContain('1 entries without protein');
     expect(ctx.system).toMatch(/2026-10-27: nothing logged/);
@@ -550,17 +550,20 @@ describe('MOCKED ai-coach: availability, limits, retries, idempotency', () => {
   });
 });
 
-describe('MOCKED ai-coach: progression rule mirror', () => {
-  it('matches src/domain/progression.ts double progression for loaded lifts', () => {
+describe('MOCKED ai-coach: progression comes from the shared engine', () => {
+  it('quotes the engine (src/domain/progression.ts) for loaded lifts: two sessions normally, one for beginners', () => {
     const ex = EXERCISES[0];
     const set = (w: number, r: number) => ({ type: 'normal', weightKg: w, reps: r, completed: true });
-    const s = (w: number, r: number) => ({ exerciseId: ex.id, sets: [set(w, r), set(w, r), set(w, r)] });
+    let t = Date.parse('2026-11-20T17:00:00Z');
+    const s = (w: number, r: number, extra: object = {}) => ({ id: `s${t}`, status: 'completed', date: '2026-11-20', startedAt: (t -= 86_400_000), exercises: [{ exerciseId: ex.id, sets: [set(w, r), set(w, r), set(w, r)], ...extra }] });
     const rx = { sets: 3, repMin: 6, repMax: 8, targetRir: 2 };
-    expect(progressionHint(ex, rx, [s(80, 8), s(80, 8)], 'kg')).toContain('increase to 82.5 kg');
-    expect(progressionHint(ex, rx, [s(80, 8), s(80, 7)], 'kg')).toContain('repeat this load');
-    expect(progressionHint(ex, rx, [s(80, 7)], 'kg')).toContain('add one rep');
-    expect(progressionHint(ex, rx, [{ ...s(80, 8), discomfort: true }, s(80, 8)], 'kg')).toContain('no load increase');
-    expect(progressionHint(ex, rx, [s(80, 8), s(80, 8)], 'lb')).toContain('increase to 180 lb'); // 176.4 lb → next 5 lb step
+    const hint = (rows: ReturnType<typeof s>[], unit: 'kg' | 'lb' = 'kg', beginner = false) => progressionHint(ex, rx, trainingSessions(rows), { unit, beginner });
+    expect(hint([s(80, 8), s(80, 8)])).toContain('Increase load → next: 82.5 kg × 6 reps');
+    expect(hint([s(80, 8), s(80, 7)])).toMatch(/^.*: Hold → next: 80 kg × 8 reps\. Top of the range on every set/);
+    expect(hint([s(80, 8), s(80, 7)], 'kg', true)).toContain('Increase load → next: 82.5 kg × 6 reps'); // beginner: one session
+    expect(hint([s(80, 7)])).toContain('Add reps → next: 80 kg');
+    expect(hint([s(80, 8, { discomfort: true }), s(80, 8)])).toContain('No increase');
+    expect(hint([s(80, 8), s(80, 8)], 'lb')).toContain('next: 180 lb × 6 reps'); // 176.4 lb → next 5 lb step
   });
 });
 

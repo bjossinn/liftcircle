@@ -1,12 +1,13 @@
 import { useEffect, useMemo } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Award, CheckCircle2, Clock, Dumbbell, Layers, Repeat } from 'lucide-react';
+import { ArrowRight, Award, CheckCircle2, Clock, Dumbbell, Layers, Repeat } from 'lucide-react';
 import { useApp } from '@/state/app';
 import { alive } from '@/db/repo';
 import { Badge, Button, Card, EmptyState, Page, SectionTitle, Spinner, Stat } from '@/components/ui';
 import { useExercises } from '@/data/catalog';
 import { detectRecords, summarizeSession, VOLUME_CONVENTION_SHORT } from '@/domain/stats';
+import { nextTargetsFor } from '@/domain/nextTargets';
 import { isValidCompletedSet } from '@/domain/setValidation';
 import { formatDistance, round, fromKg } from '@/domain/units';
 import { formatDate, formatDuration, formatMinutes } from '@/lib/dates';
@@ -34,8 +35,13 @@ function WorkoutSummary({ id }: { id: string }) {
   const data = useMemo(() => {
     if (!session || !history) return null;
     const others = history.filter((s) => s.id !== session.id && s.startedAt < session.startedAt);
-    return { summary: summarizeSession(session, byId), records: detectRecords(session, others, byId, unit) };
-  }, [session, history, byId, unit]);
+    return {
+      summary: summarizeSession(session, byId),
+      records: detectRecords(session, others, byId, unit),
+      // The progression engine's next target per exercise (the only place next loads come from).
+      next: nextTargetsFor(session, history, byId, account.settings, account.profile.experience),
+    };
+  }, [session, history, byId, unit, account.settings, account.profile.experience]);
   const celebrations = account.settings.workout.celebrations !== false;
   const recordCount = data?.records.length ?? -1;
   useEffect(() => {
@@ -46,7 +52,7 @@ function WorkoutSummary({ id }: { id: string }) {
   if (session === undefined || history === undefined) return <Spinner />;
   if (!session || session.deletedAt) return <EmptyState title="Workout not found" action={<Button onClick={() => nav('/')}>Home</Button>} />;
   if (!data) return <Spinner />;
-  const { summary, records } = data;
+  const { summary, records, next } = data;
   const vol = summary.volume;
   const recordsForShare = records.map((r) => ({ exercise: byId.get(r.exerciseId)?.name ?? 'Exercise', label: r.label }));
 
@@ -97,6 +103,7 @@ function WorkoutSummary({ id }: { id: string }) {
       <Card className="divide-y divide-line">
         {session.exercises.map((se) => {
           const ex = byId.get(se.exerciseId);
+          const target = next.get(se.exerciseId);
           return (
             <div key={se.id} className="px-4 py-3">
               <div className="flex items-center gap-2">
@@ -107,6 +114,13 @@ function WorkoutSummary({ id }: { id: string }) {
               <p className="text-xs text-muted mt-1">
                 {ex ? se.sets.map((s) => `${s.type === 'warmup' ? 'W ' : ''}${formatLoggedSet(s, ex, unit, account.settings.units.distance)}${isValidCompletedSet(s, ex) ? '' : ' (not counted)'}`).join(' · ') : `${se.sets.length} sets`}
               </p>
+              {target && (
+                <p className="text-xs mt-1 flex items-center gap-1" data-testid="next-target">
+                  <ArrowRight className="size-3.5 text-accent shrink-0" aria-hidden />
+                  <span className="font-medium tabular">{target.text}</span>
+                  <span className="text-muted">· {target.label}</span>
+                </p>
+              )}
             </div>
           );
         })}

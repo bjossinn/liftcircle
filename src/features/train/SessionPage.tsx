@@ -10,14 +10,14 @@ import { useApp, useDb } from '@/state/app';
 import { saveRecord, deleteRecord, alive } from '@/db/repo';
 import { useToast } from '@/components/toast';
 import { Badge, Button, ConfirmDialog, EmptyState, IconButton, Input, Segmented, Sheet, Spinner, Textarea, Toggle } from '@/components/ui';
-import type { CoachStyle, Exercise, ID, LoggedSet, SessionExercise, SetType, Settings, WeightUnit, WorkoutSession } from '@/domain/types';
+import type { CoachStyle, Exercise, Experience, ID, LoggedSet, SessionExercise, SetType, Settings, WeightUnit, WorkoutSession } from '@/domain/types';
 import { useExercises } from '@/data/catalog';
 import { ExercisePicker } from '@/components/ExercisePicker';
 import { loadConventionNote } from '@/data/exerciseMeta';
-import { displayWeight, formatWeight, fromKg, round, toKg } from '@/domain/units';
+import { displayWeight, fromKg, round, toKg } from '@/domain/units';
 import { formatDuration } from '@/lib/dates';
 import * as ops from '@/domain/sessionOps';
-import { comparableHistory, incrementFor, workingSets, ACTION_LABELS, type Suggestion } from '@/domain/progression';
+import { comparableHistory, incrementFor, nextTargetLabel, workingSets, ACTION_LABELS, type Suggestion } from '@/domain/progression';
 import { usesLoad, validateLoggedSet, type SetField } from '@/domain/setValidation';
 import { adaptPrescription, fitsConstraints, hasConstraints, substitutionCandidates } from '@/domain/substitution';
 import { DraftNumberField, type CommitResult } from './DraftNumberField';
@@ -342,6 +342,7 @@ export default function SessionPage() {
             prevInSuperset={!!se.supersetGroup && session.exercises[i - 1]?.supersetGroup === se.supersetGroup}
             history={history}
             settings={settings}
+            experience={account.profile.experience}
             update={update}
             sessionId={session.id}
             onComplete={(set, showErrors) => onComplete(se, set, showErrors)}
@@ -446,12 +447,13 @@ function ExerciseBlock(props: {
   prevInSuperset: boolean;
   history: WorkoutSession[];
   settings: Settings;
+  experience?: Experience;
   update: Mut;
   sessionId: string;
   onComplete: (set: LoggedSet, showErrors: (e: FieldErrors | null) => void) => void;
   onSwap: () => void;
 }) {
-  const { se, ex, settings, update, history } = props;
+  const { se, ex, settings, update, history, experience } = props;
   const unit = settings.units.weight;
   const [menu, setMenu] = useState(false);
   const [notes, setNotes] = useState(false);
@@ -463,9 +465,8 @@ function ExerciseBlock(props: {
   const lastWorking = last ? workingSets(last, ex) : [];
   const suggestion: Suggestion | null = useMemo(() => {
     if (!ex || !se.prescription) return null;
-    const rx = { id: se.prescription.slotId ?? se.id, exerciseId: se.exerciseId, warmup: '', priority: 2 as const, alternatives: [], ...se.prescription };
-    return suggestionFor(rx, ex, history, settings).suggestion;
-  }, [ex, se.prescription, se.id, se.exerciseId, history, settings]);
+    return suggestionFor({ exerciseId: se.exerciseId, ...se.prescription }, ex, history, settings, experience).suggestion;
+  }, [ex, se.prescription, se.exerciseId, history, settings, experience]);
   const note = ex ? loadConventionNote(ex) : null;
   const incUnit = ex ? incrementFor(ex, unit) : unit === 'kg' ? 2.5 : 5;
   const inc = toKg(incUnit, unit);
@@ -727,12 +728,8 @@ function ProgressionCard(props: {
 
   if (hidden) return null;
   const warn = sg.action === 'discomfort_hold' || sg.action === 'review_recovery';
-  const target = [
-    loaded && sg.loadKg != null ? formatWeight(sg.loadKg, unit) : null,
-    rep && sg.targetReps != null ? `${sg.targetReps} reps` : null,
-    !rep && sg.durationSec != null ? `${sg.durationSec}s` : null,
-    sg.distanceM != null ? `${sg.distanceM} m` : null,
-  ].filter(Boolean).join(' × ');
+  // Same wording as the workout summary's "Next:" line (one formatter for the engine's target).
+  const target = sg.action === 'calibrate' ? null : nextTargetLabel(sg, ex, unit);
   // The next action itself (first-time calibration, discomfort/recovery safety) stays visible; rationale is expandable.
   const inlineReason = sg.action === 'calibrate' || warn;
   const askEffort = (sg.effortBasis === 'not_recorded' || sg.effortBasis === 'partial') && (sg.action === 'increase_load' || sg.action === 'reduce_assistance');

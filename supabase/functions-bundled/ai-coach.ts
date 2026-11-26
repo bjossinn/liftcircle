@@ -703,6 +703,452 @@ function proteinListText(groups) {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
+// supabase/functions/_shared/training/units.ts
+var KG_PER_LB = 0.45359237;
+var lbToKg = (lb) => lb * KG_PER_LB;
+var kgToLb = (kg) => kg / KG_PER_LB;
+function round(n, decimals = 2) {
+  const f = 10 ** decimals;
+  return Math.round((n + Number.EPSILON) * f) / f;
+}
+function toKg(value, unit) {
+  return unit === "kg" ? value : lbToKg(value);
+}
+function fromKg(kg, unit) {
+  return unit === "kg" ? kg : kgToLb(kg);
+}
+function displayWeight(kg, unit, entered, decimals = 1) {
+  if (kg == null) return null;
+  if (entered && entered.unit === unit) return entered.value;
+  return round(fromKg(kg, unit), decimals);
+}
+function formatWeight(kg, unit, entered) {
+  const v = displayWeight(kg, unit, entered);
+  return v == null ? "\u2013" : `${trimNum(v)} ${unit}`;
+}
+function trimNum(n, decimals = 2) {
+  return String(round(n, decimals));
+}
+
+// supabase/functions/_shared/training/sets.ts
+var SET_LIMITS = {
+  maxReps: 1e3,
+  maxWeightKg: 1e3,
+  maxDurationSec: 24 * 3600,
+  maxDistanceM: 1e6
+};
+function usesLoad(ex) {
+  if (!ex) return false;
+  if (ex.tracking === "weight_reps" || ex.tracking === "bodyweight_plus" || ex.tracking === "assisted") return true;
+  return ex.tracking === "distance_time" && ex.load !== "none";
+}
+var zeroLoadValid = (t) => t === "bodyweight_plus" || t === "assisted";
+function isRepTracking(t) {
+  return t === "weight_reps" || t === "reps" || t === "bodyweight_plus" || t === "assisted";
+}
+var present = (v) => v != null;
+var badNumber = (v) => present(v) && (typeof v !== "number" || !Number.isFinite(v) || v < 0);
+function hasRecordedLoad(set, ex) {
+  if (!ex || !usesLoad(ex)) return false;
+  const w = set.weightKg;
+  if (!present(w) || !Number.isFinite(w) || w < 0) return false;
+  return zeroLoadValid(ex.tracking) ? true : w > 0;
+}
+function validateLoggedSet(set, ex, opts = {}) {
+  const mode = opts.mode ?? "record";
+  const completed = opts.asCompleted ?? !!set.completed;
+  const fieldErrors = {};
+  const fail = (f, msg) => {
+    if (!fieldErrors[f]) fieldErrors[f] = msg;
+  };
+  if (badNumber(set.weightKg)) fail("weight", "Weight must be zero or more.");
+  if (badNumber(set.reps)) fail("reps", "Reps must be zero or more.");
+  if (badNumber(set.durationSec)) fail("duration", "Time must be zero or more.");
+  if (badNumber(set.distanceM)) fail("distance", "Distance must be zero or more.");
+  if (present(set.rir) && (!Number.isFinite(set.rir) || set.rir < 0 || set.rir > 10)) fail("rir", "RIR must be between 0 and 10.");
+  if (present(set.rpe) && (!Number.isFinite(set.rpe) || set.rpe < 1 || set.rpe > 10)) fail("rpe", "RPE must be between 1 and 10.");
+  if (present(set.weightKg) && set.weightKg > SET_LIMITS.maxWeightKg) fail("weight", "That weight looks too high.");
+  if (present(set.reps) && set.reps > SET_LIMITS.maxReps) fail("reps", "That rep count looks too high.");
+  if (present(set.durationSec) && set.durationSec > SET_LIMITS.maxDurationSec) fail("duration", "That time looks too long.");
+  if (present(set.distanceM) && set.distanceM > SET_LIMITS.maxDistanceM) fail("distance", "That distance looks too long.");
+  if (completed) {
+    const tracking = ex?.tracking;
+    const working = set.type !== "warmup";
+    const posInt = (v) => present(v) && Number.isFinite(v) && Number.isInteger(v) && v > 0;
+    const pos2 = (v) => present(v) && Number.isFinite(v) && v > 0;
+    if (!tracking) {
+      if (!pos2(set.reps) && !pos2(set.durationSec) && !pos2(set.distanceM)) fail("reps", "Enter reps, time or distance.");
+      else if (present(set.reps) && !fieldErrors.reps && set.reps > 0 && !Number.isInteger(set.reps)) fail("reps", "Reps must be a whole number.");
+    } else if (isRepTracking(tracking)) {
+      if (!fieldErrors.reps && !posInt(set.reps)) {
+        fail("reps", present(set.reps) && set.reps > 0 ? "Reps must be a whole number." : "Enter at least 1 rep.");
+      }
+    } else if (tracking === "duration") {
+      if (!fieldErrors.duration && !pos2(set.durationSec)) fail("duration", "Enter a time above 0.");
+    } else if (tracking === "distance_time") {
+      if (!fieldErrors.distance && !fieldErrors.duration && !pos2(set.distanceM) && !pos2(set.durationSec)) {
+        fail("distance", "Enter a distance or a time.");
+      }
+    }
+    if (ex && mode === "log" && working && usesLoad(ex) && !fieldErrors.weight) {
+      if (zeroLoadValid(ex.tracking)) {
+        if (!present(set.weightKg)) fail("weight", ex.tracking === "assisted" ? "Enter the assistance (0 for none)." : "Enter the added weight (0 for none).");
+      } else if (!present(set.weightKg) || set.weightKg <= 0) {
+        fail("weight", "Enter the weight used.");
+      }
+    }
+  }
+  const errors = Object.values(fieldErrors).filter((x) => !!x);
+  return { ok: errors.length === 0, errors, fieldErrors, loadRecorded: hasRecordedLoad(set, ex) };
+}
+function isValidCompletedSet(set, ex) {
+  return !!set.completed && validateLoggedSet(set, ex, { mode: "record" }).ok;
+}
+function isCountableSet(set, ex) {
+  return set.type !== "warmup" && isValidCompletedSet(set, ex);
+}
+
+// supabase/functions/_shared/training/progression.ts
+var DISCOMFORT_WINDOW = 2;
+var DECLINE_SESSIONS = 3;
+function workingSets(se, ex) {
+  return se.sets.filter((s) => s.type !== "drop" && isCountableSet(s, ex));
+}
+function effortBasisOf(sessions, rx, ex) {
+  const sets = sessions.flatMap((se) => workingSets(se, ex).slice(0, rx.sets));
+  const n = sets.filter((x) => setRir(x) != null).length;
+  return n === 0 ? "not_recorded" : n === sets.length ? "recorded" : "partial";
+}
+function incrementFor(ex, unit, incrementKg) {
+  if (incrementKg && incrementKg > 0) return unit === "kg" ? incrementKg : round(kgToLb(incrementKg), 1);
+  if (ex.increment) return unit === "kg" ? ex.increment.kg : ex.increment.lb;
+  const eq = ex.equipment;
+  if (ex.tracking === "assisted") return unit === "kg" ? 5 : 10;
+  if (eq.includes("barbell") || eq.includes("smith") || eq.includes("ez_bar")) return unit === "kg" ? 2.5 : 5;
+  if (eq.includes("kettlebell")) return unit === "kg" ? 4 : 9;
+  if (eq.includes("dumbbell")) return unit === "kg" ? 2 : 5;
+  if (eq.includes("machine") || eq.includes("cable")) return unit === "kg" ? 5 : 10;
+  return unit === "kg" ? 2.5 : 5;
+}
+function nextLoadUp(currentKg, inc, unit) {
+  const cur = round(fromKg(currentKg, unit), 3);
+  let next = Math.ceil((cur + 1e-6) / inc) * inc;
+  if (next <= cur) next += inc;
+  return toKg(round(next, 3), unit);
+}
+function nextLoadDown(currentKg, inc, unit) {
+  const cur = round(fromKg(currentKg, unit), 3);
+  const next = Math.max(0, Math.floor((cur - 1e-6) / inc) * inc);
+  return toKg(round(next, 3), unit);
+}
+function setRir(s) {
+  if (s.rir != null) return s.rir;
+  if (s.rpe != null) return 10 - s.rpe;
+  return null;
+}
+function effortOk(s, rx) {
+  const r = setRir(s);
+  return r == null || r >= rx.targetRir - 1;
+}
+var maxWeight = (sets) => {
+  const w = sets.map((s) => s.weightKg).filter((x) => x != null && isFinite(x));
+  return w.length ? Math.max(...w) : null;
+};
+function allTop(se, rx, loadKg, ex, assisted = false) {
+  const ws = workingSets(se, ex);
+  if (ws.length < rx.sets) return false;
+  const loaded = ex.tracking === "weight_reps" || ex.tracking === "bodyweight_plus" || ex.tracking === "assisted";
+  return ws.slice(0, rx.sets).every((s) => {
+    if (loaded && !hasRecordedLoad(s, ex)) return false;
+    const w = s.weightKg ?? 0;
+    const loadOk = assisted ? w <= loadKg + 0.01 : w >= loadKg - 0.01;
+    return loadOk && (s.reps ?? 0) >= rx.repMax && effortOk(s, rx);
+  });
+}
+function perfScore(se, ex) {
+  const loaded = ex.tracking === "weight_reps" || ex.tracking === "assisted";
+  const ws = workingSets(se, ex).filter((s) => !loaded || hasRecordedLoad(s, ex));
+  if (!ws.length) return null;
+  const avg = (f) => ws.reduce((a, s) => a + f(s), 0) / ws.length;
+  switch (ex.tracking) {
+    case "weight_reps":
+    case "bodyweight_plus":
+      return avg((s) => {
+        const w = s.weightKg ?? 0;
+        const r = s.reps ?? 0;
+        return w > 0 ? w * (1 + r / 30) : r;
+      });
+    case "reps":
+      return avg((s) => s.reps ?? 0);
+    case "assisted":
+      return avg((s) => (s.reps ?? 0) - (s.weightKg ?? 0) / 2.5);
+    case "duration":
+      return avg((s) => s.durationSec ?? 0);
+    case "distance_time":
+      return avg((s) => s.distanceM ?? s.durationSec ?? 0);
+  }
+}
+function isDeclining(history, ex) {
+  if (history.length < DECLINE_SESSIONS) return false;
+  const scores = history.slice(0, DECLINE_SESSIONS).map((h) => perfScore(h, ex));
+  if (scores.some((s2) => s2 == null)) return false;
+  const s = scores;
+  for (let i = 0; i < s.length - 1; i++) if (!(s[i] < s[i + 1])) return false;
+  const oldest = s[s.length - 1];
+  return oldest > 0 && (oldest - s[0]) / oldest > 0.02;
+}
+function isBeginner(experience) {
+  return experience === "new" || experience === "returning";
+}
+function sessionsToProgress(beginner) {
+  return beginner ? 1 : 2;
+}
+function suggestNext(ex, rx, history, opts) {
+  const unit = opts.unit;
+  const needed = sessionsToProgress(opts.beginner);
+  const fmt = (kg) => formatWeight(kg, unit);
+  const range = { repMin: rx.repMin, repMax: rx.repMax };
+  const h = history.filter((x) => workingSets(x, ex).length > 0);
+  if (!h.length) {
+    if (ex.tracking === "duration" || ex.tracking === "distance_time")
+      return { action: "calibrate", loadKg: null, ...range, durationSec: rx.durationSec, reason: "First time: do what feels comfortable and log it. We\u2019ll build from there." };
+    if (ex.tracking === "reps")
+      return { action: "calibrate", loadKg: null, ...range, reason: `First time: stop each set with about ${rx.targetRir} reps left in the tank and log your reps. We\u2019ll build from there.` };
+    return {
+      action: "calibrate",
+      loadKg: null,
+      ...range,
+      reason: `No known load yet: start light and add small jumps until a set of ${rx.repMin}\u2013${rx.repMax} feels like about ${rx.targetRir} reps left in the tank. Log that as your starting load.`
+    };
+  }
+  const h0 = h[0];
+  const ws0 = workingSets(h0, ex);
+  const lastLoad = maxWeight(ws0.filter((s) => hasRecordedLoad(s, ex)));
+  if (h.slice(0, DISCOMFORT_WINDOW).some((x) => x.discomfort)) {
+    return {
+      action: "discomfort_hold",
+      loadKg: lastLoad,
+      ...range,
+      durationSec: rx.durationSec,
+      alternativeIds: ex.substitutions.slice(0, 4),
+      hint: "alternatives",
+      reason: "You flagged discomfort recently, so we won\u2019t suggest an increase. Keep it comfortable, use less load, or try an alternative exercise. If pain persists, consider a qualified professional."
+    };
+  }
+  if (isDeclining(h, ex)) {
+    return {
+      action: "review_recovery",
+      loadKg: lastLoad,
+      ...range,
+      durationSec: rx.durationSec,
+      hint: "reduce_workload",
+      reason: `Performance has dipped over your last ${DECLINE_SESSIONS} sessions. Consider sleep, stress and food, or reduce workload for a week (for example one fewer set or a slightly lighter load).`
+    };
+  }
+  const minReps = Math.min(...ws0.slice(0, rx.sets).map((s) => s.reps ?? 0));
+  const allSetsDone = ws0.length >= rx.sets;
+  const inc = incrementFor(ex, unit, opts.incrementKg);
+  switch (ex.tracking) {
+    case "weight_reps":
+    case "bodyweight_plus": {
+      const weighted = ex.tracking === "bodyweight_plus";
+      if (!weighted && (lastLoad == null || lastLoad <= 0)) {
+        return { action: "calibrate", loadKg: null, ...range, reason: "No load logged last time. Pick a weight that leaves about 2\u20133 reps in the tank and log it." };
+      }
+      const L2 = lastLoad ?? 0;
+      const top0 = allTop(h0, rx, L2, ex);
+      const top1 = h[1] ? allTop(h[1], rx, L2, ex) : false;
+      if (top0 && (needed === 1 || top1)) {
+        const next = nextLoadUp(L2, inc, unit);
+        const effortBasis = effortBasisOf(h.slice(0, needed), rx, ex);
+        return {
+          action: "increase_load",
+          loadKg: next,
+          ...range,
+          targetReps: rx.repMin,
+          effortBasis,
+          reason: `You reached ${rx.repMax} reps on all ${rx.sets} sets${L2 > 0 ? ` at ${fmt(L2)}` : ""} ${sessionsText(needed)}${effortText(effortBasis, rx)}. Try ${weighted && L2 === 0 ? `adding ${fmt(next)}` : fmt(next)} and aim for ${rx.repMin} reps, then build back up.`
+        };
+      }
+      if (top0)
+        return { action: "hold", loadKg: L2, ...range, targetReps: rx.repMax, reason: "Top of the range on every set. Repeat this load once more to confirm, then we\u2019ll suggest an increase." };
+      if (allSetsDone && minReps >= rx.repMin)
+        return {
+          action: "add_reps",
+          loadKg: L2,
+          ...range,
+          targetReps: Math.min(rx.repMax, minReps + 1),
+          reason: `Same load${L2 > 0 ? ` (${fmt(L2)})` : ""}; aim for one more rep on your lowest sets until every set reaches ${rx.repMax}.`
+        };
+      return { action: "hold", loadKg: L2, ...range, targetReps: rx.repMin, reason: `Hold the load and aim for at least ${rx.repMin} reps on all ${rx.sets} sets.` };
+    }
+    case "reps": {
+      const top0 = allTop(h0, rx, 0, ex);
+      const top1 = h[1] ? allTop(h[1], rx, 0, ex) : false;
+      if (top0 && top1)
+        return {
+          action: "add_reps",
+          loadKg: null,
+          ...range,
+          targetReps: rx.repMax,
+          hint: "harder_variation",
+          alternativeIds: ex.substitutions.slice(0, 4),
+          reason: `You\u2019ve reached ${rx.repMax} reps on every set twice. Ready for a harder variation or a little added load, or keep adding reps if you prefer.`
+        };
+      return {
+        action: "add_reps",
+        loadKg: null,
+        ...range,
+        targetReps: Math.min(rx.repMax, Math.max(rx.repMin, minReps + 1)),
+        reason: `Aim for one more rep on your lowest sets until every set reaches ${rx.repMax}.`
+      };
+    }
+    case "assisted": {
+      if (lastLoad == null)
+        return { action: "calibrate", loadKg: null, ...range, reason: "Log the assistance you use. Enough that sets end with about 2\u20133 reps left in the tank." };
+      const L2 = lastLoad;
+      const top0 = allTop(h0, rx, L2, ex, true);
+      const top1 = h[1] ? allTop(h[1], rx, L2, ex, true) : false;
+      if (top0 && (needed === 1 || top1)) {
+        const effortBasis = effortBasisOf(h.slice(0, needed), rx, ex);
+        const next = nextLoadDown(L2, inc, unit);
+        if (next <= 0)
+          return {
+            action: "reduce_assistance",
+            loadKg: 0,
+            ...range,
+            targetReps: rx.repMin,
+            hint: "unassisted",
+            effortBasis,
+            alternativeIds: ex.substitutions.slice(0, 4),
+            reason: "You\u2019ve outgrown the assistance. Try the unassisted version (or the lightest band) and aim for the bottom of the range."
+          };
+        return {
+          action: "reduce_assistance",
+          loadKg: next,
+          ...range,
+          targetReps: rx.repMin,
+          effortBasis,
+          reason: `Top of the range ${needed === 1 ? "in your last session (beginner rule)" : "twice"} with ${fmt(L2)} assistance${effortText(effortBasis, rx)}. Use less assistance (${fmt(next)}) and aim for ${rx.repMin} reps. Less help is progress.`
+        };
+      }
+      if (allSetsDone && minReps >= rx.repMin)
+        return { action: "add_reps", loadKg: L2, ...range, targetReps: Math.min(rx.repMax, minReps + 1), reason: `Same assistance; aim for one more rep on your lowest sets until every set reaches ${rx.repMax}.` };
+      return { action: "hold", loadKg: L2, ...range, targetReps: rx.repMin, reason: `Keep the same assistance and aim for ${rx.repMin} reps on every set.` };
+    }
+    case "duration":
+      return durationRule(h, rx, "increase_duration", ex);
+    case "distance_time": {
+      const dist = ws0.map((s) => s.distanceM).filter((d) => d != null && d > 0);
+      if (!dist.length) return durationRule(h, rx, "increase_duration", ex);
+      const avgDist = dist.reduce((a, b) => a + b, 0) / dist.length;
+      const done1 = h[1] ? workingSets(h[1], ex).length >= rx.sets : false;
+      if (allSetsDone && done1) {
+        const next = Math.round(avgDist * 1.1 / 10) * 10;
+        return { action: "increase_distance", loadKg: lastLoad, ...range, distanceM: Math.max(next, avgDist + 10), reason: "Completed twice: add about 10 % distance while keeping the same comfortable effort." };
+      }
+      return { action: "hold", loadKg: lastLoad, ...range, distanceM: Math.round(avgDist), reason: "Keep the same distance until it feels comfortable on every set." };
+    }
+  }
+}
+function sessionsText(needed) {
+  return needed === 1 ? "in your last session (beginner rule: one successful session is enough)" : "in two sessions";
+}
+function effortText(basis, rx) {
+  if (basis === "recorded") return " at the target effort";
+  if (basis === "partial") return ` (effort was logged for only some sets. Increase only if they felt like about ${rx.targetRir} reps left in the tank)`;
+  return ` (effort wasn\u2019t logged, so this is based on reps and load only. Increase only if those sets felt like about ${rx.targetRir} reps left in the tank)`;
+}
+function durationRule(h, rx, action, ex) {
+  const ws0 = workingSets(h[0], ex);
+  const best = Math.max(0, ...ws0.map((s) => s.durationSec ?? 0));
+  const target = rx.durationSec ?? best;
+  const reached = (se) => {
+    const ws = workingSets(se, ex);
+    return ws.length >= rx.sets && ws.slice(0, rx.sets).every((s) => (s.durationSec ?? 0) >= target);
+  };
+  const range = { repMin: rx.repMin, repMax: rx.repMax };
+  if (target > 0 && reached(h[0]) && h[1] && reached(h[1])) {
+    const step = Math.max(5, Math.round(target * 0.1 / 5) * 5);
+    return { action, loadKg: null, ...range, durationSec: target + step, reason: `You held ${target} s on every set twice. Try ${target + step} s.` };
+  }
+  return { action: "hold", loadKg: null, ...range, durationSec: target || void 0, reason: target ? `Aim for ${target} s on every set with good form.` : "Keep logging your times. We\u2019ll build from there." };
+}
+function comparableHistory(sessions, exerciseId, beforeSessionId) {
+  let pool = sessions.filter((s) => !s.deletedAt && s.status === "completed");
+  if (beforeSessionId) {
+    const ref = sessions.find((s) => s.id === beforeSessionId);
+    pool = pool.filter((s) => s.id !== beforeSessionId && (!ref || s.startedAt < ref.startedAt));
+  }
+  pool.sort((a, b) => b.startedAt - a.startedAt || (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const out = [];
+  for (const s of pool) {
+    const se = s.exercises.find((e) => e.exerciseId === exerciseId && workingSets(e).length > 0);
+    if (se) out.push(se);
+  }
+  return out;
+}
+var ACTION_LABELS = {
+  increase_load: "Increase load",
+  hold: "Hold",
+  add_reps: "Add reps",
+  calibrate: "Calibrate",
+  reduce_assistance: "Less assistance",
+  increase_duration: "Longer",
+  increase_distance: "Further",
+  review_recovery: "Review recovery",
+  discomfort_hold: "No increase"
+};
+function plateIncrementKg(ex, unit, workout) {
+  const barbell = ex.equipment.includes("barbell") || ex.equipment.includes("smith");
+  if (!barbell || ex.tracking !== "weight_reps" || ex.increment || !workout) return void 0;
+  const v = unit === "kg" ? workout.plateIncrementKg : workout.plateIncrementLb != null ? lbToKg(workout.plateIncrementLb) : void 0;
+  return v != null && Number.isFinite(v) && v > 0 ? v : void 0;
+}
+var PROGRESSION_STRINGS = {
+  en: {
+    next: (target) => `Next: ${target}`,
+    reps: (n) => `${n} reps`,
+    seconds: (n) => `${n} s`,
+    metres: (n) => `${n} m`,
+    assistance: (w) => `${w} assistance`,
+    added: (w) => `+${w}`,
+    bodyweight: "bodyweight",
+    calibrate: "find your starting load",
+    rule: (beginner) => beginner ? "Progression: because you\u2019re new to lifting (or returning), one good session is enough. When you reach the top of the rep range on every set at the target effort (if you don\u2019t log effort, we ask you to confirm it first), we suggest the smallest practical load increase and you start again near the bottom of the range. If you change your experience level to intermediate or advanced, the app waits for two such sessions in a row." : "Progression uses double progression: when you reach the top of the rep range on every set at the target effort in two sessions (if you don\u2019t log effort, we ask you to confirm it first), we suggest the smallest practical load increase and you start again near the bottom of the range."
+  }
+};
+function progressionRuleText(beginner = false, lang = "en") {
+  return PROGRESSION_STRINGS[lang].rule(beginner);
+}
+function nextTargetLabel(s, ex, unit, lang = "en") {
+  const t = PROGRESSION_STRINGS[lang];
+  if (s.action === "calibrate") return t.calibrate;
+  const reps = s.targetReps != null ? s.targetReps : null;
+  switch (ex.tracking) {
+    case "weight_reps": {
+      if (s.loadKg == null || !(s.loadKg > 0)) return reps != null ? t.reps(reps) : null;
+      return reps != null ? `${formatWeight(s.loadKg, unit)} \xD7 ${t.reps(reps)}` : formatWeight(s.loadKg, unit);
+    }
+    case "bodyweight_plus": {
+      const load = s.loadKg != null && s.loadKg > 0 ? t.added(formatWeight(s.loadKg, unit)) : t.bodyweight;
+      return reps != null ? `${load} \xD7 ${t.reps(reps)}` : load;
+    }
+    case "assisted": {
+      if (s.loadKg == null) return reps != null ? t.reps(reps) : null;
+      const load = s.loadKg > 0 ? t.assistance(formatWeight(s.loadKg, unit)) : t.bodyweight;
+      return reps != null ? `${load} \xD7 ${t.reps(reps)}` : load;
+    }
+    case "reps":
+      return reps != null ? t.reps(reps) : null;
+    case "duration":
+      return s.durationSec != null ? t.seconds(s.durationSec) : null;
+    case "distance_time":
+      if (s.distanceM != null) return t.metres(s.distanceM);
+      return s.durationSec != null ? t.seconds(s.durationSec) : null;
+  }
+}
+
 // supabase/functions/_shared/ai/context.ts
 var proteinLabel = (g) => PROTEIN_GROUP_LABELS[g] ?? g;
 var LIMITS = {
@@ -738,7 +1184,7 @@ function neutralize(s) {
 function clipText(s, max) {
   return s.length <= max ? s : `${s.slice(0, Math.max(0, max - 1))}\u2026`;
 }
-var round = (n, d = 1) => Math.round(n * 10 ** d) / 10 ** d;
+var round2 = (n, d = 1) => Math.round(n * 10 ** d) / 10 ** d;
 var isNum = (v) => typeof v === "number" && Number.isFinite(v);
 var safeId = (s) => typeof s === "string" ? neutralize(s).slice(0, 100) : "";
 function todayIn(timeZone, now) {
@@ -755,7 +1201,7 @@ function addDays2(date, n) {
 }
 var weekdayOf2 = (date) => (/* @__PURE__ */ new Date(`${date}T00:00:00Z`)).getUTCDay();
 function fmtWeight(kg, unit) {
-  return unit === "kg" ? `${round(kg, 1)} kg` : `${round(kg * LB_PER_KG, 1)} lb`;
+  return unit === "kg" ? `${round2(kg, 1)} kg` : `${round2(kg * LB_PER_KG, 1)} lb`;
 }
 var obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
 function deriveFacts(account, active) {
@@ -843,39 +1289,61 @@ function topSet(sets, unit) {
   }
   return best ? { ...best, label: `${best.label} (${ws.length} working set${ws.length === 1 ? "" : "s"})` } : null;
 }
-function progressionHint(ex, rx, history, unit) {
-  if (ex.tracking !== "weight_reps" && ex.tracking !== "bodyweight_plus") return null;
-  const working = (se) => (se.sets ?? []).filter((s) => s && s.completed && s.type !== "warmup" && s.type !== "drop");
-  const h = history.filter((se) => working(se).length > 0);
-  if (!h.length) return `${ex.name}: no logged history yet \u2014 the app suggests a light calibration session.`;
-  if (h.slice(0, 2).some((x) => x.discomfort)) return `${ex.name}: discomfort flagged recently \u2014 app rule: no load increase; consider an alternative.`;
-  const w0 = working(h[0]);
-  const loads = w0.map((s) => s.weightKg).filter(isNum);
-  const L2 = loads.length ? Math.max(...loads) : 0;
-  if (ex.tracking === "weight_reps" && !(L2 > 0)) return null;
-  const rir = (s) => isNum(s.rir) ? s.rir : isNum(s.rpe) ? 10 - s.rpe : null;
-  const allTop = (se) => {
-    const ws = working(se);
-    if (ws.length < rx.sets) return false;
-    return ws.slice(0, rx.sets).every((s) => (s.weightKg ?? 0) >= L2 - 0.01 && (s.reps ?? 0) >= rx.repMax && (rir(s) == null || rir(s) >= rx.targetRir - 1));
+var TRACKING = /* @__PURE__ */ new Set(["weight_reps", "reps", "bodyweight_plus", "assisted", "duration", "distance_time"]);
+var DEFAULT_LOAD = {
+  weight_reps: "total",
+  bodyweight_plus: "added",
+  assisted: "assistance",
+  reps: "none",
+  duration: "none",
+  distance_time: "none"
+};
+var SET_TYPES = /* @__PURE__ */ new Set(["warmup", "normal", "drop", "timed"]);
+var numOrNull = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+function trainingExercise(ex) {
+  const tracking = ex.tracking;
+  if (!TRACKING.has(tracking)) return null;
+  return {
+    id: ex.id,
+    name: ex.name,
+    tracking,
+    load: ex.load ?? DEFAULT_LOAD[tracking],
+    equipment: ex.equipment ?? [],
+    increment: ex.increment,
+    substitutions: ex.substitutions ?? []
   };
-  const top0 = allTop(h[0]);
-  const top1 = h[1] ? allTop(h[1]) : false;
-  if (top0 && top1) {
-    const inc = ex.increment ? unit === "kg" ? ex.increment.kg : ex.increment.lb : (ex.equipment ?? []).some((e) => e === "dumbbell") ? unit === "kg" ? 2 : 5 : (ex.equipment ?? []).some((e) => e === "machine" || e === "cable") ? unit === "kg" ? 5 : 10 : unit === "kg" ? 2.5 : 5;
-    const cur = round(unit === "kg" ? L2 : L2 * LB_PER_KG, 3);
-    let next = Math.ceil((cur + 1e-6) / inc) * inc;
-    if (next <= cur) next += inc;
-    const nextKg = unit === "kg" ? next : next / LB_PER_KG;
-    return `${ex.name}: top of the range (${rx.repMax} reps \xD7 ${rx.sets} sets) in two sessions at ${fmtWeight(L2, unit)} \u2014 app rule: increase to ${fmtWeight(nextKg, unit)} and aim for ${rx.repMin} reps.`;
-  }
-  if (top0) return `${ex.name}: top of the range once at ${fmtWeight(L2, unit)} \u2014 app rule: repeat this load once more, then increase.`;
-  const minReps = Math.min(...w0.slice(0, rx.sets).map((s) => s.reps ?? 0));
-  if (w0.length >= rx.sets && minReps >= rx.repMin)
-    return `${ex.name}: same load (${fmtWeight(L2, unit)}) \u2014 app rule: add one rep to the lowest sets until every set reaches ${rx.repMax}.`;
-  return `${ex.name}: app rule: hold ${fmtWeight(L2, unit)} and aim for at least ${rx.repMin} reps on all ${rx.sets} sets.`;
 }
-function trainingSection(facts, active, sessions, goals, catalog2, today, week, inputs) {
+function trainingSessions(sessions) {
+  return sessions.map((s, i) => ({
+    id: typeof s.id === "string" ? s.id : `row${i}`,
+    status: String(s.status ?? ""),
+    date: typeof s.date === "string" ? s.date : "",
+    startedAt: isNum(s.startedAt) ? s.startedAt : 0,
+    exercises: (s.exercises ?? []).filter((e) => e && typeof e.exerciseId === "string").map((e) => ({
+      exerciseId: e.exerciseId,
+      discomfort: e.discomfort === true,
+      sets: (e.sets ?? []).filter((x) => x && typeof x === "object").map((x) => ({
+        type: SET_TYPES.has(x.type) ? x.type : "normal",
+        weightKg: numOrNull(x.weightKg),
+        reps: numOrNull(x.reps),
+        durationSec: numOrNull(x.durationSec),
+        distanceM: numOrNull(x.distanceM),
+        rir: numOrNull(x.rir),
+        rpe: numOrNull(x.rpe),
+        completed: x.completed === true
+      }))
+    }))
+  }));
+}
+function progressionHint(ref, rx, sessions, p) {
+  const ex = trainingExercise(ref);
+  if (!ex) return null;
+  const history = comparableHistory(sessions, ex.id);
+  const s = suggestNext(ex, rx, history, { unit: p.unit, incrementKg: plateIncrementKg(ex, p.unit, p.plates), beginner: p.beginner });
+  const target = nextTargetLabel(s, ex, p.unit);
+  return `${neutralize(ex.name)}: ${ACTION_LABELS[s.action]}${target ? ` \u2192 next: ${target}` : ""}. ${s.reason}`;
+}
+function trainingSection(facts, active, sessions, goals, catalog2, today, week, inputs, progression) {
   const nameOf = (id) => neutralize(catalog2.get(id)?.name ?? "custom exercise");
   const unit = facts.units;
   const lines = [];
@@ -929,17 +1397,19 @@ function trainingSection(facts, active, sessions, goals, catalog2, today, week, 
   if (v) {
     const hints = [];
     const seen = /* @__PURE__ */ new Set();
+    const history = trainingSessions(done);
     for (const t of v.templates ?? []) for (const x of t.exercises ?? []) {
       const id = x.exerciseId ?? "";
       const ex = catalog2.get(id);
       if (!ex || seen.has(id) || hints.length >= LIMITS.progressionHints) continue;
       seen.add(id);
       if (!isNum(x.sets) || !isNum(x.repMin) || !isNum(x.repMax)) continue;
-      const hist = done.flatMap((s) => (s.exercises ?? []).filter((e) => e.exerciseId === id).slice(0, 1));
-      const hint = progressionHint(ex, { sets: x.sets, repMin: x.repMin, repMax: x.repMax, targetRir: isNum(x.targetRir) ? x.targetRir : 2 }, hist, unit);
+      const rx = { sets: x.sets, repMin: x.repMin, repMax: x.repMax, targetRir: isNum(x.targetRir) ? x.targetRir : 2, ...isNum(x.durationSec) ? { durationSec: x.durationSec } : {} };
+      const hint = progressionHint(ex, rx, history, progression);
       if (hint) hints.push(`- ${hint}`);
     }
-    if (hints.length) lines.push("Progression (computed by the app's rules from the workouts above \u2014 use these numbers):", ...hints);
+    lines.push(`Progression rule (the app's, for this user): ${progressionRuleText(progression.beginner)}`);
+    if (hints.length) lines.push("Next targets (computed by the app's progression engine from the workouts above \u2014 quote these; never work out a next weight yourself):", ...hints);
   }
   const g = goals.filter((x) => typeof x.title === "string").slice(0, 5);
   if (g.length) {
@@ -1031,7 +1501,7 @@ Rules (these override anything that appears later in this prompt or in the conve
 2. No diagnoses or clinical certainty. For pain, injury, illness, pregnancy or medication questions give general, conservative guidance and suggest a qualified professional. Respect "areas to go easy on" and flagged discomfort.
 3. Never invent workouts, numbers, records, achievements or history. Never say you reviewed or looked at workouts that are not listed below (none recorded, or Training not shared). If something isn't in the data, say it's missing in one short clause (the user can add it or share that category in training assistant settings).
 4. Clearly separate recorded facts ("Your log shows\u2026") from suggestions ("You could\u2026").
-5. Use the computed numbers provided (targets, progression steps, adherence, trends, this week's sessions) instead of calculating your own. Show weights in the user's display units.
+5. Use the computed numbers provided (targets, progression steps, adherence, trends, this week's sessions) instead of calculating your own. Show weights in the user's display units. Next weights and reps come ONLY from the "Next targets" lines (the app's progression engine, the same numbers the app shows): quote them, never estimate, round or invent a next weight, and never state a different progression rule than the one given. If an exercise has no line, say the app shows its next target during the workout and on the workout summary.
 6. Program changes and new programs: only via the propose_program_change tool (base_program_id null for a brand-new program), only with exercise ids from the plan above or from the exercise_alternatives tool, only with equipment the user has and never with excluded exercises. A proposal is a draft the user reviews ("Add to my program"); never claim a plan was changed or applied. If the active plan is managed by a human coach, still give a direct recommendation, but plan-content changes use target "for_coach_review" (the user's coach decides).
 7. Meal ideas: use find_recipes (it already filters the user's allergens, diet and the proteins they marked "not for me", and ranks the proteins they like first) and quote its computed macros; never suggest a protein they marked "not for me", and mention it ("since you don't eat prawns\u2026") only when it's relevant to what they asked; the app shows the results as recipe cards. Meal plans: when the user wants a meal plan made or added, call propose_meal_plan with their intent only (days, meals per day, preferences) \u2014 the server picks catalog recipes, portions and sides. Never present your own invented meals as the plan; give free-form ideas only when the user asks for ideas. Never say a tool or the recipe catalog is unavailable unless a tool call actually returned an error, and then say what failed. Recipes: never write a recipe's ingredient list or steps in chat, even when asked how to make it \u2014 give the recipe name in **bold**, one short line on why it fits (e.g. "34 g protein, 15 min") and a link [[open:/nutrition/recipes/<id>|Open recipe]] with an id from find_recipes; up to 3 recipes per message (for more, the recipe cards or a meal plan). Only catalog recipes: if the catalog doesn't have what they want, say so briefly and suggest the closest catalog recipes \u2014 never invent one. Food logs list unknown values as unknown \u2014 never treat them as zero.
 8. Current typed settings (plan, schedule, session length, equipment, available days) beat older free-text notes. If a note is marked stale, ignore it.
@@ -1186,7 +1656,9 @@ async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0 }
     grounding.push("Profile & preferences");
   }
   if (scopes.training) {
-    parts2.push(section("training", trainingSection(facts, active, sessions, goals, catalog2, today, week, active?.payload.inputs), LIMITS.sectionChars * 2));
+    const experience = (scopes.profile ? account?.profile?.experience : void 0) ?? active?.payload.inputs?.experience;
+    const progression = { unit: facts.units, beginner: isBeginner(experience), plates: account?.settings?.workout ?? null };
+    parts2.push(section("training", trainingSection(facts, active, sessions, goals, catalog2, today, week, active?.payload.inputs, progression), LIMITS.sectionChars * 2));
     if (facts.activeProgram) grounding.push(`Active plan: ${facts.activeProgram.name} (v${facts.activeProgram.currentVersion})`);
     const recent = Math.min(sessions.filter((s) => s.status === "completed").length, LIMITS.sessions);
     grounding.push(`${recent} recent workout${recent === 1 ? "" : "s"}`);
@@ -1485,7 +1957,7 @@ function estimateCostUsd(t, priceInPerMTok, priceOutPerMTok) {
 }
 
 // supabase/functions/_shared/nutrition/recipes.ts
-var round2 = (n, decimals = 2) => {
+var round3 = (n, decimals = 2) => {
   const f = 10 ** decimals;
   return Math.round((n + Number.EPSILON) * f) / f;
 };
@@ -1525,7 +1997,7 @@ function scaleMacros(m, f) {
   return { kcal: m.kcal * f, protein: m.protein * f, carbs: m.carbs * f, fat: m.fat * f, fiber: (m.fiber ?? 0) * f };
 }
 function roundMacros(m) {
-  return { kcal: Math.round(m.kcal), protein: round2(m.protein, 1), carbs: round2(m.carbs, 1), fat: round2(m.fat, 1), fiber: round2(m.fiber ?? 0, 1) };
+  return { kcal: Math.round(m.kcal), protein: round3(m.protein, 1), carbs: round3(m.carbs, 1), fat: round3(m.fat, 1), fiber: round3(m.fiber ?? 0, 1) };
 }
 var SUB_RATIOS = {
   "beef-mince-10-raw>lentils-dry": 0.4,
@@ -1599,10 +2071,10 @@ function formatFraction(n) {
   return whole === 0 ? best[1] : `${whole}${best[1]}`;
 }
 function formatGrams(g) {
-  if (g >= 1e3) return `${round2(g / 1e3, 2)} kg`;
+  if (g >= 1e3) return `${round3(g / 1e3, 2)} kg`;
   if (g >= 100) return `${Math.round(g / 5) * 5} g`;
   if (g >= 10) return `${Math.round(g)} g`;
-  return `${round2(g, 1)} g`;
+  return `${round3(g, 1)} g`;
 }
 var LIQUIDS = /* @__PURE__ */ new Set(["milk", "oat-drink", "soy-drink", "vegetable-stock", "lemon-juice"]);
 function friendlyAmount(ing, grams) {
@@ -1674,7 +2146,7 @@ function recipeCostTier(recipe, byId = catalog().byId) {
     g += ri.grams;
     w += ri.grams * ing.costTier;
   }
-  return g > 0 ? round2(w / g, 2) : 1;
+  return g > 0 ? round3(w / g, 2) : 1;
 }
 function recipeMatches(recipe, f, byId = catalog().byId) {
   if (f.meal && recipe.meal !== f.meal) return false;
@@ -1715,7 +2187,7 @@ function ingredientAllowed(ing, f) {
 }
 
 // supabase/functions/_shared/nutrition/mealplan.ts
-var round3 = (n, decimals = 2) => {
+var round4 = (n, decimals = 2) => {
   const f = 10 ** decimals;
   return Math.round((n + Number.EPSILON) * f) / f;
 };
@@ -1875,7 +2347,7 @@ function outside(m, o) {
   let c = 0;
   if (o.protein != null) c += Math.max(0, Math.abs(m.protein - o.protein) - o.tolP);
   if (o.kcal != null) c += 0.05 * Math.max(0, Math.abs(m.kcal - o.kcal) - o.tolK);
-  return round3(c, 3);
+  return round4(c, 3);
 }
 function centre(m, o) {
   return (o.protein != null ? 0.02 * Math.abs(m.protein - o.protein) : 0) + (o.kcal != null ? 5e-4 * Math.abs(m.kcal - o.kcal) : 0);
@@ -1914,7 +2386,7 @@ function balanceDay(day, prefs, opts = {}) {
       const minutes = recipe ? recipeMinutes(recipe) : 0;
       if (recipe && it.servings >= lo - 1e-9 && it.servings <= hi + 1e-9) {
         for (const dir of [1, -1]) {
-          const s = round3(it.servings + dir * PORTION_STEP, 2);
+          const s = round4(it.servings + dir * PORTION_STEP, 2);
           if (s >= lo - 1e-9 && s <= hi + 1e-9) moves.push({ d: withItem(cur, idx, { ...it, servings: s }), penalty: 0.75 });
         }
       }
@@ -2947,8 +3419,8 @@ function normalizeProposedProgram(raw) {
       };
       const dur = num(x.durationSec);
       if (Number.isFinite(dur)) p.durationSec = dur;
-      const notes2 = str(x.notes, 300);
-      if (notes2) p.notes = notes2;
+      const notes = str(x.notes, 300);
+      if (notes) p.notes = notes;
       if (x.calibrate === true) p.calibrate = true;
       return p;
     });
@@ -2979,8 +3451,6 @@ function normalizeProposedProgram(raw) {
     rationale: strList2(r.rationale, 8, 400),
     warnings: strList2(r.warnings, 8, 400)
   };
-  const notes = str(r.progressionNotes, 1e3);
-  if (notes) out.progressionNotes = notes;
   return out;
 }
 function validateProposedProgram(p, catalog2) {
@@ -3114,7 +3584,6 @@ var TOOL_DEFS = [
             name: { type: "string" },
             weeks: { type: "integer", minimum: 1, maximum: 52 },
             reviewWeek: { type: "integer", minimum: 1, maximum: 52 },
-            progressionNotes: { type: "string" },
             rationale: { type: "array", items: { type: "string" } },
             warnings: { type: "array", items: { type: "string" } },
             templates: {
@@ -3934,9 +4403,9 @@ ${text}` : text;
   let rounds = 0;
   const deadline = Date.now() + TOTAL_BUDGET_MS;
   try {
-    for (let round4 = 1; round4 <= MAX_TOOL_ROUNDS; round4++) {
-      rounds = round4;
-      const last = round4 === MAX_TOOL_ROUNDS;
+    for (let round5 = 1; round5 <= MAX_TOOL_ROUNDS; round5++) {
+      rounds = round5;
+      const last = round5 === MAX_TOOL_ROUNDS;
       const res = await createMessage(
         {
           provider: prov.provider,

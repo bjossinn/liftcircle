@@ -12,6 +12,12 @@ const byId = new Map(EXERCISES.map((e) => [e.id, e]));
 const STYLES: CoachStyle[] = ['supportive', 'balanced', 'strict'];
 const SITUATIONS = Object.keys(CHEER_LINES) as CheerSituation[];
 const words = (s: string) => s.trim().split(/\s+/).length;
+/**
+ * Progression advice a cheer must never give: whether and when the load changes is the progression engine's decision
+ * (src/domain/progression.ts), so a cheer saying "heavier next time" after one set can contradict it.
+ */
+const PROGRESSION_ADVICE =
+  /next (time|session|workout|week)|heavier|go(es)? up|weight (should|will) move|add (a little |some |more )?(weight|load|a plate)|increas|bump|step up|raise the bar|more weight|outgrown|next plate|lighter next|drop the weight|lower the weight|nudge the weight|progress(ion)? (unlocked|is coming)|ready (for a bit more|to progress)|time to (go|add|raise)/i;
 
 const set = (id: string, over: Partial<LoggedSet> = {}): LoggedSet => ({ id, type: 'normal', weightKg: 60, entered: { value: 60, unit: 'kg' }, reps: 8, completed: false, ...over });
 const ex = (id: string, exerciseId: string, sets: LoggedSet[], over: Partial<SessionExercise> = {}): SessionExercise => ({
@@ -27,6 +33,17 @@ const cheer = (s: WorkoutSession, seId: string, setId: string, style: CoachStyle
   cheerForSet({ session: s, seId, setId, style, history, byId, unit: 'kg', rand: () => 0 });
 
 describe('phrase library', () => {
+  it('states facts only: no line in any situation or style gives progression advice', () => {
+    for (const sit of SITUATIONS) for (const st of STYLES) {
+      for (const line of CHEER_LINES[sit][st]) expect(line, `${sit}/${st}`).not.toMatch(PROGRESSION_ADVICE);
+    }
+  });
+
+  it('the advice guard itself catches the old contradicting lines', () => {
+    for (const old of ['That’s the top of the range, weight goes up next time.', 'Max reps hit. Time to go heavier next time.', 'Top reps. You’ve outgrown this weight.', 'Shy of the target. Maybe drop the weight a touch.', 'All reps in. You’re ready to progress.'])
+      expect(old).toMatch(PROGRESSION_ADVICE);
+  });
+
   it('has 15+ lines for every situation and style', () => {
     for (const sit of SITUATIONS) for (const st of STYLES) expect(CHEER_LINES[sit][st].length, `${sit}/${st}`).toBeGreaterThanOrEqual(15);
   });
@@ -72,10 +89,15 @@ describe('cheerForSet: situation from the set just logged', () => {
     expect(cheer(twice, 'e1', 'b', 'balanced', [past(60, 8)])!.situation).not.toBe('pr');
   });
 
-  it('top of the rep range → "weight goes up next time"', () => {
+  it('top of the rep range → states the reps reached (a fact), never that the weight goes up', () => {
     const s = session([ex('e1', 'barbell-bench-press', [set('a', { reps: 10, completed: true }), set('b')])]);
-    for (const st of STYLES) expect(CHEER_LINES.top_of_range[st]).toContain(cheer(s, 'e1', 'a', st)!.line);
-    expect(cheer(s, 'e1', 'a')!.line).toBe('That’s the top of the range, weight goes up next time.');
+    for (const st of STYLES) {
+      const c = cheer(s, 'e1', 'a', st)!;
+      expect(c.situation).toBe('top_of_range');
+      expect(CHEER_LINES.top_of_range[st].map((l) => l.replace('{reps}', '10'))).toContain(c.line);
+      expect(c.line).toContain('10');
+      expect(c.line).not.toMatch(PROGRESSION_ADVICE);
+    }
   });
 
   it('reps below target → encouraging; firmer in Strict', () => {

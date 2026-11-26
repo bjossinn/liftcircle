@@ -72,7 +72,7 @@ export async function seedDemo(): Promise<void> {
     if (!slot || rand() < 0.12) continue; // a few missed sessions, like real life
     const t = v.templates.find((x) => x.id === slot.templateId);
     if (!t || t.exercises.length === 0) continue;
-    const s = buildSessionFromTemplate(t, { catalog: EXERCISES, history, settings: acct.settings, programId: program.id, programVersion: v.version, plannedDate: d, date: d, timeZone: tz });
+    const s = buildSessionFromTemplate(t, { catalog: EXERCISES, history, settings: acct.settings, programId: program.id, programVersion: v.version, plannedDate: d, date: d, timeZone: tz, experience: acct.profile.experience });
     const startedAt = toUTCms(d) + 17 * 3600_000;
     s.startedAt = startedAt;
     for (const se of s.exercises) {

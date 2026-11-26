@@ -109,8 +109,8 @@ export function normalizeProposedProgram(raw: unknown): NormProgram {
     rationale: strList(r.rationale, 8, 400),
     warnings: strList(r.warnings, 8, 400),
   };
-  const notes = str(r.progressionNotes, 1000);
-  if (notes) out.progressionNotes = notes;
+  // r.progressionNotes is deliberately ignored: load progression is the app's own rule (_shared/training/progression.ts),
+  // so an AI-written progression scheme never travels into a plan where it could contradict the engine.
   return out;
 }
 

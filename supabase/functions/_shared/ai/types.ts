@@ -127,6 +127,8 @@ export interface RefExercise {
   category?: string;
   equipment: string[];
   tracking?: string;
+  /** What the load number means (catalog LoadConvention); used by the shared progression engine. */
+  load?: string;
   substitutions?: string[];
   stresses?: string[];
   primaryMuscles?: string[];
@@ -227,7 +229,11 @@ export interface SessionPayload {
   exercises?: { exerciseId?: string; discomfort?: boolean; sets?: LoggedSetPayload[] }[];
 }
 export interface AccountStatePayload {
-  settings?: { units?: { weight?: string; length?: string; distance?: string }; timeZone?: string; weekStart?: number; nutritionEnabled?: boolean };
+  settings?: {
+    units?: { weight?: string; length?: string; distance?: string }; timeZone?: string; weekStart?: number; nutritionEnabled?: boolean;
+    /** Plate increments the progression engine uses for barbell lifts (same fields as the app's Settings.workout). */
+    workout?: { plateIncrementKg?: number; plateIncrementLb?: number };
+  };
   profile?: {
     goal?: string;
     secondaryGoal?: string;

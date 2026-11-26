@@ -22,6 +22,7 @@ import { INGREDIENTS_BY_ID } from '@/data/ingredients';
 import type { RecipeSuggestions } from '@/domain/nutrition/aiActions';
 import type { MealPlan, MealSlot } from '@/domain/types';
 import { useWeekPlan } from '@/features/nutrition/shared';
+import { recipeLink } from '@/features/nutrition/recipeLink';
 
 type Recipe = RecipeSuggestions['recipes'][number];
 
@@ -41,9 +42,7 @@ export function cardSwaps(r: Pick<Recipe, 'omit' | 'swaps'>): Swap[] {
 }
 /** Recipe screen link; swaps travel as ?swap=from:to,… (the recipe screen accepts only substitutes it lists). */
 export function recipeHref(r: Pick<Recipe, 'id' | 'omit' | 'swaps'>): string {
-  const base = `/nutrition/recipes/${encodeURIComponent(r.id)}`;
-  const sw = cardSwaps(r);
-  return sw.length ? `${base}?swap=${sw.map((s) => `${encodeURIComponent(s.from)}:${encodeURIComponent(s.to)}`).join(',')}` : base;
+  return recipeLink(r.id, cardSwaps(r));
 }
 
 export function RecipeCards({ suggestions }: { suggestions: RecipeSuggestions }) {

@@ -51,8 +51,10 @@ Workouts & rest timer → Celebrations**. With your phone's "reduce motion" sett
 - **Quick load change:** the − / + buttons under an exercise adjust all remaining sets by the smallest practical jump.
 - **Dumbbells:** enter the weight of *one* dumbbell. **Unilateral moves:** reps are per side. Each exercise shows its rule.
 - **Coach cheers:** when you tick a set, a small popup from your coach reacts to it — a new record (with the number),
-  the top of your rep range ("weight goes up next time"), the last set of an exercise (it names the next one), the last
-  set of the workout, or a few reps short. When the rest timer ends it names your next set, e.g. "Rest's up, Bench press
+  the top of your rep range ("12 reps, top of the range"), the last set of an exercise (it names the next one), the last
+  set of the workout, or a few reps short. Cheers only say what you did; they never tell you to change the weight.
+  Whether the load goes up next time is decided by the progression rule and shown as **Next:** on the workout summary
+  and in the progression tip during the next workout. When the rest timer ends it names your next set, e.g. "Rest's up, Bench press
   set 3: 60 kg × 8. Let's go!" (if the app was in the background, you see it once when you come back). Lines follow your
   coach style (Supportive, Balanced or Strict). If you flagged **Felt discomfort**, it only says caring things. No
   popup for warm-ups or when you undo a set. Tap a popup to dismiss it. It works offline and costs nothing (no AI call).

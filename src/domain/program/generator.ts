@@ -15,6 +15,7 @@ import {
   type SplitKey,
 } from './templates';
 import * as X from './explain';
+import { isBeginner } from '@/domain/progression';
 import { effectiveLiftingDays, resolveSplit, splitFamily, type SplitResolution } from './splits';
 
 export const ALL_EQUIPMENT: Equipment[] = [
@@ -62,7 +63,7 @@ function makeCtx(a: OnboardingAnswers, catalog: Exercise[]): Ctx {
     limits: new Set(a.limitations),
     enjoyed: new Set(a.enjoyedExerciseIds),
     experience: a.experience,
-    beginner: a.experience === 'new' || a.experience === 'returning',
+    beginner: isBeginner(a.experience),
     goal: a.goal,
     budget: clamp(Math.round(a.sessionMinutes || 45), 15, 180),
   };
@@ -225,7 +226,8 @@ function prescribe(ex: Exercise, slot: Pick<SlotDef, 'priority' | 'key'>, ctx: C
     rx.calibrate = true;
     rx.notes = X.CALIBRATION_NOTE;
   } else if (ex.tracking === 'bodyweight_plus' && !hasKnown) {
-    rx.notes = 'Start with bodyweight only; add load once every set reaches the top of the range.';
+    // When to add load is the progression engine's call (it shows on the workout and its summary), not a fixed note.
+    rx.notes = 'Start with bodyweight only. The app suggests added load when your sets show you’re ready.';
   }
   return rx;
 }
@@ -591,7 +593,7 @@ export interface SplitChoice {
  */
 export function chooseSplit(a: OnboardingAnswers, variant = 0, availableCount = 7): SplitChoice {
   const warnings: string[] = [];
-  const beginner = a.experience === 'new' || a.experience === 'returning';
+  const beginner = isBeginner(a.experience);
   const requested = clamp(Math.round(a.liftingDaysPerWeek), 0, 6);
   if (requested > availableCount) {
     warnings.push(`You asked for ${requested} lifting days but marked ${availableCount} available day${availableCount === 1 ? '' : 's'}, so the plan uses ${availableCount}.`);
@@ -803,7 +805,7 @@ export function generateProgram(answers: OnboardingAnswers, catalog: Exercise[],
   const weeks = ctx.beginner ? 6 : 8;
   const reviewWeek = weeks;
   rationale.push(X.blockRationale(weeks, reviewWeek));
-  if (lift.length) rationale.push(X.PROGRESSION_RATIONALE);
+  if (lift.length) rationale.push(X.progressionRationale(ctx.beginner));
   if (answers.limitations.length) warnings.push('If an exercise causes pain, stop it and flag discomfort. We’ll hold its progression and suggest alternatives. This app doesn’t diagnose injuries.');
 
   return {
