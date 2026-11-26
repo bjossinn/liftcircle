@@ -61,6 +61,8 @@ function matchTemplate(key: MessageKey, text: string): Record<string, string> | 
 
 /** Session name for display: manual "Session A" names and generated names are localized; custom names unchanged. */
 export function displaySessionName(t: Pick<SessionTemplate, 'id' | 'name' | 'nameEdited'>): string {
+  // A name the user typed (renamed, even to "Session A") is their text: shown verbatim.
+  if (t.nameEdited) return t.name;
   if (t.id.startsWith('custom:')) {
     const m = matchTemplate('onboarding.manualSessionName', t.name);
     if (m && /^[A-Z]$/.test(m.letter)) return translate('onboarding.manualSessionName', { letter: m.letter });

@@ -41,6 +41,15 @@ describe('program text provenance', () => {
     expect(cardioNotesText(walk)).toBe(t('program.generator.walkNotes', undefined, 'is'));
   });
 
+  it('a session the user renamed to "Session A" stays verbatim; an untouched manual "Session A" translates', () => {
+    setLanguage('is');
+    const manual = emptyTemplate('custom:m1', 'Session A');
+    expect(displaySessionName(manual)).toBe(t('onboarding.manualSessionName', { letter: 'A' }, 'is'));
+    expect(displaySessionName({ ...manual, nameEdited: true })).toBe('Session A');
+    const generated = gen().templates.find((s) => s.name === FULL_BODY_A)!;
+    expect(displaySessionName({ ...generated, name: 'Session A', nameEdited: true })).toBe('Session A');
+  });
+
   it('custom sessions named like generated ones display verbatim', () => {
     setLanguage('is');
     const custom = emptyTemplate('custom:abc', EASY_WALK);
