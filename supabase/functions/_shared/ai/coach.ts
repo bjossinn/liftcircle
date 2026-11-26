@@ -270,7 +270,7 @@ async function answer(a: Answering): Promise<CoachResult> {
   // Tell the model which language to answer in when the app sent its language or the user asked for one; requests from
   // older apps keep the prompt as it was.
   const langSource = replyLangSource({ text, setting });
-  const baseSystem = setting || langSource === 'asked' ? `${ctx.system}\n\n${replyLanguageLine(toolLang, langSource)}` : ctx.system;
+  const baseSystem = setting || langSource === 'asked' || langSource === 'refused' ? `${ctx.system}\n\n${replyLanguageLine(toolLang, langSource)}` : ctx.system;
   // A meal-plan / recipe request the user has to settle first ("Vegan matseðill með kjúklingi", "2,5 máltíðir"): no plan or
   // recipe cards are built for it (tools and the fallback refuse), and the model is told to ask instead.
   const resumedPlan = ctx.followUp && ctx.openRequest?.intent === 'meal_plan';

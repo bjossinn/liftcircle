@@ -61,7 +61,7 @@ const FOOD_TOKENS = (() => {
   for (const xs of Object.values(V.diet.map)) add(xs);
   return out;
 })();
-const EN_FOOD = /\b(?:protein|calories?|kcal|carbs?|carbohydrates?|fat|fibre|fiber|vegan|vegetarian|pescatarian|keto|paleo|gluten|lactose|dairy|nuts?|peanuts?|eggs?|fish|shellfish|soy|sesame|mustard|celery|wheat|creatine|macros?)\b/;
+const EN_FOOD = /\b(?:protein|calories?|kcal|carbs?|carbohydrates?|fat|fibre|fiber|vegan|vegetarian|pescatarian|keto|paleo|gluten|lactose|dairy|milk|nuts?|peanuts?|eggs?|fish|shellfish|soy|sesame|mustard|celery|wheat|creatine|macros?|allerg(?:y|ies|ic)|intoleran(?:ce|t))\b/;
 
 /* ------------------------------------------------------------------ number words */
 const NUMBER_WORDS: Map<string, number> = (() => {
@@ -300,10 +300,24 @@ const QUESTION_START = /^ (?:hvað|hvar|hvernig|hvenær|af hverju|hvers vegna|ge
 const asksQuestion = (text: string, f: string) =>
   /^ (?:hvað|hvaða|hvar|hvernig|hvenær|af hverju|hvers vegna|inniheldur|what|what's|whats|which|where|why|how|when|is|are|does|did|has) /.test(f) ||
   (/^ (?:er|eru) /.test(f) && /\?\s*$/.test(String(text ?? '')));
+/** Interrogative words anywhere in the message ("Segðu mér HVERSU mikið prótein er í matseðlinum mínum", "how many
+ *  calories are in my meal plan"). */
+const QUESTION_WORDS = new Set(['hvað', 'hvaða', 'hvar', 'hvernig', 'hvenær', 'hversu', 'hve', 'hver', 'hverjir', 'hverjar', 'hvert', 'hverju', 'hverja', 'hvers',
+  'hvort', 'hvor', 'what', "what's", 'whats', 'which', 'where', "where's", 'why', 'how', 'when', 'who', 'whether'].map(foldIs));
+/** Polite request openers: "Could you do my meal plan?" / "Geturðu …?" asks for something, it isn't a question about it. */
+const POLITE_OPENER = /^ (?:can|could|would|will|geturðu|getur|gætirðu|gætir|viltu|vilt|mættirðu|please|vinsamlegast) /;
+/** A question about something: a question word anywhere, an inverted copula/auxiliary at the start, or a "?" that does
+ *  not close a polite request. */
+const isQuestion = (text: string, t: string[], f: string) =>
+  asksQuestion(text, f) || t.some((w) => QUESTION_WORDS.has(w)) || (/\?\s*$/.test(String(text ?? '')) && !POLITE_OPENER.test(f));
 /** The user's own, existing plan: a possessive ("minn", "my") or the definite noun ("matseðillinn", "æfingaáætlunina"). */
 const OWN = new Set(['minn', 'min', 'mitt', 'minum', 'minni', 'mina', 'minnar', 'mins', 'okkar', 'nuverandi', 'my', 'our', 'current']);
 const DEFINITE_PLAN = /^(?:vikumatseð|matseð|matarplan|mataraætlun|æfingaaætlun|æfingaplan|æfingaprogramm|programm)[a-zæðþ]*(?:inn|inum|ins|sins|ið|inu|ina|inni|innar)$/;
-const ownPlan = (t: string[]) => t.some((w) => OWN.has(w) || DEFINITE_PLAN.test(w));
+const PLAN_WORD_EN = /^(?:plan|meal|meals|program|programme|routine|split)$/;
+const planWord = (w: string) => isMealPlanToken(w) || isProgramToken(w) || PLAN_WORD_EN.test(w);
+/** A possessive counts only next to a plan word ("my meal plan", "matseðlinum mínum", "my current plan"): "Meal plan for
+ *  next week. What do you recommend for MY peanut allergy?" is about the allergy, not about an existing plan. */
+const ownPlan = (t: string[]) => t.some((w, i) => DEFINITE_PLAN.test(w) || (OWN.has(w) && t.slice(Math.max(0, i - 3), i + 4).some(planWord)));
 /** Verbs that ask to change a plan (a request, not a question about it). */
 const MODIFY = /^(?:breyt|uppfær|endurgerð|endurger|lagaðu|laga$|skiptu|skipta|update|change|replace|redo|regenerate|swap|fix|adjust|tweak|edit|make|create|build)/;
 const EXPLAIN = (t: string[], f: string) =>
@@ -327,9 +341,10 @@ export function classifyRequest(text: string): RequestKind | null {
   if ((mealNoun || progNoun) && !create) {
     if (/^ (?:hvar|where) /.test(f) || / (?:hvar finn|hvernig finn|how do i find|where do i find|where is|where's) /.test(f)) return 'app_navigation';
     if (EXPLAIN(t, f) || anyPhrase(t, PROGRAM_NEGATIVE.filter((p) => !p.includes('ekki')))) return mealNoun && !progNoun ? 'explain_existing_meal_plan' : 'explain_existing_program';
-    // "Er matseðillinn minn vegan?", "Is my meal plan vegan?": a question about the user's OWN plan reads it; it never
-    // creates or replaces one (unless it asks to change it: "Geturðu breytt matseðlinum mínum?").
-    if (asksQuestion(text, f) && ownPlan(t) && !t.some((w) => MODIFY.test(w))) return mealNoun && !progNoun ? 'explain_existing_meal_plan' : 'explain_existing_program';
+    // "Er matseðillinn minn vegan?", "Is my meal plan vegan?", "Hversu mikið prótein er í matseðlinum mínum?", "How many
+    // calories are in my meal plan?": a question about the user's OWN plan (possessive or definite form, any case) reads
+    // it; it never creates or replaces one. Only an explicit create/change verb does ("Geturðu breytt matseðlinum mínum?").
+    if (isQuestion(text, t, f) && ownPlan(t) && !t.some((w) => MODIFY.test(w))) return mealNoun && !progNoun ? 'explain_existing_meal_plan' : 'explain_existing_program';
   }
   // Negated creation.
   if (mealNoun && negatedCreate(text, isMealPlanToken, EN_MEAL_PLAN)) return 'declined';

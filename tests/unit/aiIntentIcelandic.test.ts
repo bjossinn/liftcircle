@@ -854,6 +854,48 @@ describe('resolved constraints reach the final output (2026-11-26, Monday week s
     expect(five.reply.action!.days!.map((d) => d.date)).toEqual(NEXT_WEEK.slice(0, 5));
   });
 
+  // P2-2: what the user stated (days, meals per day, relative day, week) wins over conflicting model arguments.
+  const ALL_NEXT_DATES = { week: 'next', days: NEXT_WEEK, day_count: 7, meals_per_day: 3 };
+  const ALL_THIS_DATES = { week: 'this', days: THIS_WEEK, day_count: 7, meals_per_day: 3 };
+  it.each([
+    ['Meal plan for four days next week, two meals a day.', { days: ['sunday'], day_count: 7, meals_per_day: 3 }, NEXT_WEEK.slice(0, 4), 2],
+    ['Meal plan for four days next week, two meals a day.', ALL_NEXT_DATES, NEXT_WEEK.slice(0, 4), 2],
+    ['Matseðill fyrir fjóra daga í næstu viku, tvær máltíðir á dag.', ALL_NEXT_DATES, NEXT_WEEK.slice(0, 4), 2],
+    ['Matseðill fyrir fjóra daga í næstu viku, tvær máltíðir á dag.', { week: 'this', day_count: 7, meals_per_day: 3 }, NEXT_WEEK.slice(0, 4), 2],
+    ['Meal plan for next week, two meals a day.', ALL_THIS_DATES, NEXT_WEEK, 2],
+    ['Meal plan for tomorrow.', { days: ['sunday'], week: 'next', day_count: 7 }, ['2026-11-27'], 3],
+    ['Meal plan for tomorrow.', ALL_THIS_DATES, ['2026-11-27'], 3],
+    ['Matseðill á morgun.', { days: ['2026-11-29'], day_count: 3 }, ['2026-11-27'], 3],
+    ['Matseðill á morgun, tvær máltíðir á dag.', ALL_NEXT_DATES, ['2026-11-27'], 2],
+  ])('the user wins over model args: "%s" + %j → %j, %d meals', async (msg, args, dates, mpd) => {
+    const tool = await chat(msg, [toolUse('propose_meal_plan', args), text('Here it is.')]);
+    expect(tool.reply.action?.kind).toBe('meal_plan');
+    expect(tool.reply.action!.days!.map((d) => d.date)).toEqual(dates);
+    for (const d of tool.reply.action!.days!) expect(d.items).toHaveLength(mpd);
+  });
+
+  it('model args fill what the user did not state', async () => {
+    const days = await chat('Make me a meal plan.', [toolUse('propose_meal_plan', { week: 'next', day_count: 3, meals_per_day: 2 }), text('Here it is.')]);
+    expect(days.reply.action!.days!.map((d) => d.date)).toEqual(NEXT_WEEK.slice(0, 3));
+    for (const d of days.reply.action!.days!) expect(d.items).toHaveLength(2);
+    const named = await chat('Gerðu matseðil.', [toolUse('propose_meal_plan', { week: 'next', days: ['monday', 'wednesday'], meals_per_day: 4 }), text('Hér er planið.')]);
+    expect(named.reply.action!.days!.map((d) => d.date)).toEqual(['2026-11-30', '2026-12-02']);
+    for (const d of named.reply.action!.days!) expect(d.items).toHaveLength(4);
+    // The user's meal count, the model's days.
+    const mixed = await chat('Meal plan, two meals a day.', [toolUse('propose_meal_plan', { week: 'next', day_count: 2, meals_per_day: 3 }), text('Here it is.')]);
+    expect(mixed.reply.action!.days!.map((d) => d.date)).toEqual(NEXT_WEEK.slice(0, 2));
+    for (const d of mixed.reply.action!.days!) expect(d.items).toHaveLength(2);
+  });
+
+  it('an invalid explicit value is a question even when the model sends a valid default', async () => {
+    const mpd = await runTool('propose_meal_plan', { week: 'next', meals_per_day: 3 }, toolCtx('Matseðill fyrir næstu viku, 2,5 máltíðir á dag.'));
+    expect(JSON.parse(mpd.content).status).toBe('needs_clarification');
+    const days = await runTool('propose_meal_plan', { week: 'next', day_count: 7 }, toolCtx('Meal plan for ten days.'));
+    expect(JSON.parse(days.content).status).toBe('needs_clarification');
+    const left = await runTool('propose_meal_plan', { week: 'next', day_count: 5 }, toolCtx('Meal plan for five days this week.'));
+    expect(JSON.parse(left.content).status, 'only four days are left this week').toBe('needs_clarification');
+  });
+
   it('a fractional meal count from the model is never rounded', async () => {
     const out = await runTool('propose_meal_plan', { week: 'next', meals_per_day: 2.5 }, toolCtx('Meal plan for next week.'));
     expect(out.isError).toBe(true);

@@ -509,9 +509,31 @@ const ASKS_ONLY = new Set(['nutrition_explanation', 'explain_existing_meal_plan'
 const FIRST_PERSON = new Set(['ég', 'eg', 'við', 'i', 'we']);
 const FIRST_PERSON_VERB = new Set(['er', 'erum', 'hef', 'hofum', 'þoli', 'þolum', 'ma', 'megum', 'borða', 'borðum', 'am', 'have', 'are', 'react', 'get', "can't", 'can’t', 'cannot', 'must', 'avoid']);
 const FIRST_PERSON_TOKEN = new Set(["i'm", 'i’m', 'im', "i've", 'i’ve', "we're", 'we’re', "we've", 'we’ve']);
+/** "do I have …?", "am I …?": the pronoun after an inverting auxiliary asks, it doesn't state. */
+const INVERTING = new Set(['do', 'does', 'did', 'am', 'are']);
 /** A subject-first first-person statement in the clause ("ég er …", "ef ég er …", "I'm …", "I have …"). */
 const firstPersonStatement = (w: string[]) =>
-  w.some((x, k) => FIRST_PERSON_TOKEN.has(x) || (FIRST_PERSON.has(x) && FIRST_PERSON_VERB.has(w[k + 1] ?? '')));
+  w.some((x, k) => FIRST_PERSON_TOKEN.has(x) || (FIRST_PERSON.has(x) && FIRST_PERSON_VERB.has(w[k + 1] ?? '') && !INVERTING.has(w[k - 1] ?? '')));
+/** An allergy / intolerance word: "allergy", "allergic", "intolerance", "ofnæmi", "óþol", or a compound ("mjólkurofnæmi"). */
+const ALLERGY_WORD = (w: string) => /^(?:allerg(?:y|ies|ic)|intoleran(?:ce|t))$/.test(w) || /(?:ofnæmi|oþol|oþoli)$/.test(w) || /^seliak/.test(w);
+/** Words that attach an allergy to the question as a CONDITION on what is asked for, not as its topic: "for MY peanut
+ *  allergy", "WITH a nut allergy", "IF one has …", "ef maður er MEÐ mjólkurofnæmi", "FYRIR mann MEÐ …", a possessive. */
+const CONDITION_LEAD = new Set(['for', 'with', 'if', 'given', 'since', 'because', 'due', 'fyrir', 'með', 'ef']);
+const POSSESSIVE = new Set(['my', 'our', 'minn', 'min', 'mitt', 'minum', 'minni', 'mina', 'minnar', 'mins', 'okkar']);
+/** An inverted question about oneself opens the clause: "Er ég með …?", "Am I allergic …?", "Do I have …?". */
+const SELF_QUESTION = (w: string[]) => /^(?:er|eru|am|are|do|does|have|has|is)$/.test(w[0] ?? '') && FIRST_PERSON.has(w[1] ?? '');
+/**
+ * The question clause carries an allergy as a CONDITION ("What breakfast do you recommend for my peanut allergy?", "Hvað
+ * mælirðu með í morgunmat ef maður er með mjólkurofnæmi?", "Which snack is best with a nut allergy?"): it states a
+ * restriction, which must hold for the answer. Only a question whose TOPIC is the allergy or the food ("Hvað er
+ * hnetuofnæmi?", "What is a peanut allergy?", "Is peanut butter healthy?") or the inverted self-question ("Er ég með
+ * ofnæmi fyrir mjólk?", "Am I allergic to milk?") declares nothing. When in doubt — a possessive anywhere, a condition
+ * word before the allergy — the restriction is kept (safety first).
+ */
+function allergyCondition(w: string[]): boolean {
+  const self = SELF_QUESTION(w) ? 3 : 0;
+  return w.some((x, k) => ALLERGY_WORD(x) && w.some((y, n) => POSSESSIVE.has(y) || (n < k && n >= self && CONDITION_LEAD.has(y))));
+}
 /** True for every token inside a clause that only ASKS about a food, diet or nutrient. */
 function questionClauses(tokens: string[]): boolean[] {
   const mask: boolean[] = tokens.map(() => false);
@@ -519,7 +541,7 @@ function questionClauses(tokens: string[]): boolean[] {
   const close = (end: number) => {
     const words = tokens.slice(start, end).filter((w) => /^[a-z0-9æðþ'’-]+$/.test(w));
     const asText = `${words.map((w) => (w === 'iis' ? 'i' : w)).join(' ')}${tokens[end] === '?' ? '?' : ''}`;
-    if (words.length && !firstPersonStatement(words) && ASKS_ONLY.has(classifyRequest(asText) ?? ''))
+    if (words.length && !firstPersonStatement(words) && !allergyCondition(words) && ASKS_ONLY.has(classifyRequest(asText) ?? ''))
       for (let k = start; k < end; k++) mask[k] = true;
     start = end + 1;
   };
@@ -744,7 +766,16 @@ function affirmedWanted(tokens: string[], k: number, question: boolean[]): boole
   // "?" ending the clause: asked, not stated.
   if (tokens[e] === '?') return false;
   const clause = tokens.slice(s, e);
-  if (clause.some((w) => NEGATOR_WORDS.has(w) || NEG_COPULA.has(w) || w === 'without')) return false;
+  if (clause.some((w) => NEG_COPULA.has(w))) return false;
+  // A negation before the food negates the wanting ("I don't love peanut butter", "ég vil ekki hnetusmjör"). One AFTER it
+  // only modifies the food ("peanut butter WITHOUT sugar", "hnetusmjör ÁN sykurs", "with no added salt") and leaves it
+  // wanted — unless it rules out nuts themselves or negates a copula ("peanut butter is not okay"): then nothing is relaxed.
+  for (let c = s; c < e; c++) {
+    if (!NEGATOR_WORDS.has(tokens[c])) continue;
+    if (c < k || COPULA.has(tokens[c - 1])) return false;
+    const negated = allergenMentions(tokens.slice(c + 1, e).join(' '));
+    if (negated.includes('peanuts') || negated.includes('tree_nuts')) return false;
+  }
   const before = tokens.slice(s, k);
   if (before.some((w, n) => WANT_VERBS.has(w) || (w === 'like' && LIKE_SUBJECT.has(before[n - 1] ?? '')) || (w === 'finnst' && tokens.slice(k, e).some((x) => GOOD_WORDS.has(x))))) return true;
   for (let c = k + 1; c < e; c++) if (COPULA.has(tokens[c])) return copulaAffirms(tokens, c);
@@ -975,13 +1006,23 @@ export function buildMealPlanAction(
   const blocker = mealPlanBlocker(ctx.nutrition, lang);
   if (blocker) return { action: null, errors: [blocker], adjusted: [] };
   const userText = (ctx.requestText ?? '').slice(0, 1200);
-  // What the user's own words pin down (week, days, a day count or relative day, meals per day, a cooking-time cap) fills
-  // in whatever the model's intent left out. Something that can't be planned without guessing — a diet that rules out a
-  // food they asked for, "2,5 máltíðir", "ten days" — is a question for the user, never a plan.
+  // What the user's own words pin down (week, days, a day count or relative day, meals per day, a cooking-time cap)
+  // ALWAYS wins over the model's arguments; the model only fills what the user didn't state (a model default of 7 days,
+  // 3 meals or "Sunday" never overrides "four days", "two meals a day" or "tomorrow"). Something that can't be planned
+  // without guessing — a diet that rules out a food they asked for, "2,5 máltíðir", "ten days" — is a question for the
+  // user, never a plan (and never a silent model default).
   const said: MealPlanIntent = userText ? mealPlanIntentFromText(userText) : {};
-  const mpdIn = input.meals_per_day ?? said.meals_per_day;
+  const fromUser = parseExclusions(userText);
+  const saidDays = strs(said.days);
+  // Days the user named themselves (not just "every day but Friday", which the exclusion filter below enforces anyway).
+  const exclusionOnlyDays = fromUser.days.length > 0 && saidDays.join() === WEEKDAYS_EN.filter((d) => !fromUser.days.includes(d)).join();
+  const userNamedDays = saidDays.length > 0 && !exclusionOnlyDays;
+  const saidWeek = said.week === 'this' || said.week === 'next' ? said.week : undefined;
+  // When the user chose which days (named days, a day count or a relative day), the model's day picks are dropped.
+  const userPicksDays = userNamedDays || said.day_count != null || said.relative_day != null;
+  const mpdIn = said.meals_per_day ?? input.meals_per_day;
   const mpd = mpdIn == null ? NaN : Number(mpdIn);
-  const dayCountIn_ = input.day_count ?? said.day_count;
+  const dayCountIn_ = said.day_count ?? (userPicksDays ? undefined : input.day_count);
   const dayCount = dayCountIn_ == null ? null : Number(dayCountIn_);
   const clarify: PlanClarification | null =
     requestClarification(userText) ??
@@ -1018,8 +1059,10 @@ export function buildMealPlanAction(
     }
   }
   // "no fish", "without nuts", "án glútens" in the request text: allergens and named ingredients are ruled out too.
-  const ex = parseExclusions([...strs(input.preferences), ...strs(input.avoid)].join(' '));
-  const fromUser = parseExclusions(userText);
+  // A preference that is the user's own text (or the 60-character cut of it that strs() keeps) is read once, in full, as
+  // `fromUser`: re-reading the cut would lose the end of a clause ("…ég vil hnetusmj") and with it a wanted food. Each
+  // entry is its own clause, so one never runs into the next ("…without sugar" + "tree nuts").
+  const ex = parseExclusions([...strs(input.preferences).filter((p) => !(userText && userText.startsWith(p))), ...strs(input.avoid)].join('\n'));
   ex.allergens.push(...fromUser.allergens);
   ex.words.push(...fromUser.words);
   prefs.allergens = [...new Set([...prefs.allergens, ...ex.allergens])] as Allergen[];
@@ -1028,11 +1071,15 @@ export function buildMealPlanAction(
   // Days.
   const { start: thisStart, end: thisEnd } = weekBounds(ctx.today, ctx.facts.weekStart);
   const left = Math.round((Date.parse(`${thisEnd}T00:00:00Z`) - Date.parse(`${ctx.today}T00:00:00Z`)) / 86_400_000) + 1;
-  const modelDays = strs(input.days);
-  const asked = modelDays.length ? modelDays : strs(said.days);
-  let week = input.week === 'this' || input.week === 'next' ? input.week : said.week === 'this' || said.week === 'next' ? said.week : undefined;
+  // Days: the user's named days, else the model's picks (only when the user didn't choose days themselves), else every day
+  // but the ones the user ruled out. A relative day the user stated ("tomorrow") is never displaced by model days or week.
+  const modelDays = userPicksDays ? [] : strs(input.days);
+  const fromModelDays = !userNamedDays && modelDays.length > 0;
+  const asked = userNamedDays ? saidDays : fromModelDays ? modelDays : said.relative_day != null ? [] : saidDays;
+  const modelWeek = said.relative_day == null && (input.week === 'this' || input.week === 'next') ? input.week : undefined;
+  let week = saidWeek ?? modelWeek;
   // One relative day ("á hinn morgun", "the day after tomorrow") with no days named: exactly that day, in its week.
-  const relIn = Number(input.relative_day ?? said.relative_day);
+  const relIn = Number(said.relative_day ?? (userPicksDays ? undefined : input.relative_day));
   const relDate = !asked.length && Number.isInteger(relIn) && relIn >= 1 && relIn <= 13 ? addDays(ctx.today, relIn) : null;
   const relWeek = relDate ? (relDate <= thisEnd ? 'this' : relDate <= addDays(thisEnd, 7) ? 'next' : null) : null;
   const useRel = relDate != null && relWeek != null && (week == null || week === relWeek);
@@ -1056,6 +1103,8 @@ export function buildMealPlanAction(
       }
     }
     dates = allDates.filter((d) => picked.has(d));
+    // Model dates outside the week the user asked for ("next week", model sent this week's dates): the user's week wins.
+    if (!dates.length && fromModelDays && saidWeek != null) dates = allDates;
     if (!dates.length) {
       // English keeps its original wording (ISO dates); Icelandic shows display dates.
       const range = lang === 'en' ? { start: allDates[0] ?? weekStart, end: weekEnd } : { start: shortDate(allDates[0] ?? weekStart, lang), end: shortDate(weekEnd, lang) };

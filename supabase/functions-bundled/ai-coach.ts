@@ -2975,7 +2975,7 @@ var FOOD_TOKENS = (() => {
   for (const xs of Object.values(V.diet.map)) add(xs);
   return out;
 })();
-var EN_FOOD = /\b(?:protein|calories?|kcal|carbs?|carbohydrates?|fat|fibre|fiber|vegan|vegetarian|pescatarian|keto|paleo|gluten|lactose|dairy|nuts?|peanuts?|eggs?|fish|shellfish|soy|sesame|mustard|celery|wheat|creatine|macros?)\b/;
+var EN_FOOD = /\b(?:protein|calories?|kcal|carbs?|carbohydrates?|fat|fibre|fiber|vegan|vegetarian|pescatarian|keto|paleo|gluten|lactose|dairy|milk|nuts?|peanuts?|eggs?|fish|shellfish|soy|sesame|mustard|celery|wheat|creatine|macros?|allerg(?:y|ies|ic)|intoleran(?:ce|t))\b/;
 var NUMBER_WORDS = (() => {
   const m = /* @__PURE__ */ new Map();
   for (const [n, forms] of Object.entries(V.numbers_duration.numbers)) for (const f of forms) if (!f.includes(" ")) m.set(foldIs(f), Number(n));
@@ -3162,14 +3162,14 @@ function clauses(text) {
   return foldIs(String(text ?? "")).split(/[.,;:!?\n]+|(?<![\p{L}])(?:but|en)(?![\p{L}])/u).map((c) => c.match(/[\p{L}\p{N}]+(?:['’][\p{L}]+)*/gu) ?? []).filter((c) => c.length);
 }
 function negatedCreate(text, noun, enNoun) {
-  let negated2 = false;
+  let negated = false;
   for (const c of clauses(text)) {
     const at = c.findIndex((w, i) => noun(w) || enNoun.test(c.slice(i, i + 3).join(" ")));
     if (at < 0) continue;
-    if (predicateNegated(c, at)) negated2 = true;
+    if (predicateNegated(c, at)) negated = true;
     else return false;
   }
-  return negated2;
+  return negated;
 }
 var SWAP_FOOD = (t) => t.some((w) => FOOD_TOKENS.has(w) || /^(?:kjukling|tofu|lax|fisk|nautakjot|svinakjot|kjot|ost|hrisgrjon|pasta)/.test(w));
 var EQUIPMENT = /^(?:bekk|tæki|stong|stang|rekk|handloð|loð|buna|velin$|kapal|allt$)/;
@@ -3198,9 +3198,42 @@ function sessionKind(t, f) {
 }
 var QUESTION_START = /^ (?:hvað|hvar|hvernig|hvenær|af hverju|hvers vegna|getur|geturðu|what|where|why|how|when|can|could|is|are|does|do) /;
 var asksQuestion = (text, f) => /^ (?:hvað|hvaða|hvar|hvernig|hvenær|af hverju|hvers vegna|inniheldur|what|what's|whats|which|where|why|how|when|is|are|does|did|has) /.test(f) || /^ (?:er|eru) /.test(f) && /\?\s*$/.test(String(text ?? ""));
+var QUESTION_WORDS = new Set([
+  "hva\xF0",
+  "hva\xF0a",
+  "hvar",
+  "hvernig",
+  "hven\xE6r",
+  "hversu",
+  "hve",
+  "hver",
+  "hverjir",
+  "hverjar",
+  "hvert",
+  "hverju",
+  "hverja",
+  "hvers",
+  "hvort",
+  "hvor",
+  "what",
+  "what's",
+  "whats",
+  "which",
+  "where",
+  "where's",
+  "why",
+  "how",
+  "when",
+  "who",
+  "whether"
+].map(foldIs));
+var POLITE_OPENER = /^ (?:can|could|would|will|geturðu|getur|gætirðu|gætir|viltu|vilt|mættirðu|please|vinsamlegast) /;
+var isQuestion = (text, t, f) => asksQuestion(text, f) || t.some((w) => QUESTION_WORDS.has(w)) || /\?\s*$/.test(String(text ?? "")) && !POLITE_OPENER.test(f);
 var OWN = /* @__PURE__ */ new Set(["minn", "min", "mitt", "minum", "minni", "mina", "minnar", "mins", "okkar", "nuverandi", "my", "our", "current"]);
 var DEFINITE_PLAN = /^(?:vikumatseð|matseð|matarplan|mataraætlun|æfingaaætlun|æfingaplan|æfingaprogramm|programm)[a-zæðþ]*(?:inn|inum|ins|sins|ið|inu|ina|inni|innar)$/;
-var ownPlan = (t) => t.some((w) => OWN.has(w) || DEFINITE_PLAN.test(w));
+var PLAN_WORD_EN = /^(?:plan|meal|meals|program|programme|routine|split)$/;
+var planWord = (w) => isMealPlanToken(w) || isProgramToken(w) || PLAN_WORD_EN.test(w);
+var ownPlan = (t) => t.some((w, i) => DEFINITE_PLAN.test(w) || OWN.has(w) && t.slice(Math.max(0, i - 3), i + 4).some(planWord));
 var MODIFY = /^(?:breyt|uppfær|endurgerð|endurger|lagaðu|laga$|skiptu|skipta|update|change|replace|redo|regenerate|swap|fix|adjust|tweak|edit|make|create|build)/;
 var EXPLAIN = (t, f) => anyPhrase(t, EXPLAIN_PHRASES) || / (?:af hverju|hvers vegna|utskyrðu|utskyra|hvað þyðir) /.test(f) || /\b(?:why|explain)\b/.test(f);
 function classifyRequest(text) {
@@ -3213,7 +3246,7 @@ function classifyRequest(text) {
   if ((mealNoun || progNoun) && !create) {
     if (/^ (?:hvar|where) /.test(f) || / (?:hvar finn|hvernig finn|how do i find|where do i find|where is|where's) /.test(f)) return "app_navigation";
     if (EXPLAIN(t, f) || anyPhrase(t, PROGRAM_NEGATIVE.filter((p) => !p.includes("ekki")))) return mealNoun && !progNoun ? "explain_existing_meal_plan" : "explain_existing_program";
-    if (asksQuestion(text, f) && ownPlan(t) && !t.some((w) => MODIFY.test(w))) return mealNoun && !progNoun ? "explain_existing_meal_plan" : "explain_existing_program";
+    if (isQuestion(text, t, f) && ownPlan(t) && !t.some((w) => MODIFY.test(w))) return mealNoun && !progNoun ? "explain_existing_meal_plan" : "explain_existing_program";
   }
   if (mealNoun && negatedCreate(text, isMealPlanToken, EN_MEAL_PLAN)) return "declined";
   if (progNoun && (negatedCreate(text, isProgramToken, EN_PROGRAM_NOUN) || anyPhrase(t, PROGRAM_NEGATIVE.filter((p) => p.includes("ekki"))))) return "declined";
@@ -5725,7 +5758,7 @@ function parseQuery(query) {
   const highProtein = /\bprotein|\bprotin/.test(q);
   const maxMinutes = maxMinutesIn(query);
   const exclude = parseExclusions(query);
-  const negated2 = new Set(exclude.raw);
+  const negated = new Set(exclude.raw);
   let meal = null;
   const words = [];
   const tokens = q.replace(/[^a-z0-9æðþ\s-]/g, " ").split(/\s+/).filter(Boolean);
@@ -5735,17 +5768,17 @@ function parseQuery(query) {
       meal ??= MEAL_WORDS[raw];
       continue;
     }
-    if (negated2.has(raw) || NEGATORS2.has(raw) || QUERY_GLUE.has(raw)) continue;
+    if (negated.has(raw) || NEGATORS2.has(raw) || QUERY_GLUE.has(raw)) continue;
     if (STOP.has(raw) || IS_STOP.has(raw) || raw.length < 3 || DIET_WORDS.some(([re]) => re.test(raw)) || /^(vegan|vegetarian|pescatarian|dairy|gluten|lactose|no|cook|min|under)$/.test(raw)) continue;
     if (/(?:laus|lausa|laust|lausar|lausir|lausum)$|-free$|(?:ofnæmi|oþol)$/.test(raw)) continue;
     const pair = `${raw} ${tokens[i + 1] ?? ""}`;
-    if (EN_FOOD_PHRASES.has(pair) && !negated2.has(tokens[i + 1])) {
+    if (EN_FOOD_PHRASES.has(pair) && !negated.has(tokens[i + 1])) {
       words.push(pair);
       i++;
       continue;
     }
     const lex = lexFoodAt(tokens, i);
-    if (lex && !lex.tokens.some((w) => negated2.has(w))) {
+    if (lex && !lex.tokens.some((w) => negated.has(w))) {
       words.push(stem(lex.english));
       i += lex.tokens.length - 1;
       continue;
@@ -5940,12 +5973,12 @@ var OK_WORDS = /* @__PURE__ */ new Set([
 var COPULA_NEG = /* @__PURE__ */ new Set(["not", "never", "ekki", "aldrei", "no"]);
 function copulaReading(tokens, k) {
   let o = k + 1;
-  let negated2 = NEG_COPULA.has(tokens[k]);
+  let negated = NEG_COPULA.has(tokens[k]);
   while (COPULA_NEG.has(tokens[o]) || ["really", "totally", "alveg", "iis", "also", "lika", "still", "enn", "\xFEa"].includes(tokens[o])) {
-    if (COPULA_NEG.has(tokens[o])) negated2 = true;
+    if (COPULA_NEG.has(tokens[o])) negated = true;
     o++;
   }
-  return { negated: negated2, ok: OK_WORDS.has(tokens[o]) };
+  return { negated, ok: OK_WORDS.has(tokens[o]) };
 }
 var copulaAffirms = (tokens, k) => {
   const r = copulaReading(tokens, k);
@@ -6492,14 +6525,23 @@ var ASKS_ONLY = /* @__PURE__ */ new Set(["nutrition_explanation", "explain_exist
 var FIRST_PERSON = /* @__PURE__ */ new Set(["\xE9g", "eg", "vi\xF0", "i", "we"]);
 var FIRST_PERSON_VERB = /* @__PURE__ */ new Set(["er", "erum", "hef", "hofum", "\xFEoli", "\xFEolum", "ma", "megum", "bor\xF0a", "bor\xF0um", "am", "have", "are", "react", "get", "can't", "can\u2019t", "cannot", "must", "avoid"]);
 var FIRST_PERSON_TOKEN = /* @__PURE__ */ new Set(["i'm", "i\u2019m", "im", "i've", "i\u2019ve", "we're", "we\u2019re", "we've", "we\u2019ve"]);
-var firstPersonStatement = (w) => w.some((x, k) => FIRST_PERSON_TOKEN.has(x) || FIRST_PERSON.has(x) && FIRST_PERSON_VERB.has(w[k + 1] ?? ""));
+var INVERTING = /* @__PURE__ */ new Set(["do", "does", "did", "am", "are"]);
+var firstPersonStatement = (w) => w.some((x, k) => FIRST_PERSON_TOKEN.has(x) || FIRST_PERSON.has(x) && FIRST_PERSON_VERB.has(w[k + 1] ?? "") && !INVERTING.has(w[k - 1] ?? ""));
+var ALLERGY_WORD = (w) => /^(?:allerg(?:y|ies|ic)|intoleran(?:ce|t))$/.test(w) || /(?:ofnæmi|oþol|oþoli)$/.test(w) || /^seliak/.test(w);
+var CONDITION_LEAD = /* @__PURE__ */ new Set(["for", "with", "if", "given", "since", "because", "due", "fyrir", "me\xF0", "ef"]);
+var POSSESSIVE = /* @__PURE__ */ new Set(["my", "our", "minn", "min", "mitt", "minum", "minni", "mina", "minnar", "mins", "okkar"]);
+var SELF_QUESTION = (w) => /^(?:er|eru|am|are|do|does|have|has|is)$/.test(w[0] ?? "") && FIRST_PERSON.has(w[1] ?? "");
+function allergyCondition(w) {
+  const self = SELF_QUESTION(w) ? 3 : 0;
+  return w.some((x, k) => ALLERGY_WORD(x) && w.some((y, n) => POSSESSIVE.has(y) || n < k && n >= self && CONDITION_LEAD.has(y)));
+}
 function questionClauses(tokens) {
   const mask = tokens.map(() => false);
   let start = 0;
   const close = (end) => {
     const words = tokens.slice(start, end).filter((w) => /^[a-z0-9æðþ'’-]+$/.test(w));
     const asText = `${words.map((w) => w === "iis" ? "i" : w).join(" ")}${tokens[end] === "?" ? "?" : ""}`;
-    if (words.length && !firstPersonStatement(words) && ASKS_ONLY.has(classifyRequest(asText) ?? ""))
+    if (words.length && !firstPersonStatement(words) && !allergyCondition(words) && ASKS_ONLY.has(classifyRequest(asText) ?? ""))
       for (let k = start; k < end; k++) mask[k] = true;
     start = end + 1;
   };
@@ -6665,7 +6707,13 @@ function affirmedWanted(tokens, k, question) {
   while (e < tokens.length && !isClauseEnd(tokens, e)) e++;
   if (tokens[e] === "?") return false;
   const clause = tokens.slice(s, e);
-  if (clause.some((w) => NEGATOR_WORDS.has(w) || NEG_COPULA.has(w) || w === "without")) return false;
+  if (clause.some((w) => NEG_COPULA.has(w))) return false;
+  for (let c = s; c < e; c++) {
+    if (!NEGATOR_WORDS.has(tokens[c])) continue;
+    if (c < k || COPULA.has(tokens[c - 1])) return false;
+    const negated = allergenMentions(tokens.slice(c + 1, e).join(" "));
+    if (negated.includes("peanuts") || negated.includes("tree_nuts")) return false;
+  }
   const before = tokens.slice(s, k);
   if (before.some((w, n) => WANT_VERBS.has(w) || w === "like" && LIKE_SUBJECT.has(before[n - 1] ?? "") || w === "finnst" && tokens.slice(k, e).some((x) => GOOD_WORDS.has(x)))) return true;
   for (let c = k + 1; c < e; c++) if (COPULA.has(tokens[c])) return copulaAffirms(tokens, c);
@@ -6690,6 +6738,13 @@ function parseExclusions(text) {
     else it.days.forEach((d) => days.add(d));
   }
   return { allergens: [...allergens], words: [...words], raw: [...raw], days: [...days], ...lactose ? { lactose } : {} };
+}
+function allergenMentions(text) {
+  const tokens = fold2(text).match(TOKEN_RE) ?? [];
+  const english = tokens.map((w) => wordEnglish(w) ?? w).join(" ");
+  const raw = tokens.filter((w) => !NOT_FOOD_MATCH.has(w)).join(" ");
+  const lex = tokens.flatMap((w) => [...LEX_ALLERGEN_CLASS.get(w) ?? [], ...isFoodEnglish(w) ? [] : LEX_ALLERGEN_FOOD.get(w) ?? []]);
+  return [.../* @__PURE__ */ new Set([...ALLERGEN_WORDS.filter(([re]) => re.test(english) || re.test(raw)).flatMap(([, a]) => a), ...lex])];
 }
 function wantedDays(text) {
   const { tokens, consumed } = parseExclusionTokens(text);
@@ -6806,9 +6861,15 @@ function buildMealPlanAction(input, ctx) {
   if (blocker) return { action: null, errors: [blocker], adjusted: [] };
   const userText = (ctx.requestText ?? "").slice(0, 1200);
   const said = userText ? mealPlanIntentFromText(userText) : {};
-  const mpdIn = input.meals_per_day ?? said.meals_per_day;
+  const fromUser = parseExclusions(userText);
+  const saidDays = strs(said.days);
+  const exclusionOnlyDays = fromUser.days.length > 0 && saidDays.join() === WEEKDAYS_EN.filter((d) => !fromUser.days.includes(d)).join();
+  const userNamedDays = saidDays.length > 0 && !exclusionOnlyDays;
+  const saidWeek = said.week === "this" || said.week === "next" ? said.week : void 0;
+  const userPicksDays = userNamedDays || said.day_count != null || said.relative_day != null;
+  const mpdIn = said.meals_per_day ?? input.meals_per_day;
   const mpd = mpdIn == null ? NaN : Number(mpdIn);
-  const dayCountIn_ = input.day_count ?? said.day_count;
+  const dayCountIn_ = said.day_count ?? (userPicksDays ? void 0 : input.day_count);
   const dayCount = dayCountIn_ == null ? null : Number(dayCountIn_);
   const clarify = requestClarification(userText) ?? (mpdIn != null && !(Number.isInteger(mpd) && mpd >= 1 && mpd <= 6) ? { kind: "meals_per_day", value: String(mpdIn).slice(0, 20) } : null) ?? (dayCount != null && !(Number.isInteger(dayCount) && dayCount >= 1 && dayCount <= 7) ? { kind: "day_count", value: dayCount } : null);
   if (clarify) return { action: null, errors: [clarificationNote(clarify)], adjusted: [], clarify };
@@ -6835,18 +6896,19 @@ function buildMealPlanAction(input, ctx) {
       prefs.dislikedIngredientIds = [.../* @__PURE__ */ new Set([...prefs.dislikedIngredientIds, ...excludedIngredientIds([phrase], byId.values())])];
     }
   }
-  const ex = parseExclusions([...strs(input.preferences), ...strs(input.avoid)].join(" "));
-  const fromUser = parseExclusions(userText);
+  const ex = parseExclusions([...strs(input.preferences).filter((p) => !(userText && userText.startsWith(p))), ...strs(input.avoid)].join("\n"));
   ex.allergens.push(...fromUser.allergens);
   ex.words.push(...fromUser.words);
   prefs.allergens = [.../* @__PURE__ */ new Set([...prefs.allergens, ...ex.allergens])];
   prefs.dislikedIngredientIds = [.../* @__PURE__ */ new Set([...prefs.dislikedIngredientIds, ...excludedIngredientIds(ex.words, byId.values())])];
   const { start: thisStart, end: thisEnd } = weekBounds(ctx.today, ctx.facts.weekStart);
   const left = Math.round((Date.parse(`${thisEnd}T00:00:00Z`) - Date.parse(`${ctx.today}T00:00:00Z`)) / 864e5) + 1;
-  const modelDays = strs(input.days);
-  const asked = modelDays.length ? modelDays : strs(said.days);
-  let week = input.week === "this" || input.week === "next" ? input.week : said.week === "this" || said.week === "next" ? said.week : void 0;
-  const relIn = Number(input.relative_day ?? said.relative_day);
+  const modelDays = userPicksDays ? [] : strs(input.days);
+  const fromModelDays = !userNamedDays && modelDays.length > 0;
+  const asked = userNamedDays ? saidDays : fromModelDays ? modelDays : said.relative_day != null ? [] : saidDays;
+  const modelWeek = said.relative_day == null && (input.week === "this" || input.week === "next") ? input.week : void 0;
+  let week = saidWeek ?? modelWeek;
+  const relIn = Number(said.relative_day ?? (userPicksDays ? void 0 : input.relative_day));
   const relDate = !asked.length && Number.isInteger(relIn) && relIn >= 1 && relIn <= 13 ? addDays(ctx.today, relIn) : null;
   const relWeek = relDate ? relDate <= thisEnd ? "this" : relDate <= addDays(thisEnd, 7) ? "next" : null : null;
   const useRel = relDate != null && relWeek != null && (week == null || week === relWeek);
@@ -6869,6 +6931,7 @@ function buildMealPlanAction(input, ctx) {
       }
     }
     dates = allDates.filter((d) => picked.has(d));
+    if (!dates.length && fromModelDays && saidWeek != null) dates = allDates;
     if (!dates.length) {
       const range = lang === "en" ? { start: allDates[0] ?? weekStart, end: weekEnd } : { start: shortDate(allDates[0] ?? weekStart, lang), end: shortDate(weekEnd, lang) };
       return { action: null, errors: [tr.t(next ? "aiServer.mealPlan.daysUnavailableNext" : "aiServer.mealPlan.daysUnavailableThis", range)], adjusted };
@@ -7293,8 +7356,8 @@ function weekPlanConflict(reply, a, today) {
 function mealPlanConflict(reply, a, catalogNames) {
   const inPlan = new Set(a.days.flatMap((d) => d.items.map((i) => fold3(i.name))));
   const f = fold3(reply);
-  const other = catalogNames.find((n) => n.length > 5 && !inPlan.has(fold3(n)) && f.includes(fold3(n)));
-  if (other) return `mentions ${other}, which isn't in the plan`;
+  const other2 = catalogNames.find((n) => n.length > 5 && !inPlan.has(fold3(n)) && f.includes(fold3(n)));
+  if (other2) return `mentions ${other2}, which isn't in the plan`;
   const listLines = reply.split("\n").filter((l) => /^\s*([-*•]|\d+[.)])\s+/.test(l)).length;
   if (listLines >= 3) return "restates the plan as a list";
   return null;
@@ -8164,31 +8227,52 @@ var ASK = [
   [new RegExp(`${START}(?:\xE1|a)\\s+(?:\xEDslensku|islensku)\\s+(?:takk|please)${END}`, "giu"), "is"],
   [new RegExp(`${START}(?:\xE1|a)\\s+ensku\\s+(?:takk|please)${END}`, "giu"), "en"]
 ];
-var NEGATED = new RegExp(`${START}(?:ekki|aldrei|not|never|don['\u2019]?t|do\\s+not|doesn['\u2019]?t|does\\s+not|won['\u2019]?t|will\\s+not)\\s+(?:to\\s+)?$`, "iu");
-function negated(t, m) {
-  const lead = /^[^\p{L}\p{N}]*/u.exec(m[0])?.[0].length ?? 0;
-  return NEGATED.test(t.slice(0, m.index + lead));
-}
-function requestedReplyLang(text) {
+var POLITE = "(?:please|pls|plz|kindly|thanks|thank\\s+you|takk(?:\\s+fyrir)?|vinsamlegast|endilega)";
+var NEGATED = new RegExp(
+  `${START}(?:ekki|aldrei|no|not|never|don['\u2019]?t|do\\s+not|doesn['\u2019]?t|does\\s+not|won['\u2019]?t|will\\s+not)\\s+(?:${POLITE}\\s+)*(?:to\\s+)?$`,
+  "iu"
+);
+var letterAt = (m) => m.index + (/^[^\p{L}\p{N}]*/u.exec(m[0])?.[0].length ?? 0);
+function replyRequests(text) {
   const t = String(text ?? "").normalize("NFC");
-  let best = null;
+  const hits = [];
   for (const [re, lang] of ASK) {
     re.lastIndex = 0;
     let m;
     while (m = re.exec(t)) {
-      if (negated(t, m)) {
-        if (m[0].length === 0) re.lastIndex++;
-        continue;
-      }
-      if (!best || m.index >= best.at) best = { at: m.index, lang };
+      hits.push({ start: letterAt(m), end: m.index + m[0].length, lang });
       if (m[0].length === 0) re.lastIndex++;
     }
   }
-  return best?.lang ?? null;
+  hits.sort((a, b) => a.start - b.start);
+  const out = [];
+  for (let i = 0; i < hits.length; ) {
+    let end = hits[i].end;
+    let j = i + 1;
+    while (j < hits.length && hits[j].start < end) end = Math.max(end, hits[j++].end);
+    const refused = NEGATED.test(t.slice(0, hits[i].start));
+    const last = hits.slice(i, j).reduce((a, b) => b.start >= a.start ? b : a);
+    out.push({ at: last.start, lang: last.lang, refused });
+    i = j;
+  }
+  return out;
 }
+function requestedReplyLang(text) {
+  return replyRequests(text).filter((r) => !r.refused).pop()?.lang ?? null;
+}
+function refusedReplyLang(text) {
+  const reqs = replyRequests(text);
+  const refused = reqs.filter((r) => r.refused).map((r) => r.lang);
+  const asked = new Set(reqs.filter((r) => !r.refused).map((r) => r.lang));
+  const only = [...new Set(refused)].filter((l) => !asked.has(l));
+  return only.length === 1 ? only[0] : null;
+}
+var other = (l) => l === "en" ? "is" : "en";
 function resolveReplyLang({ text, history = [], setting = null }) {
   const asked = requestedReplyLang(text);
   if (asked) return asked;
+  const refused = refusedReplyLang(text);
+  if (refused) return other(refused);
   const current2 = detectLang(text);
   if (current2) return current2;
   const s = requestLanguage(setting);
@@ -8201,12 +8285,14 @@ function resolveReplyLang({ text, history = [], setting = null }) {
 }
 function replyLanguageLine(lang, how) {
   const name = lang === "is" ? "Icelandic" : "English";
+  if (how === "refused") return `Reply language: ${name} (the user asked not to be answered in ${lang === "is" ? "English" : "Icelandic"}).`;
   if (how === "asked") return `Reply language: ${name} (the user asked for it in their latest message).`;
   if (how === "message") return `Reply language: ${name} (the language of the user's latest message).`;
   return `Reply language: ${name} (the user's app language). Use it unless the user's latest message is clearly written in another language.`;
 }
 function replyLangSource({ text, setting = null }) {
   if (requestedReplyLang(text)) return "asked";
+  if (refusedReplyLang(text)) return "refused";
   if (detectLang(text)) return "message";
   return requestLanguage(setting) ? "setting" : "history";
 }
@@ -8358,7 +8444,7 @@ ${text}` : text;
   const history = [ctx.openRequest?.text, ...earlier];
   const toolLang = resolveReplyLang({ text, history, setting });
   const langSource = replyLangSource({ text, setting });
-  const baseSystem = setting || langSource === "asked" ? `${ctx.system}
+  const baseSystem = setting || langSource === "asked" || langSource === "refused" ? `${ctx.system}
 
 ${replyLanguageLine(toolLang, langSource)}` : ctx.system;
   const resumedPlan = ctx.followUp && ctx.openRequest?.intent === "meal_plan";

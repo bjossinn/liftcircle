@@ -352,3 +352,117 @@ describe('P2-7: a food negation is not a refusal; a question about my plan never
     });
   }
 });
+
+/* ================================================================== review 2: P1 */
+// Allergies stated as a CONDITION inside a recommendation / recipe question are restrictions; only a question whose topic
+// is the allergen or the allergy itself (or "Am I allergic …?") declares nothing.
+const milkIds = withAllergen('milk');
+describe('P1 (review 2): an allergy inside a recommendation question is a restriction', () => {
+  const CASES: { allergen: Al; neutral: string; restricted: string; lang: 'is' | 'en' }[] = [
+    { allergen: 'peanuts', neutral: 'What breakfast do you recommend?', restricted: 'What breakfast do you recommend for my peanut allergy?', lang: 'en' },
+    { allergen: 'milk', neutral: 'Hvað mælirðu með í morgunmat?', restricted: 'Hvað mælirðu með í morgunmat ef maður er með mjólkurofnæmi?', lang: 'is' },
+    { allergen: 'milk', neutral: 'Which breakfast is best?', restricted: 'Which breakfast is best with a milk allergy?', lang: 'en' },
+    { allergen: 'milk', neutral: 'Hvað er gott í morgunmat?', restricted: 'Hvað er gott í morgunmat fyrir mann með mjólkurofnæmi?', lang: 'is' },
+    { allergen: 'egg', neutral: 'What do you recommend for breakfast?', restricted: "I'm allergic to eggs — what do you recommend for breakfast?", lang: 'en' },
+    { allergen: 'egg', neutral: 'Hvað mælirðu með í morgunmat?', restricted: 'Hvað mælirðu með í morgunmat ef ég er með ofnæmi fyrir eggjum?', lang: 'is' },
+    { allergen: 'milk', neutral: 'What breakfast do you recommend?', restricted: 'What breakfast without milk do you recommend?', lang: 'en' },
+    { allergen: 'milk', neutral: 'Hvaða morgunmat mælirðu með?', restricted: 'Hvaða morgunmat án mjólkur mælirðu með?', lang: 'is' },
+  ];
+  it('parser: the condition is kept; informational questions declare nothing', () => {
+    for (const c of CASES) {
+      expect(parseExclusions(c.restricted).allergens, c.restricted).toContain(c.allergen);
+      expect(parseQuery(c.restricted).exclude.allergens, c.restricted).toContain(c.allergen);
+      expect(parseExclusions(c.neutral).allergens, c.neutral).toEqual([]);
+    }
+    expect(parseExclusions('What breakfast do you recommend for my nut allergy?').allergens).toEqual(expect.arrayContaining(['peanuts', 'tree_nuts']));
+    expect(parseExclusions('Hvað mælirðu með í morgunmat ef maður er með hnetuofnæmi?').allergens).toEqual(expect.arrayContaining(['peanuts', 'tree_nuts']));
+    for (const msg of ['Hvað eru jarðhnetur?', 'Is peanut butter healthy?', 'Er ég með ofnæmi fyrir mjólk?', 'Am I allergic to milk?', 'Do I have a nut allergy?', 'What is a peanut allergy?',
+      'Hvað er hnetuofnæmi?', 'Hvað er ofnæmi fyrir jarðhnetum?']) expect(parseExclusions(msg).allergens, msg).toEqual([]);
+  });
+
+  for (const c of CASES) {
+    it(`handler + catalog (${c.lang}): "${c.restricted}" never shows or plans ${c.allergen}`, async () => {
+      await proveExcluded(`${c.allergen}: ${c.restricted}`, withAllergen(c.allergen), c.neutral, c.restricted, c.lang === 'is' ? IS_PLAN : EN_PLAN);
+    });
+  }
+
+  it('handler + catalog: the reviewer cases on the full catalog — no peanut recipes, no milk recipes', async () => {
+    for (const [msg, banned] of [['What breakfast do you recommend for my peanut allergy?', peanutIds], ['Hvað mælirðu með í morgunmat ef maður er með mjólkurofnæmi?', milkIds]] as const) {
+      const cards = await findRecipes({ query: 'breakfast', max_results: 5 }, msg, ALL_RECIPES);
+      expect(cards.length, msg).toBeGreaterThan(0);
+      for (const c of cards) expect(cardIngredients(c, ALL_RECIPES).filter((id) => banned.has(id)), `${msg}: ${c.id}`).toEqual([]);
+      const h = await chat(msg, [toolUse('find_recipes', { query: 'peanut butter', max_results: 5 }), text('Hér eru hugmyndir.')]);
+      for (const c of h.action?.recipes ?? []) expect(cardIngredients(c, ALL_RECIPES).filter((id) => banned.has(id)), `${msg}: handler ${c.id}`).toEqual([]);
+    }
+  });
+
+  it('an informational question does not restrict: "Is peanut butter healthy?" still finds peanut butter', async () => {
+    const { r, safe } = dangerous(peanutIds);
+    for (const msg of ['Is peanut butter healthy?', 'Hvað eru jarðhnetur?', 'Am I allergic to peanuts?']) {
+      expect((await findRecipes({ query: r.name, max_results: 5 }, msg, [r, safe])).map((c) => c.id), msg).toContain(r.id);
+    }
+  });
+});
+
+/* ================================================================== review 2: P2-3 */
+describe('P2-3 (review 2): any question about my existing plan never creates a plan', () => {
+  const QUESTIONS = ['Hversu mikið prótein er í matseðlinum mínum?', 'Hvaða uppskriftir eru í matseðlinum mínum?', 'Hvenær er fiskur í matseðlinum?', 'Segðu mér hversu mikið prótein er í matseðlinum mínum',
+    'How much protein is in my meal plan?', 'How many meals are in my meal plan?', 'Which recipes are in my meal plan?', 'When is fish in my current meal plan?'];
+  it('classification', () => {
+    for (const msg of QUESTIONS) {
+      expect(classifyRequest(msg), msg).toBe('explain_existing_meal_plan');
+      expect(asksForMealPlan(msg), msg).toBe(false);
+    }
+    // Explicit create / change verbs still ask for one — also next to a question or a possessive that isn't the plan's.
+    for (const msg of ['Gerðu matseðil fyrir næstu viku', 'Breyttu matseðlinum mínum', 'Make my meal plan for next week', 'Can you change my meal plan?', 'Could you do my meal plan?',
+      'Meal plan for next week. What breakfast do you recommend for my peanut allergy?', 'Matseðill fyrir næstu viku. Hvað mælirðu með í morgunmat ef maður er með mjólkurofnæmi?']) {
+      expect(classifyRequest(msg), msg).toBe('meal_plan');
+    }
+  });
+  for (const msg of ['Hversu mikið prótein er í matseðlinum mínum?', 'How much protein is in my meal plan?', 'Hvaða uppskriftir eru í matseðlinum mínum?', 'Which recipes are in my meal plan?']) {
+    it(`handler: "${msg}" does not create a plan`, async () => {
+      const r = await chat(msg, [text('Um 180 g.')]);
+      expect(r.action ?? null).toBeNull();
+    });
+  }
+});
+
+/* ================================================================== review 2: P2-6 */
+describe('P2-6 (review 2): a wanted peanut butter with a modifier stays wanted; tree nuts stay out', () => {
+  const WANTED: [string, 'is' | 'en'][] = [
+    ['No nuts, but I like peanut butter without sugar', 'en'],
+    ['Engar hnetur, en ég vil hnetusmjör án sykurs', 'is'],
+    ['No nuts, but I love peanut butter with banana', 'en'],
+    ['No nuts, but I love crunchy peanut butter', 'en'],
+    ['Engar hnetur, en ég vil hnetusmjör með banana', 'is'],
+  ];
+  it('parser', () => {
+    for (const [msg] of WANTED) {
+      const ex = parseExclusions(msg);
+      expect(ex.allergens, msg).toEqual(['tree_nuts']);
+      // "without sugar" rules out sugar only — never the peanut butter it describes.
+      expect(ex.words.filter((w) => !/^(?:sugar|sykurs)$/.test(w)), msg).toEqual([]);
+      expect(parseQuery(msg).words, msg).toContain('peanut butter');
+    }
+    // A negation of the wanting, of the copula, or of nuts in the modifier relaxes nothing.
+    for (const msg of ["No nuts, I don't like peanut butter", 'Engar hnetur, ég vil ekki hnetusmjör', 'No nuts, but I like peanut butter without almonds', 'No nuts, but I like peanut butter that is not okay'])
+      expect(parseExclusions(msg).allergens, msg).toEqual(expect.arrayContaining(['peanuts', 'tree_nuts']));
+  });
+  for (const [msg, lang] of WANTED.slice(0, 2)) {
+    it(`handler + catalog: "${msg}" finds peanut butter and never tree nuts`, async () => {
+      const cards = await findRecipes({ query: 'peanut butter', max_results: 5 }, msg, ALL_RECIPES);
+      expect(cards.some((c) => cardIngredients(c, ALL_RECIPES).some((id) => peanutIds.has(id))), 'peanut butter still found').toBe(true);
+      for (const c of cards) expect(cardIngredients(c, ALL_RECIPES).filter((id) => treeNutIds.has(id)), c.id).toEqual([]);
+      await proveExcluded(`tree nuts: ${msg}`, treeNutIds, lang === 'is' ? 'Morgunmatur' : 'Breakfast', msg, lang === 'is' ? IS_PLAN : EN_PLAN);
+      // The meal-plan fallback keeps peanut butter wanted: with a peanut (tree-nut-free) snack as the only snack, it is planned.
+      const uses = (x: RefRecipe, ids: Set<string>) => (x.ingredients ?? []).some((i) => ids.has(i.ingredientId));
+      const pbSnack = ALL_RECIPES.find((x) => x.meal === 'snack' && uses(x, peanutIds) && !uses(x, treeNutIds))!;
+      expect(pbSnack).toBeDefined();
+      const others = (['breakfast', 'lunch', 'dinner'] as const).map((m) => ALL_RECIPES.find((x) => x.meal === m && !uses(x, treeNutIds) && !uses(x, peanutIds))!);
+      const plan = planOf(await chat(`${lang === 'is' ? IS_PLAN : EN_PLAN}${msg}`, [text('Hér er planið.')], [...others, pbSnack], account({ mealsPerDay: 4 })));
+      expect(plan, 'plan built').not.toBeNull();
+      expect(plan!.some((d) => d.items.some((it) => it.recipeId === pbSnack.id)), 'peanut butter snack planned').toBe(true);
+      for (const d of plan!) for (const it of d.items) expect(planIngredients(it, [...others, pbSnack]).filter((id) => treeNutIds.has(id)), it.recipeId).toEqual([]);
+    });
+  }
+});
