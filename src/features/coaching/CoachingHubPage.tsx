@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
-import { Bot, ChevronRight, ClipboardList, GraduationCap, Search, ShieldCheck } from 'lucide-react';
+import { Bot, ChevronRight, ClipboardList, GraduationCap, History, Search, ShieldCheck } from 'lucide-react';
+import { isFeatureEnabled } from '@/config/featureFlags';
 import { coachingApi } from '@/backend/coaching';
 import { aiApi } from '@/backend/ai';
 import type { AiAvailability, CoachingRelationship, CoachProfile } from '@/backend/coachingContract';
@@ -25,10 +26,22 @@ function HubContent() {
   const rels = useLoad(() => coachingApi.myRelationships(), [], { fallback: 'Couldn’t load your coaching.' });
   const profile = useLoad(() => coachingApi.getMyCoachProfile(), [], { fallback: 'Couldn’t load your coach profile.' });
   const roles = useLoad(() => coachingApi.myRoles(), []);
+  // Marketplace off: AI-first. The training assistant leads, and "My coach" only appears for someone who has (or had)
+  // a human coach or a pending request, without any "Look for a coach" links.
+  const marketplace = isFeatureEnabled('coachMarketplace');
   return (
     <>
-      <MyCoachSection rels={rels} />
-      <AiSection />
+      {marketplace ? (
+        <>
+          <MyCoachSection rels={rels} marketplace />
+          <AiSection />
+        </>
+      ) : (
+        <>
+          <AiSection />
+          <MyCoachSection rels={rels} marketplace={false} />
+        </>
+      )}
       <ForCoachesSection profile={profile} rels={rels.data} />
       {roles.data?.admin && (
         <>
@@ -50,10 +63,24 @@ function HubContent() {
 }
 
 /* ---------------------------------------------------------------- my coach */
-function MyCoachSection({ rels }: { rels: Loaded<CoachingRelationship[]> }) {
+function MyCoachSection({ rels, marketplace }: { rels: Loaded<CoachingRelationship[]>; marketplace: boolean }) {
   const mine = (rels.data ?? []).filter((r) => !r.viewerIsCoach);
   const active = mine.find((r) => r.status === 'active');
   const pending = mine.filter((r) => r.status === 'requested');
+  if (!marketplace) {
+    // Nothing to show a lifter who never had a coach (no empty marketplace card); keep loading/errors quiet until we know.
+    if (rels.loading && !rels.data) return null;
+    if (rels.error && !rels.data)
+      return (
+        <section aria-labelledby="hub-my-coach">
+          <SectionTitle id="hub-my-coach">My coach</SectionTitle>
+          <Card className="pb-4 flex flex-col items-center">
+            <ErrorState title="Couldn’t load your coaching" message={rels.error} onRetry={rels.reload} />
+          </Card>
+        </section>
+      );
+    if (mine.length === 0) return null;
+  }
   return (
     <section aria-labelledby="hub-my-coach">
       <SectionTitle id="hub-my-coach">My coach</SectionTitle>
@@ -64,9 +91,11 @@ function MyCoachSection({ rels }: { rels: Loaded<CoachingRelationship[]> }) {
       ) : rels.error && !rels.data ? (
         <Card className="pb-4 flex flex-col items-center">
           <ErrorState title="Couldn’t load your coaching" message={rels.error} onRetry={rels.reload} />
-          <Link to="/coaching/find" className="text-sm text-accent font-medium min-h-11 inline-flex items-center">
-            Look for a coach
-          </Link>
+          {marketplace && (
+            <Link to="/coaching/find" className="text-sm text-accent font-medium min-h-11 inline-flex items-center">
+              Look for a coach
+            </Link>
+          )}
         </Card>
       ) : (
         <div className="flex flex-col gap-2">
@@ -74,7 +103,20 @@ function MyCoachSection({ rels }: { rels: Loaded<CoachingRelationship[]> }) {
           {pending.map((r) => (
             <RelationshipCard key={r.id} rel={r} />
           ))}
-          {!active && (
+          {!active && !marketplace && pending.length === 0 && (
+            // Only past coaching: a quiet link to its history (data is kept), no prompt to find someone new.
+            <Card>
+              <Link to="/coaching/my" className="flex items-center gap-3 p-4 hover:bg-surface-2 rounded-2xl">
+                <History className="size-5 text-muted" aria-hidden />
+                <span className="flex-1">
+                  <span className="block font-medium">Past coaching</span>
+                  <span className="block text-xs text-muted">Your earlier coaches, feedback and check-ins</span>
+                </span>
+                <ChevronRight className="size-5 text-muted" aria-hidden />
+              </Link>
+            </Card>
+          )}
+          {!active && marketplace && (
             <Card className="p-4 flex flex-col gap-3">
               <div className="flex items-start gap-3">
                 <span className="size-10 rounded-xl bg-accent-soft text-accent flex items-center justify-center shrink-0">
@@ -95,7 +137,7 @@ function MyCoachSection({ rels }: { rels: Loaded<CoachingRelationship[]> }) {
               </Link>
             </Card>
           )}
-          {active && (
+          {active && marketplace && (
             <Link to="/coaching/find" className="text-sm text-accent font-medium min-h-11 inline-flex items-center px-1">
               Look for a different coach
             </Link>

@@ -14,9 +14,10 @@ import type { CoachingRelationship, CoachProfile } from '@/backend/coachingContr
 const h = vi.hoisted(() => ({
   profile: null as unknown as () => Promise<CoachProfile | null>,
   rels: [] as CoachingRelationship[],
+  auth: 'signed_in' as 'signed_in' | 'guest',
 }));
 vi.mock('@/state/app', () => ({
-  useApp: () => ({ backendConfigured: true, auth: { status: 'signed_in', userId: 'me' }, online: true }),
+  useApp: () => ({ backendConfigured: true, auth: { status: h.auth, userId: h.auth === 'signed_in' ? 'me' : undefined }, online: true }),
 }));
 vi.mock('@/app/TopActions', () => ({ TopActions: () => null }));
 vi.mock('@/backend/coaching', () => ({
@@ -48,7 +49,7 @@ async function mount() {
   document.body.append(el);
   root = createRoot(el);
   await act(async () => root.render(createElement(MemoryRouter, null, createElement(CoachingHubPage))));
-  await waitFor(() => expect(el.textContent).toContain('Training assistant'));
+  await waitFor(() => expect(el.textContent).toContain(h.auth === 'guest' ? 'training assistant' : 'Training assistant'));
   await waitFor(() => expect(el.textContent).not.toMatch(/Loading your coaching|Checking the training assistant/));
   await tick();
 }
@@ -67,17 +68,18 @@ const coach = (over: Partial<CoachProfile>): CoachProfile => ({
 beforeEach(() => {
   h.rels = [];
   h.profile = async () => null;
+  h.auth = 'signed_in';
 });
 afterEach(async () => {
   await act(async () => root.unmount());
   el.remove();
+  vi.unstubAllEnvs();
 });
 
 describe('coaching hub: no coach recruitment for lifters', () => {
-  it('a regular lifter sees My coach and the training assistant, but no coach pitch or apply link', async () => {
+  it('a regular lifter sees the training assistant, but no coach pitch or apply link', async () => {
     await mount();
-    expect(el.textContent).toContain('My coach');
-    expect(el.textContent).toContain('Look for a coach');
+    expect(el.textContent).toContain('Training assistant');
     expect(el.textContent).not.toContain('For coaches');
     expect(el.textContent).not.toContain('Coach on Hard Earned');
     expect(el.textContent).not.toContain('Apply to be listed');
@@ -147,5 +149,91 @@ describe('coaching hub: no coach recruitment for lifters', () => {
     await mount();
     await waitFor(() => expect(el.textContent).toContain('Couldn’t load your coach profile'));
     expect(el.textContent).toContain('For coaches');
+  });
+});
+
+const rel = (over: Partial<CoachingRelationship> & { status: CoachingRelationship['status'] }): CoachingRelationship =>
+  ({
+    id: `r-${over.status}`, viewerIsCoach: false, coach: { userId: 'c1', displayName: 'Coach Kim', suspended: false, approved: true }, client: { userId: 'me', displayName: 'Me' },
+    unread: 0, requestedAt: '2026-11-01T00:00:00Z', scopes: {}, ...over,
+  }) as unknown as CoachingRelationship;
+const sectionTitles = () => [...el.querySelectorAll('h2')].map((x) => x.textContent?.trim());
+
+describe('coach marketplace flag (roadmap item 4)', () => {
+  it('OFF by default: a lifter with no coach gets an AI-first hub, no My coach card and no Find a coach link', async () => {
+    await mount();
+    expect(el.textContent).toContain('Start with the training assistant');
+    expect(el.textContent).not.toContain('My coach');
+    expect(el.textContent).not.toMatch(/look for a( different)? coach|work with a coach|find a coach/i);
+    expect(links()).not.toContain('/coaching/find');
+    // The assistant leads the page.
+    expect(sectionTitles()[0]).toBe('Training assistant');
+  });
+
+  it('OFF: a client with an active coach keeps the coach card (messages/workspace via My coach), without marketplace links', async () => {
+    h.rels = [rel({ status: 'active', unread: 2 })];
+    await mount();
+    await waitFor(() => expect(el.textContent).toContain('Coach Kim'));
+    expect(el.textContent).toContain('Your coach');
+    expect(el.textContent).toContain('2 unread');
+    expect(links()).toContain('/coaching/my');
+    expect(links()).not.toContain('/coaching/find');
+  });
+
+  it('OFF: a pending request still shows, without "look at other coaches" links', async () => {
+    h.rels = [rel({ status: 'requested' })];
+    await mount();
+    await waitFor(() => expect(el.textContent).toContain('Request pending'));
+    expect(links()).toContain('/coaching/my');
+    expect(links()).not.toContain('/coaching/find');
+    expect(el.textContent).not.toContain('Look for a coach');
+  });
+
+  it('OFF: someone with only past coaching gets a quiet link to its history (nothing deleted)', async () => {
+    h.rels = [rel({ status: 'ended' })];
+    await mount();
+    await waitFor(() => expect(el.textContent).toContain('Past coaching'));
+    expect(links()).toContain('/coaching/my');
+    expect(links()).not.toContain('/coaching/find');
+  });
+
+  it('OFF: an approved coach with clients keeps the workspace and client counts', async () => {
+    h.profile = async () => coach({});
+    h.rels = [rel({ status: 'active', viewerIsCoach: true })];
+    await mount();
+    await waitFor(() => expect(el.textContent).toContain('Your coaching workspace'));
+    expect(links()).toEqual(expect.arrayContaining(['/coaching/dashboard', '/coaching/apply']));
+    expect(el.textContent).not.toContain('My coach'); // they aren't anyone's client
+  });
+
+  it('OFF: a guest sees only the training assistant intro (no human-coach pitch or browse link)', async () => {
+    h.auth = 'guest';
+    await mount();
+    expect(el.textContent).toContain('The training assistant');
+    expect(el.textContent).not.toContain('A human coach');
+    expect(links()).not.toContain('/coaching/find');
+  });
+
+  it('ON via VITE_ENABLE_COACH_MARKETPLACE: My coach leads with "Look for a coach"', async () => {
+    vi.stubEnv('VITE_ENABLE_COACH_MARKETPLACE', 'true');
+    await mount();
+    expect(sectionTitles()[0]).toBe('My coach');
+    expect(el.textContent).toContain('Look for a coach');
+    expect(links()).toContain('/coaching/find');
+  });
+
+  it('ON: a client with an active coach can look for a different coach', async () => {
+    vi.stubEnv('VITE_ENABLE_COACH_MARKETPLACE', '1');
+    h.rels = [rel({ status: 'active' })];
+    await mount();
+    await waitFor(() => expect(el.textContent).toContain('Look for a different coach'));
+  });
+
+  it('ON: a guest sees both ways to be coached, with a browse link', async () => {
+    vi.stubEnv('VITE_ENABLE_COACH_MARKETPLACE', 'on');
+    h.auth = 'guest';
+    await mount();
+    expect(el.textContent).toContain('A human coach');
+    expect(links()).toContain('/coaching/find');
   });
 });

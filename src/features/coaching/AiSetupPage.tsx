@@ -24,6 +24,7 @@ import { currentVersion } from '@/domain/program/program';
 import type { Allergen, DietTag, Equipment, Experience, Goal, LimitationArea } from '@/domain/types';
 import { AI_NOTES_MAX, classifyAiError, consentOutdated, DEFAULT_SCOPES, isHardUnavailable, liveActive, providerLabel, SCOPE_INFO, settingsActive } from './ai/model';
 import { useAiBoot } from './ai/useAi';
+import { isFeatureEnabled } from '@/config/featureFlags';
 import { AiGuest, AiUnavailable, BackButton, CoachStylePicker, DataExplainer, ScopeToggles } from './ai/parts';
 
 const STEPS = ['About', 'Your details', 'Data', 'Agree'] as const;
@@ -215,7 +216,9 @@ export default function AiSetupPage() {
               {[
                 'Give medical advice or diagnose pain, injuries or conditions. See a health professional for those',
                 'Change your plan on its own, or replace a plan your human coach manages',
-                'Read your conversations with a human coach. Human coaches are separate people you find under “Look for a coach”',
+                isFeatureEnabled('coachMarketplace')
+                  ? 'Read your conversations with a human coach. Human coaches are separate people you find under “Look for a coach”'
+                  : 'Read your conversations with a human coach',
               ].map((t) => (
                 <Li key={t}>{t}</Li>
               ))}

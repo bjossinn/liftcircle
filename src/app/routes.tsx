@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router';
 import { Shell } from './Shell';
 import { Spinner, Page, EmptyState, Button } from '@/components/ui';
 import { RouteError } from './RouteError';
+import { CoachMarketplaceOff, FeatureGate, FeedOff } from './FeatureGate';
 
 const L = (f: () => Promise<{ default: ComponentType }>) => {
   const C = lazy(f);
@@ -49,7 +50,8 @@ export const router = createBrowserRouter([
       { path: '/nutrition/shopping', element: L(() => import('@/features/nutrition/ShoppingListPage')) },
       { path: '/nutrition/log', element: L(() => import('@/features/nutrition/FoodLogPage')) },
       { path: '/nutrition/targets', element: L(() => import('@/features/nutrition/TargetsPage')) },
-      { path: '/feed', element: L(() => import('@/features/social/FeedPage')) },
+      // Social feed flag: only the list is gated. Compose (share a workout), post pages, profiles and friends stay reachable.
+      { path: '/feed', element: <FeatureGate flag="socialFeed" off={<FeedOff />}>{L(() => import('@/features/social/FeedPage'))}</FeatureGate> },
       { path: '/feed/new', element: L(() => import('@/features/social/ComposePage')) },
       { path: '/feed/post/:id', element: L(() => import('@/features/social/PostPage')) },
       { path: '/profile', element: L(() => import('@/features/social/ProfilePage')) },
@@ -65,9 +67,11 @@ export const router = createBrowserRouter([
       { path: '/auth/callback', element: L(() => import('@/features/auth/AuthCallbackPage')) },
       { path: '/import-guest', element: L(() => import('@/features/auth/ImportGuestPage')) },
       { path: '/coaching', element: L(() => import('@/features/coaching/CoachingHubPage')) },
-      { path: '/coaching/find', element: L(() => import('@/features/coaching/FindCoachPage')) },
-      { path: '/coaching/coach/:id', element: L(() => import('@/features/coaching/CoachProfilePage')) },
-      { path: '/coaching/request/:coachId', element: L(() => import('@/features/coaching/RequestCoachingPage')) },
+      // Coach marketplace flag: browsing coaches and sending new requests. Existing relationships, the coach workspace,
+      // applications and admin routes below are not gated.
+      { path: '/coaching/find', element: <FeatureGate flag="coachMarketplace" off={<CoachMarketplaceOff />}>{L(() => import('@/features/coaching/FindCoachPage'))}</FeatureGate> },
+      { path: '/coaching/coach/:id', element: <FeatureGate flag="coachMarketplace" off={<CoachMarketplaceOff />}>{L(() => import('@/features/coaching/CoachProfilePage'))}</FeatureGate> },
+      { path: '/coaching/request/:coachId', element: <FeatureGate flag="coachMarketplace" off={<CoachMarketplaceOff />}>{L(() => import('@/features/coaching/RequestCoachingPage'))}</FeatureGate> },
       { path: '/coaching/apply', element: L(() => import('@/features/coaching/ApplyPage')) },
       { path: '/coaching/admin', element: L(() => import('@/features/coaching/AdminQueuePage')) },
       { path: '/coaching/admin/reports', element: L(() => import('@/features/coaching/AdminReportsPage')) },

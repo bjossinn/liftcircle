@@ -24,6 +24,13 @@ The name and colours live in `src/config/brand.ts`, so they're easy to change.
 
 Without `.env.local` the app runs in Personal mode. Add the two publishable Supabase values to switch on Connected mode (see [docs/SETUP.md](docs/SETUP.md)).
 
+## Feature flags
+
+The coach marketplace (finding/browsing coaches, new coaching requests) and the social feed tab are **off by default**
+(`src/config/featureFlags.ts`). Set `VITE_ENABLE_COACH_MARKETPLACE=true` and/or `VITE_ENABLE_SOCIAL_FEED=true` in the
+build environment (Netlify environment variables or `.env.local`) and rebuild to switch them on. A flag only hides the
+area from navigation: existing coaching, sharing, posts, friends and all data keep working.
+
 ## Quick start
 
 ```bash

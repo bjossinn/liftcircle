@@ -242,6 +242,26 @@ describe('logger input persistence', () => {
   });
 });
 
+describe('save error banner survives no-op queued changes (PR #19 follow-up)', () => {
+  it('failed save → tap Finish on an unfinished workout (opens the confirmation, writes nothing) → the error and Retry stay', async () => {
+    // A change with no typed draft (Pause), so Finish's draft flush has nothing to re-save.
+    h.failSave = true;
+    click(button('Pause workout'));
+    await waitFor(() => expect(document.body.textContent).toContain('Couldn’t save your last change on this device'));
+    expect((await db().sessions.get('s1'))!.pausedAt).toBeUndefined();
+    h.failSave = false; // the Finish check itself succeeds; it only decides to open the sheet and writes nothing
+    const finish = [...document.querySelectorAll<HTMLButtonElement>('header button')].find((b) => b.textContent?.trim() === 'Finish')!;
+    click(finish);
+    await waitFor(() => expect([...document.querySelectorAll('dialog[open]')].some((d) => d.textContent?.includes('Finish workout?'))).toBe(true));
+    await tick(50);
+    expect(document.body.textContent).toContain('Couldn’t save your last change on this device');
+    expect((await db().sessions.get('s1'))!.status).toBe('active');
+    click(button('Retry'));
+    await waitFor(async () => expect((await db().sessions.get('s1'))!.pausedAt).toBeTypeOf('number'));
+    await waitFor(() => expect(document.body.textContent).not.toContain('Couldn’t save your last change'));
+  });
+});
+
 describe('logger completion validation', () => {
   it('reproduced defect fixed: 20 kg / 0 reps cannot be marked done, starts no rest and copies nothing forward', async () => {
     type(input('Set 1 reps'), '0');

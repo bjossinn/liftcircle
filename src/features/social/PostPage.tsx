@@ -8,6 +8,7 @@ import type { Comment, Post } from '@/domain/types';
 import { uuid } from '@/lib/id';
 import { friendlyError } from '@/social/pendingPosts';
 import { AccessNotice, Avatar, ReportSheet, Time, useSocialAccess } from './common';
+import { feedHome } from './feedHome';
 import { PostCard } from './PostCard';
 
 const COMMENT_MAX = 1000;
@@ -105,7 +106,7 @@ export default function PostPage() {
       ) : post === undefined ? (
         <Spinner label="Loading post" />
       ) : post === null ? (
-        <EmptyState title="This post isn’t available" body="It may have been deleted, or it isn’t shared with you." action={<Button onClick={() => nav('/feed')}>Back to feed</Button>} />
+        <EmptyState title="This post isn’t available" body="It may have been deleted, or it isn’t shared with you." action={<Button onClick={() => nav(feedHome().path)}>{feedHome().label}</Button>} />
       ) : (
         <>
           <PostCard
@@ -113,8 +114,8 @@ export default function PostPage() {
             meId={meId}
             standalone
             onChange={setPost}
-            onRemove={() => nav('/feed', { replace: true })}
-            onBlocked={() => nav('/feed', { replace: true })}
+            onRemove={() => nav(feedHome().path, { replace: true })}
+            onBlocked={() => nav(feedHome().path, { replace: true })}
           />
 
           <section aria-labelledby="comments-title">
