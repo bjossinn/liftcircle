@@ -8797,7 +8797,7 @@ async function send(deps, uid, body) {
     }));
   const stored = await deps.db.getExchange(uid, id2);
   if (stored) return done({ status: 200, body: { reply: stored.reply, proposal: stored.proposal ?? null, duplicate: true, usage: await usageFor(deps, uid).catch(() => null) } });
-  if (body.workout != null && !settings.scopes.training) {
+  if ((body.workout != null || body.contextual === true) && !settings.scopes.training) {
     deps.log?.("ai_workout_request_refused", {});
     return done(err(409, "training_not_shared", t("aiServer.session.trainingNotShared"), { reason: "training_not_shared" }));
   }
@@ -8828,7 +8828,7 @@ async function send(deps, uid, body) {
     }
     throw e;
   }
-  const tally = { inputTokens: 0, outputTokens: 0, unknown: false, attempts: 0 };
+  const tally = { inputTokens: 0, outputTokens: 0, unknown: false, attempts: 0, unknownAttempts: 0 };
   let settled = false;
   const attemptUsage = () => ({
     inputTokens: tally.inputTokens,
@@ -8884,6 +8884,7 @@ async function send(deps, uid, body) {
         res = await deps.fetch(url, init);
       } catch (e) {
         tally.unknown = true;
+        tally.unknownAttempts += 1;
         throw e;
       }
       return {
@@ -8895,7 +8896,10 @@ async function send(deps, uid, body) {
           try {
             return await res.json();
           } catch (e) {
-            if (res.ok) tally.unknown = true;
+            if (res.ok) {
+              tally.unknown = true;
+              tally.unknownAttempts += 1;
+            }
             throw e;
           }
         }
@@ -9041,7 +9045,10 @@ ${text}` : text;
       usage = addUsage(usage, res.usage);
       tally.inputTokens = usage.inputTokens;
       tally.outputTokens = usage.outputTokens;
-      if (!res.usage || res.usage.input_tokens == null && res.usage.output_tokens == null) tally.unknown = true;
+      if (!res.usage || res.usage.input_tokens == null && res.usage.output_tokens == null) {
+        tally.unknown = true;
+        tally.unknownAttempts += 1;
+      }
       if (typeof res.model === "string") usedModel = res.model.slice(0, 100);
       const toolUses = res.content.filter((b) => b.type === "tool_use");
       if (res.stop_reason !== "tool_use" || toolUses.length === 0 || last) {
@@ -9206,7 +9213,9 @@ ${text}` : text;
       validationErrors: p.validationErrors,
       effectiveDate: null
     } : null,
-    usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: cost }
+    // Attempts that may have been billed but never reported usage (e.g. a network error before a successful retry) are
+    // recorded with the successful exchange too (review round 3, P2-2); its daily allowance is unchanged.
+    usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: cost, ...tally.unknownAttempts ? { unknownAttempts: tally.unknownAttempts } : {} }
   }));
   deps.log?.("ai_send", {
     rounds,

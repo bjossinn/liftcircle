@@ -570,6 +570,18 @@ Spec (verbatim, with the approved English and Icelandic copy): `docs/specs/item1
   diagnostic only; a budget-exhausted run is INCOMPLETE; served models must match exactly (or a documented alias).
   `--report <run dir> --ratings <file>` attaches the blind reviews to the original run without model calls.
 
+### 4g.2 Review round 3 (PR #26)
+
+- Workout questions carry a `contextual: true` marker independently of the workout snapshot (kept through removing
+  the attachment, pending messages, reload, Edit and recovery); the server refuses it while Training isn't shared,
+  even when this device's settings are stale.
+- Every client request keeps its deadline and abort link until the body is read (JSON and error bodies included); a
+  streamed send gets no headers within 30 s → interrupted, then checked by id.
+- Provider attempts that may have been billed without reporting usage are recorded with a successful exchange too
+  (`ai_usage.unknown_usage_attempts`), once, without changing its charge.
+- Eval: negated safety wording ("Do not push through the pain") is a review flag, not a violation; the blind review
+  sheet is RFC 4180 CSV (doubled quotes, multiline fields).
+
 ## 5. Testing status
 
 | What | How | Status |

@@ -59,6 +59,25 @@ describe('P1-2: contextual workout requests need Training sharing', () => {
   });
 });
 
+describe('review round 3 P1: generated workout text without its attachment', () => {
+  it('Training off: the contextual marker alone is refused, nothing reaches the provider; plain text still works', async () => {
+    const { deps, mem, requests } = setup([textRound('{"answer":"Sure.","why":null}')], settings({ scopes: { profile: true, training: false, measurements: false, nutrition: false } }));
+    const generated = 'Explain this: why is my next target for Barbell bench press “62.5 kg × 8 reps (Add weight)”?';
+    const r = await handleAiCoach(deps, U, send(`${generated}\nearlier`, 11, { contextual: true }));
+    expect(r).toMatchObject({ status: 409, body: { code: 'training_not_shared' } });
+    expect(requests).toHaveLength(0);
+    expect(mem.usageOf('2026-11-26').requests).toBe(0);
+    const s = await startAiCoach(deps, U, send(generated, 12, { contextual: true, stream: true }));
+    expect(s).toMatchObject({ kind: 'done', result: { status: 409, body: { code: 'training_not_shared' } } });
+    expect((await handleAiCoach(deps, U, send('How should I warm up?', 13))).status).toBe(200);
+  });
+
+  it('Training on: the marker changes nothing', async () => {
+    const { deps } = setup([textRound('{"answer":"Because you hit the top of the range.","why":null}')]);
+    expect((await handleAiCoach(deps, U, send('Explain this: …', 14, { contextual: true }))).status).toBe(200);
+  });
+});
+
 describe('P2-1: blank structured output never becomes a charged success', () => {
   for (const [name, round] of [
     ['no content at all', textRound(null)],
@@ -144,6 +163,17 @@ describe('P2-4: interrupted attempts are unknown-billed, known tokens kept', () 
     expect(r.status).toBe(503);
     expect(mem.usageOf('2026-11-26')).toMatchObject({ requests: 0, failedInputTokens: 60, failedOutputTokens: 6, unknownUsageAttempts: 1 });
     expect(logs.find((l) => l.event === 'ai_provider_error')).toMatchObject({ attempts: 4, unknown_usage: true });
+  });
+
+  it('review round 3 P2-2: a network failure then a successful retry keeps the unknown attempt (allowance unchanged)', async () => {
+    const { deps, mem } = setup(['throw', textRound('{"answer":"Rest today.","why":null}')]);
+    const r = await handleAiCoach(deps, U, send('hi', 7));
+    expect(r.status).toBe(200);
+    expect(mem.usageOf('2026-11-26')).toMatchObject({ requests: 1, failedRequests: 0, inputTokens: 100, outputTokens: 20, unknownUsageAttempts: 1 });
+    expect(mem.state.recorded[0].usage).toMatchObject({ inputTokens: 100, outputTokens: 20, unknownAttempts: 1 });
+    // A replay of the stored exchange books nothing again.
+    await handleAiCoach(deps, U, send('hi', 7));
+    expect(mem.usageOf('2026-11-26')).toMatchObject({ requests: 1, unknownUsageAttempts: 1 });
   });
 
   it('a clean exchange records its attempt count and stays known', async () => {

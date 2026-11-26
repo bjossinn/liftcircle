@@ -29,6 +29,8 @@ export interface SendInput {
   mode?: 'chat' | 'checkin_review';
   unsynced?: number;
   workout?: WorkoutContext;
+  /** A workout question (generated text and/or a workout request), with or without its attachment. */
+  contextual?: boolean;
 }
 /** Rebuilds the input right before an attempt; null = this message may not be sent now (e.g. Training sharing off). */
 export type Prepare = () => Promise<SendInput | null>;

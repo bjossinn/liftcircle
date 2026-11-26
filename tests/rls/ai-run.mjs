@@ -576,6 +576,18 @@ async function main() {
       eq(await usage(y.t), { ...t0, f: t0.f + 1, c: t0.c + 1, u: t0.u + 1 }, 'cancelled usage booked today, marked unknown');
     });
 
+    await test('cancel-v10', 'review round 3: a successful exchange books its potentially billed unknown attempts once (charge unchanged)', async () => {
+      const M = randomUUID();
+      const d0 = await usage();
+      ok(await begin(M), 'begin');
+      const ex = exchange(M, `u ${M.slice(0, 4)}`);
+      ex.p_usage = J({ inputTokens: 100, outputTokens: 20, costUsd: null, unknownAttempts: 2 });
+      eq(ok(await rpc('service', 'ai_record_exchange_settled', withUser(U.eve, ex)), 'record').duplicate, false, 'stored');
+      eq(await usage(), { ...d0, r: d0.r + 1, u: d0.u + 2 }, 'one charge, two unknown attempts');
+      eq(ok(await rpc('service', 'ai_record_exchange_settled', withUser(U.eve, ex)), 'replay').duplicate, true, 'replayed');
+      eq(await usage(), { ...d0, r: d0.r + 1, u: d0.u + 2 }, 'a replay books nothing again');
+    });
+
     await test('cancel-v10', 'service role only; ownership from p_user; usage reports unreadable by clients', async () => {
       const M = randomUUID();
       ok(await begin(M), 'begin');

@@ -234,10 +234,10 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
 
   const stored = await deps.db.getExchange(uid, id);
   if (stored) return done({ status: 200, body: { reply: stored.reply, proposal: stored.proposal ?? null, duplicate: true, usage: await usageFor(deps, uid).catch(() => null) } });
-  // A contextual workout request (it carries a workout snapshot, and its text was generated from that workout: exercise
-  // names, loads, targets) is refused while Training isn't shared: nothing reaches the provider, nothing is charged
-  // (review P1-2). The app keeps the user's own words on the device.
-  if (body.workout != null && !settings.scopes.training) {
+  // A contextual workout request (it carries a workout snapshot, or the app marks its text as generated from a workout
+  // — exercise names, loads, targets — even after the attachment was removed) is refused while Training isn't shared:
+  // nothing reaches the provider, nothing is charged (review P1-2, round 3 P1). The app keeps the user's own words.
+  if ((body.workout != null || body.contextual === true) && !settings.scopes.training) {
     deps.log?.('ai_workout_request_refused', {});
     return done(err(409, 'training_not_shared', t('aiServer.session.trainingNotShared'), { reason: 'training_not_shared' }));
   }
@@ -280,7 +280,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   // unless this attempt still owns the running request (so a lost response after the answer was stored never refunds).
   // attempts: provider requests dispatched (every round and retry); unknown: one of them may have been billed but
   // produced no known usage (aborted, timed out, network error, unreadable body) — reported as unknown, never as zero.
-  const tally = { inputTokens: 0, outputTokens: 0, unknown: false, attempts: 0 };
+  const tally = { inputTokens: 0, outputTokens: 0, unknown: false, attempts: 0, unknownAttempts: 0 };
   let settled = false;
   const attemptUsage = () => ({
     inputTokens: tally.inputTokens,
@@ -343,6 +343,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
         res = await deps.fetch(url, init);
       } catch (e) {
         tally.unknown = true; // aborted / timed out / network: it may still have been billed
+        tally.unknownAttempts += 1;
         throw e;
       }
       return {
@@ -354,7 +355,10 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
           try {
             return await res.json();
           } catch (e) {
-            if (res.ok) tally.unknown = true;
+            if (res.ok) {
+              tally.unknown = true;
+              tally.unknownAttempts += 1;
+            }
             throw e;
           }
         },
@@ -428,7 +432,7 @@ interface Answering {
   workout: WorkoutContext | null;
   prov: NonNullable<ReturnType<typeof resolveProvider>>;
   settings: AiSettingsRow;
-  tally: { inputTokens: number; outputTokens: number; unknown: boolean; attempts: number };
+  tally: { inputTokens: number; outputTokens: number; unknown: boolean; attempts: number; unknownAttempts: number };
   fail: () => Promise<void>;
   /** Settle as cancelled (item 10) and build the response. */
   cancelled: () => Promise<CoachResult>;
@@ -530,7 +534,10 @@ async function answer(a: Answering): Promise<CoachResult> {
       tally.inputTokens = usage.inputTokens;
       tally.outputTokens = usage.outputTokens;
       // Missing provider usage is unknown, never zero (booked as such if this request fails or is cancelled).
-      if (!res.usage || (res.usage.input_tokens == null && res.usage.output_tokens == null)) tally.unknown = true;
+      if (!res.usage || (res.usage.input_tokens == null && res.usage.output_tokens == null)) {
+        tally.unknown = true;
+        tally.unknownAttempts += 1;
+      }
       if (typeof res.model === 'string') usedModel = res.model.slice(0, 100);
       const toolUses = res.content.filter((b): b is Extract<ContentBlock, { type: 'tool_use' }> => b.type === 'tool_use');
       if (res.stop_reason !== 'tool_use' || toolUses.length === 0 || last) {
@@ -738,7 +745,9 @@ async function answer(a: Answering): Promise<CoachResult> {
           effectiveDate: null,
         }
       : null,
-    usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: cost },
+    // Attempts that may have been billed but never reported usage (e.g. a network error before a successful retry) are
+    // recorded with the successful exchange too (review round 3, P2-2); its daily allowance is unchanged.
+    usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: cost, ...(tally.unknownAttempts ? { unknownAttempts: tally.unknownAttempts } : {}) },
   }));
   deps.log?.('ai_send', {
     rounds,

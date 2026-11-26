@@ -125,6 +125,41 @@ describe('P1-2: sharing is re-checked before every attempt', () => {
   });
 });
 
+describe('review round 3 P2-1: deadlines cover headers AND bodies', () => {
+  /** A response whose headers arrived but whose body never finishes. */
+  const stalledBody = (status = 200, type = 'application/json') => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{"state":')); } }), { status, headers: { 'content-type': type } });
+
+  it('a JSON control call whose body stalls after the headers ends at its deadline', async () => {
+    const t0 = Date.now();
+    await expect(aiApi.requestStatus(ID, { fetchImpl: (async () => stalledBody()) as unknown as typeof fetch, timeoutMs: 60 })).rejects.toMatchObject({ code: 'control_timeout' });
+    expect(Date.now() - t0).toBeLessThan(2000);
+  });
+
+  it('a JSON error body that stalls is bounded too (no unbounded mapInvokeError read)', async () => {
+    await expect(aiApi.cancel(ID, { fetchImpl: (async () => stalledBody(409)) as unknown as typeof fetch, timeoutMs: 60 })).rejects.toMatchObject({ code: 'control_timeout' });
+  });
+
+  it('the caller’s abort ends a stalled body read', async () => {
+    const ctl = new AbortController();
+    const p = aiApi.requestStatus(ID, { fetchImpl: (async () => stalledBody()) as unknown as typeof fetch, signal: ctl.signal, timeoutMs: 60_000 });
+    setTimeout(() => ctl.abort(), 20);
+    await expect(p).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('a streamed send that gets no headers ends as interrupted at the admission deadline (then checked by id)', async () => {
+    const never = vi.fn((_u: string, init: RequestInit) => new Promise<Response>((_r, reject) => init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('a'), { name: 'AbortError' })))));
+    const t0 = Date.now();
+    await expect(aiApi.sendStream({ id: ID, text: 'x' }, {}, { fetchImpl: never as unknown as typeof fetch, timeoutMs: 60 })).rejects.toBeInstanceOf(StreamInterrupted);
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(never).toHaveBeenCalledTimes(1);
+  });
+
+  it('a streamed send answered with a JSON body that stalls ends as interrupted (inactivity)', async () => {
+    await expect(consumeStreamResponse(stalledBody(200), ID, {}, { inactivityMs: 50 })).rejects.toBeInstanceOf(StreamInterrupted);
+    await expect(consumeStreamResponse(stalledBody(409), ID, {}, { inactivityMs: 50 })).rejects.toBeInstanceOf(StreamInterrupted);
+  });
+});
+
 describe('P2-5: nothing waits forever', () => {
   it('an OPEN stream that goes silent (no bytes, no heartbeats) ends as interrupted', async () => {
     const silent = new Response(new ReadableStream({ start() { /* never enqueues, never closes */ } }), { headers: { 'content-type': 'text/event-stream' } });

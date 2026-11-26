@@ -17,7 +17,8 @@
 -- Refunds go to the day the request was charged (a request charged before midnight UTC is refunded on that day);
 -- failed/cancelled usage is booked on the current day. Usage reports are idempotent per attempt
 -- (public.ai_request_usage_reports): a late or repeated report never books twice and never refunds again. A report
--- without provider usage counts in ai_usage.unknown_usage_attempts instead of pretending zero tokens.
+-- without provider usage counts in ai_usage.unknown_usage_attempts instead of pretending zero tokens, and so do such
+-- attempts inside an exchange that then succeeded (p_usage.unknownAttempts on ai_record_exchange_settled).
 --
 -- Publication guard: a BEFORE INSERT trigger on ai_messages refuses an assistant reply to a cancelled or
 -- cancel-requested request, so EVERY settlement path is covered, including the legacy ai_record_exchange called by
@@ -290,6 +291,12 @@ begin
     raise exception 'The reply was stopped.' using errcode = 'PT409', hint = 'cancelled';
   end if;
   v_result := public.ai_record_exchange(p_user, p_message, p_reply, p_proposal, p_usage);
+  -- Provider attempts in this exchange that may have been billed without reporting usage (a network error before a
+  -- successful retry): counted once, with the stored answer; the request's charge is unchanged.
+  if not coalesce((v_result ->> 'duplicate')::boolean, false) and coalesce(private.try_int(p_usage ->> 'unknownAttempts'), 0) > 0 then
+    update public.ai_usage set unknown_usage_attempts = unknown_usage_attempts + least(private.try_int(p_usage ->> 'unknownAttempts'), 100), updated_at = now()
+     where user_id = p_user and day = private.ai_utc_day();
+  end if;
   if v_found and v_req.state <> 'succeeded' then
     -- A request refunded by a failed attempt whose answer was stored anyway (an older, slow attempt) pays once.
     if not v_req.charged then perform private.ai_charge_request(p_user, null); end if;

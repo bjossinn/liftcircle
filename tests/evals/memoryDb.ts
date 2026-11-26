@@ -217,6 +217,7 @@ export function createMemoryDb(input: MemoryDbInput) {
       const u = usageOf(day());
       u.inputTokens += rec.usage.inputTokens;
       u.outputTokens += rec.usage.outputTokens;
+      u.unknownUsageAttempts += rec.usage.unknownAttempts ?? 0;
       if (r && r.state !== 'succeeded') {
         if (!r.charged) {
           charge(null);

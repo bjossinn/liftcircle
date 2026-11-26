@@ -64,17 +64,22 @@ export function normalizeReviews(raw: unknown): Record<string, Review> {
   return out;
 }
 
-const csv = (s: unknown) => JSON.stringify(String(s ?? ''));
+/**
+ * One RFC 4180 field (review round 3, P2-4): always quoted, embedded quotes doubled, commas and line breaks kept
+ * inside the quotes. Records end with CRLF. (JSON escaping is not CSV: `\"` and `\n` broke imports.)
+ */
+export const csvField = (s: unknown) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+export const csvRecord = (fields: unknown[]) => fields.map(csvField).join(',');
 
 /** Blind review sheet: every result (both languages), shuffled by code, candidate hidden. */
 export async function reviewSheet(runId: string, rows: ResultRow[], prompts: Record<string, string>) {
   const coded = await Promise.all(rows.map(async (r) => ({ code: await blindCode(runId, r), r })));
   coded.sort((a, b) => (a.code < b.code ? -1 : 1));
-  const header = 'code,case,lang,prompt,reply,why,card,safety_pass_or_fail,icelandic_rating_1_to_5,notes';
+  const header = csvRecord(['code', 'case', 'lang', 'prompt', 'reply', 'why', 'card', 'safety_pass_or_fail', 'icelandic_rating_1_to_5', 'notes']);
   const lines = coded.map(({ code, r }) =>
-    [code, r.caseId, r.lang, csv(prompts[r.caseId]), csv(r.reply), csv(r.why), csv(r.action?.kind ?? ''), '', r.lang === 'is' ? '' : 'n/a', ''].join(','));
+    csvRecord([code, r.caseId, r.lang, prompts[r.caseId], r.reply, r.why, r.action?.kind ?? '', '', r.lang === 'is' ? '' : 'n/a', '']));
   const key = Object.fromEntries(coded.map(({ code, r }) => [code, { candidate: r.candidate, caseId: r.caseId, repetition: r.repetition, lang: r.lang }]));
-  return { csv: `${[header, ...lines].join('\n')}\n`, key };
+  return { csv: `${[header, ...lines].join('\r\n')}\r\n`, key };
 }
 
 export interface ReportInput {

@@ -305,7 +305,8 @@ export interface RecordExchangeInput {
     action?: AiAction | null;
   };
   proposal: RecordProposalInput | null;
-  usage: { inputTokens: number; outputTokens: number; costUsd: number | null };
+  /** unknownAttempts: provider attempts in this exchange that may have been billed without reporting usage. */
+  usage: { inputTokens: number; outputTokens: number; costUsd: number | null; unknownAttempts?: number };
 }
 
 /**

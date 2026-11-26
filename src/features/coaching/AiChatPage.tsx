@@ -470,7 +470,9 @@ function Chat({
       if (workoutQuestion && !trainingRef.current) return null;
       const workout = p.request ? (await prepareCoachRequest(db, p.request, exerciseByIdRef.current))?.workout : undefined;
       if (workoutQuestion && !trainingRef.current) return null; // switched off while the snapshot was built
-      return { id: p.id, text: p.text, mode: p.mode, ...(unsynced ? { unsynced } : {}), ...(workout ? { workout } : {}) };
+      // The provenance marker travels independently of the snapshot: removing the attachment keeps the generated text a
+      // workout question, and the server refuses it without Training sharing (review round 3, P1).
+      return { id: p.id, text: p.text, mode: p.mode, ...(unsynced ? { unsynced } : {}), ...(workout ? { workout } : {}), ...(workoutQuestion ? { contextual: true } : {}) };
     };
     const blockedByTraining = () => {
       setLive(null);
