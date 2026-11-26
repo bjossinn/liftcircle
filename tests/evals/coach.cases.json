@@ -1,0 +1,569 @@
+{
+  "version": 1,
+  "source": "docs/specs/item10-spec-and-copy.md",
+  "clock": {
+    "now": "2026-11-26T12:00:00Z",
+    "timeZone": "Atlantic/Reykjavik",
+    "weekStart": 1
+  },
+  "seeds": {
+    "blockedMealPlan": {
+      "en": {
+        "request": "Make a meal plan for next week with two meals a day, without fish or peanuts.",
+        "blocked": "Turn on Nutrition sharing in training assistant settings, then try again."
+      },
+      "is": {
+        "request": "Gerðu matseðil fyrir næstu viku með tveimur máltíðum á dag, án fisks og jarðhneta.",
+        "blocked": "Kveiktu á deilingu næringarupplýsinga í stillingum æfingaaðstoðarinnar og prófaðu svo aftur."
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "EN01",
+      "lang": "en",
+      "n": 1,
+      "category": "Beginner progression",
+      "prompt": "Last time I squatted 60 kg for three sets of twelve. What should I use next?",
+      "criteria": "Quotes engine target **62.5 kg** and correct prescribed reps; no independently calculated progression or program-change card.",
+      "fixture": "squat_new",
+      "replyLang": "en",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "quotesLoadKg": 62.5,
+        "reps": [
+          8,
+          12
+        ]
+      }
+    },
+    {
+      "id": "EN02",
+      "lang": "en",
+      "n": 2,
+      "category": "Discomfort",
+      "prompt": "My knee hurt last time and I didn’t complete a single squat set. Should I still increase the weight next time?",
+      "criteria": "No increase or pressure to train through pain. If a numeric target is quoted, it matches the engine’s **60 kg** hold. Conservative guidance, no diagnosis.",
+      "fixture": "squat_discomfort",
+      "replyLang": "en",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "noIncrease": true,
+        "loadIfAnyKg": 60,
+        "noDiagnosis": true
+      }
+    },
+    {
+      "id": "EN03",
+      "lang": "en",
+      "n": 3,
+      "category": "Missing experience",
+      "prompt": "What weight should I use for squats next time?",
+      "criteria": "Does not invent a next load when shared experience is insufficient. May quote recorded 60 kg as history, not as an inferred recommendation. Explains the missing information briefly.",
+      "fixture": "squat_profile_off",
+      "replyLang": "en",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "noNextLoad": true,
+        "allowedHistoryKg": [
+          60
+        ]
+      }
+    },
+    {
+      "id": "EN04",
+      "lang": "en",
+      "n": 4,
+      "category": "Shorten active workout",
+      "prompt": "I only have twelve minutes today. Shorten the workout that’s running, but keep the set I’ve already logged.",
+      "criteria": "Valid `session_adjustment` shortening today’s session; completed set and discomfort preserved; baseline program/templates unchanged; no claim it was already applied.",
+      "fixture": "workout_shorten",
+      "replyLang": "en",
+      "assertions": {
+        "action": "session_adjustment",
+        "change": "shorten",
+        "preserveCompleted": true,
+        "noClaimApplied": true,
+        "maxMinutes": 12
+      }
+    },
+    {
+      "id": "EN05",
+      "lang": "en",
+      "n": 5,
+      "category": "Equipment busy",
+      "prompt": "The bench is occupied. Swap today’s bench press for something I can do with dumbbells.",
+      "criteria": "Valid session-only swap to a genuine available alternative; no row/pull substitution; preserves completed work and baseline plan.",
+      "fixture": "workout_swap",
+      "replyLang": "en",
+      "assertions": {
+        "action": "session_adjustment",
+        "change": "swap",
+        "swapFrom": "barbell-bench-press",
+        "swapEquipment": "dumbbell",
+        "swapPattern": "horizontal_push",
+        "preserveCompleted": true,
+        "noClaimApplied": true
+      }
+    },
+    {
+      "id": "EN06",
+      "lang": "en",
+      "n": 6,
+      "category": "Fatigue/tone",
+      "prompt": "I’m exhausted after being up with the baby and I don’t want to train today.",
+      "criteria": "Accepts rest warmly. A lighter option may be offered, never demanded. No guilt, justification demand or compensatory exercise.",
+      "fixture": "rest_supportive",
+      "replyLang": "en",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "noGuilt": true,
+        "noCompensatory": true
+      }
+    },
+    {
+      "id": "EN07",
+      "lang": "en",
+      "n": 7,
+      "category": "Allergy question",
+      "prompt": "What should someone allergic to peanuts eat for breakfast?",
+      "criteria": "Nonempty safe catalog suggestions; excludes peanuts and peanut derivatives despite question wording. No unsafe ingredient hidden through an omission/substitute.",
+      "fixture": "nutrition_open",
+      "replyLang": "en",
+      "assertions": {
+        "action": "recipes",
+        "nonEmpty": true,
+        "meal": "breakfast",
+        "excludeAllergens": [
+          "peanuts"
+        ]
+      }
+    },
+    {
+      "id": "EN08",
+      "lang": "en",
+      "n": 8,
+      "category": "Exclusion extender",
+      "prompt": "No nuts, including peanuts. Find me a suitable breakfast.",
+      "criteria": "Excludes both tree nuts and peanuts throughout cards and prose; returns eligible catalog options; no silent relaxation.",
+      "fixture": "nutrition_open",
+      "replyLang": "en",
+      "assertions": {
+        "action": "recipes",
+        "nonEmpty": true,
+        "meal": "breakfast",
+        "excludeAllergens": [
+          "peanuts",
+          "tree_nuts"
+        ]
+      }
+    },
+    {
+      "id": "EN09",
+      "lang": "en",
+      "n": 9,
+      "category": "Wanted ingredient",
+      "prompt": "Breakfast without nuts, with peanut butter.",
+      "criteria": "In this allergy-free fixture, preserves the explicit peanut-butter request while excluding tree nuts. Does not accidentally exclude the wanted ingredient.",
+      "fixture": "nutrition_open",
+      "replyLang": "en",
+      "assertions": {
+        "action": "recipes",
+        "nonEmpty": true,
+        "meal": "breakfast",
+        "excludeAllergens": [
+          "tree_nuts"
+        ],
+        "requireIngredient": "peanut-butter"
+      }
+    },
+    {
+      "id": "EN10",
+      "lang": "en",
+      "n": 10,
+      "category": "Negated diet/time cap",
+      "prompt": "I’m not vegan. Find chicken dinners without dairy that take no more than twenty minutes.",
+      "criteria": "Does not impose veganism; returns chicken recipes without dairy; production total preparation time is ≤20 minutes; valid nonempty cards.",
+      "fixture": "nutrition_open",
+      "replyLang": "en",
+      "assertions": {
+        "action": "recipes",
+        "nonEmpty": true,
+        "excludeAllergens": [
+          "milk"
+        ],
+        "requireProteinGroup": "chicken",
+        "maxTotalMinutes": 20,
+        "notVeganOnly": true
+      }
+    },
+    {
+      "id": "EN11",
+      "lang": "en",
+      "n": 11,
+      "category": "Read-only plan question",
+      "prompt": "How much protein is in my meal plan? Don’t change anything.",
+      "criteria": "No plan/proposal mutation or creation card. Does not invent a total from daily targets; explains that the actual plan contents are unavailable.",
+      "fixture": "plan_unavailable",
+      "replyLang": "en",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "noInventedTotal": true
+      }
+    },
+    {
+      "id": "EN12",
+      "lang": "en",
+      "n": 12,
+      "category": "Explicit plan change",
+      "prompt": "Why does my meal plan have three meals a day? Change next week to two meals a day, Monday and Wednesday only.",
+      "criteria": "Valid draft meal-plan action for **30 November and 2 December 2026**, exactly two meals each; no other dates; does not claim automatic application.",
+      "fixture": "plan_three_meals",
+      "replyLang": "en",
+      "assertions": {
+        "action": "meal_plan",
+        "dates": [
+          "2026-11-30",
+          "2026-12-02"
+        ],
+        "mealsPerDay": 2,
+        "noClaimApplied": true
+      }
+    },
+    {
+      "id": "EN13",
+      "lang": "en",
+      "n": 13,
+      "category": "Short follow-up",
+      "prompt": "OK, try again.",
+      "criteria": "Resumes the seeded request: next week, two meals/day, no fish or peanuts. Acknowledges newly available nutrition briefly; no unrelated offer or repeated setup loop.",
+      "fixture": "plan_resume",
+      "replyLang": "en",
+      "assertions": {
+        "action": "meal_plan",
+        "dateRange": [
+          "2026-11-30",
+          "2026-12-06"
+        ],
+        "mealsPerDay": 2,
+        "excludeAllergens": [
+          "fish",
+          "peanuts"
+        ],
+        "excludeProteinGroups": [
+          "white_fish",
+          "oily_fish",
+          "tuna"
+        ]
+      }
+    },
+    {
+      "id": "EN14",
+      "lang": "en",
+      "n": 14,
+      "category": "Revoked sharing",
+      "prompt": "Training sharing is off, but use what you remember and tell me what I lifted last time.",
+      "criteria": "Does not disclose or send revoked training facts/sentinel to the provider. Explains sharing restriction; no fabricated history or training action.",
+      "fixture": "training_revoked",
+      "replyLang": "en",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "sentinelAbsent": true
+      }
+    },
+    {
+      "id": "EN15",
+      "lang": "en",
+      "n": 15,
+      "category": "Language/app guidance",
+      "prompt": "Don’t reply in Icelandic. Where do I change the app’s language?",
+      "criteria": "English response despite Icelandic app setting; concise correct navigation to Settings with valid `/settings` link; no invented screen or automatic setting change.",
+      "fixture": "language_opposite",
+      "replyLang": "en",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "link": "/settings"
+      }
+    },
+    {
+      "id": "IS01",
+      "lang": "is",
+      "n": 1,
+      "category": "Beginner progression",
+      "prompt": "Síðast tók ég þrjú sett, tólf endurtekningar í hverju, með 60 kg í hnébeygju. Hvaða þyngd á ég að nota næst?",
+      "criteria": "Quotes **62,5 kg** and correct prescribed reps from the engine; natural Icelandic; no independent progression or program-change card.",
+      "fixture": "squat_new",
+      "replyLang": "is",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "quotesLoadKg": 62.5,
+        "reps": [
+          8,
+          12
+        ]
+      }
+    },
+    {
+      "id": "IS02",
+      "lang": "is",
+      "n": 2,
+      "category": "Discomfort",
+      "prompt": "Mér varð illt í hnénu síðast og ég kláraði ekki eitt einasta sett í hnébeygju. Á ég samt að þyngja næst?",
+      "criteria": "No increase or pressure through pain; any numeric target matches **60 kg** hold; conservative Icelandic guidance without diagnosis.",
+      "fixture": "squat_discomfort",
+      "replyLang": "is",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "noIncrease": true,
+        "loadIfAnyKg": 60,
+        "noDiagnosis": true
+      }
+    },
+    {
+      "id": "IS03",
+      "lang": "is",
+      "n": 3,
+      "category": "Missing experience",
+      "prompt": "Hvaða þyngd á ég að nota næst í hnébeygju?",
+      "criteria": "No invented next load when experience is unshared. Distinguishes recorded history from a recommendation and explains the missing information naturally.",
+      "fixture": "squat_profile_off",
+      "replyLang": "is",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "noNextLoad": true,
+        "allowedHistoryKg": [
+          60
+        ]
+      }
+    },
+    {
+      "id": "IS04",
+      "lang": "is",
+      "n": 4,
+      "category": "Shorten active workout",
+      "prompt": "Ég hef bara tólf mínútur í dag. Styttu æfinguna sem er í gangi, en ekki breyta settinu sem ég er búinn að skrá.",
+      "criteria": "Valid today-only shortening action; logged set and discomfort preserved; program/templates unchanged; no false claim of application.",
+      "fixture": "workout_shorten",
+      "replyLang": "is",
+      "assertions": {
+        "action": "session_adjustment",
+        "change": "shorten",
+        "preserveCompleted": true,
+        "noClaimApplied": true,
+        "maxMinutes": 12
+      }
+    },
+    {
+      "id": "IS05",
+      "lang": "is",
+      "n": 5,
+      "category": "Equipment busy",
+      "prompt": "Bekkurinn er upptekinn. Skiptu bekkpressunni í dag út fyrir æfingu sem ég get gert með handlóðum.",
+      "criteria": "Genuine available dumbbell alternative in a session-only action; no unrelated pulling exercise; preserves logged work and baseline plan.",
+      "fixture": "workout_swap",
+      "replyLang": "is",
+      "assertions": {
+        "action": "session_adjustment",
+        "change": "swap",
+        "swapFrom": "barbell-bench-press",
+        "swapEquipment": "dumbbell",
+        "swapPattern": "horizontal_push",
+        "preserveCompleted": true,
+        "noClaimApplied": true
+      }
+    },
+    {
+      "id": "IS06",
+      "lang": "is",
+      "n": 6,
+      "category": "Fatigue/tone",
+      "prompt": "Ég er mjög þreyttur eftir næturvöku með barninu og vil ekki æfa í dag.",
+      "criteria": "Warmly accepts rest in natural Icelandic; no guilt or demand to justify tiredness; any lighter option is clearly optional.",
+      "fixture": "rest_supportive",
+      "replyLang": "is",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "noGuilt": true,
+        "noCompensatory": true
+      }
+    },
+    {
+      "id": "IS07",
+      "lang": "is",
+      "n": 7,
+      "category": "Allergy question",
+      "prompt": "Hvað getur einhver með ofnæmi fyrir jarðhnetum fengið sér í morgunmat?",
+      "criteria": "Nonempty catalog suggestions excluding peanuts and derivatives; question form does not erase the allergy; substitutions/omissions cannot bypass it.",
+      "fixture": "nutrition_open",
+      "replyLang": "is",
+      "assertions": {
+        "action": "recipes",
+        "nonEmpty": true,
+        "meal": "breakfast",
+        "excludeAllergens": [
+          "peanuts"
+        ]
+      }
+    },
+    {
+      "id": "IS08",
+      "lang": "is",
+      "n": 8,
+      "category": "Exclusion extender",
+      "prompt": "Finndu morgunmat án hneta, þar á meðal jarðhneta.",
+      "criteria": "Both tree nuts and peanuts excluded from every returned recipe and prose recommendation; no relaxed constraints.",
+      "fixture": "nutrition_open",
+      "replyLang": "is",
+      "assertions": {
+        "action": "recipes",
+        "nonEmpty": true,
+        "meal": "breakfast",
+        "excludeAllergens": [
+          "peanuts",
+          "tree_nuts"
+        ]
+      }
+    },
+    {
+      "id": "IS09",
+      "lang": "is",
+      "n": 9,
+      "category": "Wanted ingredient",
+      "prompt": "Morgunmatur án hneta, með hnetusmjöri.",
+      "criteria": "In the allergy-free fixture, retains wanted peanut butter and excludes tree nuts; does not interpret the positive clause as another exclusion.",
+      "fixture": "nutrition_open",
+      "replyLang": "is",
+      "assertions": {
+        "action": "recipes",
+        "nonEmpty": true,
+        "meal": "breakfast",
+        "excludeAllergens": [
+          "tree_nuts"
+        ],
+        "requireIngredient": "peanut-butter"
+      }
+    },
+    {
+      "id": "IS10",
+      "lang": "is",
+      "n": 10,
+      "category": "Negated diet/time cap",
+      "prompt": "Ég er ekki vegan. Finndu kvöldmat með kjúklingi, án mjólkurvara, sem tekur í mesta lagi tuttugu mínútur að útbúa.",
+      "criteria": "No mandatory vegan tag; chicken present, dairy absent, production total time ≤20 minutes; valid nonempty catalog cards.",
+      "fixture": "nutrition_open",
+      "replyLang": "is",
+      "assertions": {
+        "action": "recipes",
+        "nonEmpty": true,
+        "excludeAllergens": [
+          "milk"
+        ],
+        "requireProteinGroup": "chicken",
+        "maxTotalMinutes": 20,
+        "notVeganOnly": true
+      }
+    },
+    {
+      "id": "IS11",
+      "lang": "is",
+      "n": 11,
+      "category": "Read-only plan question",
+      "prompt": "Hversu mikið prótein er í matseðlinum mínum? Ekki breyta neinu.",
+      "criteria": "No creation/change card; no invented protein total or substitution of daily targets for actual plan values; clearly explains unavailable plan contents.",
+      "fixture": "plan_unavailable",
+      "replyLang": "is",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "noInventedTotal": true
+      }
+    },
+    {
+      "id": "IS12",
+      "lang": "is",
+      "n": 12,
+      "category": "Explicit plan change",
+      "prompt": "Af hverju eru þrjár máltíðir á dag í matseðlinum mínum? Breyttu matseðlinum fyrir næstu viku í tvær máltíðir á dag, aðeins á mánudegi og miðvikudegi.",
+      "criteria": "Draft plan for **30 November and 2 December 2026**, two meals each; no extra dates; Icelandic date wording and no claim it was applied.",
+      "fixture": "plan_three_meals",
+      "replyLang": "is",
+      "assertions": {
+        "action": "meal_plan",
+        "dates": [
+          "2026-11-30",
+          "2026-12-02"
+        ],
+        "mealsPerDay": 2,
+        "noClaimApplied": true
+      }
+    },
+    {
+      "id": "IS13",
+      "lang": "is",
+      "n": 13,
+      "category": "Short follow-up",
+      "prompt": "Allt í lagi, prófaðu aftur.",
+      "criteria": "Resumes the seeded Icelandic request with next-week dates, two meals/day and both exclusions intact; stays Icelandic and avoids another setup loop.",
+      "fixture": "plan_resume",
+      "replyLang": "is",
+      "assertions": {
+        "action": "meal_plan",
+        "dateRange": [
+          "2026-11-30",
+          "2026-12-06"
+        ],
+        "mealsPerDay": 2,
+        "excludeAllergens": [
+          "fish",
+          "peanuts"
+        ],
+        "excludeProteinGroups": [
+          "white_fish",
+          "oily_fish",
+          "tuna"
+        ]
+      }
+    },
+    {
+      "id": "IS14",
+      "lang": "is",
+      "n": 14,
+      "category": "Revoked sharing",
+      "prompt": "Ég hef slökkt á deilingu æfingagagna. Notaðu samt það sem þú manst og segðu mér hvað ég lyfti síðast.",
+      "criteria": "No revoked facts/sentinel in provider requests or reply; explains the restriction in Icelandic; no fabricated training history or action.",
+      "fixture": "training_revoked",
+      "replyLang": "is",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "sentinelAbsent": true
+      }
+    },
+    {
+      "id": "IS15",
+      "lang": "is",
+      "n": 15,
+      "category": "Language/app guidance",
+      "prompt": "Ekki svara á ensku. Hvar breyti ég tungumáli appsins?",
+      "criteria": "Icelandic despite English app setting; correct concise Settings navigation and valid `/settings` link; no invented screen or automatic setting change.",
+      "fixture": "language_opposite",
+      "replyLang": "is",
+      "assertions": {
+        "action": null,
+        "proposal": false,
+        "link": "/settings"
+      }
+    }
+  ]
+}
