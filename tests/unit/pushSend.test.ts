@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { b64urlDecode, b64urlEncode, encryptPayload, sendWebPush, vapidAuthorization } from '../../supabase/functions/_shared/push/webpush';
-import { authorizePush, processCoachJob, processJob, quietUntil, runPushSend, zonedToUtc, type CheckResult, type DueJob, type JobResult, type PushDb } from '../../supabase/functions/_shared/push/send';
+import { authorizePush, processCoachJob, processJob, quietUntil, runPushSend, zonedToUtc, type CachedCopy as CachedCopyT, type CheckResult, type DueJob, type JobResult, type PushDb } from '../../supabase/functions/_shared/push/send';
 import { COPY_MAX_CODE_POINTS, fallbackBody, validateCopy, writeCopy, type CoachKind } from '../../supabase/functions/_shared/push/copy';
 import { SHARED_EN } from '../../supabase/functions/_shared/i18n/messages.en';
 import { SHARED_IS } from '../../supabase/functions/_shared/i18n/messages.is';
@@ -85,6 +85,7 @@ function memoryDb(batches: DueJob[][], checks: (id: string, stage: 'prepare' | '
   const finishCalls: JobResult[][] = [];
   const subResults: [string, number][] = [];
   const checked: [string, string, string][] = [];
+  const stored: (CachedCopyT | null)[] = [];
   const db: PushDb = {
     claimDue: async () => batches.shift() ?? [],
     finish: async (r) => {
@@ -93,12 +94,13 @@ function memoryDb(batches: DueJob[][], checks: (id: string, stage: 'prepare' | '
     },
     subscriptionResult: async (e, s) => void subResults.push([e, s]),
     cleanup: async () => 3,
-    check: async (id, token, stage) => {
+    check: async (id, token, stage, copy) => {
       checked.push([id, token, stage]);
+      if (stage === 'dispatch') stored.push(copy ?? null);
       return checks(id, stage);
     },
   };
-  return { db, finished, finishCalls, subResults, checked };
+  return { db, finished, finishCalls, subResults, checked, stored };
 }
 const service = (statuses: Record<string, number>) => {
   const sent: { endpoint: string; payload: string }[] = [];
@@ -358,6 +360,11 @@ describe('coach reminders: the model writes only the body', () => {
       `{"body":"${'Open Today when it suits you. '.repeat(6).trim()}"}`,
       '{"body":"Open Today\\nwhen it suits you."}',
       '{"body":""}',
+      '{"body":"Eat more calories."}',
+      '{"body":"Try some squats today."}',
+      '{"body":"Have a glass of water and stretch."}',
+      '{"body":"Open Today when it suits you 💪"}',
+      '{"body":"You should open Today now."}',
     ];
     for (const reply of [...bad, 'error', 500, 429] as const) {
       const p = provider(reply);
@@ -366,6 +373,9 @@ describe('coach reminders: the model writes only the body', () => {
       expect(p.calls.length, String(reply)).toBe(1); // one attempt, no retries
     }
     expect(COPY_MAX_CODE_POINTS).toBe(140);
+    for (const bad of ['Gerðu nokkrar hnébeygjur í dag.', 'Borðaðu meira prótein í kvöld.', 'Opnaðu Í dag þegar þér hentar 🙂', 'Þú slepptir æfingu í gær.']) {
+      expect(validateCopy(JSON.stringify({ body: bad }), 'is'), bad).toBeNull();
+    }
     const started = Date.now();
     const slow = provider('timeout');
     const r = await writeCopy({ env: env(), fetch: slow.fetch }, 'food_unlogged', 'is', AI_OK, 1300);
@@ -418,6 +428,71 @@ describe('coach reminders: the model writes only the body', () => {
     expect(sentBody(s).body).toBe(cached.body);
     const s2 = service({});
     await processCoachJob({ db: memoryDb([], () => ({ status: 'ok', language: 'is', ai: AI_OK })).db, send: s2.send, now: () => NOW, copy: { env: env(), fetch: p.fetch } }, coachJob({ copy: cached }), 10_000);
-    expect(sentBody(s2).body).not.toBe(cached.body);
+    // The language changed since the attempt: the new language's approved fallback, never a second generation.
+    expect(sentBody(s2).body).toBe(SHARED_IS['push.coachWorkout.body']);
+    expect(p.calls).toHaveLength(0);
+  });
+
+  it('PUSH_AI_COPY off also stops cached generated text and the final dispatch from using AI wording', async () => {
+    const cached = { body: 'Open Today whenever it suits you.', language: 'en', source: 'ai' };
+    for (const flag of ['off', '']) {
+      const s = service({});
+      const p = provider('{"body":"Open Today whenever it suits you."}');
+      await processCoachJob({ db: memoryDb([], () => ({ status: 'ok', language: 'en', ai: AI_OK })).db, send: s.send, now: () => NOW, copy: { env: env({ PUSH_AI_COPY: flag }), fetch: p.fetch } }, coachJob({ copy: cached }), 10_000);
+      expect(sentBody(s).body).toBe(SHARED_EN['push.coachWorkout.body']);
+      expect(p.calls).toHaveLength(0);
+    }
+    // Without copy deps at all (older deploy wiring) cached AI text isn't used either.
+    const s = service({});
+    await processCoachJob({ db: memoryDb([], () => ({ status: 'ok', language: 'en', ai: AI_OK })).db, send: s.send, now: () => NOW }, coachJob({ copy: cached }), 10_000);
+    expect(sentBody(s).body).toBe(SHARED_EN['push.coachWorkout.body']);
+  });
+
+  it('one generation per event is durable: the attempt is stored with the final check, so a failed check and the retry make one model call', async () => {
+    const p = provider('{"body":"Open Today whenever it suits you."}');
+    for (const verdict of [{ status: 'lost' }, { status: 'discard', reason: 'snoozed' }, { status: 'deferred', fireAt: '2026-11-02T14:00:00Z' }] as CheckResult[]) {
+      const m = memoryDb([], (_id, st) => (st === 'dispatch' ? verdict : { status: 'ok', language: 'en', ai: AI_OK }));
+      const s = service({});
+      const r = await processCoachJob({ db: m.db, send: s.send, now: () => NOW, copy: { env: env(), fetch: p.fetch } }, coachJob(), 10_000);
+      expect(r.status).toBe('skipped');
+      expect(s.sent).toHaveLength(0);
+      expect(m.stored).toEqual([{ body: 'Open Today whenever it suits you.', language: 'en', source: 'ai' }]);
+    }
+    expect(p.calls).toHaveLength(3); // one per event above
+    // The retry of the last event sees the stored attempt (push_claim_due_v2 returns it as job.copy): no second call.
+    const s = service({});
+    await processCoachJob({ db: memoryDb([], () => ({ status: 'ok', language: 'en', ai: AI_OK })).db, send: s.send, now: () => NOW, copy: { env: env(), fetch: p.fetch } }, coachJob({ copy: { body: 'Open Today whenever it suits you.', language: 'en', source: 'ai' } }), 10_000);
+    expect(p.calls).toHaveLength(3);
+    expect(sentBody(s).body).toBe('Open Today whenever it suits you.');
+    // A fallback attempt is stored too, so a later retry never calls the model either.
+    const q = provider('{"body":"Too many calories."}');
+    const m = memoryDb([], (_id, st) => (st === 'dispatch' ? { status: 'lost' } : { status: 'ok', language: 'is', ai: AI_OK }));
+    await processCoachJob({ db: m.db, send: service({}).send, now: () => NOW, copy: { env: env(), fetch: q.fetch } }, coachJob(), 10_000);
+    expect(m.stored).toEqual([{ body: SHARED_IS['push.coachWorkout.body'], language: 'is', source: 'fallback' }]);
+  });
+});
+
+describe('coach reminders: quiet hours at the final check', () => {
+  it('generation starts at 21:59:59 (outside) and dispatch is at 22:00:01: the server defers it and nothing is sent', async () => {
+    let t = Date.parse('2026-11-02T20:59:59Z'); // 21:59:59 Oslo
+    const m = memoryDb([], (_id, st) => {
+      if (st === 'prepare') return { status: 'ok', language: 'en', ai: null };
+      t = Date.parse('2026-11-02T21:00:01Z'); // the copy took two seconds: 22:00:01 Oslo
+      return { status: 'deferred', fireAt: '2026-11-03T06:00:00.000Z' };
+    });
+    const s = service({});
+    const r = await processCoachJob({ db: m.db, send: s.send, now: () => new Date(t) }, coachJob({ expiresAt: '2026-11-03T23:00:00.000Z' }), 10_000);
+    expect(m.checked.map((c) => c[2])).toEqual(['prepare', 'dispatch']);
+    expect(r).toEqual({ id: 'w', token: 'tok-w', status: 'skipped', reason: 'deferred' });
+    expect(s.sent).toHaveLength(0);
+  });
+
+  it('quiet hours changed by the user while processing: the claim-time settings said "send", the current ones defer it', async () => {
+    const m = memoryDb([], (_id, st) => (st === 'prepare' ? { status: 'ok', language: 'en' } : { status: 'deferred', fireAt: '2026-11-02T15:00:00.000Z' }));
+    const s = service({});
+    // Claim-time prefs: quiet hours off. The server's dispatch check uses the new 12:00–16:00 window.
+    const r = await processCoachJob({ db: m.db, send: s.send, now: () => NOW }, coachJob({ prefs: { timeZone: 'Europe/Oslo', quietStart: '00:00', quietEnd: '00:00' } }), 10_000);
+    expect(r).toMatchObject({ status: 'skipped', reason: 'deferred' });
+    expect(s.sent).toHaveLength(0);
   });
 });

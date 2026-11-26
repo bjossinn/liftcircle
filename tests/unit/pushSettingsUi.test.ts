@@ -30,6 +30,8 @@ const api = vi.hoisted(() => ({
   cancelJob: vi.fn(async () => true),
   sendTest: vi.fn(async () => ({ queued: true })),
   recordSyncComplete: vi.fn(async () => true),
+  currentUserId: vi.fn(async (): Promise<string | null> => null),
+  deviceOwner: vi.fn(async () => 'mine'),
 }));
 vi.mock('@/backend/push', async (orig) => ({ ...((await orig()) as object), pushApi: api }));
 
@@ -90,7 +92,7 @@ const choose = async (s: HTMLSelectElement | null, value: string) => {
 const DEVICE = 'lc-push-device:user-a';
 /** A versioned server: applies the patch when the revision matches, like update_push_prefs. */
 function versionedServer() {
-  api.updatePrefs.mockImplementation(async (patch: PushPrefsPatch, rev: number) => {
+  api.updatePrefs.mockImplementation(async (patch: PushPrefsPatch, rev: number, _uid?: string) => {
     if (rev !== serverPrefs.revision) return { status: 'conflict', prefs: { ...serverPrefs } };
     const { snoozeDays, resume, ...rest } = patch;
     serverPrefs = {
@@ -131,6 +133,9 @@ beforeEach(() => {
   api.getPrefs.mockImplementation(async () => ({ ...serverPrefs }));
   api.setPrefs.mockImplementation(async (p: Partial<PushPrefs>) => (serverPrefs = { ...serverPrefs, ...p }));
   versionedServer();
+  // The backend session follows the signed-in account of the (mocked) app shell.
+  api.currentUserId.mockImplementation(async () => h.auth.userId ?? null);
+  api.deviceOwner.mockImplementation(async () => 'mine');
   requestPermission.mockClear();
   subscribe.mockClear();
 });
@@ -181,8 +186,8 @@ describe('push notification settings', () => {
     await click(button('Turn on notifications'));
     expect(requestPermission).toHaveBeenCalledTimes(1);
     expect(subscribe).toHaveBeenCalledWith(expect.objectContaining({ userVisibleOnly: true }));
-    expect(api.saveSubscription).toHaveBeenCalledWith(expect.objectContaining({ endpoint: 'https://push.example/1', p256dh: KEY, auth: 'BTBZMqHH6r4Tts7J_aSIgg' }));
-    expect(api.setPrefs).toHaveBeenCalledWith({ timeZone: 'Europe/Oslo' });
+    expect(api.saveSubscription).toHaveBeenCalledWith(expect.objectContaining({ endpoint: 'https://push.example/1', p256dh: KEY, auth: 'BTBZMqHH6r4Tts7J_aSIgg' }), 'user-a');
+    expect(api.setPrefs).toHaveBeenCalledWith({ timeZone: 'Europe/Oslo' }, 'user-a');
     expect(text()).toMatch(/Notifications are on for this device/);
     expect(localStorage.getItem(DEVICE)).toContain('push.example/1');
     for (const l of ['Workout reminders', 'Rest-over alerts', 'Coaching messages', 'Missed-session nudges']) expect(toggle(l)?.getAttribute('aria-checked')).toBe('true');
@@ -197,15 +202,15 @@ describe('push notification settings', () => {
     localStorage.setItem(DEVICE, JSON.stringify({ endpoint: 'https://push.example/1' }));
     await render();
     await click(toggle('Friends & social'));
-    expect(api.updatePrefs).toHaveBeenLastCalledWith({ kinds: ['workout_reminder', 'rest_over', 'coaching', 'missed_nudge', 'social'] }, 1);
+    expect(api.updatePrefs).toHaveBeenLastCalledWith({ kinds: ['workout_reminder', 'rest_over', 'coaching', 'missed_nudge', 'social'] }, 1, 'user-a');
     expect(toggle('Friends & social')?.getAttribute('aria-checked')).toBe('true');
     expect(text()).toMatch(/Reminder settings saved\./);
     await click(toggle('Rest-over alerts'));
-    expect(api.updatePrefs).toHaveBeenLastCalledWith({ kinds: ['workout_reminder', 'coaching', 'missed_nudge', 'social'] }, 2);
+    expect(api.updatePrefs).toHaveBeenLastCalledWith({ kinds: ['workout_reminder', 'coaching', 'missed_nudge', 'social'] }, 2, 'user-a');
     await click(toggle('Food-log reminders'));
-    expect(api.updatePrefs).toHaveBeenLastCalledWith({ kinds: ['workout_reminder', 'coaching', 'missed_nudge', 'social', 'food_unlogged'] }, 3);
+    expect(api.updatePrefs).toHaveBeenLastCalledWith({ kinds: ['workout_reminder', 'coaching', 'missed_nudge', 'social', 'food_unlogged'] }, 3, 'user-a');
     await click(toggle('Remind me at a fixed time'));
-    expect(api.updatePrefs).toHaveBeenLastCalledWith({ fixedReminderTime: '17:00' }, 4);
+    expect(api.updatePrefs).toHaveBeenLastCalledWith({ fixedReminderTime: '17:00' }, 4, 'user-a');
     expect((document.querySelector('input[type="time"]') as HTMLInputElement).value).toBe('17:00');
     expect(api.setPrefs).not.toHaveBeenCalled();
   });
@@ -221,7 +226,7 @@ describe('push notification settings', () => {
     expect(text()).toMatch(/Test notification on its way/);
     await click(button('Turn off on this device'));
     expect(unsubscribe).toHaveBeenCalled();
-    expect(api.deleteSubscription).toHaveBeenCalledWith('https://push.example/1');
+    expect(api.deleteSubscription).toHaveBeenCalledWith('https://push.example/1', 'user-a');
     expect(button('Turn on notifications')).toBeTruthy();
     expect(localStorage.getItem(DEVICE)).toBeNull();
     expect(text()).toMatch(/Push notifications are off on this device\. Your choices still apply to other enabled devices\./);
@@ -235,7 +240,7 @@ describe('push notification settings', () => {
     expect(cap?.value).toBe('2');
     expect([...cap!.options].map((o) => o.textContent)).toEqual(['1 reminder per day', '2 reminders per day', '3 reminders per day']);
     await choose(cap, '3');
-    expect(api.updatePrefs).toHaveBeenLastCalledWith({ dailyCap: 3 }, 1);
+    expect(api.updatePrefs).toHaveBeenLastCalledWith({ dailyCap: 3 }, 1, 'user-a');
     expect(text()).toMatch(/The daily limit and pause apply to workout, missed-workout and food-log reminders across all your devices\./);
     // A value the server rejects shows the validation message.
     api.updatePrefs.mockResolvedValueOnce({ status: 'invalid', field: 'cap', prefs: { ...serverPrefs } });
@@ -252,19 +257,19 @@ describe('push notification settings', () => {
     let resolve!: () => void;
     const gate = new Promise<void>((r) => (resolve = r));
     const real = api.updatePrefs.getMockImplementation()!;
-    api.updatePrefs.mockImplementationOnce(async (p: PushPrefsPatch, rev: number) => {
+    api.updatePrefs.mockImplementationOnce(async (p: PushPrefsPatch, rev: number, uid?: string) => {
       await gate;
-      return real(p, rev);
+      return real(p, rev, uid);
     });
     await click(button('Rest me for 7 days'));
-    expect(api.updatePrefs).toHaveBeenLastCalledWith({ snoozeDays: 7 }, 1);
+    expect(api.updatePrefs).toHaveBeenLastCalledWith({ snoozeDays: 7 }, 1, 'user-a');
     expect(text()).toMatch(/Pausing reminders…/);
     expect(text()).not.toMatch(/paused until/);
     await act(async () => resolve());
     await flush();
     expect(text()).toMatch(/Coach reminders are paused until .+\./);
     await click(button('Resume reminders'));
-    expect(api.updatePrefs).toHaveBeenLastCalledWith({ resume: true }, 2);
+    expect(api.updatePrefs).toHaveBeenLastCalledWith({ resume: true }, 2, 'user-a');
     expect(text()).toMatch(/Your selected coach reminders are active again\./);
     api.updatePrefs.mockRejectedValueOnce(new Error('server down'));
     await click(button('Rest me for 7 days'));
@@ -279,7 +284,7 @@ describe('push notification settings', () => {
     await render();
     serverPrefs = { ...serverPrefs, kinds: ['rest_over'], revision: 5 }; // another device turned reminders off
     await click(toggle('Friends & social'));
-    expect(api.updatePrefs).toHaveBeenLastCalledWith(expect.anything(), 1);
+    expect(api.updatePrefs).toHaveBeenLastCalledWith(expect.anything(), 1, 'user-a');
     expect(text()).toMatch(/Your reminder settings changed on another device\. The latest settings have been loaded\./);
     expect(toggle('Workout reminders')?.getAttribute('aria-checked')).toBe('false');
     expect(toggle('Friends & social')?.getAttribute('aria-checked')).toBe('false');
@@ -319,7 +324,7 @@ describe('push notification settings', () => {
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await flush();
-    expect(api.updatePrefs).toHaveBeenLastCalledWith({ quietStart: '07:00' }, 1);
+    expect(api.updatePrefs).toHaveBeenLastCalledWith({ quietStart: '07:00' }, 1, 'user-a');
     expect(text()).toMatch(/Quiet hours are off\./);
   });
 
@@ -354,11 +359,13 @@ describe('push notification settings', () => {
     serverPrefs = { ...DEFAULT_PUSH_PREFS, revision: 0, coachSupported: true, devices: 0 };
     await rerender();
     expect(button('Turn on notifications')).toBeTruthy();
-    expect(toggle('Food-log reminders')).toBeNull();
+    expect(toggle('Food-log reminders')?.getAttribute('aria-checked')).toBe('false'); // B's own settings, not A's
+    expect(select('Daily reminder limit')?.value).toBe('2');
     await act(async () => release());
     await flush();
     expect(localStorage.getItem('lc-push-prefs:user-b') ?? '').not.toContain('food_unlogged');
     expect(localStorage.getItem('lc-push-device:user-b')).toBeNull();
+    expect(toggle('Food-log reminders')?.getAttribute('aria-checked')).toBe('false'); // A's late result ignored
   });
 
   it('a legacy (pre-namespacing) device key is adopted once by the signed-in account and removed', async () => {
@@ -381,6 +388,50 @@ describe('push notification settings', () => {
     expect(button('Hvíla mig í 1 dag')).toBeTruthy();
     expect(text()).toMatch(/Hljóðlaus tími: 22:00–07:00\./);
     expect(text()).toMatch(/Aðrar tilkynningar/);
+  });
+
+  it('deferred permission: A starts turning push on, B signs in before the prompt resolves → nothing is written for either account', async () => {
+    device({ ua: ANDROID });
+    let answer!: (p: NotificationPermission) => void;
+    requestPermission.mockImplementationOnce(() => new Promise<NotificationPermission>((r) => (answer = r)));
+    await render();
+    await click(button('Turn on notifications'));
+    h.auth = { status: 'signed_in', userId: 'user-b' };
+    await rerender();
+    permission = 'granted';
+    await act(async () => answer('granted'));
+    await flush();
+    expect(api.saveSubscription).not.toHaveBeenCalled();
+    expect(api.setPrefs).not.toHaveBeenCalled();
+    expect(localStorage.getItem('lc-push-device:user-a')).toBeNull();
+    expect(localStorage.getItem('lc-push-device:user-b')).toBeNull();
+    expect(button('Turn on notifications')).toBeTruthy(); // B still has to opt in
+  });
+
+  it('the session changes during the subscribe step (same screen) → the server write is skipped', async () => {
+    device({ ua: ANDROID });
+    await render();
+    permission = 'granted';
+    api.currentUserId.mockResolvedValue('user-b'); // the backend session already belongs to B
+    await click(button('Turn on notifications'));
+    expect(api.saveSubscription).not.toHaveBeenCalled();
+    expect(localStorage.getItem(DEVICE)).toBeNull();
+  });
+
+  it('account-wide settings work without notifications on this device (pause the phone from a laptop), even where push is unavailable here', async () => {
+    for (const d of [{ ua: ANDROID }, { ua: IPHONE, standalone: false }, { ua: ANDROID, perm: 'denied' as NotificationPermission }]) {
+      act(() => root?.unmount());
+      el?.remove();
+      localStorage.clear();
+      serverPrefs = { ...DEFAULT_PUSH_PREFS, timeZone: 'Europe/Oslo', revision: 1, coachSupported: true, devices: 1 };
+      device(d);
+      await render();
+      expect(text()).toMatch(/Coach notifications/);
+      await click(button('Rest me for 1 day'));
+      expect(api.updatePrefs).toHaveBeenLastCalledWith({ snoozeDays: 1 }, 1, 'user-a');
+      expect(text()).toMatch(/Coach reminders are paused until/);
+    }
+    expect(text()).toMatch(/Notifications are blocked/);
   });
 
   it('signed out: explains that an account is needed', async () => {

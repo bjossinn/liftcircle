@@ -5,7 +5,9 @@
  * push isn't possible, so we explain how to install instead of showing the button.
  *
  * Roadmap item 9 (coach notifications, phase 1): the account-wide reminder settings live on the server (push_prefs,
- * outside Settings and account backups) and are saved as one versioned patch (update_push_prefs). A change made on
+ * outside Settings and account backups) and are saved as one versioned patch (update_push_prefs). They are shown to
+ * every signed-in account, whether or not notifications are on in this browser (pause the phone's reminders from a
+ * laptop). A change made on
  * another device first reloads the latest settings and says so. Pausing and resuming wait for the server's
  * acknowledgement; offline, every change is disabled and nothing claims a pause took effect. Everything that is
  * loaded or saved belongs to the signed-in user id: an account switch drops pending loads/saves for the old one.
@@ -145,8 +147,8 @@ export function PushSection() {
   async function turnOn() {
     const n = stamp();
     setBusy('enable');
-    const r = await enablePush(uid, account.settings.timeZone);
-    if (!current(n)) return;
+    const r = await enablePush(uid, account.settings.timeZone, () => current(n));
+    if (!current(n) || (!r.ok && r.reason === 'cancelled')) return;
     setBusy(null);
     setSupport(pushSupport());
     if (r.ok) {
@@ -168,8 +170,8 @@ export function PushSection() {
     const n = stamp();
     setBusy('disable');
     try {
-      await disablePush(uid);
-      if (!current(n)) return;
+      const done = await disablePush(uid, () => current(n));
+      if (!current(n) || !done) return;
       setOn(false);
       toast.show(t('settings.pushOffToast'), { tone: 'success' });
     } catch {
@@ -202,14 +204,14 @@ export function PushSection() {
         void _s;
         void _r;
         void _c;
-        const p = await pushApi.setPrefs(legacy);
+        const p = await pushApi.setPrefs(legacy, uid);
         if (!current(n)) return;
         apply(p);
         resetUploadedSchedules(uid);
         setStatus({ kind: 'saved' });
         return;
       }
-      const r = await pushApi.updatePrefs(patch, prev.revision);
+      const r = await pushApi.updatePrefs(patch, prev.revision, uid);
       if (!current(n)) return;
       apply(r.prefs);
       if (r.status === 'conflict') {
@@ -331,6 +333,18 @@ export function PushSection() {
         ) : (
           <>
             <p className="text-sm">{t('settings.pushOnStatus')}</p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button icon={<Send className="size-4" />} loading={busy === 'test'} disabled={!online} onClick={() => void test()}>
+                {t('settings.pushTest')}
+              </Button>
+              <Button variant="outline" icon={<BellOff className="size-4" />} loading={busy === 'disable'} disabled={!online} onClick={() => void turnOff()}>
+                {t('settings.pushDisableDevice')}
+              </Button>
+            </div>
+          </>
+        )}
+        {signedIn && (
+          <div className="space-y-3 border-t border-line pt-3" data-testid="push-account-settings">
             {!online && (
               <Notice tone="info">
                 <span data-testid="push-offline">{t('settings.coachPushOffline')}</span>
@@ -498,15 +512,7 @@ export function PushSection() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Button icon={<Send className="size-4" />} loading={busy === 'test'} disabled={!online} onClick={() => void test()}>
-                {t('settings.pushTest')}
-              </Button>
-              <Button variant="outline" icon={<BellOff className="size-4" />} loading={busy === 'disable'} disabled={!online} onClick={() => void turnOff()}>
-                {t('settings.pushDisableDevice')}
-              </Button>
-            </div>
-          </>
+          </div>
         )}
       </Card>
     </section>

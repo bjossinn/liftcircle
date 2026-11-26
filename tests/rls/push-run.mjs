@@ -193,6 +193,7 @@ async function main() {
   await test('privileges', 'push-send RPCs are service-role only (users cannot claim, finish or clean up jobs)', async () => {
     for (const actor of ['alice', 'anon']) {
       fails(await rpc(actor, 'push_claim_due', { p_limit: 10 }), `${actor} claim`, /permission denied/);
+      fails(await rpc(actor, 'push_claim_due_v2', { p_limit: 10 }), `${actor} claim v2`, /permission denied/);
       fails(await rpc(actor, 'push_finish', { p_results: J([]) }), `${actor} finish`, /permission denied/);
       fails(await rpc(actor, 'push_subscription_result', { p_endpoint: 'x', p_status: 410 }), `${actor} sub result`, /permission denied/);
       fails(await rpc(actor, 'push_cleanup', {}), `${actor} cleanup`, /permission denied/);
@@ -316,10 +317,10 @@ async function main() {
     await admin.query(`delete from public.push_jobs`);
     ok(await rpc('alice', 'replace_scheduled_jobs', { p_kind: 'rest_over', p_jobs: J([job('r1', 0), job('r2', 0), job('r3', 0), job('r4', 0)]) }), 'jobs');
     await admin.query(`update public.push_jobs set fire_at = now() - interval '1 second' where user_id = $1`, [U.alice]);
-    const claimed = ok(await rpc('service', 'push_claim_due', { p_limit: 10 }), 'claim');
+    const claimed = ok(await rpc('service', 'push_claim_due_v2', { p_limit: 10 }), 'claim');
     eq(claimed.length, 4, 'four due');
     assert(claimed[0].subscriptions.length === 1 && claimed[0].prefs.timeZone === 'Europe/Oslo', 'subscriptions + prefs included');
-    eq(ok(await rpc('service', 'push_claim_due', { p_limit: 10 }), 'claim again'), [], 'claimed jobs are not handed out twice');
+    eq(ok(await rpc('service', 'push_claim_due_v2', { p_limit: 10 }), 'claim again'), [], 'claimed jobs are not handed out twice');
     const byKey = Object.fromEntries((await jobsOf(U.alice)).map((j) => [j.dedupe_key, j.id]));
     const tok = Object.fromEntries(claimed.map((c) => [c.id, c.token]));
     assert(claimed.every((c) => /^[0-9a-f-]{36}$/.test(c.token)), 'each claim carries an attempt token');
@@ -353,7 +354,7 @@ async function main() {
     await c2.connect();
     const claim = async (c, n) => {
       await c.query('set role service_role');
-      return (await c.query(`select public.push_claim_due($1) as v`, [n])).rows[0].v.map((j) => j.id);
+      return (await c.query(`select public.push_claim_due_v2($1) as v`, [n])).rows[0].v.map((j) => j.id);
     };
     try {
       // c1 holds its claim open in a transaction while c2 claims: locked rows are skipped, not waited on.
@@ -389,8 +390,26 @@ async function main() {
               coalesce($4::date, (now() at time zone 'UTC')::date), $5, now() + $6::interval) returning id`, [user, kind, key, event, source, expires]);
     return r.rows[0].id;
   }
-  const claimAll = async () => ok(await rpc('service', 'push_claim_due', { p_limit: 50 }), 'claim');
-  const check = async (id, token, stage) => ok(await rpc('service', 'push_check', { p_id: id, p_token: token, p_stage: stage }), `check ${stage}`);
+  const claimAll = async () => ok(await rpc('service', 'push_claim_due_v2', { p_limit: 50 }), 'claim');
+  const check = async (id, token, stage, copy = null) =>
+    ok(await rpc('service', 'push_check', { p_id: id, p_token: token, p_stage: stage, p_copy: J(copy) }), `check ${stage}`);
+  /** An active program planning template A every day (B is cardio-only), synced like the app's programs rows. */
+  const programPayload = ({ weekdays = [0, 1, 2, 3, 4, 5, 6], active = true, overrides = [], cardio = false } = {}) => ({
+    name: 'Plan', source: 'generated', active, startDate: '2026-01-01', currentVersion: 1, rotationIndex: 0, overrides,
+    versions: [{ version: 1, templates: [
+      { id: 'A', name: 'Upper A', exercises: cardio ? [] : [{ id: 'x', exerciseId: 'squat' }], ...(cardio ? { cardio: { activity: 'run', intensity: 'easy' } } : {}) },
+    ], schedule: weekdays.map((weekday) => ({ weekday, templateId: 'A' })) }],
+  });
+  const PROGRAM_ID = randomUUID();
+  const setProgram = (user, opts) =>
+    admin.query(`insert into public.programs (owner_id, id, version, payload) values ($1, $2, 1, $3)
+                 on conflict (owner_id, id) do update set payload = excluded.payload, updated_at = now()`, [user, PROGRAM_ID, JSON.stringify(programPayload(opts))]);
+  /** Coach-reminder fixture: UTC, quiet hours off (so the suite doesn't depend on the time of day), every coach kind, a plan. */
+  async function ready(user) {
+    await admin.query(`update public.push_prefs set time_zone = 'UTC', quiet_start = '00:00', quiet_end = '00:00', snooze_until = null,
+                       kinds = array['workout_reminder', 'missed_nudge', 'food_unlogged', 'rest_over'] where user_id = $1`, [user]);
+    await setProgram(user);
+  }
   const tokenOf = (claimed, id) => claimed.find((c) => c.id === id)?.token;
   const prefsOf = async (actor) => ok(await rpc(actor, 'get_push_prefs'), 'get prefs');
   const update = async (actor, patch, rev) => ok(await rpc(actor, 'update_push_prefs', { p_patch: J(patch), p_revision: [rev, '::bigint'] }), 'update');
@@ -461,6 +480,7 @@ async function main() {
   await test('phase1', 'attempt ownership: only the current claim token can check or settle; an expired lease is re-claimed with a new token', async () => {
     await admin.query(`delete from public.push_jobs`);
     await accountState(U.carol, { language: 'is', nutritionEnabled: true, demoData: false });
+    await ready(U.carol);
     const id = await proactive(U.carol, 'workout_reminder', 'reminder:own');
     const t1 = tokenOf(await claimAll(), id);
     eq((await check(id, randomUUID(), 'prepare')).status, 'lost', 'foreign token');
@@ -482,7 +502,7 @@ async function main() {
   await test('phase1', 'quota: one training reminder per day (workout preferred over missed), cap counts logical events across devices', async () => {
     await admin.query(`delete from public.push_jobs; delete from private.push_quota`);
     ok(await rpc('carol', 'save_push_subscription', { p: J(SUB(21)) }), 'second device');
-    await admin.query(`update public.push_prefs set kinds = array['workout_reminder', 'missed_nudge', 'food_unlogged', 'rest_over'] where user_id = $1`, [U.carol]);
+    await ready(U.carol);
     const w = await proactive(U.carol, 'workout_reminder', 'reminder:q');
     const m = await proactive(U.carol, 'missed_nudge', 'nudge:q', { source: dayShift(todayUtc(), -1) });
     const c = await claimAll();
@@ -608,6 +628,194 @@ async function main() {
     const row = (await jobsOf(U.carol))[0];
     assert(row.sent_at && row.dispatch_state === 'ambiguous', 'ambiguous');
     eq((await admin.query(`select state from private.push_quota where job_id = $1`, [id])).rows[0].state, 'consumed', 'consumed');
+  });
+
+
+  await test('rollout', 'old worker / new database: the legacy claim never hands out coach reminders; its tokenless results settle what it claimed; pre-migration claims settle once and are never resent', async () => {
+    await admin.query(`delete from public.push_jobs; delete from private.push_quota`);
+    await ready(U.carol);
+    const coach = await proactive(U.carol, 'workout_reminder', 'reminder:legacy');
+    await admin.query(`insert into public.push_jobs (user_id, kind, fire_at, payload, dedupe_key) values ($1, 'rest_over', now() - interval '1 second', '{"title":"t","body":"","url":"/","tag":"rest"}', 'rest:legacy')`, [U.carol]);
+    // The pre-phase-1 worker's protocol: push_claim_due(limit) → send → push_finish([{ id, status }]) without a token.
+    const legacy = ok(await rpc('service', 'push_claim_due', { p_limit: 50 }), 'legacy claim');
+    eq(legacy.map((j) => j.kind), ['rest_over'], 'only non-coach jobs for the old worker');
+    eq(legacy[0].token, undefined, 'legacy claims carry no token');
+    ok(await rpc('service', 'push_finish', { p_results: J([{ id: legacy[0].id, status: 'sent' }]) }), 'legacy finish');
+    const rest = (await jobsOf(U.carol, `and kind = 'rest_over'`))[0];
+    assert(rest.sent_at && rest.dispatch_state === 'sent', 'old worker settled its job');
+    eq(ok(await rpc('service', 'push_claim_due', { p_limit: 50 }), 'legacy again'), [], 'nothing re-handed to the old worker');
+    // A delivered job is never reclaimable, even after the 2-minute window.
+    await admin.query(`update public.push_jobs set claimed_at = now() - interval '10 minutes', lease_until = now() - interval '5 minutes' where id = $1`, [rest.id]);
+    eq((await claimAll()).filter((j) => j.id === rest.id).length, 0, 'sent job not reclaimed by the new worker');
+    // A coach reminder an old worker claimed BEFORE the migration (claimed_at, no token, state pending) and then
+    // reported as sent with the old tokenless protocol: settled once, never resent.
+    await admin.query(`update public.push_jobs set claimed_at = now(), lease_until = null, claim_token = null, dispatch_state = 'pending' where id = $1`, [coach]);
+    ok(await rpc('service', 'push_finish', { p_results: J([{ id: coach, status: 'sent' }]) }), 'pre-migration finish');
+    const c = (await jobsOf(U.carol, `and kind = 'workout_reminder'`))[0];
+    assert(c.sent_at && c.dispatch_state === 'sent', 'pre-migration claim settled');
+    await admin.query(`update public.push_jobs set claimed_at = now() - interval '10 minutes' where id = $1`, [coach]);
+    eq((await claimAll()).filter((j) => j.id === coach).length, 0, 'never resent');
+    // A tokenless result can't settle a claim the new worker holds.
+    const fresh = await proactive(U.carol, 'workout_reminder', 'reminder:v2');
+    const tk = tokenOf(await claimAll(), fresh);
+    assert(tk, 'v2 claimed it');
+    ok(await rpc('service', 'push_finish', { p_results: J([{ id: fresh, status: 'sent' }]) }), 'tokenless on a v2 claim');
+    assert(!(await jobsOf(U.carol, `and dedupe_key = 'reminder:v2'`))[0].sent_at, 'ignored');
+  });
+
+  await test('quiet', 'push_quiet_until: 21:59:59 is outside, 22:00:01 inside; overnight, daytime and equal windows; DST', async () => {
+    const q = async (tz, start, end, at) => (await admin.query(`select private.push_quiet_until($1, $2::time, $3::time, $4::timestamptz) v`, [tz, start, end, at])).rows[0].v;
+    eq(await q('Europe/Oslo', '22:00', '07:00', '2026-11-02T20:59:59Z'), null, '21:59:59 Oslo');
+    eq((await q('Europe/Oslo', '22:00', '07:00', '2026-11-02T21:00:01Z')).toISOString(), '2026-11-03T06:00:00.000Z', '22:00:01 Oslo → 07:00');
+    eq((await q('Europe/Oslo', '22:00', '07:00', '2026-11-02T05:30:00Z')).toISOString(), '2026-11-02T06:00:00.000Z', '06:30 → 07:00 same day');
+    eq(await q('Europe/Oslo', '07:00', '07:00', '2026-11-02T23:00:00Z'), null, 'equal start/end = off');
+    eq((await q('UTC', '12:00', '14:00', '2026-11-02T13:00:00Z')).toISOString(), '2026-11-02T14:00:00.000Z', 'daytime window');
+    eq(await q('UTC', '12:00', '14:00', '2026-11-02T14:00:00Z'), null, 'end is exclusive');
+    eq((await q('Europe/Oslo', '22:00', '07:00', '2026-10-24T23:00:00Z')).toISOString(), '2026-10-25T06:00:00.000Z', 'DST end night');
+  });
+
+  await test('quiet', 'quiet hours are enforced at dispatch with the CURRENT settings: a window starting or changed mid-generation defers within the day or discards', async () => {
+    await admin.query(`delete from public.push_jobs; delete from private.push_quota`);
+    await ready(U.carol);
+    await admin.query(`update public.push_prefs set daily_cap = 3 where user_id = $1`, [U.carol]);
+    const id = await proactive(U.carol, 'workout_reminder', 'reminder:quiet', { expires: '2 hours' });
+    const c = await claimAll();
+    eq((await check(id, tokenOf(c, id), 'prepare')).status, 'ok', 'prepared outside quiet hours');
+    // While the copy is being written the user (or the clock) enters quiet hours for the next 30 minutes.
+    await admin.query(`update public.push_prefs set quiet_start = ((now() at time zone 'UTC') - interval '1 minute')::time,
+                                                     quiet_end = ((now() at time zone 'UTC') + interval '30 minutes')::time where user_id = $1`, [U.carol]);
+    const r = await check(id, tokenOf(c, id), 'dispatch');
+    eq(r.status, 'deferred', 'deferred at dispatch');
+    const row = (await jobsOf(U.carol))[0];
+    assert(Math.abs(new Date(r.fireAt) - row.fire_at) < 1000 && row.fire_at > new Date(Date.now() + 25 * 60_000), 'rescheduled to the window end');
+    eq([row.dispatch_state, row.claim_token, row.cancelled_at], ['pending', null, null], 'back to pending, claim ended');
+    eq((await admin.query(`select count(*)::int n from private.push_quota where job_id = $1`, [id])).rows[0].n, 0, 'reservation released');
+    // The window now reaches past the reminder's own local day → discarded, never caught up.
+    await admin.query(`update public.push_jobs set fire_at = now() - interval '1 second', expires_at = now() + interval '10 minutes' where id = $1`, [id]);
+    const c2 = await claimAll();
+    eq((await check(id, tokenOf(c2, id), 'prepare')).reason, 'quiet_hours', 'past expiry → discarded');
+  });
+
+  await test('quota', 'lowering the cap after two reservations stops the later one at dispatch; cancellations release reservations with no worker callback', async () => {
+    await admin.query(`delete from public.push_jobs; delete from private.push_quota`);
+    await ready(U.carol);
+    await accountState(U.carol, { language: 'en', nutritionEnabled: true });
+    await admin.query(`update public.push_prefs set daily_cap = 2 where user_id = $1`, [U.carol]);
+    await admin.query(`insert into private.sync_receipts (user_id, completed_at) values ($1, now()) on conflict (user_id) do update set completed_at = now()`, [U.carol]);
+    await admin.query(`delete from public.food_logs where owner_id = $1`, [U.carol]);
+    await admin.query(`delete from public.workout_sessions where owner_id = $1`, [U.carol]);
+    const w = await proactive(U.carol, 'workout_reminder', 'reminder:cap');
+    const f = await proactive(U.carol, 'food_unlogged', 'food:cap');
+    const c = await claimAll();
+    eq((await check(w, tokenOf(c, w), 'prepare')).status, 'ok', 'training reserved');
+    eq((await check(f, tokenOf(c, f), 'prepare')).status, 'ok', 'food reserved (cap 2)');
+    const p = await prefsOf('carol');
+    eq((await update('carol', { dailyCap: 1 }, p.revision)).status, 'ok', 'cap lowered to 1');
+    eq((await check(w, tokenOf(c, w), 'dispatch')).status, 'ok', 'earlier reservation still fits');
+    eq((await check(f, tokenOf(c, f), 'dispatch')).reason, 'daily_cap', 'later one is over the new cap');
+    eq((await admin.query(`select count(*)::int n from private.push_quota where job_id = $1`, [f])).rows[0].n, 0, 'its reservation is gone');
+    // Cancellation paths with no worker callback afterwards.
+    await admin.query(`delete from public.push_jobs; delete from private.push_quota`);
+    await admin.query(`update public.push_prefs set daily_cap = 3 where user_id = $1`, [U.carol]);
+    const reserved = async (key, kind = 'workout_reminder') => {
+      const id = await proactive(U.carol, kind, key);
+      const cl = await claimAll();
+      eq((await check(id, tokenOf(cl, id), 'prepare')).status, 'ok', `${key} reserved`);
+      return id;
+    };
+    const quotaOf = async (id) => (await admin.query(`select count(*)::int n from private.push_quota where job_id = $1`, [id])).rows[0].n;
+    let id = await reserved('reminder:k1');
+    const p2 = await prefsOf('carol');
+    ok(await update('carol', { kinds: p2.kinds.filter((k) => k !== 'workout_reminder') }, p2.revision), 'opt out');
+    eq(await quotaOf(id), 0, 'opt-out released it');
+    const p3 = await prefsOf('carol');
+    ok(await update('carol', { kinds: [...p3.kinds, 'workout_reminder'] }, p3.revision), 'opt in');
+    id = await reserved('reminder:k2');
+    ok(await rpc('carol', 'cancel_push_job', { p_dedupe_key: 'reminder:k2' }), 'cancel');
+    eq(await quotaOf(id), 0, 'cancel_push_job released it');
+    id = await reserved('reminder:k3');
+    await admin.query(`delete from public.push_jobs where id = $1`, [id]);
+    eq(await quotaOf(id), 0, 'deleted job released it');
+    id = await reserved('food:k4', 'food_unlogged');
+    await admin.query(`update public.push_jobs set dispatch_state = 'discarded' where id = $1`, [id]);
+    eq(await quotaOf(id), 0, 'discarded released it');
+    id = await reserved('food:k5', 'food_unlogged');
+    ok(await rpc('carol', 'delete_push_subscription', { p_endpoint: SUB(20).endpoint }), 'remove device 1');
+    ok(await rpc('carol', 'delete_push_subscription', { p_endpoint: SUB(21).endpoint }), 'remove last device');
+    eq(await quotaOf(id), 0, 'removing the last device released it');
+    ok(await rpc('carol', 'save_push_subscription', { p: J(SUB(20)) }), 'device back');
+  });
+
+  await test('plan', 'dispatch validates the current synced plan: removed day, deactivated program, skipped elsewhere, moved-to day, cardio done by an activity, discomfort', async () => {
+    await admin.query(`delete from public.push_jobs; delete from private.push_quota`);
+    await ready(U.carol);
+    await admin.query(`delete from public.workout_sessions where owner_id = $1`, [U.carol]);
+    await admin.query(`delete from public.activities where owner_id = $1`, [U.carol]);
+    await accountState(U.carol, { language: 'en', nutritionEnabled: true });
+    const today = todayUtc();
+    const dow = new Date(`${today}T00:00:00Z`).getUTCDay();
+    const run = async (key, kind = 'workout_reminder', source = null) => {
+      await admin.query(`delete from public.push_jobs; delete from private.push_quota`);
+      const id = await proactive(U.carol, kind, key, { source });
+      const c = await claimAll();
+      return check(id, tokenOf(c, id), 'prepare');
+    };
+    eq((await run('p:1')).status, 'ok', 'planned today');
+    await setProgram(U.carol, { weekdays: [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== dow) });
+    eq((await run('p:2')).reason, 'not_planned', 'training day removed on another device');
+    await setProgram(U.carol, { active: false });
+    eq((await run('p:3')).reason, 'not_planned', 'program deactivated');
+    await setProgram(U.carol, { overrides: [{ date: today, templateId: 'A', status: 'skipped' }] });
+    eq((await run('p:4')).reason, 'not_planned', 'skipped on another device');
+    await setProgram(U.carol, { weekdays: [(dow + 3) % 7], overrides: [{ date: dayShift(today, 3), templateId: 'A', status: 'moved', movedTo: today }] });
+    eq((await run('p:5')).status, 'ok', 'moved to today → planned');
+    await setProgram(U.carol, { cardio: true });
+    eq((await run('p:6')).status, 'ok', 'cardio day not done yet');
+    await admin.query(`insert into public.activities (owner_id, id, version, payload) values ($1, $2, 1, $3)`, [U.carol, randomUUID(), JSON.stringify({ type: 'walk', date: today, durationSec: 1200 })]);
+    eq((await run('p:7')).reason, 'source_done', 'cardio done by a logged activity');
+    await admin.query(`delete from public.activities where owner_id = $1`, [U.carol]);
+    await setProgram(U.carol);
+    await admin.query(`insert into public.workout_sessions (owner_id, id, version, payload) values ($1, $2, 1, $3)`, [U.carol, randomUUID(),
+      JSON.stringify({ status: 'completed', date: dayShift(today, -5), startedAt: Date.now() - 5 * 86_400_000, exercises: [{ id: 'e', exerciseId: 'squat', discomfort: true, sets: [] }] })]);
+    eq((await run('p:8', 'missed_nudge', dayShift(today, -1))).reason, 'discomfort', 'discomfort in the latest workout suppresses nudges');
+    await admin.query(`delete from public.workout_sessions where owner_id = $1`, [U.carol]);
+    eq((await run('p:9', 'missed_nudge', dayShift(today, -1))).status, 'ok', 'without discomfort the nudge is eligible');
+  });
+
+  await test('copy', 'the attempt’s copy is stored under the claim even when the check ends the attempt; a retry sees it; a stale token stores nothing', async () => {
+    await admin.query(`delete from public.push_jobs; delete from private.push_quota`);
+    await ready(U.carol);
+    const id = await proactive(U.carol, 'workout_reminder', 'reminder:copy');
+    const c = await claimAll();
+    eq((await check(id, tokenOf(c, id), 'prepare')).status, 'ok', 'prepared');
+    await admin.query(`update public.push_prefs set quiet_start = ((now() at time zone 'UTC') - interval '1 minute')::time,
+                                                     quiet_end = ((now() at time zone 'UTC') + interval '10 minutes')::time where user_id = $1`, [U.carol]);
+    const copy = { body: 'Open Today whenever it suits you.', language: 'en', source: 'ai' };
+    eq((await check(id, tokenOf(c, id), 'dispatch', copy)).status, 'deferred', 'deferred');
+    await admin.query(`update public.push_prefs set quiet_start = '00:00', quiet_end = '00:00' where user_id = $1`, [U.carol]);
+    await admin.query(`update public.push_jobs set fire_at = now() - interval '1 second' where id = $1`, [id]);
+    const again = (await claimAll()).find((j) => j.id === id);
+    eq([again.copy.body, again.copy.language, again.copy.source], [copy.body, copy.language, copy.source], 'the retry gets the stored attempt');
+    eq((await check(id, randomUUID(), 'dispatch', { ...copy, body: 'Hijack.' })).status, 'lost', 'foreign token');
+    eq((await jobsOf(U.carol))[0].payload.body, copy.body, 'foreign token stored nothing');
+  });
+
+  await test('account', 'writes bound to the account that started them: a different expectedUserId writes nothing; device ownership can be checked', async () => {
+    fails(await rpc('carol', 'save_push_subscription', { p: J({ ...SUB(30), expectedUserId: U.dave }) }), 'save as wrong account', /account changed/);
+    eq((await admin.query(`select count(*)::int n from public.push_subscriptions where endpoint = $1`, [SUB(30).endpoint])).rows[0].n, 0, 'nothing saved');
+    ok(await rpc('carol', 'save_push_subscription', { p: J({ ...SUB(30), expectedUserId: U.carol }) }), 'save as carol');
+    eq(ok(await rpc('carol', 'push_device_owner', { p_endpoint: SUB(30).endpoint }), 'owner'), 'mine', 'mine');
+    // Same browser endpoint, now enabled by dave (B): carol (A) sees it is no longer hers and can take it back.
+    ok(await rpc('dave', 'save_push_subscription', { p: J({ ...SUB(30), expectedUserId: U.dave }) }), 'dave takes the endpoint');
+    eq(ok(await rpc('carol', 'push_device_owner', { p_endpoint: SUB(30).endpoint }), 'owner2'), 'other', 'other');
+    eq(ok(await rpc('dave', 'push_device_owner', { p_endpoint: 'https://push.example.net/none' }), 'owner3'), 'none', 'none');
+    fails(await rpc('carol', 'delete_push_subscription', { p_endpoint: SUB(30).endpoint, p_expected_user: U.dave }), 'delete as wrong account', /account changed/);
+    const rev = (await prefsOf('carol')).revision;
+    fails(await rpc('carol', 'update_push_prefs', { p_patch: J({ dailyCap: 1, expectedUserId: U.dave }), p_revision: [rev, '::bigint'] }), 'update as wrong account', /account changed/);
+    fails(await rpc('carol', 'set_push_prefs', { p: J({ timeZone: 'UTC', expectedUserId: U.dave }) }), 'legacy set as wrong account', /account changed/);
+    eq((await prefsOf('carol')).revision, rev, 'nothing written');
+    eq((await update('carol', { dailyCap: 1, expectedUserId: U.carol }, rev)).status, 'ok', 'own account ok');
+    fails(await rpc('anon', 'push_device_owner', { p_endpoint: 'x' }), 'anon', /permission denied/);
   });
 
   await test('retention', 'deleting the user removes their subscriptions, prefs and jobs', async () => {

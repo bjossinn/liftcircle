@@ -71,15 +71,37 @@ export function toUpdateResult(raw: Record<string, unknown> | null | undefined):
   throw new BackendError('Unexpected response.', 'bad_response');
 }
 
+/** The server refused because the signed-in account is no longer the one the operation was started for. */
+export const isAccountChanged = (e: unknown) => e instanceof BackendError && /account changed/i.test(e.message);
+
+/**
+ * Every write that belongs to a specific account passes `expectedUserId`: if the signed-in account changed while the
+ * operation was waiting (permission prompt, service worker), the server writes nothing ('account_changed').
+ */
 export const pushApi = {
-  saveSubscription: (s: { endpoint: string; p256dh: string; auth: string; userAgent?: string }) => rpc<{ id: string; endpoint: string }>('save_push_subscription', { p: s }),
-  deleteSubscription: (endpoint: string) => rpc<boolean>('delete_push_subscription', { p_endpoint: endpoint }),
+  /** The account the backend session currently belongs to (null when signed out or without a backend). */
+  currentUserId: async (): Promise<string | null> => {
+    if (!backendConfigured) return null;
+    try {
+      const { data } = await requireSupabase().auth.getSession();
+      return data.session?.user?.id ?? null;
+    } catch {
+      return null;
+    }
+  },
+  saveSubscription: (s: { endpoint: string; p256dh: string; auth: string; userAgent?: string }, expectedUserId: string) =>
+    rpc<{ id: string; endpoint: string }>('save_push_subscription', { p: { ...s, expectedUserId } }),
+  deleteSubscription: (endpoint: string, expectedUserId: string) =>
+    rpc<boolean>('delete_push_subscription', { p_endpoint: endpoint, p_expected_user: expectedUserId }),
+  /** Who owns this browser endpoint on the server: 'mine' | 'other' | 'none'. */
+  deviceOwner: (endpoint: string) => rpc<'mine' | 'other' | 'none'>('push_device_owner', { p_endpoint: endpoint }),
   getPrefs: async () => toPushPrefs(await rpc<Record<string, unknown>>('get_push_prefs')),
   /** Legacy last-write-wins update (only used for the device's time zone when turning push on). */
-  setPrefs: async (p: Partial<PushPrefs>) => toPushPrefs(await rpc<Record<string, unknown>>('set_push_prefs', { p })),
+  setPrefs: async (p: Partial<PushPrefs>, expectedUserId: string) =>
+    toPushPrefs(await rpc<Record<string, unknown>>('set_push_prefs', { p: { ...p, expectedUserId } })),
   /** Versioned patch: applied only when `revision` is still current. A pause/resume is in effect once this returns ok. */
-  updatePrefs: async (patch: PushPrefsPatch, revision: number) =>
-    toUpdateResult(await rpc<Record<string, unknown>>('update_push_prefs', { p_patch: patch, p_revision: revision })),
+  updatePrefs: async (patch: PushPrefsPatch, revision: number, expectedUserId: string) =>
+    toUpdateResult(await rpc<Record<string, unknown>>('update_push_prefs', { p_patch: { ...patch, expectedUserId }, p_revision: revision })),
   replaceJobs: (kind: 'workout_reminder' | 'missed_nudge' | 'rest_over', jobs: ScheduledJob[]) => rpc<number>('replace_scheduled_jobs', { p_kind: kind, p_jobs: jobs }),
   cancelJob: (dedupeKey: string) => rpc<boolean>('cancel_push_job', { p_dedupe_key: dedupeKey }),
   sendTest: () => rpc<{ queued: boolean }>('send_test_push'),

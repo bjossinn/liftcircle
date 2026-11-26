@@ -30,11 +30,11 @@ Deno.serve(handler(async (req) => {
   };
   const summary = await runPushSend({
     db: {
-      claimDue: (limit) => rpc<DueJob[]>('push_claim_due', { p_limit: limit }),
+      claimDue: (limit) => rpc<DueJob[]>('push_claim_due_v2', { p_limit: limit }),
       finish: async (results: JobResult[]) => void (await rpc('push_finish', { p_results: results })),
       subscriptionResult: async (endpoint, status) => void (await rpc('push_subscription_result', { p_endpoint: endpoint, p_status: status })),
       cleanup: () => rpc<number>('push_cleanup', {}),
-      check: (id, token, stage) => rpc<CheckResult>('push_check', { p_id: id, p_token: token, p_stage: stage }),
+      check: (id, token, stage, copy) => rpc<CheckResult>('push_check', { p_id: id, p_token: token, p_stage: stage, p_copy: copy ?? null }),
       generate: () => rpc<number>('push_generate_food', {}),
     },
     copy: { env: (name) => Deno.env.get(name), fetch: (url, init) => fetch(url, init) },

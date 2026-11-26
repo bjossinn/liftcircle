@@ -18,7 +18,7 @@
  */
 import type { PushSubscriptionKeys, SendOptions } from './webpush.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
-import { aiCopyAllowed, COACH_TAG, COACH_URL, finalizeCopy, isCoachKind, writeCopy, type CopyAiSettings, type CopyDeps, type CoachKind, type FinalCopy } from './copy.ts';
+import { aiCopyAllowed, aiCopyEnabled, COACH_TAG, COACH_URL, finalizeCopy, isCoachKind, writeCopy, type CopyAiSettings, type CopyDeps, type CoachKind, type FinalCopy } from './copy.ts';
 // @ts-ignore see above
 import { resolveProvider } from '../ai/provider.ts';
 
@@ -70,6 +70,8 @@ export type JobResult =
 
 export type CheckResult =
   | { status: 'ok'; language?: string; revision?: number; ai?: CopyAiSettings | null }
+  /** Current quiet hours: the server already rescheduled the job inside its local day. */
+  | { status: 'deferred'; fireAt?: string }
   | { status: 'discard'; reason?: string }
   | { status: 'lost' };
 
@@ -78,8 +80,11 @@ export interface PushDb {
   finish(results: JobResult[]): Promise<void>;
   subscriptionResult(endpoint: string, status: number): Promise<void>;
   cleanup(): Promise<number>;
-  /** push_check (phase 1). Without it coach reminders are released untouched (old database). */
-  check?(id: string, token: string, stage: 'prepare' | 'dispatch'): Promise<CheckResult>;
+  /**
+   * push_check (phase 1). `copy` is stored on the job under the claim before the check runs, so a retry reuses it.
+   * Without it coach reminders are released untouched (old database).
+   */
+  check?(id: string, token: string, stage: 'prepare' | 'dispatch', copy?: CachedCopy | null): Promise<CheckResult>;
   /** push_generate_food (phase 1). */
   generate?(): Promise<number>;
 }
@@ -235,35 +240,40 @@ export async function processCoachJob(deps: PushDeps, job: DueJob, budgetMs: num
   const dbCheck = deps.db.check?.bind(deps.db);
   if (!token || !dbCheck) return { id: job.id, ...(token ? { token } : {}), status: 'release' };
   // A failed check call settles nothing: the job is released (or, after 'dispatching', its lease ends as ambiguous).
-  const check = (id: string, t: string, stage: 'prepare' | 'dispatch'): Promise<CheckResult | null> => dbCheck(id, t, stage).catch(() => null);
+  const check = (stage: 'prepare' | 'dispatch', copy?: CachedCopy | null): Promise<CheckResult | null> => dbCheck(job.id, token, stage, copy ?? null).catch(() => null);
   const base = { id: job.id, token };
   const expires = job.expiresAt ? Date.parse(job.expiresAt) : NaN;
+  const notOk = (r: Exclude<CheckResult, { status: 'ok' }>): JobResult =>
+    ({ ...base, status: 'skipped', reason: r.status === 'discard' ? r.reason ?? 'discard' : r.status });
 
-  const quietCheck = (): JobResult | null => {
-    const now = deps.now();
-    if (Number.isFinite(expires) && now.getTime() >= expires) return { ...base, status: 'discarded', reason: 'expired' };
-    const until = quietUntil(now, job.prefs);
-    if (!until) return null;
+  // Cheap pre-check with the settings captured at claim time; the server re-checks quiet hours with the current
+  // settings at both stages (push_check), so a window starting mid-generation or changed meanwhile still applies.
+  const now0 = deps.now();
+  if (Number.isFinite(expires) && now0.getTime() >= expires) return { ...base, status: 'discarded', reason: 'expired' };
+  const until = quietUntil(now0, job.prefs);
+  if (until) {
     // Deferral must stay within the event's own local day; otherwise the reminder is dropped (no catch-up).
     if (Number.isFinite(expires) && until.getTime() >= expires) return { ...base, status: 'discarded', reason: 'quiet_hours' };
     return { ...base, status: 'deferred', fireAt: until.toISOString() };
-  };
-  const q = quietCheck();
-  if (q) return q;
+  }
   if (!job.subscriptions.length) return { ...base, status: 'dropped' };
 
   const started = deps.now().getTime();
-  const prep = await check(job.id, token, 'prepare');
+  const prep = await check('prepare');
   if (!prep) return { ...base, status: 'release' };
-  if (prep.status !== 'ok') return { ...base, status: 'skipped', reason: prep.status === 'discard' ? prep.reason ?? 'discard' : 'lost' };
+  if (prep.status !== 'ok') return notOk(prep);
   const language = asLang(prep.language);
+  // The deployment flag gates generated wording everywhere: new text, cached text and the final dispatch.
+  const flagOn = !!deps.copy && aiCopyEnabled(deps.copy.env);
+  const provider = flagOn && deps.copy ? resolveProvider(deps.copy.env)?.provider ?? null : null;
+  const allowed = (ai: CopyAiSettings | null | undefined) => flagOn && aiCopyAllowed(kind, ai ?? null, provider);
 
-  // Copy: reuse a cached copy for this event (one generation attempt per event), else write it once.
+  // One generation attempt per event: once an attempt stored copy on the job, it is reused (or replaced by the
+  // fallback in the current language), never regenerated.
   let copy: FinalCopy;
-  const provider = deps.copy ? resolveProvider(deps.copy.env)?.provider ?? null : null;
-  if (job.copy && job.copy.language === language && (job.copy.source === 'fallback' || job.copy.source === 'ai')) {
-    copy = finalizeCopy(kind, job.copy, language, aiCopyAllowed(kind, prep.ai ?? null, provider));
-  } else if (deps.copy) {
+  if (job.copy && (job.copy.source === 'fallback' || job.copy.source === 'ai')) {
+    copy = finalizeCopy(kind, job.copy, language, allowed(prep.ai));
+  } else if (deps.copy && flagOn) {
     const remaining = budgetMs - (deps.now().getTime() - started) - 2000; // keep time to send and settle
     const r = await writeCopy(deps.copy, kind, language, prep.ai ?? null, remaining);
     if (stats) {
@@ -275,12 +285,14 @@ export async function processCoachJob(deps: PushDeps, job: DueJob, budgetMs: num
   } else {
     copy = finalizeCopy(kind, null, language, false);
   }
+  const attempt: CachedCopy = { body: copy.body, language: copy.language, source: copy.source };
 
-  // Final check right before sending: preferences, pause, consent, language and source state may have changed.
-  const fin = await check(job.id, token, 'dispatch');
+  // Final check right before sending (stores the attempt's copy first): preferences, pause, quiet hours, cap,
+  // consent, language and source state may all have changed.
+  const fin = await check('dispatch', attempt);
   if (!fin) return { ...base, status: 'release' };
-  if (fin.status !== 'ok') return { ...base, status: 'skipped', reason: fin.status === 'discard' ? fin.reason ?? 'discard' : 'lost' };
-  const finalCopy = finalizeCopy(kind, copy, asLang(fin.language), aiCopyAllowed(kind, fin.ai ?? null, provider));
+  if (fin.status !== 'ok') return notOk(fin);
+  const finalCopy = finalizeCopy(kind, copy, asLang(fin.language), allowed(fin.ai));
   if (stats) finalCopy.source === 'ai' ? stats.aiCopy++ : stats.fallbackCopy++;
   const cached: CachedCopy = { body: finalCopy.body, language: finalCopy.language, source: finalCopy.source };
 

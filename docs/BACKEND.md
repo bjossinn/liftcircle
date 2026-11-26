@@ -450,19 +450,36 @@ Migration `20261129000001_coach_push.sql` (additive), `_shared/push/copy.ts`, `_
   day at 19:00 (only before 19:00, no catch-up). At send time they need nutrition features on, zero non-deleted food
   logs that day, and a server-stamped completed-sync receipt (`record_sync_complete()`, written by the sync engine
   after a cycle with nothing pending/failing/in conflict) from the same local day and the last 24 h; otherwise skipped.
+* **Rollout**: the new worker claims with `push_claim_due_v2` (tokens). The legacy `push_claim_due` (what a
+  pre-phase-1 worker calls between the migration and the function deploy) never hands out coach reminders and makes
+  tokenless claims, so that worker's tokenless results still settle them; claims made before the migration are
+  settled once by a tokenless result and never reclaimed (`tests/rls/push-run.mjs` "rollout").
 * **push-send**: rest/test/coaching/social jobs are claimed first and settled before any model call. Each coach
-  reminder: quiet hours (deferral must stay inside its local day, else discarded) → `push_check(id, token, 'prepare')`
-  (preferences, pause, expiry, synchronized sessions/activities/plan overrides, demo accounts, quota reservation) →
-  copy → `push_check(…, 'dispatch')` (everything again; marks it `dispatching`) → send → `push_finish` with the token.
-  A network error/timeout after dispatch is `ambiguous`: it consumes the reservation and is never resent; a crashed
-  dispatch is settled the same way when its lease ends. The time budget is checked per job.
+  reminder: `push_check(id, token, 'prepare')` (preferences, pause, expiry, the CURRENT synced plan — the day must
+  still be scheduled in the active program after skipped/moved overrides — sessions, cardio activities, discomfort in
+  the latest workout, demo accounts, quiet hours with the current settings, quota reservation) → copy →
+  `push_check(…, 'dispatch', copy)` (stores the attempt's copy first, then everything again including quiet hours and
+  the CURRENT daily cap; marks it `dispatching`) → send → `push_finish` with the token. Quiet hours at either check
+  reschedule the job inside its local day (`deferred`, reservation released) or discard it. A network error/timeout
+  after dispatch is `ambiguous`: it consumes the reservation and is never resent; a crashed dispatch is settled the
+  same way when its lease ends. The time budget is checked per job.
+* **Quota lifecycle**: a trigger on `push_jobs` consumes a reservation when the job is sent/ambiguous and releases it
+  when the job is cancelled (opt-out, re-upload, `cancel_push_job`, last device removed), discarded or deleted — no
+  worker callback needed.
+* **Account binding**: `save_push_subscription`, `delete_push_subscription(endpoint, expected_user)`,
+  `set_push_prefs` and `update_push_prefs` take an optional `expectedUserId`; if the signed-in account changed while the
+  app waited (permission prompt, service worker) the server writes nothing. `push_device_owner(endpoint)` lets an
+  account returning to a shared browser take its endpoint back (A → B → A).
 * **Copy** (`copy.ts`): the model writes only `{ "body" }` (≤ 140 code points, plain text, requested language,
   always supportive; no guilt, compensation, prescriptions, targets, numbers or claims about skipping). It needs
   `PUSH_AI_COPY=on` (off by default until the live evaluation `node tests/live/push-copy-live.mjs` has been reviewed),
   the assistant enabled and not paused, consent for the configured provider and the Training (workout/missed) or
-  Nutrition (food) scope; otherwise there is no model call. One attempt, 3 s total, no retries; any failure → the
-  approved fallback (`push.coach*.body`). The final copy is cached on the job; a language or consent change before
-  dispatch switches to the current-language fallback. Chat history and the chat daily allowance are not touched; logs
+  Nutrition (food) scope; otherwise there is no model call. The flag also gates cached generated text and the final
+  dispatch. One attempt per event, stored on the job under the claim before the final check, so a retry reuses it and
+  never calls the model again; a language or consent change switches to the current-language fallback. 3 s total, no
+  retries; any failure or rejected output (guilt, prescriptions of exercises or food, targets, numbers, emoji, wrong
+  language…) → the approved fallback (`push.coach*.body`). The live evaluation also judges each generated text
+  semantically against the contract. Chat history and the chat daily allowance are not touched; logs
   hold counts and token usage only.
 
 ## 8. Coaching

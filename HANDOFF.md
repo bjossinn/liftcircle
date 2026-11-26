@@ -15,6 +15,8 @@ Supabase project **LiftCircle** (display name, unchanged: renaming it is an owne
 - Generated reminder wording is OFF until you set the function secret `PUSH_AI_COPY=on`. Before that, run
   `node tests/live/push-copy-live.mjs` with the production provider key and have a native speaker review the
   Icelandic output. Without it every reminder uses the approved fallback text.
+- Rollout is safe in either order: until the new `push-send` is live, the old one only receives rest/test/coaching/
+  social pushes (legacy `push_claim_due`); coach reminders wait for the new worker (`push_claim_due_v2`).
 - Details: docs/BACKEND.md §9a.
 
 ## 28 Nov 2026: State-aware training assistant (roadmap item 7)

@@ -15,6 +15,12 @@
 --   * Every proactive reminder is checked twice by push-send (push_check 'prepare' before the copy is written, which
 --     also reserves quota atomically; 'dispatch' right before sending). Settlement (push_finish) needs the owning
 --     claim token. A crashed dispatch is never re-sent: it settles as 'ambiguous' and consumes its reservation.
+--   * Rollout: push_claim_due (the function the pre-phase-1 worker calls) never hands out coach reminders any more and
+--     its claims carry no token, so an old worker's tokenless settlement still works for what it can claim. The new
+--     worker calls push_claim_due_v2. Claims made before this migration (claimed_at set, no token) are settled by a
+--     tokenless result once, then never reclaimed.
+--   * Account binding: subscription and preference writes accept an optional expectedUserId; a mismatch with
+--     auth.uid() (the app switched accounts mid-operation) raises 'account_changed' and writes nothing.
 -- Owner-only reads, RPC-only writes, auth.uid() ownership, search_path = '', service-role-only worker functions and
 -- cascading account deletion are unchanged. No client-supplied recipient is accepted anywhere.
 
@@ -94,7 +100,96 @@ revoke all on table private.sync_receipts from public, anon, authenticated;
 comment on table private.sync_receipts is
   'Server-stamped time of the account''s last completed sync (record_sync_complete). Food-log reminders need one from today (local) and the last 24 h.';
 
+/* ============================================================ quota lifecycle (no worker callback needed) */
+
+-- Every way a job ends releases or consumes its reservation in the same transaction: sent/ambiguous consume it;
+-- cancelled (opt-out, re-upload, cancel_push_job, last device removed, too many attempts) or discarded release it;
+-- a deleted job releases it.
+create or replace function private.trg_push_job_quota() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if tg_op = 'DELETE' then
+    delete from private.push_quota where job_id = old.id and state = 'reserved';
+    return null;
+  end if;
+  if new.sent_at is not null and old.sent_at is null then
+    update private.push_quota set state = 'consumed', updated_at = now() where job_id = new.id and state = 'reserved';
+  elsif (new.cancelled_at is not null and old.cancelled_at is null)
+        or (new.dispatch_state = 'discarded' and old.dispatch_state is distinct from 'discarded') then
+    delete from private.push_quota where job_id = new.id and state = 'reserved';
+  end if;
+  return null;
+end $$;
+drop trigger if exists push_job_quota on public.push_jobs;
+create trigger push_job_quota after update of sent_at, cancelled_at, dispatch_state or delete on public.push_jobs
+  for each row execute function private.trg_push_job_quota();
+
 /* ============================================================ helpers */
+
+-- The instant quiet hours end if p_at is inside them (in p_tz), else null. Equal start and end = no quiet hours.
+create or replace function private.push_quiet_until(p_tz text, p_start time, p_end time, p_at timestamptz) returns timestamptz
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_local timestamp := p_at at time zone coalesce(p_tz, 'UTC');
+  v_t time := v_local::time;
+  v_d date := v_local::date;
+  v_start time := coalesce(p_start, '22:00'::time);
+  v_end time := coalesce(p_end, '07:00'::time);
+  v_until timestamptz;
+begin
+  if v_start = v_end then return null; end if;
+  if not (case when v_start > v_end then v_t >= v_start or v_t < v_end else v_t >= v_start and v_t < v_end end) then
+    return null;
+  end if;
+  v_until := (v_d + v_end) at time zone coalesce(p_tz, 'UTC');
+  if v_until <= p_at then v_until := (v_d + 1 + v_end) at time zone coalesce(p_tz, 'UTC'); end if;
+  return v_until;
+end $$;
+
+-- Templates the user's CURRENT synced active program plans on p_date (src/domain/program/schedule.ts rawItems: the
+-- current version's weekday slots from startDate on, minus skipped/moved overrides, plus sessions moved to the day),
+-- and whether each is a cardio-only template (done by any logged activity that day).
+create or replace function private.push_planned_on(p_uid uuid, p_date date)
+returns table (template_id text, cardio_only boolean)
+language sql stable security definer set search_path = '' as $$
+  with pr as (
+    select p.payload from public.programs p
+     where p.owner_id = p_uid and p.deleted_at is null and p.active is true
+     order by p.updated_at desc limit 1
+  ), v as (
+    select x from pr cross join lateral jsonb_array_elements(case when jsonb_typeof(pr.payload -> 'versions') = 'array' then pr.payload -> 'versions' else '[]'::jsonb end) x
+     where x ->> 'version' = pr.payload ->> 'currentVersion'
+     limit 1
+  ), ov as (
+    select o from pr cross join lateral jsonb_array_elements(case when jsonb_typeof(pr.payload -> 'overrides') = 'array' then pr.payload -> 'overrides' else '[]'::jsonb end) o
+  ), slots as (
+    select s ->> 'templateId' as tid
+      from pr cross join v cross join lateral jsonb_array_elements(case when jsonb_typeof(v.x -> 'schedule') = 'array' then v.x -> 'schedule' else '[]'::jsonb end) s
+     where private.try_int(s ->> 'weekday') = extract(dow from p_date)::int
+       and p_date >= coalesce(private.try_date(pr.payload ->> 'startDate'), p_date)
+       and not exists (select 1 from ov where ov.o ->> 'date' = p_date::text and ov.o ->> 'templateId' = s ->> 'templateId'
+                                          and ov.o ->> 'status' in ('skipped', 'moved'))
+  ), moved as (
+    select ov.o ->> 'templateId' as tid from ov where ov.o ->> 'status' = 'moved' and ov.o ->> 'movedTo' = p_date::text
+  ), ids as (
+    select tid from slots union select tid from moved
+  )
+  select ids.tid,
+         (jsonb_typeof(t -> 'cardio') = 'object'
+          and coalesce(jsonb_array_length(case when jsonb_typeof(t -> 'exercises') = 'array' then t -> 'exercises' end), 0) = 0)
+    from ids cross join v
+    cross join lateral (select t from jsonb_array_elements(case when jsonb_typeof(v.x -> 'templates') = 'array' then v.x -> 'templates' else '[]'::jsonb end) t
+                         where t ->> 'id' = ids.tid limit 1) tt
+$$;
+
+-- The app may assert which account an operation was started for; a different signed-in account writes nothing.
+create or replace function private.push_assert_account(p_expected text) returns void
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if p_expected is not null and p_expected is distinct from (select auth.uid())::text then
+    raise exception 'The signed-in account changed. Nothing was saved.' using errcode = 'P0001', hint = 'account_changed';
+  end if;
+end $$;
 
 create or replace function private.push_proactive(p_kind text) returns boolean
 language sql immutable security definer set search_path = '' as $$
@@ -191,6 +286,43 @@ end $$;
 
 /* ============================================================ client RPCs (caller = auth.uid()) */
 
+-- p: { endpoint, p256dh, auth, userAgent?, expectedUserId? }. A device used by another account moves to the caller.
+create or replace function public.save_push_subscription(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_uid uuid := private.require_uid();
+  v public.push_subscriptions;
+begin
+  if p is null or jsonb_typeof(p) <> 'object' then raise exception 'Subscription must be a JSON object.' using errcode = '22023'; end if;
+  perform private.push_assert_account(p ->> 'expectedUserId');
+  perform private.enforce_rate_limit(v_uid, 'push_subscribe', 60, interval '1 hour', 'Too many notification changes. Please wait a little.');
+  insert into public.push_subscriptions as s (user_id, endpoint, p256dh, auth, user_agent)
+  values (v_uid, p ->> 'endpoint', p ->> 'p256dh', p ->> 'auth', left(p ->> 'userAgent', 300))
+  on conflict (endpoint) do update
+     set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth, user_agent = excluded.user_agent, failed_count = 0
+  returning * into v;
+  insert into public.push_prefs (user_id) values (v_uid) on conflict (user_id) do nothing;
+  return jsonb_build_object('id', v.id, 'endpoint', v.endpoint, 'createdAt', v.created_at);
+end $$;
+
+-- Account-bound variant of delete_push_subscription(text).
+create or replace function public.delete_push_subscription(p_endpoint text, p_expected_user uuid) returns boolean
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform private.push_assert_account(p_expected_user::text);
+  return public.delete_push_subscription(p_endpoint);
+end $$;
+
+-- Does the caller own this device's subscription? ('mine' | 'other' | 'none') — lets an account that returns to a
+-- shared browser take its device back after another account used it.
+create or replace function public.push_device_owner(p_endpoint text) returns text
+language plpgsql stable security definer set search_path = '' as $$
+declare v_uid uuid := private.require_uid(); v_owner uuid;
+begin
+  select user_id into v_owner from public.push_subscriptions where endpoint = p_endpoint;
+  return case when v_owner is null then 'none' when v_owner = v_uid then 'mine' else 'other' end;
+end $$;
+
 create or replace function public.get_push_prefs() returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 declare v_uid uuid := private.require_uid(); p public.push_prefs;
@@ -206,8 +338,9 @@ language plpgsql security definer set search_path = '' as $$
 declare v_uid uuid := private.require_uid();
 begin
   if p is null or jsonb_typeof(p) <> 'object' then raise exception 'Settings must be a JSON object.' using errcode = '22023'; end if;
+  perform private.push_assert_account(p ->> 'expectedUserId');
   perform private.enforce_rate_limit(v_uid, 'push_prefs', 240, interval '1 hour', 'Too many notification changes. Please wait a little.');
-  return private.push_prefs_json(private.push_apply_prefs(v_uid, p - 'snoozeDays' - 'resume' - 'dailyCap', true));
+  return private.push_prefs_json(private.push_apply_prefs(v_uid, p - 'snoozeDays' - 'resume' - 'dailyCap' - 'expectedUserId', true));
 end $$;
 
 -- Phase 1: one versioned patch. p_revision must equal the stored revision, otherwise nothing is written and
@@ -222,6 +355,8 @@ declare
 begin
   perform private.enforce_rate_limit(v_uid, 'push_prefs', 240, interval '1 hour', 'Too many notification changes. Please wait a little.');
   if p_patch is null or jsonb_typeof(p_patch) <> 'object' then raise exception 'Settings must be a JSON object.' using errcode = '22023'; end if;
+  perform private.push_assert_account(p_patch ->> 'expectedUserId');
+  p_patch := p_patch - 'expectedUserId';
   -- No row yet reads as revision 0 (get_push_prefs shows the defaults with revision 0).
   insert into public.push_prefs (user_id) values (v_uid) on conflict (user_id) do nothing returning * into s;
   if found then
@@ -364,20 +499,49 @@ begin
   return n;
 end $$;
 
--- Claims up to p_limit due jobs (FOR UPDATE SKIP LOCKED). Each claim gets a fresh claim token and a 2-minute lease;
--- only the token holder can check or settle the job. Rest alerts, tests, coaching and social pushes are handed out
--- before proactive reminders so a slow copy model never delays them. A dispatch whose worker died after the
--- 'dispatching' check is settled as 'ambiguous' (consumes its reservation, never re-sent).
+-- LEGACY claim (the pre-phase-1 push-send worker). It never hands out coach reminders (that worker can't run the
+-- eligibility, quota and copy checks) and its claims carry no token, so that worker's tokenless results settle them.
 create or replace function public.push_claim_due(p_limit integer default 50) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare v jsonb;
 begin
-  with stale as (
-    update public.push_jobs j set dispatch_state = 'ambiguous', outcome = 'lease_expired', sent_at = now(), lease_until = null, claim_token = null
-     where j.dispatch_state = 'dispatching' and j.lease_until < now() and j.sent_at is null
-    returning j.id
+  with picked as (
+    select j.id from public.push_jobs j
+     where j.fire_at <= now() and j.sent_at is null and j.cancelled_at is null
+       and not private.push_proactive(j.kind)
+       and j.dispatch_state in ('pending', 'claimed')
+       and (case when j.lease_until is null then j.claimed_at is null or j.claimed_at < now() - interval '2 minutes'
+                 else j.lease_until < now() end)
+     order by j.fire_at
+     limit least(greatest(coalesce(p_limit, 50), 1), 200)
+     for update skip locked
+  ), claimed as (
+    update public.push_jobs j
+       set claimed_at = now(), lease_until = now() + interval '2 minutes', claim_token = null,
+           dispatch_state = 'claimed', attempts = j.attempts + 1
+      from picked where j.id = picked.id
+    returning j.*
   )
-  update private.push_quota q set state = 'consumed', updated_at = now() from stale where q.job_id = stale.id;
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', c.id, 'userId', c.user_id, 'kind', c.kind, 'fireAt', c.fire_at, 'payload', c.payload, 'attempts', c.attempts,
+           'prefs', (select private.push_prefs_json(p) from public.push_prefs p where p.user_id = c.user_id),
+           'subscriptions', coalesce((select jsonb_agg(jsonb_build_object('endpoint', s.endpoint, 'p256dh', s.p256dh, 'auth', s.auth))
+                                        from public.push_subscriptions s where s.user_id = c.user_id), '[]'::jsonb))
+         order by c.fire_at), '[]'::jsonb)
+    into v from claimed c;
+  return v;
+end $$;
+
+-- Phase-1 claim: up to p_limit due jobs (FOR UPDATE SKIP LOCKED), each with a fresh claim token and a 2-minute lease;
+-- only the token holder can check or settle the job. Rest alerts, tests, coaching and social pushes are handed out
+-- before coach reminders so a slow copy model never delays them. A dispatch whose worker died after the
+-- 'dispatching' check is settled as 'ambiguous' (consumes its reservation, never re-sent).
+create or replace function public.push_claim_due_v2(p_limit integer default 50) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare v jsonb;
+begin
+  update public.push_jobs j set dispatch_state = 'ambiguous', outcome = 'lease_expired', sent_at = now(), lease_until = null, claim_token = null
+   where j.dispatch_state = 'dispatching' and j.lease_until < now() and j.sent_at is null;
 
   -- Repeatedly crashed claims stop eventually (old workers that never settle included).
   update public.push_jobs j set cancelled_at = now(), dispatch_state = 'discarded', outcome = 'too_many_attempts', lease_until = null, claim_token = null
@@ -413,7 +577,7 @@ begin
   return v;
 end $$;
 
--- Releases a job's quota reservation (discarded / dropped / given up) — consumed reservations stay.
+-- Releases a job's quota reservation (deferred) — consumed reservations stay.
 create or replace function private.push_release(p_job uuid) returns void
 language sql security definer set search_path = '' as $$
   delete from private.push_quota where job_id = p_job and state = 'reserved';
@@ -422,10 +586,15 @@ $$;
 -- Eligibility of a claimed proactive reminder, checked by the token holder:
 --   p_stage 'prepare'  — before the copy is generated; reserves the daily quota atomically (one 'training' event and
 --                        one 'food' event per local day, at most daily_cap events per day, across all devices).
---   p_stage 'dispatch' — immediately before sending; re-checks everything and marks the job 'dispatching'.
--- Returns { status: 'ok', language, revision, ai } or { status: 'discard', reason } (the job is discarded and its
--- reservation released) or { status: 'lost' } (the caller no longer holds the claim: do nothing).
-create or replace function public.push_check(p_id uuid, p_token uuid, p_stage text) returns jsonb
+--   p_stage 'dispatch' — immediately before sending; re-checks everything with the CURRENT settings (quiet hours and
+--                        time zone included), re-evaluates the cap against the current daily_cap, and marks the job
+--                        'dispatching'.
+-- p_copy ({ body, language, source }) is stored on the job first, under the claim, so a retry reuses it (one
+-- generation attempt per event) whatever this check decides.
+-- Returns { status: 'ok', language, revision, ai } | { status: 'deferred', fireAt } (quiet hours; the job is
+-- rescheduled within its local day and its reservation released) | { status: 'discard', reason } (the job is
+-- discarded and its reservation released) | { status: 'lost' } (the caller no longer holds the claim).
+create or replace function public.push_check(p_id uuid, p_token uuid, p_stage text, p_copy jsonb default null) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
   j public.push_jobs;
@@ -435,6 +604,8 @@ declare
   v_tz text;
   v_event date;
   v_source date;
+  v_expires timestamptz;
+  v_quiet timestamptz;
   v_reason text;
   v_key text;
   v_q private.push_quota;
@@ -449,32 +620,51 @@ begin
   end if;
   if not private.push_proactive(j.kind) then raise exception 'Only coach reminders are checked.' using errcode = '22023'; end if;
 
+  -- Persist the attempt's copy before anything else can end this attempt.
+  if jsonb_typeof(p_copy) = 'object' and jsonb_typeof(p_copy -> 'body') = 'string' and char_length(p_copy ->> 'body') between 1 and 200
+     and p_copy ->> 'language' in ('en', 'is') and p_copy ->> 'source' in ('ai', 'fallback') then
+    update public.push_jobs
+       set payload = payload || jsonb_build_object('body', p_copy ->> 'body'), copy_language = p_copy ->> 'language', copy_source = p_copy ->> 'source'
+     where id = j.id
+    returning * into j;
+  end if;
+
   select * into p from public.push_prefs where user_id = j.user_id;
   v_tz := coalesce(p.time_zone, 'UTC');
   v_event := coalesce(j.event_date, (j.fire_at at time zone v_tz)::date);
   v_source := coalesce(private.try_date(j.source_ref), case when j.kind = 'missed_nudge' then v_event - 1 else v_event end);
+  v_expires := coalesce(j.expires_at, (v_event + 1)::timestamp at time zone v_tz);
   select a.payload -> 'settings' into v_settings from public.account_state a where a.owner_id = j.user_id and a.deleted_at is null;
   select * into v_ai from public.ai_settings where user_id = j.user_id;
 
   if j.cancelled_at is not null then v_reason := 'cancelled';
   elsif p.user_id is null or not (j.kind = any (p.kinds)) then v_reason := 'kind_off';
   elsif p.snooze_until is not null and p.snooze_until > now() then v_reason := 'snoozed';
-  elsif now() >= coalesce(j.expires_at, (v_event + 1)::timestamp at time zone v_tz) then v_reason := 'expired';
+  elsif now() >= v_expires then v_reason := 'expired';
   elsif not exists (select 1 from public.push_subscriptions s where s.user_id = j.user_id) then v_reason := 'no_device';
   elsif coalesce(v_settings ->> 'demoData', 'false') = 'true' then v_reason := 'demo';
+  elsif j.kind in ('workout_reminder', 'missed_nudge') and not exists (select 1 from private.push_planned_on(j.user_id, v_source)) then
+    v_reason := 'not_planned'; -- the day was removed, skipped or moved, or the program was deactivated (any device)
   elsif j.kind in ('workout_reminder', 'missed_nudge') and (
           -- started, completed or logged on the planned day (or, for a nudge, already trained today)
           exists (select 1 from public.workout_sessions s
                    where s.owner_id = j.user_id and s.deleted_at is null and s.status in ('active', 'completed')
                      and (s.session_date = v_source or s.payload ->> 'plannedDate' = v_source::text
                           or (j.kind = 'missed_nudge' and (s.session_date = v_event or s.payload ->> 'plannedDate' = v_event::text))))
-          -- skipped or moved in the synchronized plan
-          or exists (select 1 from public.programs pr cross join lateral jsonb_array_elements(
-                        case when jsonb_typeof(pr.payload -> 'overrides') = 'array' then pr.payload -> 'overrides' else '[]'::jsonb end) o
-                      where pr.owner_id = j.user_id and pr.deleted_at is null and pr.active is true and o ->> 'date' = v_source::text)
+          -- a cardio-only day is done by any logged activity that day
+          or (not exists (select 1 from private.push_planned_on(j.user_id, v_source) x where not x.cardio_only)
+              and exists (select 1 from public.activities a where a.owner_id = j.user_id and a.deleted_at is null and a.activity_date = v_source))
           or (j.kind = 'missed_nudge' and exists (select 1 from public.activities a
                    where a.owner_id = j.user_id and a.deleted_at is null and a.activity_date in (v_source, v_event)))) then
     v_reason := 'source_done';
+  elsif j.kind = 'missed_nudge' and exists (
+          -- discomfort flagged in the latest completed workout: no nudges
+          select 1 from (select s.payload from public.workout_sessions s
+                          where s.owner_id = j.user_id and s.deleted_at is null and s.status = 'completed'
+                          order by s.started_at desc nulls last limit 1) l
+           cross join lateral jsonb_array_elements(case when jsonb_typeof(l.payload -> 'exercises') = 'array' then l.payload -> 'exercises' else '[]'::jsonb end) e
+           where e ->> 'discomfort' = 'true') then
+    v_reason := 'discomfort';
   elsif j.kind = 'missed_nudge' and exists (
           select 1 from public.push_jobs w
            where w.user_id = j.user_id and w.kind = 'workout_reminder' and w.event_date = v_event and w.id <> j.id
@@ -490,12 +680,37 @@ begin
     end if;
   end if;
 
+  -- Quiet hours with the CURRENT settings: defer within the event's local day, otherwise discard (no catch-up).
+  if v_reason is null then
+    v_quiet := private.push_quiet_until(v_tz, p.quiet_start, p.quiet_end, now());
+    if v_quiet is not null then
+      if v_quiet >= v_expires then
+        v_reason := 'quiet_hours';
+      else
+        update public.push_jobs
+           set fire_at = v_quiet, dispatch_state = 'pending', claim_token = null, lease_until = null, claimed_at = null,
+               attempts = greatest(attempts - 1, 0)
+         where id = j.id;
+        perform private.push_release(j.id);
+        return jsonb_build_object('status', 'deferred', 'fireAt', v_quiet);
+      end if;
+    end if;
+  end if;
+
   if v_reason is null then
     v_key := case when j.kind = 'food_unlogged' then 'food' else 'training' end;
     perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('push-quota:' || j.user_id::text || ':' || v_event::text, 0));
     select * into v_q from private.push_quota where user_id = j.user_id and local_date = v_event and event_key = v_key;
     if found then
-      if v_q.job_id is distinct from j.id then v_reason := case when v_key = 'training' then 'training_done_today' else 'duplicate_event' end; end if;
+      if v_q.job_id is distinct from j.id then
+        v_reason := case when v_key = 'training' then 'training_done_today' else 'duplicate_event' end;
+      else
+        -- The current cap decides: reservations made earlier (and every consumed one) come first.
+        select count(*) into v_count from private.push_quota q
+         where q.user_id = j.user_id and q.local_date = v_event and q.job_id is distinct from j.id
+           and (q.state = 'consumed' or (q.created_at, q.event_key) < (v_q.created_at, v_q.event_key));
+        if v_count >= coalesce(p.daily_cap, 2) then v_reason := 'daily_cap'; end if;
+      end if;
     elsif p_stage = 'dispatch' then
       v_reason := 'not_reserved';
     else
@@ -507,10 +722,10 @@ begin
   end if;
 
   if v_reason is not null then
+    -- The quota trigger releases the reservation in this same statement.
     update public.push_jobs set cancelled_at = coalesce(cancelled_at, now()), dispatch_state = 'discarded', outcome = v_reason,
                                 lease_until = null, claim_token = null
      where id = j.id;
-    perform private.push_release(j.id);
     return jsonb_build_object('status', 'discard', 'reason', v_reason);
   end if;
 
@@ -527,11 +742,12 @@ begin
       'training', coalesce((v_ai.scopes ->> 'training')::boolean, false), 'nutrition', coalesce((v_ai.scopes ->> 'nutrition')::boolean, false)) end);
 end $$;
 
--- p_results: [{ id, token, status, fireAt?, reason?, copy?: { body, language, source } }]
---   sent | ambiguous (outcome unknown: counted as sent, never re-sent) | deferred (quiet hours; a proactive reminder
---   past its local day is discarded instead) | retry (cancelled after 5 attempts) | release (not processed this run) |
---   discarded | dropped. A result settles a job only for the current claim token (tokenless results are accepted for
---   rest/test/coaching/social jobs from workers deployed before this migration).
+-- p_results: [{ id, token?, status, fireAt?, reason?, copy?: { body, language, source } }]
+--   sent | ambiguous (outcome unknown: counted as sent, never re-sent) | deferred (quiet hours; a coach reminder past
+--   its local day is discarded instead) | retry (cancelled after 5 attempts) | release (not processed this run) |
+--   discarded | dropped. With a token, a result settles the job only for the current claim. Without a token
+--   (the pre-phase-1 worker), only a tokenless claim is settled: the legacy push_claim_due's claims and claims made
+--   before this migration. Reservations are consumed/released by the quota trigger.
 create or replace function public.push_finish(p_results jsonb) returns integer
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -545,7 +761,7 @@ begin
     if not found or j.sent_at is not null then continue; end if;
     if v_token is not null then
       if j.claim_token is distinct from v_token then continue; end if;
-    elsif private.push_proactive(j.kind) or j.dispatch_state not in ('pending', 'claimed') then
+    elsif j.claim_token is not null or j.dispatch_state not in ('pending', 'claimed') or j.claimed_at is null then
       continue;
     end if;
     v_copy := case when jsonb_typeof(r -> 'copy') = 'object' then r -> 'copy' end;
@@ -563,7 +779,6 @@ begin
                payload = case when v_body is null then payload else payload || jsonb_build_object('body', v_body) end,
                copy_language = coalesce(v_copy ->> 'language', copy_language), copy_source = coalesce(v_copy ->> 'source', copy_source)
          where id = v_id;
-        update private.push_quota set state = 'consumed', updated_at = now() where job_id = v_id;
       when 'deferred' then
         begin
           v_fire := (r ->> 'fireAt')::timestamptz;
@@ -572,7 +787,6 @@ begin
         end;
         if v_fire is null or (private.push_proactive(j.kind) and v_fire >= coalesce(j.expires_at, 'infinity'::timestamptz)) then
           update public.push_jobs set cancelled_at = now(), dispatch_state = 'discarded', outcome = 'quiet_hours', claimed_at = null, lease_until = null, claim_token = null where id = v_id;
-          perform private.push_release(v_id);
         else
           update public.push_jobs set fire_at = v_fire, claimed_at = null, lease_until = null, claim_token = null, dispatch_state = 'pending',
                                       attempts = greatest(attempts - 1, 0)
@@ -588,7 +802,6 @@ begin
                payload = case when v_body is null then payload else payload || jsonb_build_object('body', v_body) end,
                copy_language = coalesce(v_copy ->> 'language', copy_language), copy_source = coalesce(v_copy ->> 'source', copy_source)
          where id = v_id;
-        if j.attempts >= 5 then perform private.push_release(v_id); end if;
       when 'release' then
         update public.push_jobs set claimed_at = null, lease_until = null, claim_token = null, dispatch_state = 'pending',
                                     attempts = greatest(attempts - 1, 0)
@@ -597,7 +810,6 @@ begin
         update public.push_jobs set cancelled_at = now(), claimed_at = null, lease_until = null, claim_token = null,
                                     dispatch_state = 'discarded', outcome = left(coalesce(r ->> 'reason', r ->> 'status', 'dropped'), 40)
          where id = v_id;
-        perform private.push_release(v_id);
     end case;
     n := n + 1;
   end loop;
@@ -619,17 +831,20 @@ end $$;
 /* ============================================================ privileges */
 
 revoke all on function private.push_proactive(text), private.push_prefs_json(public.push_prefs),
-  private.push_apply_prefs(uuid, jsonb, boolean), private.push_release(uuid)
+  private.push_apply_prefs(uuid, jsonb, boolean), private.push_release(uuid), private.trg_push_job_quota(),
+  private.push_quiet_until(text, time, time, timestamptz), private.push_planned_on(uuid, date), private.push_assert_account(text)
   from public, anon, authenticated;
 
 revoke all on function public.get_push_prefs(), public.set_push_prefs(jsonb), public.update_push_prefs(jsonb, bigint),
-  public.record_sync_complete(), public.replace_scheduled_jobs(text, jsonb), public.cancel_push_job(text)
+  public.record_sync_complete(), public.replace_scheduled_jobs(text, jsonb), public.cancel_push_job(text),
+  public.save_push_subscription(jsonb), public.delete_push_subscription(text, uuid), public.push_device_owner(text)
   from public, anon;
 grant execute on function public.get_push_prefs(), public.set_push_prefs(jsonb), public.update_push_prefs(jsonb, bigint),
-  public.record_sync_complete(), public.replace_scheduled_jobs(text, jsonb), public.cancel_push_job(text)
+  public.record_sync_complete(), public.replace_scheduled_jobs(text, jsonb), public.cancel_push_job(text),
+  public.save_push_subscription(jsonb), public.delete_push_subscription(text, uuid), public.push_device_owner(text)
   to authenticated;
 
-revoke all on function public.push_generate_food(), public.push_claim_due(integer), public.push_check(uuid, uuid, text),
-  public.push_finish(jsonb), public.push_cleanup() from public, anon, authenticated;
-grant execute on function public.push_generate_food(), public.push_claim_due(integer), public.push_check(uuid, uuid, text),
-  public.push_finish(jsonb), public.push_cleanup() to service_role;
+revoke all on function public.push_generate_food(), public.push_claim_due(integer), public.push_claim_due_v2(integer),
+  public.push_check(uuid, uuid, text, jsonb), public.push_finish(jsonb), public.push_cleanup() from public, anon, authenticated;
+grant execute on function public.push_generate_food(), public.push_claim_due(integer), public.push_claim_due_v2(integer),
+  public.push_check(uuid, uuid, text, jsonb), public.push_finish(jsonb), public.push_cleanup() to service_role;

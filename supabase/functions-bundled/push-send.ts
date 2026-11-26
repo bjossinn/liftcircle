@@ -1115,13 +1115,25 @@ function aiCopyAllowed(kind, ai, provider) {
 var codePoints = (s) => [...s].length;
 var IS_CHARS = /[áðéíóúýþæöÁÐÉÍÓÚÝÞÆÖ]/;
 var FORBIDDEN = [
-  /\b(skipped|missed|failed|lazy|guilt\w*|ashamed|shame|excuse|make up for|compensat\w*|burn (it )?off|earn (it|your)|no excuses?)\b/i,
-  /\b(didn[’']?t|did not|haven[’']?t|have not|forgot to) (eat|train|work ?out|exercise|log)\b/i,
-  /\b(calorie|kcal|protein|carb|macro|gram|kg|lbs?|pounds?|weight|reps?|sets?|minutes?|km|miles?|steps)\b/i,
-  /(slepptir|sleppt|misstir|samviskubit|skamm|leti|bæta upp|brenna|hitaeining|kalorí|prótein|kolvetn|kíló|grömm|endurtekning|mínút)/i,
+  // guilt, shame, compensation, pressure
+  /\b(skipp\w*|miss(ed|ing)|fail\w*|lazy|guilt\w*|asham\w*|shame\w*|excuse\w*|make up for|catch up|compensat\w*|burn (it )?off|earn (it|your)|no excuses?|must|have to|should|don[’']?t give up|push (yourself|through))\b/i,
+  /\b(didn[’']?t|did not|haven[’']?t|have not|forgot to|forgotten to) (eat|train|work ?out|exercise|log|do)\b/i,
+  // exercise prescriptions and named exercises / activities
+  /\b(try|do|add|get in|squeeze in|start with) (some|a few|\d+|an? (quick|short|easy|light))\b/i,
+  /\b(squat\w*|lunge\w*|push-?ups?|pull-?ups?|sit-?ups?|crunch\w*|plank\w*|burpee\w*|deadlift\w*|bench\w*|press(es)?|curls?|rows?|jog\w*|run(s|ning)?|sprint\w*|cardio|hiit|stretch\w*|yoga|walk(s|ing)?|steps|laps?|cycl\w*|swim\w*|hike\w*)\b/i,
+  // eating prescriptions, foods and targets
+  /\b(eat|eating|ate|drink|drinking|snack\w*|meal\w*|breakfast|lunch|dinner|protein|carb\w*|fat|fats|sugar\w*|calori\w*|kcal|macro\w*|diet\w*|fasting|hungry|portion\w*|water|vegetables?|fruit\w*)\b/i,
+  // measurements, units, weight, health
+  /\b(gram\w*|kilo\w*|kg|lbs?|pounds?|weigh\w*|bmi|reps?|sets?|minutes?|mins?|hours?|km|miles?|calf|injur\w*|pain\w*|sick\w*|ill(ness)?|health\w*|body)\b/i,
+  // Icelandic: guilt/skipping, exercises/activities, eating/food/targets, units/health
+  /(slepp|misst|samvisk|skamm|leti|lat(ur|ir)\b|bæta upp|vinna upp|brenn|verður að|þarft að|átt að|hnébeygj|armbeygj|upphífing|kviðæfing|planka|réttstöð|bekkpress|hlaup|skokk|sprett|ganga\b|göngu|teygj|jóga|hjól|synd|borða|borðaðu|drekk|snarl|máltíð|morgunmat|hádegismat|kvöldmat|prótein|kolvetn|fitu|sykur|hitaeining|kalorí|megrun|fast[aið]|svang|vatn|grænmeti|ávext|kíló|grömm|gramm|þyngd|vigt|endurtekning|lot(a|ur)\b|mínút|klukkutím|meiðsl|verk(ur|i)\b|veik|heilsu|líkam|gerðu nokkr|prófaðu nokkr)/i,
   /\d/,
-  /(https?:|www\.|[<>*_#`[\]{}|\\])/i
+  /\p{Extended_Pictographic}|\p{Emoji_Presentation}|[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/u,
+  /(https?:|www\.|[<>*_#`[\]{}|\\~^=@$%&+])/i
 ];
+function aiCopyEnabled(env2) {
+  return env2?.("PUSH_AI_COPY")?.trim().toLowerCase() === "on";
+}
 function validateCopy(raw, language) {
   let parsed;
   try {
@@ -1148,6 +1160,7 @@ var TOPIC = {
 };
 var COPY_SYSTEM = [
   'You write the body text of one push notification for a fitness app. Reply with exactly one JSON object: {"body": "..."} and nothing else.',
+  "Only invite the person to open the app when it suits them; do not name any exercise, activity, food, drink, meal, amount or body part.",
   `The body is plain text, one sentence or two short ones, at most ${COPY_MAX_CODE_POINTS} characters, with no emoji, links, numbers, markdown or quotes.`,
   "Tone: always warm, supportive and low-pressure. The person decides if and when to act.",
   "Never use guilt or shame, never suggest compensating or making up for anything, never prescribe exercises, durations, foods, calories or targets,",
@@ -1159,7 +1172,7 @@ async function writeCopy(deps, kind, language, ai, budgetMs) {
   const provider = resolveProvider(deps.env);
   if (!provider) return { ...fb, reason: "not_configured", modelCalled: false };
   if (!aiCopyAllowed(kind, ai, provider.provider)) return { ...fb, reason: "not_allowed", modelCalled: false };
-  if (deps.env("PUSH_AI_COPY")?.trim().toLowerCase() !== "on") return { ...fb, reason: "not_allowed", modelCalled: false };
+  if (!aiCopyEnabled(deps.env)) return { ...fb, reason: "not_allowed", modelCalled: false };
   const timeout = Math.min(COPY_TIMEOUT_MS, Math.floor(budgetMs));
   if (!(timeout >= COPY_MIN_BUDGET_MS)) return { ...fb, reason: "budget", modelCalled: false };
   const now = deps.now ?? Date.now;
@@ -1327,30 +1340,30 @@ async function processCoachJob(deps, job, budgetMs, stats) {
   const token = job.token;
   const dbCheck = deps.db.check?.bind(deps.db);
   if (!token || !dbCheck) return { id: job.id, ...token ? { token } : {}, status: "release" };
-  const check = (id, t, stage) => dbCheck(id, t, stage).catch(() => null);
+  const check = (stage, copy2) => dbCheck(job.id, token, stage, copy2 ?? null).catch(() => null);
   const base = { id: job.id, token };
   const expires = job.expiresAt ? Date.parse(job.expiresAt) : NaN;
-  const quietCheck = () => {
-    const now = deps.now();
-    if (Number.isFinite(expires) && now.getTime() >= expires) return { ...base, status: "discarded", reason: "expired" };
-    const until = quietUntil(now, job.prefs);
-    if (!until) return null;
+  const notOk = (r) => ({ ...base, status: "skipped", reason: r.status === "discard" ? r.reason ?? "discard" : r.status });
+  const now0 = deps.now();
+  if (Number.isFinite(expires) && now0.getTime() >= expires) return { ...base, status: "discarded", reason: "expired" };
+  const until = quietUntil(now0, job.prefs);
+  if (until) {
     if (Number.isFinite(expires) && until.getTime() >= expires) return { ...base, status: "discarded", reason: "quiet_hours" };
     return { ...base, status: "deferred", fireAt: until.toISOString() };
-  };
-  const q = quietCheck();
-  if (q) return q;
+  }
   if (!job.subscriptions.length) return { ...base, status: "dropped" };
   const started = deps.now().getTime();
-  const prep = await check(job.id, token, "prepare");
+  const prep = await check("prepare");
   if (!prep) return { ...base, status: "release" };
-  if (prep.status !== "ok") return { ...base, status: "skipped", reason: prep.status === "discard" ? prep.reason ?? "discard" : "lost" };
+  if (prep.status !== "ok") return notOk(prep);
   const language = asLang(prep.language);
+  const flagOn = !!deps.copy && aiCopyEnabled(deps.copy.env);
+  const provider = flagOn && deps.copy ? resolveProvider(deps.copy.env)?.provider ?? null : null;
+  const allowed = (ai) => flagOn && aiCopyAllowed(kind, ai ?? null, provider);
   let copy;
-  const provider = deps.copy ? resolveProvider(deps.copy.env)?.provider ?? null : null;
-  if (job.copy && job.copy.language === language && (job.copy.source === "fallback" || job.copy.source === "ai")) {
-    copy = finalizeCopy(kind, job.copy, language, aiCopyAllowed(kind, prep.ai ?? null, provider));
-  } else if (deps.copy) {
+  if (job.copy && (job.copy.source === "fallback" || job.copy.source === "ai")) {
+    copy = finalizeCopy(kind, job.copy, language, allowed(prep.ai));
+  } else if (deps.copy && flagOn) {
     const remaining = budgetMs - (deps.now().getTime() - started) - 2e3;
     const r = await writeCopy(deps.copy, kind, language, prep.ai ?? null, remaining);
     if (stats) {
@@ -1362,10 +1375,11 @@ async function processCoachJob(deps, job, budgetMs, stats) {
   } else {
     copy = finalizeCopy(kind, null, language, false);
   }
-  const fin = await check(job.id, token, "dispatch");
+  const attempt = { body: copy.body, language: copy.language, source: copy.source };
+  const fin = await check("dispatch", attempt);
   if (!fin) return { ...base, status: "release" };
-  if (fin.status !== "ok") return { ...base, status: "skipped", reason: fin.status === "discard" ? fin.reason ?? "discard" : "lost" };
-  const finalCopy = finalizeCopy(kind, copy, asLang(fin.language), aiCopyAllowed(kind, fin.ai ?? null, provider));
+  if (fin.status !== "ok") return notOk(fin);
+  const finalCopy = finalizeCopy(kind, copy, asLang(fin.language), allowed(fin.ai));
   if (stats) finalCopy.source === "ai" ? stats.aiCopy++ : stats.fallbackCopy++;
   const cached = { body: finalCopy.body, language: finalCopy.language, source: finalCopy.source };
   const d = await deliver(deps, job, { title: finalCopy.title, body: finalCopy.body, url: COACH_URL[kind], tag: COACH_TAG[kind] });
@@ -1526,11 +1540,11 @@ Deno.serve(handler(async (req) => {
   };
   const summary = await runPushSend({
     db: {
-      claimDue: (limit) => rpc("push_claim_due", { p_limit: limit }),
+      claimDue: (limit) => rpc("push_claim_due_v2", { p_limit: limit }),
       finish: async (results) => void await rpc("push_finish", { p_results: results }),
       subscriptionResult: async (endpoint, status) => void await rpc("push_subscription_result", { p_endpoint: endpoint, p_status: status }),
       cleanup: () => rpc("push_cleanup", {}),
-      check: (id, token, stage) => rpc("push_check", { p_id: id, p_token: token, p_stage: stage }),
+      check: (id, token, stage, copy) => rpc("push_check", { p_id: id, p_token: token, p_stage: stage, p_copy: copy ?? null }),
       generate: () => rpc("push_generate_food", {})
     },
     copy: { env: (name) => Deno.env.get(name), fetch: (url, init) => fetch(url, init) },

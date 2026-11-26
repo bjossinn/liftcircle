@@ -5,8 +5,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import { build } from 'esbuild';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = decodeURIComponent(new URL('../..', import.meta.url).pathname);
+// fileURLToPath, not URL.pathname: on Windows the pathname is "/C:/…", which esbuild can't use as a directory.
+const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const FUNCTIONS = ['finalize-post', 'delete-account', 'cleanup-media', 'ai-coach', 'geocode', 'finalize-coach-media', 'push-send'];
 const BUNDLED = import.meta.glob('../../supabase/functions-bundled/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 const ENTRIES = Object.keys(import.meta.glob('../../supabase/functions/*/index.ts'));
