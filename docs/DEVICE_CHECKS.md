@@ -57,13 +57,12 @@ use a fresh profile or clear the site's data. Tick each item, and write down the
 - Inter and Barlow Semi Condensed render Æfing, Þyngd, Endurtekningar and "102,5 kg" correctly.
 
 ### Themes (0.8.0, renamed in 1.0.0)
-- First launch on a fresh install shows **Pick your look**; tapping Dark/Light changes the whole screen and
-  the status bar colour at once; Continue leads into the welcome; it doesn't come back after closing and reopening.
+- First launch on a fresh install goes straight to the welcome (no theme picker) on Match my phone; in Settings →
+  Appearance, tapping Dark/Light changes the whole screen and the status bar colour at once and survives reopening.
 - Match my phone follows the phone switching light/dark while the app is open (iOS Control Centre, Android quick
   settings) and after reopening, with no flash of the wrong theme on launch.
 - The installed Home Screen app's status bar matches the theme (black-translucent on iOS; theme-color on Android).
-- VoiceOver/TalkBack read the picker as a radio group named "Pick your look" with three options and their
-  descriptions; the previews are not read out.
+- VoiceOver/TalkBack read Settings → Appearance as a radio group named "Appearance" with three options.
 - A brief celebration on a new record and on finishing a workout; none with Reduce Motion on, none after turning
   Settings → Celebrations off.
 

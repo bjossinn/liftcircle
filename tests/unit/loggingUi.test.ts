@@ -11,18 +11,27 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const h = vi.hoisted(() => ({ db: null as unknown, account: null as unknown, failSave: false }));
+const h = vi.hoisted(() => ({ db: null as unknown, account: null as unknown, failSave: false, delayMs: 0, shares: 0 }));
 
 vi.mock('@/state/app', () => ({
   useApp: () => ({ db: h.db, account: h.account, auth: { status: 'guest' }, updateAccount: async () => undefined }),
   useDb: () => h.db,
 }));
-vi.mock('@/social/autoShare', () => ({ maybeAutoShare: async () => false }));
+vi.mock('@/social/autoShare', () => ({
+  maybeAutoShare: async () => {
+    h.shares++;
+    return false;
+  },
+}));
 vi.mock('@/db/repo', async (orig) => {
   const actual = (await orig()) as typeof import('@/db/repo');
   return {
     ...actual,
-    saveRecord: (...args: Parameters<typeof actual.saveRecord>) => (h.failSave ? Promise.reject(new Error('The device storage is full')) : actual.saveRecord(...args)),
+    // delayMs: every write waits first (a slow device), so the UI can act before a queued change is stored.
+    saveRecord: async (...args: Parameters<typeof actual.saveRecord>) => {
+      if (h.delayMs) await new Promise((r) => setTimeout(r, h.delayMs));
+      return h.failSave ? Promise.reject(new Error('The device storage is full')) : actual.saveRecord(...args);
+    },
   };
 });
 
@@ -115,6 +124,8 @@ function seed(): WorkoutSession {
 
 beforeEach(async () => {
   h.failSave = false;
+  h.delayMs = 0;
+  h.shares = 0;
   h.db = new LiftDb(`logging-ui-${++dbCount}`);
   h.account = defaultAccountState();
   localStorage.clear();
@@ -338,5 +349,125 @@ describe('exercise picker constraints', () => {
     click(button('Show all exercises'));
     await waitFor(() => expect(names().some((n) => n.includes('Barbell bench press'))).toBe(true));
     expect(names().some((n) => n.startsWith('Lat pulldown'))).toBe(true);
+  });
+});
+
+describe('Finish (roadmap item 3: no redundant confirmation)', () => {
+  const finishButton = () => [...document.querySelectorAll<HTMLButtonElement>('header button')].find((b) => b.textContent?.trim() === 'Finish')!;
+  const sheetOpen = () => [...document.querySelectorAll('dialog[open]')].some((d) => d.textContent?.includes('Finish workout?'));
+  async function reseed(patch: (s: WorkoutSession) => WorkoutSession) {
+    await db().sessions.put(patch(seed()));
+    await tick(50);
+  }
+  const tickAll = (s: WorkoutSession): WorkoutSession => ({
+    ...s,
+    notes: 'Felt strong',
+    exercises: s.exercises.map((e) => ({ ...e, sets: e.sets.map((x) => ({ ...x, weightKg: x.type === 'timed' ? null : 20, reps: x.type === 'timed' ? null : 8, durationSec: x.type === 'timed' ? 30 : null, completed: true, completedAt: Date.now() })) })),
+  });
+
+  it('every working set done → finishes straight away, no sheet, keeping the session notes', async () => {
+    await reseed(tickAll);
+    click(finishButton());
+    await waitFor(async () => expect((await db().sessions.get('s1'))!.status).toBe('completed'));
+    expect(sheetOpen()).toBe(false);
+    expect((await db().sessions.get('s1'))!.notes).toBe('Felt strong');
+    await waitFor(() => expect(document.body.textContent).toContain('elsewhere')); // navigated to the summary
+  });
+
+  it('an unticked warm-up doesn’t trigger the confirmation', async () => {
+    await reseed((s) => {
+      const t = tickAll(s);
+      const e = t.exercises[0];
+      return { ...t, exercises: [{ ...e, sets: [{ id: 'w', type: 'warmup', weightKg: 10, reps: 10, completed: false }, ...e.sets] }, t.exercises[1]] };
+    });
+    click(finishButton());
+    await waitFor(async () => expect((await db().sessions.get('s1'))!.status).toBe('completed'));
+    expect(sheetOpen()).toBe(false);
+  });
+
+  it('a double tap finishes once and auto-shares once', async () => {
+    await reseed(tickAll);
+    h.delayMs = 50;
+    act(() => {
+      finishButton().click();
+      finishButton().click();
+    });
+    await waitFor(async () => expect((await db().sessions.get('s1'))!.status).toBe('completed'));
+    await waitFor(() => expect(document.body.textContent).toContain('elsewhere'));
+    await tick(150);
+    expect(await db().sessions.count()).toBe(1);
+    expect(h.shares).toBe(1);
+  });
+
+  it('slow write: a note saved just before Finish is kept (direct Finish never writes stale notes)', async () => {
+    await reseed(tickAll); // notes: 'Felt strong'
+    h.delayMs = 150;
+    click(button('Edit notes'));
+    const area = await waitFor(() => {
+      const t = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Workout notes"]');
+      if (!t) throw new Error('no notes field');
+      return t;
+    });
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(area, 'New PR on bench');
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    click([...document.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent?.trim() === 'Save')!);
+    click(finishButton()); // the note's write is still pending; the rendered session still has the old note
+    await waitFor(async () => expect((await db().sessions.get('s1'))!.status).toBe('completed'));
+    expect((await db().sessions.get('s1'))!.notes).toBe('New PR on bench');
+  });
+
+  it('slow write: Add set then immediate Finish opens the confirmation instead of dropping the new set', async () => {
+    await reseed(tickAll);
+    h.delayMs = 150;
+    click(button('Add set'));
+    click(finishButton());
+    await waitFor(() => expect(sheetOpen()).toBe(true));
+    const cur = (await db().sessions.get('s1'))!;
+    expect(cur.status).toBe('active');
+    expect(cur.exercises[0].sets).toHaveLength(3);
+  });
+
+  it('slow write: undoing the only completed set then immediate Finish opens the confirmation (no empty workout saved)', async () => {
+    await reseed((s) => ({ ...s, exercises: [{ ...s.exercises[0], sets: [s.exercises[0].sets[0]] }] })); // one set: 20 kg × 8
+    await waitFor(() => input('Set 1 load in kg'));
+    click(button('Mark set 1 done'));
+    await waitFor(async () => expect((await set(0)).completed).toBe(true));
+    await waitFor(() => expect(finishButton()).toBeTruthy());
+    const undo = await waitFor(() => button('Undo'));
+    h.delayMs = 150;
+    click(undo);
+    click(finishButton()); // rendered state still shows the set done
+    await waitFor(() => expect(sheetOpen()).toBe(true));
+    const cur = (await db().sessions.get('s1'))!;
+    expect(cur.status).toBe('active');
+    expect(cur.exercises[0].sets[0].completed).toBe(false);
+    expect(document.body.textContent).toContain('No sets are marked done yet');
+  });
+
+  it('unfinished sets → the confirmation still asks, and nothing is saved until Finish in the sheet', async () => {
+    await reseed((s) => {
+      const t = tickAll(s);
+      return { ...t, exercises: [t.exercises[0], { ...t.exercises[1], sets: t.exercises[1].sets.map((x) => ({ ...x, completed: false })) }] };
+    });
+    click(finishButton());
+    await waitFor(() => expect(sheetOpen()).toBe(true));
+    expect(document.body.textContent).toMatch(/1 unticked set won’t be saved/);
+    expect((await db().sessions.get('s1'))!.status).toBe('active');
+  });
+
+  it('nothing done yet, or an empty workout → the sheet explains, Finish stays disabled', async () => {
+    click(finishButton());
+    await waitFor(() => expect(sheetOpen()).toBe(true));
+    expect(document.body.textContent).toContain('No sets are marked done yet');
+    expect((await db().sessions.get('s1'))!.status).toBe('active');
+    unmount();
+    await db().sessions.put({ ...seed(), exercises: [] });
+    mount();
+    await waitFor(() => expect(finishButton()).toBeTruthy());
+    click(finishButton());
+    await waitFor(() => expect(sheetOpen()).toBe(true));
+    expect((await db().sessions.get('s1'))!.status).toBe('active');
   });
 });

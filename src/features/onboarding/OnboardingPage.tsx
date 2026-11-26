@@ -26,6 +26,7 @@ import {
   type StepProps,
 } from './steps';
 import { ResultStep, ReviewStep } from './result';
+import { startFirstWorkout } from './firstWorkout';
 
 const STEP_COMPONENTS: Partial<Record<StepKey, (p: StepProps) => JSX.Element>> = {
   welcome: WelcomeStep,
@@ -116,6 +117,8 @@ export default function OnboardingPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmRestart, setConfirmRestart] = useState(false);
   const finished = useRef(false);
+  /** Set while "Accept & start" / "Save plan, start later" runs, so a double tap can't save the plan twice. */
+  const accepting = useRef(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const today = todayISO(account.settings.timeZone);
 
@@ -212,15 +215,24 @@ export default function OnboardingPage() {
     nav(to, { replace: true });
   }
 
-  async function accept() {
-    if (!suggestion || !draft) return;
+  /**
+   * Save the suggested plan. With `start` (the primary "Accept & start"), also start the plan's first workout and open
+   * the logger. If a workout is already in progress, or the plan has no lifting workout to start, the plan is still
+   * saved and the user lands on Today instead.
+   */
+  async function accept({ start }: { start: boolean }) {
+    if (!suggestion || !draft || accepting.current) return;
+    accepting.current = true;
     setSaving(true);
     setSaveError(null);
+    let program: ReturnType<typeof createProgram>;
+    let settings: AccountState['settings'];
+    let experience: OnboardingAnswers['experience'];
     try {
       // Record the split actually accepted (explicit choice, mapped choice or recommended default).
       const acceptedSplit = splitKeyOfVersion(suggestion) ?? draft.a.splitPreference;
       const a: OnboardingAnswers = { ...draft.a, displayName: draft.a.displayName.trim(), ...(acceptedSplit ? { splitPreference: acceptedSplit } : {}) };
-      const program = createProgram(a, suggestion, today, suggestProgramName(a, suggestion), 'generated');
+      program = createProgram(a, suggestion, today, suggestProgramName(a, suggestion), 'generated');
       await deactivateOthers();
       await saveRecord('programs', program, db);
       if (a.weightKg != null) {
@@ -238,14 +250,30 @@ export default function OnboardingPage() {
         settings: { ...acc.settings, units: a.units, nutritionEnabled: a.wantsNutrition },
         nutrition: targets ?? acc.nutrition,
       }));
-      toast.show('You’re ready to log your first workout.', { tone: 'success' });
-      await finish('/');
+      settings = { ...account.settings, units: a.units, nutritionEnabled: a.wantsNutrition };
+      experience = a.experience;
     } catch (e) {
       finished.current = false;
+      accepting.current = false;
       setSaveError(e instanceof Error ? e.message : 'Could not save. Please try again.');
-    } finally {
       setSaving(false);
+      return;
     }
+    // The plan is saved from here on: never stay on this screen (a retry would save it again).
+    if (!start) {
+      toast.show('Plan saved. Start your first workout whenever you’re ready.', { tone: 'success' });
+      return finish('/');
+    }
+    try {
+      const r = await startFirstWorkout(program, today, { db, settings, catalog, experience });
+      if (r.kind === 'started') return await finish(`/train/session/${r.session.id}`);
+      toast.show(r.kind === 'already_active' ? 'Plan saved. You already have a workout in progress: finish that one first.' : 'You’re ready to log your first workout.', {
+        tone: 'success',
+      });
+    } catch {
+      toast.show('Plan saved, but the workout couldn’t start. Start it from Today.', { tone: 'error' });
+    }
+    await finish('/');
   }
 
   async function createManual() {
@@ -312,7 +340,7 @@ export default function OnboardingPage() {
         <ProgressBar value={idx + 1} max={steps.length} label="Setup progress" />
       </header>
 
-      <div className="flex-1 px-4 pb-32">
+      <div className={`flex-1 px-4 ${isResult ? 'pb-44' : 'pb-32'}`}>
         <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-bold tracking-tight mt-4 mb-4 focus:outline-none">
           {step === 'welcome' ? 'Welcome to Hard Earned' : STEP_TITLES[step]}
         </h1>
@@ -380,7 +408,7 @@ export default function OnboardingPage() {
               <Button variant="ghost" onClick={() => goTo('review')}>
                 Edit answers
               </Button>
-              <Button variant="primary" size="lg" className="flex-1" loading={saving} onClick={accept}>
+              <Button variant="primary" size="lg" className="flex-1" loading={saving} onClick={() => void accept({ start: true })}>
                 Accept & start
               </Button>
             </>
@@ -394,6 +422,18 @@ export default function OnboardingPage() {
             </Button>
           )}
         </div>
+        {isResult && (
+          <div className="mx-auto max-w-2xl px-4 -mt-2 pb-2 flex justify-center">
+            <button
+              type="button"
+              className="min-h-11 px-3 text-sm font-medium text-muted hover:text-ink"
+              disabled={saving}
+              onClick={() => void accept({ start: false })}
+            >
+              Save plan, start later
+            </button>
+          </div>
+        )}
       </footer>
 
       <ConfirmDialog

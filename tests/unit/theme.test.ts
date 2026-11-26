@@ -1,13 +1,11 @@
 // @vitest-environment jsdom
 /**
- * Theme logic (src/theme/theme.ts): when the first-launch picker shows, which choice applies (account → device →
- * Match system), legacy devices, and the planned-week streak on Today (src/domain/program/streak.ts).
+ * Theme logic (src/theme/theme.ts): which choice applies (account → device → Match system; there is no first-launch
+ * picker any more), and the planned-week streak on Today (src/domain/program/streak.ts).
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import {
-  effectiveThemeChoice, markThemePicked, resolveTheme, setDeviceThemeChoice, deviceThemeChoice, shouldShowThemePicker, themeLabel, themePickedOnDevice,
-  type ThemePickerInput,
-} from '@/theme/theme';
+import * as themeModule from '@/theme/theme';
+import { effectiveThemeChoice, resolveTheme, setDeviceThemeChoice, deviceThemeChoice, themeLabel } from '@/theme/theme';
 import { plannedWeekStreak } from '@/domain/program/streak';
 import { createProgram } from '@/domain/program/program';
 import type { ProgramVersion, SessionTemplate, WorkoutSession } from '@/domain/types';
@@ -15,42 +13,18 @@ import { addDays } from '@/lib/dates';
 
 beforeEach(() => localStorage.clear());
 
-const base: ThemePickerInput = { pickedOnDevice: false, accountReady: true, accountTheme: undefined, isDemo: false, path: '/' };
-
-describe('shouldShowThemePicker', () => {
-  it('a brand-new user (nothing on this device, no theme in the account) sees it, on any first route', () => {
-    expect(shouldShowThemePicker(base)).toBe(true);
-    expect(shouldShowThemePicker({ ...base, path: '/onboarding' })).toBe(true);
-    expect(shouldShowThemePicker({ ...base, path: '/train' })).toBe(true);
+describe('no first-launch theme picker', () => {
+  it('the picker gate is gone, and a brand-new device with nothing stored resolves to Match my phone', () => {
+    expect('shouldShowThemePicker' in themeModule).toBe(false);
+    expect(deviceThemeChoice()).toBeNull();
+    expect(effectiveThemeChoice(undefined)).toBe('system');
   });
 
-  it('an existing user with a theme in their settings never sees it (old values count: dark, light, system)', () => {
-    for (const t of ['dark', 'light', 'system'] as const) expect(shouldShowThemePicker({ ...base, accountTheme: t })).toBe(false);
-  });
-
-  it('a signed-in user whose synced account has a theme (new device) is not asked again', () => {
-    expect(shouldShowThemePicker({ ...base, accountTheme: 'light', path: '/' })).toBe(false);
-  });
-
-  it('never in the demo, never before the account row is read, never over sign-in or import screens', () => {
-    expect(shouldShowThemePicker({ ...base, isDemo: true })).toBe(false);
-    expect(shouldShowThemePicker({ ...base, accountReady: false })).toBe(false);
-    for (const path of ['/auth', '/auth/callback', '/import-guest']) expect(shouldShowThemePicker({ ...base, path })).toBe(false);
-    expect(shouldShowThemePicker({ ...base, path: '/authors' })).toBe(true); // only real auth routes are excluded
-  });
-
-  it('after Continue on this device it never shows again; closing before Continue shows it again', () => {
-    expect(themePickedOnDevice()).toBe(false);
-    setDeviceThemeChoice('light'); // tapping a card alone doesn't mark it done
-    expect(themePickedOnDevice()).toBe(false);
-    markThemePicked();
-    expect(themePickedOnDevice()).toBe(true);
-    expect(shouldShowThemePicker({ ...base, pickedOnDevice: themePickedOnDevice() })).toBe(false);
-  });
-
-  it('a device that used the app before 0.8.0 (legacy lc-theme key) counts as picked', () => {
-    localStorage.setItem('lc-theme', 'dark');
-    expect(themePickedOnDevice()).toBe(true);
+  it('existing users keep their saved theme: the account wins, then this device', () => {
+    for (const t of ['dark', 'light', 'system'] as const) expect(effectiveThemeChoice(t)).toBe(t);
+    setDeviceThemeChoice('light');
+    expect(effectiveThemeChoice(undefined)).toBe('light');
+    expect(effectiveThemeChoice('dark')).toBe('dark');
   });
 });
 

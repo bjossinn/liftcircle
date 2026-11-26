@@ -31,8 +31,11 @@ import { celebrate } from '@/components/celebrate';
 import type { ToastOptions } from '@/components/toast';
 import { cancelRestPush, useRestPush } from '@/pwa/pushScheduler';
 
-/** Persist a change; resolves true when saved, false when the device couldn't store it. */
-type Mut = (fn: (s: WorkoutSession) => WorkoutSession) => Promise<boolean>;
+/**
+ * Persist a change; resolves true when saved (or nothing needed saving), false when the device couldn't store it.
+ * `fn` gets the latest stored record, after every earlier queued change; returning null writes nothing.
+ */
+type Mut = (fn: (s: WorkoutSession) => WorkoutSession | null) => Promise<boolean>;
 
 /** Serialized, write-through editor: every change is persisted to IndexedDB in order. */
 function useSessionEditor(id: string) {
@@ -45,7 +48,8 @@ function useSessionEditor(id: string) {
       const run = async () => {
         const cur = await db.sessions.get(id);
         if (!cur || cur.deletedAt || cur.status !== 'active') return true; // never edit a finished/discarded session from the logger
-        await saveRecord('sessions', fn(cur), db);
+        const next = fn(cur);
+        if (next) await saveRecord('sessions', next, db);
         setSaveError(null);
         return true;
       };
@@ -159,6 +163,10 @@ export default function SessionPage() {
   const now = useNow(1000, !!session && session.status === 'active');
   const [picker, setPicker] = useState<null | { mode: 'add' } | { mode: 'swap'; exId: string; suggest: string[] }>(null);
   const [finishOpen, setFinishOpen] = useState(false);
+  /** A tap on the header's Finish is being handled: ignores repeated taps. */
+  const finishing = useRef(false);
+  /** The post-finish steps (auto-share, navigation) ran: never run them twice. */
+  const finishedOnce = useRef(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -263,15 +271,10 @@ export default function SessionPage() {
     });
   };
 
-  const finish = async (notes: string) => {
-    registry.flushAll();
-    // Go through the same queue so set completions still being saved are included.
-    await update((s) => ops.finishSession({ ...s, notes: notes || undefined }, Date.now()));
-    const finished = await db.sessions.get(session.id);
-    if (!finished || finished.status !== 'completed') {
-      toast.show('We couldn’t save this workout. Try again.', { tone: 'error' });
-      return;
-    }
+  /** After the session is stored as completed: clean up, auto-share once, open the summary. */
+  const afterFinish = (finished: WorkoutSession) => {
+    if (finishedOnce.current) return;
+    finishedOnce.current = true;
     setFinishOpen(false);
     clearSessionDrafts(finished.id);
     cancelRestPush(finished.id);
@@ -279,6 +282,47 @@ export default function SessionPage() {
       if (shared) toast.show('Queued to share with your chosen audience', { tone: 'success' });
     });
     nav(`/train/summary/${finished.id}`, { replace: true });
+  };
+  const readFinished = async () => {
+    const finished = await db.sessions.get(session.id);
+    if (finished?.status === 'completed') return finished;
+    toast.show('We couldn’t save this workout. Try again.', { tone: 'error' });
+    return null;
+  };
+
+  /** From the confirmation sheet: deliberately sets the notes typed there. */
+  const finish = async (notes: string) => {
+    registry.flushAll();
+    // Go through the same queue so set completions still being saved are included.
+    await update((s) => ops.finishSession({ ...s, notes: notes || undefined }, Date.now()));
+    const finished = await readFinished();
+    if (finished) afterFinish(finished);
+  };
+
+  /**
+   * Header Finish. Decided inside the edit queue against the latest stored record (after any pending note save, undo
+   * or Add set), never the rendered one: if every working set is done, finish straight away and leave the stored
+   * notes untouched; otherwise (unticked sets, nothing done, empty) open the confirmation sheet.
+   */
+  const onFinishTap = async () => {
+    if (finishing.current || finishedOnce.current) return;
+    finishing.current = true;
+    try {
+      registry.flushAll();
+      let direct = false;
+      const saved = await update((s) => {
+        direct = ops.allWorkingSetsDone(s);
+        return direct ? ops.finishSession(s, Date.now()) : null;
+      });
+      if (!direct) {
+        if (saved) setFinishOpen(true);
+        return;
+      }
+      const finished = await readFinished();
+      if (finished) afterFinish(finished);
+    } finally {
+      finishing.current = false;
+    }
   };
 
   const fitsUser = constraints && hasConstraints(constraints) ? (e: Exercise) => fitsConstraints(e, constraints) : undefined;
@@ -303,7 +347,7 @@ export default function SessionPage() {
           <IconButton label={paused ? 'Resume workout' : 'Pause workout'} onClick={() => void update((s) => (s.pausedAt ? ops.resumeSession(s, Date.now()) : ops.pauseSession(s, Date.now())))}>
             {paused ? <Play className="size-5" /> : <Pause className="size-5" />}
           </IconButton>
-          <Button variant="primary" size="sm" onClick={() => setFinishOpen(true)}>
+          <Button variant="primary" size="sm" onClick={onFinishTap}>
             Finish
           </Button>
         </div>

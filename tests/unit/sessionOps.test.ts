@@ -87,3 +87,29 @@ describe('session operations', () => {
     expect(s.exercises[1].sets.map((x) => x.weightKg)).toEqual([52.5, 52.5, 2.5]);
   });
 });
+
+describe('allWorkingSetsDone (Finish without confirmation)', () => {
+  const doneAll = (s: WorkoutSession) => ({ ...s, exercises: s.exercises.map((e) => ({ ...e, sets: e.sets.map((x) => ({ ...x, completed: true })) })) });
+  it('true only when every working set is ticked', () => {
+    const s = session();
+    expect(ops.allWorkingSetsDone(s)).toBe(false);
+    const all = doneAll(s);
+    expect(ops.allWorkingSetsDone(all)).toBe(true);
+    const oneLeft = { ...all, exercises: [{ ...all.exercises[0], sets: all.exercises[0].sets.map((x, i) => (i === 2 ? { ...x, completed: false } : x)) }] };
+    expect(ops.allWorkingSetsDone(oneLeft)).toBe(false);
+  });
+  it('unticked warm-ups don’t block it; drop and timed sets count as working sets', () => {
+    const all = doneAll(session());
+    const ex = all.exercises[0];
+    const withWarmup = { ...all, exercises: [{ ...ex, sets: [{ ...ex.sets[0], id: 'w', type: 'warmup' as const, completed: false }, ...ex.sets] }] };
+    expect(ops.allWorkingSetsDone(withWarmup)).toBe(true);
+    const withDrop = { ...all, exercises: [{ ...ex, sets: [...ex.sets, { ...ex.sets[0], id: 'd', type: 'drop' as const, completed: false }] }] };
+    expect(ops.allWorkingSetsDone(withDrop)).toBe(false);
+  });
+  it('never for an empty/freestyle session or one with only warm-ups', () => {
+    const s = session();
+    expect(ops.allWorkingSetsDone({ ...s, exercises: [] })).toBe(false);
+    expect(ops.allWorkingSetsDone({ ...s, exercises: [{ ...s.exercises[0], sets: [] }] })).toBe(false);
+    expect(ops.allWorkingSetsDone({ ...s, exercises: [{ ...s.exercises[0], sets: [{ ...s.exercises[0].sets[0], type: 'warmup', completed: true }] }] })).toBe(false);
+  });
+});

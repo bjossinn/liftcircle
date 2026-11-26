@@ -3,8 +3,9 @@
  *
  * The stored setting (Settings.theme, synced with the account) keeps its original values, so older app versions
  * and existing accounts need no migration: 'dark' = Dark, 'light' = Light, 'system' = Match my phone.
- * `theme` is optional since 0.8.0. A missing value means "not chosen yet": new accounts start without one, and the
- * first-launch picker (ThemePicker.tsx) asks for it.
+ * `theme` is optional since 0.8.0. A missing value means "not chosen yet": new accounts start without one and follow
+ * this device's choice, else Match my phone. There is no first-launch picker (removed to cut first-run friction);
+ * the choice lives in Settings → Appearance.
  *
  * This device also remembers the choice (`lc-theme-choice`). That covers two cases:
  * - an account that doesn't have a theme yet (a new account, a guest, the demo) uses the device's choice;
@@ -27,10 +28,6 @@ export const THEME_META_COLOR: Record<ResolvedTheme, string> = { dark: '#17191b'
 
 const CHOICE_KEY = 'lc-theme-choice';
 const APPLIED_KEY = 'lc-theme-applied';
-/** Written by versions before 0.8.0 on every launch: its presence means this device has used the app before. */
-const LEGACY_KEY = 'lc-theme';
-/** Set when the first-launch picker's Continue is tapped. */
-export const PICKED_KEY = 'lc-theme-picked';
 
 const ls = {
   get(k: string): string | null {
@@ -99,33 +96,4 @@ export function watchSystemTheme(onChange: () => void): () => void {
   } catch {
     return () => {};
   }
-}
-
-export function themePickedOnDevice(): boolean {
-  return ls.get(PICKED_KEY) === '1' || ls.get(LEGACY_KEY) != null;
-}
-export function markThemePicked() {
-  ls.set(PICKED_KEY, '1');
-}
-
-export interface ThemePickerInput {
-  /** Continue was tapped on this device, or this device used the app before 0.8.0. */
-  pickedOnDevice: boolean;
-  /** The account row has been read (or is known to be empty). */
-  accountReady: boolean;
-  /** The account's synced theme (undefined = never chosen). */
-  accountTheme: Settings['theme'] | undefined;
-  isDemo: boolean;
-  /** Current pathname: sign-in and import screens are never covered. */
-  path: string;
-}
-/**
- * Show "Pick your look" only on a first launch: nothing picked on this device, and no theme in the account's synced
- * settings (an existing account, or a sign-in on a new device, already has one). Never in the demo, and never over
- * the sign-in, auth callback or guest-import screens.
- */
-export function shouldShowThemePicker(i: ThemePickerInput): boolean {
-  if (i.pickedOnDevice || i.isDemo || !i.accountReady) return false;
-  if (isChoice(i.accountTheme)) return false;
-  return !/^\/(auth|import-guest)(\/|$)/.test(i.path);
 }
