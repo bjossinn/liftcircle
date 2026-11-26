@@ -226,8 +226,12 @@ export function trainingSessions(sessions: SessionPayload[]): TrainingSession[] 
 
 export interface ProgressionInputs {
   unit: 'kg' | 'lb';
-  /** Beginner rule on (see isBeginner in _shared/training/progression.ts). */
-  beginner: boolean;
+  /**
+   * Beginner rule on/off, from the SAME field the app uses (account profile experience, see isBeginner), or null when
+   * the user doesn't share their profile with the assistant: then the level is unknown and no load is stated where the
+   * answer depends on it.
+   */
+  beginner: boolean | null;
   /** The user's plate increment settings (barbell lifts). */
   plates?: PlateSettings | null;
 }
@@ -245,8 +249,15 @@ export function progressionHint(
   const ex = trainingExercise(ref);
   if (!ex) return null;
   const history = comparableHistory(sessions, ex.id);
-  const s = suggestNext(ex, rx, history, { unit: p.unit, incrementKg: plateIncrementKg(ex, p.unit, p.plates), beginner: p.beginner });
+  const run = (beginner: boolean) => suggestNext(ex, rx, history, { unit: p.unit, incrementKg: plateIncrementKg(ex, p.unit, p.plates), beginner });
+  const s = run(p.beginner ?? false);
   const target = nextTargetLabel(s, ex, p.unit);
+  if (p.beginner == null) {
+    // Experience level not shared: the app may apply the beginner rule. If that changes the answer, state no load.
+    const b = run(true);
+    if (b.action !== s.action || b.loadKg !== s.loadKg || b.targetReps !== s.targetReps || nextTargetLabel(b, ex, p.unit) !== target)
+      return `${neutralize(ex.name)}: next target not available here — it depends on the user's experience level, which isn't shared with the assistant. Don't state a next weight; the app shows it in the workout and on the workout summary.`;
+  }
   return `${neutralize(ex.name)}: ${ACTION_LABELS[s.action]}${target ? ` → next: ${target}` : ''}. ${s.reason}`;
 }
 
@@ -334,7 +345,9 @@ function trainingSection(
       const hint = progressionHint(ex, rx, history, progression);
       if (hint) hints.push(`- ${hint}`);
     }
-    lines.push(`Progression rule (the app's, for this user): ${progressionRuleText(progression.beginner)}`);
+    lines.push(progression.beginner == null
+      ? `Progression rule (the app's): ${progressionRuleText(false)} Users who are new to lifting or returning progress after one such session instead; this user's experience level isn't shared with you, so where that matters the line below says no target is available.`
+      : `Progression rule (the app's, for this user): ${progressionRuleText(progression.beginner)}`);
     if (hints.length) lines.push('Next targets (computed by the app\'s progression engine from the workouts above — quote these; never work out a next weight yourself):', ...hints);
   }
 
@@ -654,9 +667,10 @@ export async function buildContext({ db, uid, settings, text, mode, now, unsynce
     grounding.push('Profile & preferences');
   }
   if (scopes.training) {
-    // Beginner rule: the experience level from the profile (only when the user shares it), else the plan's setup answers.
-    const experience = (scopes.profile ? account?.profile?.experience : undefined) ?? active?.payload.inputs?.experience;
-    const progression: ProgressionInputs = { unit: facts.units, beginner: isBeginner(experience), plates: account?.settings?.workout ?? null };
+    // Beginner rule: ONE source, the same field the app uses (account profile experience). Without profile sharing the
+    // level is unknown (null) — never guessed from older data such as the plan's onboarding answers.
+    const beginner = scopes.profile ? isBeginner(account?.profile?.experience) : null;
+    const progression: ProgressionInputs = { unit: facts.units, beginner, plates: account?.settings?.workout ?? null };
     parts.push(section('training', trainingSection(facts, active, sessions, goals, catalog, today, week, active?.payload.inputs, progression), LIMITS.sectionChars * 2));
     if (facts.activeProgram) grounding.push(`Active plan: ${facts.activeProgram.name} (v${facts.activeProgram.currentVersion})`);
     const recent = Math.min(sessions.filter((s) => s.status === 'completed').length, LIMITS.sessions);

@@ -17,7 +17,7 @@ import { loadConventionNote } from '@/data/exerciseMeta';
 import { displayWeight, fromKg, round, toKg } from '@/domain/units';
 import { formatDuration } from '@/lib/dates';
 import * as ops from '@/domain/sessionOps';
-import { comparableHistory, incrementFor, nextTargetLabel, workingSets, ACTION_LABELS, type Suggestion } from '@/domain/progression';
+import { comparableHistory, incrementFor, lastPerformed, nextTargetLabel, workingSets, ACTION_LABELS, type Suggestion } from '@/domain/progression';
 import { usesLoad, validateLoggedSet, type SetField } from '@/domain/setValidation';
 import { adaptPrescription, fitsConstraints, hasConstraints, substitutionCandidates } from '@/domain/substitution';
 import { DraftNumberField, type CommitResult } from './DraftNumberField';
@@ -461,7 +461,7 @@ function ExerciseBlock(props: {
   const [removeOpen, setRemoveOpen] = useState(false);
   const [rowErrors, setRowErrors] = useState<Record<string, FieldErrors>>({});
   const sectionRef = useRef<HTMLElement>(null);
-  const last = useMemo(() => comparableHistory(history, se.exerciseId)[0], [history, se.exerciseId]);
+  const last = useMemo(() => lastPerformed(comparableHistory(history, se.exerciseId), ex), [history, se.exerciseId, ex]);
   const lastWorking = last ? workingSets(last, ex) : [];
   const suggestion: Suggestion | null = useMemo(() => {
     if (!ex || !se.prescription) return null;

@@ -6,7 +6,7 @@
 import type { EnteredValue, Exercise, Experience, ID, ISODate, LoggedSet, Prescription, SessionExercise, SessionTemplate, Settings, WeightUnit, WorkoutSession } from '@/domain/types';
 import { uuid } from '@/lib/id';
 import { fromKg, round } from '@/domain/units';
-import { comparableHistory, incrementFor, isBeginner, plateIncrementKg, suggestNext, workingSets, type Suggestion } from '@/domain/progression';
+import { comparableHistory, incrementFor, isBeginner, lastPerformed, plateIncrementKg, suggestNext, workingSets, type Suggestion } from '@/domain/progression';
 import { warmupSetCount } from './generator';
 import { warmupSets } from '@/domain/warmups';
 
@@ -42,7 +42,7 @@ export function suggestionFor(
   const comparable = comparableHistory(history, rx.exerciseId);
   const unit = settings.units.weight;
   const suggestion = suggestNext(ex, rx, comparable, { unit, incrementKg: plateIncrementKg(ex, unit, settings.workout), beginner: isBeginner(experience) });
-  return { suggestion, last: comparable[0] };
+  return { suggestion, last: lastPerformed(comparable, ex) };
 }
 
 export function buildSessionFromTemplate(t: SessionTemplate, ctx: BuildCtx): WorkoutSession {

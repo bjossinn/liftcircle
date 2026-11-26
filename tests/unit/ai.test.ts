@@ -567,4 +567,41 @@ describe('MOCKED ai-coach: progression comes from the shared engine', () => {
   });
 });
 
+describe('MOCKED ai-coach: one experience source for the beginner rule (review P1)', () => {
+  // Current account experience 'advanced'; the plan's saved onboarding answer says 'new'. One successful 3×12 @ 30 kg.
+  const conflicting = (experience: string, profileShared: boolean) => {
+    const a = userA();
+    a.account!.profile!.experience = experience;
+    a.program!.payload.inputs = { ...a.program!.payload.inputs, experience: 'new' };
+    a.sessions = [a.sessions[0]];
+    a.settings!.scopes = { ...a.settings!.scopes, profile: profileShared };
+    return a;
+  };
+  const ctxFor = async (a: UserData) => (await buildContext({ db: makeDb({ [A]: a }).db, uid: A, settings: a.settings!, text: 'What weight next on bench?', mode: 'chat', now: new Date('2026-10-29T10:00:00Z') })).system;
+  const benchLine = (system: string) => system.split('\n').find((l) => l.startsWith('- Dumbbell bench press:')) ?? '';
+
+  it('profile shared: uses the account’s CURRENT experience (the app’s source), not the plan’s saved answer', async () => {
+    const sys = await ctxFor(conflicting('advanced', true));
+    expect(benchLine(sys)).toContain('Hold → next: 30 kg × 12 reps'); // what the app shows for an advanced user
+    expect(sys).not.toContain('32 kg');
+    expect(sys).not.toMatch(/beginner rule/);
+    const beginner = await ctxFor(conflicting('new', true));
+    expect(benchLine(beginner)).toContain('Increase load → next: 32 kg × 8 reps');
+  });
+
+  it('profile not shared: no definitive load where the experience level would change it (never the stale plan answer)', async () => {
+    const sys = await ctxFor(conflicting('advanced', false));
+    expect(benchLine(sys)).toContain('next target not available here');
+    expect(benchLine(sys)).not.toMatch(/\d+ kg/);
+    expect(sys).not.toContain('32 kg');
+    expect(sys).toContain('this user\'s experience level isn\'t shared with you');
+  });
+
+  it('profile not shared: still states the load when both rules agree (two successful sessions)', async () => {
+    const a = conflicting('advanced', false);
+    a.sessions = userA().sessions;
+    expect(benchLine(await ctxFor(a))).toContain('Increase load → next: 32 kg × 8 reps');
+  });
+});
+
 vi.setConfig({ testTimeout: 10_000 });

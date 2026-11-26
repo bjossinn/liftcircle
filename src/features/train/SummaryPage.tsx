@@ -115,11 +115,14 @@ function WorkoutSummary({ id }: { id: string }) {
                 {ex ? se.sets.map((s) => `${s.type === 'warmup' ? 'W ' : ''}${formatLoggedSet(s, ex, unit, account.settings.units.distance)}${isValidCompletedSet(s, ex) ? '' : ' (not counted)'}`).join(' · ') : `${se.sets.length} sets`}
               </p>
               {target && (
-                <p className="text-xs mt-1 flex items-center gap-1" data-testid="next-target">
-                  <ArrowRight className="size-3.5 text-accent shrink-0" aria-hidden />
-                  <span className="font-medium tabular">{target.text}</span>
-                  <span className="text-muted">· {target.label}</span>
-                </p>
+                <div className="text-xs mt-1" data-testid="next-target">
+                  <p className="flex items-center gap-1">
+                    <ArrowRight className="size-3.5 text-accent shrink-0" aria-hidden />
+                    <span className="font-medium tabular">{target.text}</span>
+                    <span className="text-muted">· {target.label}</span>
+                  </p>
+                  {target.caveat && <p className="text-muted mt-0.5 pl-[18px]">{target.caveat}</p>}
+                </div>
               )}
             </div>
           );

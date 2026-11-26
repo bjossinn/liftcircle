@@ -11,7 +11,8 @@ import { Badge, Button, Card, ChipGroup, ConfirmDialog, IconButton, Input, Numbe
 import { ExercisePicker } from '@/components/ExercisePicker';
 import { formatWeight } from '@/domain/units';
 import { defaultPrescription, estimateSessionMinutes, WEEK_ORDER } from '@/domain/program/generator';
-import { exerciseCue, exerciseNote, prescriptionText, restText, RIR_PLAIN, SESSION_CALIBRATION_TIP, SESSION_WARMUP_TIP } from '@/domain/program/explain';
+import { currentRationale, exerciseCue, exerciseNote, prescriptionText, restText, RIR_PLAIN, SESSION_CALIBRATION_TIP, SESSION_WARMUP_TIP } from '@/domain/program/explain';
+import { isBeginner } from '@/domain/progression';
 import { WEEKDAY_SHORT } from '@/lib/dates';
 import type { Exercise, Experience, Goal, ID, Prescription, ProgramVersion, SessionTemplate, WeightUnit } from '@/domain/types';
 import { ACTIVITY_NAMES } from '@/domain/program/generator';
@@ -515,7 +516,7 @@ export function PlanLegend() {
  * “Why this plan?” — rationale and warnings, collapsible. When collapsed, the header still says how many
  * trade-offs/safety notes there are, so warnings are never hidden without a visible signal.
  */
-export function WhyItFits({ version, defaultOpen = false }: { version: Pick<ProgramVersion, 'rationale' | 'warnings'>; defaultOpen?: boolean }) {
+export function WhyItFits({ version, defaultOpen = false, experience }: { version: Pick<ProgramVersion, 'rationale' | 'warnings'>; defaultOpen?: boolean; experience?: Experience }) {
   const [open, setOpen] = useState(defaultOpen);
   const n = version.warnings.length;
   return (
@@ -546,7 +547,7 @@ export function WhyItFits({ version, defaultOpen = false }: { version: Pick<Prog
           )}
           <Card className="px-4 py-3">
             <ul className="flex flex-col gap-2 text-sm list-disc pl-4 marker:text-accent">
-              {version.rationale.map((r) => (
+              {currentRationale(version.rationale, isBeginner(experience)).map((r) => (
                 <li key={r}>{r}</li>
               ))}
             </ul>

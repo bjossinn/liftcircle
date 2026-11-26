@@ -906,9 +906,21 @@ function sessionsToProgress(beginner) {
 function suggestNext(ex, rx, history, opts) {
   const unit = opts.unit;
   const needed = sessionsToProgress(opts.beginner);
-  const fmt = (kg) => formatWeight(kg, unit);
+  const fmt = (kg) => formatLoad(kg, unit);
   const range = { repMin: rx.repMin, repMax: rx.repMax };
   const h = history.filter((x) => workingSets(x, ex).length > 0);
+  if (history.slice(0, DISCOMFORT_WINDOW).some((x) => x.discomfort)) {
+    const ws = h.length ? workingSets(h[0], ex) : [];
+    return {
+      action: "discomfort_hold",
+      loadKg: maxWeight(ws.filter((s) => hasRecordedLoad(s, ex))),
+      ...range,
+      durationSec: rx.durationSec,
+      alternativeIds: ex.substitutions.slice(0, 4),
+      hint: "alternatives",
+      reason: "You flagged discomfort recently, so we won\u2019t suggest an increase. Keep it comfortable, use less load, or try an alternative exercise. If pain persists, consider a qualified professional."
+    };
+  }
   if (!h.length) {
     if (ex.tracking === "duration" || ex.tracking === "distance_time")
       return { action: "calibrate", loadKg: null, ...range, durationSec: rx.durationSec, reason: "First time: do what feels comfortable and log it. We\u2019ll build from there." };
@@ -924,17 +936,6 @@ function suggestNext(ex, rx, history, opts) {
   const h0 = h[0];
   const ws0 = workingSets(h0, ex);
   const lastLoad = maxWeight(ws0.filter((s) => hasRecordedLoad(s, ex)));
-  if (h.slice(0, DISCOMFORT_WINDOW).some((x) => x.discomfort)) {
-    return {
-      action: "discomfort_hold",
-      loadKg: lastLoad,
-      ...range,
-      durationSec: rx.durationSec,
-      alternativeIds: ex.substitutions.slice(0, 4),
-      hint: "alternatives",
-      reason: "You flagged discomfort recently, so we won\u2019t suggest an increase. Keep it comfortable, use less load, or try an alternative exercise. If pain persists, consider a qualified professional."
-    };
-  }
   if (isDeclining(h, ex)) {
     return {
       action: "review_recovery",
@@ -1083,7 +1084,7 @@ function comparableHistory(sessions, exerciseId, beforeSessionId) {
   pool.sort((a, b) => b.startedAt - a.startedAt || (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   const out = [];
   for (const s of pool) {
-    const se = s.exercises.find((e) => e.exerciseId === exerciseId && workingSets(e).length > 0);
+    const se = s.exercises.find((e) => e.exerciseId === exerciseId && workingSets(e).length > 0) ?? s.exercises.find((e) => e.exerciseId === exerciseId && e.discomfort);
     if (se) out.push(se);
   }
   return out;
@@ -1115,9 +1116,15 @@ var PROGRESSION_STRINGS = {
     added: (w) => `+${w}`,
     bodyweight: "bodyweight",
     calibrate: "find your starting load",
+    effortCaveat: (rir) => `Effort wasn\u2019t logged: increase only if those sets felt like about ${rir} reps left in the tank.`,
     rule: (beginner) => beginner ? "Progression: because you\u2019re new to lifting (or returning), one good session is enough. When you reach the top of the rep range on every set at the target effort (if you don\u2019t log effort, we ask you to confirm it first), we suggest the smallest practical load increase and you start again near the bottom of the range. If you change your experience level to intermediate or advanced, the app waits for two such sessions in a row." : "Progression uses double progression: when you reach the top of the rep range on every set at the target effort in two sessions (if you don\u2019t log effort, we ask you to confirm it first), we suggest the smallest practical load increase and you start again near the bottom of the range."
   }
 };
+function formatLoad(kg, unit) {
+  const v = fromKg(kg, unit);
+  const two = round(v, 2);
+  return Math.abs(two - v) < 1e-6 ? `${trimNum(two)} ${unit}` : formatWeight(kg, unit);
+}
 function progressionRuleText(beginner = false, lang = "en") {
   return PROGRESSION_STRINGS[lang].rule(beginner);
 }
@@ -1128,15 +1135,15 @@ function nextTargetLabel(s, ex, unit, lang = "en") {
   switch (ex.tracking) {
     case "weight_reps": {
       if (s.loadKg == null || !(s.loadKg > 0)) return reps != null ? t.reps(reps) : null;
-      return reps != null ? `${formatWeight(s.loadKg, unit)} \xD7 ${t.reps(reps)}` : formatWeight(s.loadKg, unit);
+      return reps != null ? `${formatLoad(s.loadKg, unit)} \xD7 ${t.reps(reps)}` : formatLoad(s.loadKg, unit);
     }
     case "bodyweight_plus": {
-      const load = s.loadKg != null && s.loadKg > 0 ? t.added(formatWeight(s.loadKg, unit)) : t.bodyweight;
+      const load = s.loadKg != null && s.loadKg > 0 ? t.added(formatLoad(s.loadKg, unit)) : t.bodyweight;
       return reps != null ? `${load} \xD7 ${t.reps(reps)}` : load;
     }
     case "assisted": {
       if (s.loadKg == null) return reps != null ? t.reps(reps) : null;
-      const load = s.loadKg > 0 ? t.assistance(formatWeight(s.loadKg, unit)) : t.bodyweight;
+      const load = s.loadKg > 0 ? t.assistance(formatLoad(s.loadKg, unit)) : t.bodyweight;
       return reps != null ? `${load} \xD7 ${t.reps(reps)}` : load;
     }
     case "reps":
@@ -1339,8 +1346,14 @@ function progressionHint(ref, rx, sessions, p) {
   const ex = trainingExercise(ref);
   if (!ex) return null;
   const history = comparableHistory(sessions, ex.id);
-  const s = suggestNext(ex, rx, history, { unit: p.unit, incrementKg: plateIncrementKg(ex, p.unit, p.plates), beginner: p.beginner });
+  const run2 = (beginner) => suggestNext(ex, rx, history, { unit: p.unit, incrementKg: plateIncrementKg(ex, p.unit, p.plates), beginner });
+  const s = run2(p.beginner ?? false);
   const target = nextTargetLabel(s, ex, p.unit);
+  if (p.beginner == null) {
+    const b = run2(true);
+    if (b.action !== s.action || b.loadKg !== s.loadKg || b.targetReps !== s.targetReps || nextTargetLabel(b, ex, p.unit) !== target)
+      return `${neutralize(ex.name)}: next target not available here \u2014 it depends on the user's experience level, which isn't shared with the assistant. Don't state a next weight; the app shows it in the workout and on the workout summary.`;
+  }
   return `${neutralize(ex.name)}: ${ACTION_LABELS[s.action]}${target ? ` \u2192 next: ${target}` : ""}. ${s.reason}`;
 }
 function trainingSection(facts, active, sessions, goals, catalog2, today, week, inputs, progression) {
@@ -1408,7 +1421,7 @@ function trainingSection(facts, active, sessions, goals, catalog2, today, week, 
       const hint = progressionHint(ex, rx, history, progression);
       if (hint) hints.push(`- ${hint}`);
     }
-    lines.push(`Progression rule (the app's, for this user): ${progressionRuleText(progression.beginner)}`);
+    lines.push(progression.beginner == null ? `Progression rule (the app's): ${progressionRuleText(false)} Users who are new to lifting or returning progress after one such session instead; this user's experience level isn't shared with you, so where that matters the line below says no target is available.` : `Progression rule (the app's, for this user): ${progressionRuleText(progression.beginner)}`);
     if (hints.length) lines.push("Next targets (computed by the app's progression engine from the workouts above \u2014 quote these; never work out a next weight yourself):", ...hints);
   }
   const g = goals.filter((x) => typeof x.title === "string").slice(0, 5);
@@ -1656,8 +1669,8 @@ async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0 }
     grounding.push("Profile & preferences");
   }
   if (scopes.training) {
-    const experience = (scopes.profile ? account?.profile?.experience : void 0) ?? active?.payload.inputs?.experience;
-    const progression = { unit: facts.units, beginner: isBeginner(experience), plates: account?.settings?.workout ?? null };
+    const beginner = scopes.profile ? isBeginner(account?.profile?.experience) : null;
+    const progression = { unit: facts.units, beginner, plates: account?.settings?.workout ?? null };
     parts2.push(section("training", trainingSection(facts, active, sessions, goals, catalog2, today, week, active?.payload.inputs, progression), LIMITS.sectionChars * 2));
     if (facts.activeProgram) grounding.push(`Active plan: ${facts.activeProgram.name} (v${facts.activeProgram.currentVersion})`);
     const recent = Math.min(sessions.filter((s) => s.status === "completed").length, LIMITS.sessions);

@@ -276,7 +276,7 @@ export default function ProgramPage() {
         )}
       </div>
 
-      <WhyItFits version={v} defaultOpen={false} />
+      <WhyItFits version={v} defaultOpen={false} experience={account.profile.experience} />
 
       <div className="mt-6 flex flex-col gap-2">
         <Button variant="outline" icon={<Wand2 className="size-4" />} onClick={() => nav('/onboarding')}>

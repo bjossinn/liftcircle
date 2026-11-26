@@ -2,11 +2,11 @@
  * The workout summary's "Next:" line per exercise — the progression engine's output (src/domain/progression.ts) for
  * the next time this exercise comes up, given history up to and including the workout being shown. Pure.
  *
- * Exercises without a prescription (added freestyle) or without counted working sets in this workout get no line,
- * the same as the in-workout progression card.
+ * Exercises without a prescription (added freestyle), or without counted working sets and no discomfort flag in this
+ * workout, get no line, the same as the in-workout progression card.
  */
 import type { Exercise, Experience, ID, Settings, WorkoutSession } from './types';
-import { ACTION_LABELS, nextTargetText, type Suggestion } from './progression';
+import { ACTION_LABELS, comparableHistory, effortCaveat, nextTargetText, type Suggestion } from './progression';
 import { suggestionFor } from './program/session';
 
 export interface NextTarget {
@@ -15,6 +15,8 @@ export interface NextTarget {
   text: string;
   /** Short action label ("Increase load", "Hold", …). */
   label: string;
+  /** The engine's condition when effort wasn't logged ("…increase only if…"), or null. */
+  caveat: string | null;
   suggestion: Suggestion;
 }
 
@@ -34,11 +36,12 @@ export function nextTargetsFor(
     if (out.has(se.exerciseId) || !se.prescription) continue;
     const ex = byId.get(se.exerciseId);
     if (!ex) continue;
-    const { suggestion, last } = suggestionFor({ exerciseId: se.exerciseId, ...se.prescription }, ex, through, settings, experience);
-    // Only when this workout itself logged counted work for the exercise (otherwise the "next" is about an older one).
-    if (last?.id !== se.id) continue;
+    // Only when this workout itself is the newest entry for the exercise: counted work, or a discomfort flag (otherwise
+    // the "next" would be about an older workout).
+    if (comparableHistory(through, se.exerciseId)[0]?.id !== se.id) continue;
+    const { suggestion } = suggestionFor({ exerciseId: se.exerciseId, ...se.prescription }, ex, through, settings, experience);
     const text = nextTargetText(suggestion, ex, unit);
-    if (text) out.set(se.exerciseId, { exerciseId: se.exerciseId, text, label: ACTION_LABELS[suggestion.action], suggestion });
+    if (text) out.set(se.exerciseId, { exerciseId: se.exerciseId, text, label: ACTION_LABELS[suggestion.action], caveat: effortCaveat(suggestion, se.prescription.targetRir), suggestion });
   }
   return out;
 }

@@ -10,8 +10,10 @@ import { describe, expect, it } from 'vitest';
 import { EXERCISES } from '@/data/exercises';
 import { RECIPES_BY_ID } from '@/data/recipes';
 import {
-  comparableHistory, isBeginner, isSuccessfulSession, nextTargetLabel, nextTargetText, progressionRuleText, suggestNext, type Suggestion,
+  comparableHistory, effortCaveat, formatLoad, isBeginner, isSuccessfulSession, lastPerformed, nextTargetLabel, nextTargetText, progressionRuleText, suggestNext, type Suggestion,
 } from '@/domain/progression';
+import { buildSessionFromTemplate, suggestionFor } from '@/domain/program/session';
+import { currentRationale, isGeneratedProgressionText } from '@/domain/program/explain';
 import { nextTargetsFor } from '@/domain/nextTargets';
 import { generateProgram } from '@/domain/program/generator';
 import { defaultSettings } from '@/state/defaults';
@@ -217,5 +219,77 @@ describe('meal plan: opening a saved item keeps its swaps', () => {
     expect(href).toBe('/nutrition/recipes/skyr-berry-oat-bowl?swap=blueberries:strawberries,honey:__left_out__');
     expect(linkSwaps(r, new URL(href, 'https://x').searchParams.get('swap'))).toEqual(swaps);
     expect(recipeLink(r.id, undefined)).toBe('/nutrition/recipes/skyr-berry-oat-bowl');
+  });
+});
+
+describe('review fixes (PR #18)', () => {
+  const settings = defaultSettings();
+  const byId = new Map(EXERCISES.map((e) => [e.id, e]));
+  const squatRx = { id: 'slot', exerciseId: squat.id, sets: 3, repMin: 8, repMax: 12, targetRir: 2, restSec: 120, warmup: '', priority: 1 as const, alternatives: [] };
+
+  // Reviewer repro: squat 3×12 @ 60 kg RIR 2; the next workout has only a warm-up done, discomfort flagged, no working sets.
+  const discomfortRepro = () => {
+    day = 1;
+    const good = session([se(squat.id, sets(3, { w: 60, r: 12, rir: 2 }))]);
+    const hurt = session([se(squat.id, [{ id: 'wu', type: 'warmup', weightKg: 40, reps: 5, completed: true }, ...sets(3, {}).map((x) => ({ ...x, completed: false }))], { discomfort: true })]);
+    return { good, hurt, all: [good, hurt] };
+  };
+
+  it('P1: discomfort on an exercise with no working sets still blocks the (beginner) increase', () => {
+    const { hurt, all } = discomfortRepro();
+    for (const experience of ['new', 'advanced'] as const) {
+      const { suggestion, last } = suggestionFor(squatRx, squat, all, settings, experience);
+      expect(suggestion.action, experience).toBe('discomfort_hold');
+      expect(suggestion.loadKg).toBe(60); // holds the last real load, never 62.5
+      expect(last?.sets.some((x) => x.type === 'normal' && x.completed)).toBe(true); // "last time" = the real 3×12
+    }
+    // comparableHistory keeps the flagged entry; lastPerformed skips it.
+    const h = comparableHistory(all, squat.id);
+    expect(h[0].discomfort).toBe(true);
+    expect(lastPerformed(h, squat)?.sets[0].reps).toBe(12);
+    // The summary of the painful workout says "No increase", and the next workout pre-fills 60 kg, not 62.5 kg.
+    expect(nextTargetsFor(hurt, all, byId, settings, 'new').get(squat.id)).toMatchObject({ label: 'No increase', text: 'Next: 60 kg' });
+    const next = buildSessionFromTemplate({ id: 't', name: 'Lower', kind: 'lifting', exercises: [squatRx] } as never, { catalog: EXERCISES, history: all, settings, date: '2026-11-10', timeZone: 'UTC', experience: 'new' });
+    expect(next.exercises[0].sets.filter((x) => x.type === 'normal').every((x) => x.weightKg === 60)).toBe(true);
+  });
+
+  it('P1: the training assistant applies the same discomfort rule to such a workout', () => {
+    const { all } = discomfortRepro();
+    const line = progressionHint(squat as never, rx, trainingSessions(all as never), { unit: 'kg', beginner: true })!;
+    expect(line).toContain('No increase');
+    expect(line).not.toContain('62.5');
+  });
+
+  it('P2: an increase on unlogged effort carries the engine’s condition everywhere it is shown', () => {
+    day = 1;
+    const w = session([se(squat.id, sets(3, { w: 60, r: 12 }))]);
+    const t = nextTargetsFor(w, [w], byId, settings, 'new').get(squat.id)!;
+    expect(t.text).toBe('Next: 62.5 kg × 8 reps');
+    expect(t.caveat).toBe('Effort wasn’t logged: increase only if those sets felt like about 2 reps left in the tank.');
+    day = 1;
+    const logged = session([se(squat.id, sets(3, { w: 60, r: 12, rir: 2 }))]);
+    expect(nextTargetsFor(logged, [logged], byId, settings, 'new').get(squat.id)!.caveat).toBeNull();
+    expect(effortCaveat({ action: 'hold', reason: '', effortBasis: 'not_recorded' }, 2)).toBeNull();
+  });
+
+  it('P2: saved plans show the engine’s current progression text; coach notes stay as written', () => {
+    const legacy = 'Progression uses double progression: when you reach the top of the rep range on every set at the target effort in two sessions (if you don’t log effort, we ask you to confirm it first), we suggest the smallest practical load increase and you start again near the bottom of the range.';
+    const coach = 'Progression: Add a rep each week.';
+    expect(isGeneratedProgressionText(legacy)).toBe(true);
+    expect(isGeneratedProgressionText(coach)).toBe(false);
+    expect(currentRationale(['Intro.', legacy, coach], true)).toEqual(['Intro.', progressionRuleText(true), coach]);
+    expect(currentRationale([progressionRuleText(true)], false)).toEqual([progressionRuleText(false)]);
+  });
+
+  it('P2: loads on the increment grid display exactly (61.25 kg, not 61.3 kg)', () => {
+    const h = [se(squat.id, sets(3, { w: 60, r: 12, rir: 2 }))];
+    const s = suggestNext(squat, rx, h, { unit: 'kg', incrementKg: 1.25, beginner: true });
+    expect(s.loadKg).toBe(61.25);
+    expect(nextTargetLabel(s, squat, 'kg')).toBe('61.25 kg × 8 reps');
+    expect(s.reason).toContain('Try 61.25 kg');
+    expect(s.reason).not.toContain('61.3');
+    expect(formatLoad(61.25, 'kg')).toBe('61.25 kg');
+    expect(formatLoad(60, 'lb')).toBe('132.3 lb'); // off-grid conversion keeps 1 decimal
+    expect(formatLoad(62.5 / 1, 'kg')).toBe('62.5 kg');
   });
 });

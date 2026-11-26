@@ -21,7 +21,7 @@
  */
 import type { Experience, ID, TrainingExercise, TrainingSession, TrainingSessionExercise, TrainingSet, WeightUnit } from './types.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
-import { formatWeight, fromKg, kgToLb, lbToKg, round, toKg } from './units.ts';
+import { formatWeight, fromKg, kgToLb, lbToKg, round, toKg, trimNum } from './units.ts';
 // @ts-ignore see above
 import { hasRecordedLoad, isCountableSet } from './sets.ts';
 
@@ -215,9 +215,25 @@ export function suggestNext(
 ): Suggestion {
   const unit = opts.unit;
   const needed = sessionsToProgress(opts.beginner);
-  const fmt = (kg: number) => formatWeight(kg, unit);
+  const fmt = (kg: number) => formatLoad(kg, unit);
   const range = { repMin: rx.repMin, repMax: rx.repMax };
   const h = history.filter((x) => workingSets(x, ex).length > 0);
+
+  // Safety first: discomfort suppresses increases. Judged on the raw recent history, BEFORE filtering to sessions with
+  // counted work: an exercise flagged "Felt discomfort" that ended with no working sets (e.g. only a warm-up, then
+  // stopped) is exactly the case that must not be skipped (comparableHistory keeps such entries).
+  if (history.slice(0, DISCOMFORT_WINDOW).some((x) => x.discomfort)) {
+    const ws = h.length ? workingSets(h[0], ex) : [];
+    return {
+      action: 'discomfort_hold',
+      loadKg: maxWeight(ws.filter((s) => hasRecordedLoad(s, ex))),
+      ...range,
+      durationSec: rx.durationSec,
+      alternativeIds: ex.substitutions.slice(0, 4),
+      hint: 'alternatives',
+      reason: 'You flagged discomfort recently, so we won’t suggest an increase. Keep it comfortable, use less load, or try an alternative exercise. If pain persists, consider a qualified professional.',
+    };
+  }
 
   if (!h.length) {
     if (ex.tracking === 'duration' || ex.tracking === 'distance_time')
@@ -235,19 +251,6 @@ export function suggestNext(
   const h0 = h[0];
   const ws0 = workingSets(h0, ex);
   const lastLoad = maxWeight(ws0.filter((s) => hasRecordedLoad(s, ex)));
-
-  // Safety first: discomfort suppresses increases.
-  if (h.slice(0, DISCOMFORT_WINDOW).some((x) => x.discomfort)) {
-    return {
-      action: 'discomfort_hold',
-      loadKg: lastLoad,
-      ...range,
-      durationSec: rx.durationSec,
-      alternativeIds: ex.substitutions.slice(0, 4),
-      hint: 'alternatives',
-      reason: 'You flagged discomfort recently, so we won’t suggest an increase. Keep it comfortable, use less load, or try an alternative exercise. If pain persists, consider a qualified professional.',
-    };
-  }
 
   if (isDeclining(h, ex)) {
     return {
@@ -400,7 +403,11 @@ function durationRule(h: SessionExercise[], rx: ProgressionRx, action: 'increase
   return { action: 'hold', loadKg: null, ...range, durationSec: target || undefined, reason: target ? `Aim for ${target} s on every set with good form.` : 'Keep logging your times. We’ll build from there.' };
 }
 
-/** Comparable history for one exercise: completed sessions, newest first, one entry per session. */
+/**
+ * Comparable history for one exercise: completed sessions, newest first, one entry per session. An entry is the
+ * session's exercise with counted working sets, or — so the discomfort rule can't be skipped — one flagged "Felt
+ * discomfort" even when it has none. For "what did I do last time" use lastPerformed().
+ */
 export function comparableHistory<E extends SessionExercise>(sessions: readonly TrainingSession<E>[], exerciseId: ID, beforeSessionId?: ID): E[] {
   let pool = sessions.filter((s) => !s.deletedAt && s.status === 'completed');
   if (beforeSessionId) {
@@ -410,10 +417,16 @@ export function comparableHistory<E extends SessionExercise>(sessions: readonly 
   pool.sort((a, b) => b.startedAt - a.startedAt || (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   const out: E[] = [];
   for (const s of pool) {
-    const se = s.exercises.find((e) => e.exerciseId === exerciseId && workingSets(e).length > 0);
+    const se = s.exercises.find((e) => e.exerciseId === exerciseId && workingSets(e).length > 0)
+      ?? s.exercises.find((e) => e.exerciseId === exerciseId && e.discomfort);
     if (se) out.push(se);
   }
   return out;
+}
+
+/** The newest comparable entry with counted working sets ("last time"), skipping discomfort-only entries. */
+export function lastPerformed<E extends SessionExercise>(history: readonly E[], ex?: Pick<Exercise, 'tracking' | 'load'>): E | undefined {
+  return history.find((e) => workingSets(e, ex).length > 0);
 }
 
 /** Short label for UI chips. */
@@ -458,6 +471,7 @@ export const PROGRESSION_STRINGS: Record<ProgressionLang, {
   added: (w: string) => string;
   bodyweight: string;
   calibrate: string;
+  effortCaveat: (targetRir: number) => string;
   rule: (beginner: boolean) => string;
 }> = {
   en: {
@@ -469,12 +483,33 @@ export const PROGRESSION_STRINGS: Record<ProgressionLang, {
     added: (w) => `+${w}`,
     bodyweight: 'bodyweight',
     calibrate: 'find your starting load',
+    effortCaveat: (rir) => `Effort wasn’t logged: increase only if those sets felt like about ${rir} reps left in the tank.`,
     rule: (beginner) =>
       beginner
         ? 'Progression: because you’re new to lifting (or returning), one good session is enough. When you reach the top of the rep range on every set at the target effort (if you don’t log effort, we ask you to confirm it first), we suggest the smallest practical load increase and you start again near the bottom of the range. If you change your experience level to intermediate or advanced, the app waits for two such sessions in a row.'
         : 'Progression uses double progression: when you reach the top of the rep range on every set at the target effort in two sessions (if you don’t log effort, we ask you to confirm it first), we suggest the smallest practical load increase and you start again near the bottom of the range.',
   },
 };
+
+/**
+ * A load in the user's unit for progression text. Loads on the increment grid show exactly, with up to 2 decimals
+ * (61.25 kg, not 61.3 kg); anything else (e.g. a kg load shown in lb) is rounded to 1 decimal like other weights.
+ */
+export function formatLoad(kg: number, unit: WeightUnit): string {
+  const v = fromKg(kg, unit);
+  const two = round(v, 2);
+  return Math.abs(two - v) < 1e-6 ? `${trimNum(two)} ${unit}` : formatWeight(kg, unit);
+}
+
+/**
+ * The engine's own condition on an increase when effort wasn't (fully) logged — every surface that shows the target
+ * must show it too, so an unconfirmed increase never reads as unconditional. Null when there's nothing to qualify.
+ */
+export function effortCaveat(s: Suggestion, targetRir: number, lang: ProgressionLang = 'en'): string | null {
+  if (s.action !== 'increase_load' && s.action !== 'reduce_assistance') return null;
+  if (s.effortBasis !== 'not_recorded' && s.effortBasis !== 'partial') return null;
+  return PROGRESSION_STRINGS[lang].effortCaveat(targetRir);
+}
 
 /** How the rule works, in words (program rationale, settings, and the training assistant's grounding). */
 export function progressionRuleText(beginner = false, lang: ProgressionLang = 'en'): string {
@@ -492,15 +527,15 @@ export function nextTargetLabel(s: Suggestion, ex: Pick<Exercise, 'tracking' | '
   switch (ex.tracking) {
     case 'weight_reps': {
       if (s.loadKg == null || !(s.loadKg > 0)) return reps != null ? t.reps(reps) : null;
-      return reps != null ? `${formatWeight(s.loadKg, unit)} × ${t.reps(reps)}` : formatWeight(s.loadKg, unit);
+      return reps != null ? `${formatLoad(s.loadKg, unit)} × ${t.reps(reps)}` : formatLoad(s.loadKg, unit);
     }
     case 'bodyweight_plus': {
-      const load = s.loadKg != null && s.loadKg > 0 ? t.added(formatWeight(s.loadKg, unit)) : t.bodyweight;
+      const load = s.loadKg != null && s.loadKg > 0 ? t.added(formatLoad(s.loadKg, unit)) : t.bodyweight;
       return reps != null ? `${load} × ${t.reps(reps)}` : load;
     }
     case 'assisted': {
       if (s.loadKg == null) return reps != null ? t.reps(reps) : null;
-      const load = s.loadKg > 0 ? t.assistance(formatWeight(s.loadKg, unit)) : t.bodyweight;
+      const load = s.loadKg > 0 ? t.assistance(formatLoad(s.loadKg, unit)) : t.bodyweight;
       return reps != null ? `${load} × ${t.reps(reps)}` : load;
     }
     case 'reps':
