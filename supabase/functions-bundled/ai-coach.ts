@@ -3058,14 +3058,20 @@ function mealsPerDayIn(text) {
   const f = foldIs(String(text ?? ""));
   const frac = f.match(new RegExp(`(?<![${L}.,])(\\d+[.,]\\d+)\\s+(?:malti\xF0[${L}]*|meals?)(?![${L}])`));
   if (frac) return { invalid: frac[1] };
-  const t = tokensOf(text);
-  for (let i = 0; i < t.length; i++) {
-    const num3 = numberAt(t, i);
-    if (!num3) continue;
-    const unit = t[i + num3.len] ?? "";
-    if (/^(?:maltið(?:ir|um|a|in)?|meals?)$/.test(unit)) return num3.value >= 1 && num3.value <= 6 && Number.isInteger(num3.value) ? { value: num3.value } : { invalid: String(num3.value) };
+  const found = [];
+  for (const sentence of String(text ?? "").match(/[^.!?\n]+[.!?\n]*/g) ?? []) {
+    const t = tokensOf(sentence);
+    const asked = /\?/.test(sentence) && CLAUSE_QUESTION.test(t[0] ?? "");
+    for (let i = 0; i < t.length; i++) {
+      const num3 = numberAt(t, i);
+      if (!num3) continue;
+      const unit = t[i + num3.len] ?? "";
+      if (/^(?:maltið(?:ir|um|a|in)?|meals?)$/.test(unit)) found.push({ value: num3.value, asked });
+    }
   }
-  return null;
+  const pick = found.find((x) => !x.asked) ?? found[0];
+  if (!pick) return null;
+  return pick.value >= 1 && pick.value <= 6 && Number.isInteger(pick.value) ? { value: pick.value } : { invalid: String(pick.value) };
 }
 var EN_MEAL_PLAN = /\bmeal[\s-]?plan|\bplan (my|the|our)?\s*(meals|food|eating)|\bplan meals\b|\bmeals for (the|this|next) week\b/;
 var EN_WEEK = /\b(only|just) (train|lift|go|make it)\b.*\b(this week|once|twice|\d+ times?)|\bthis week\b.*\b(only|just|can'?t|cannot|miss|skip|move)\b|\b(move|swap|reschedule)\b.*\b(session|workout|day)\b/;
@@ -3197,7 +3203,7 @@ function sessionKind(t, f) {
   return null;
 }
 var QUESTION_START = /^ (?:hvað|hvar|hvernig|hvenær|af hverju|hvers vegna|getur|geturðu|what|where|why|how|when|can|could|is|are|does|do) /;
-var asksQuestion = (text, f) => /^ (?:hvað|hvaða|hvar|hvernig|hvenær|af hverju|hvers vegna|inniheldur|what|what's|whats|which|where|why|how|when|is|are|does|did|has) /.test(f) || /^ (?:er|eru) /.test(f) && /\?\s*$/.test(String(text ?? ""));
+var asksQuestion = (text, f) => /^ (?:hvað|hvaða|hvar|hvernig|hvenær|af hverju|hvers vegna|inniheldur|what|what's|whats|which|where|why|how|when|is|are|does|did|has) /.test(f) || /^ (?:er|eru) /.test(f) && /\?/.test(String(text ?? ""));
 var QUESTION_WORDS = new Set([
   "hva\xF0",
   "hva\xF0a",
@@ -3228,13 +3234,100 @@ var QUESTION_WORDS = new Set([
   "whether"
 ].map(foldIs));
 var POLITE_OPENER = /^ (?:can|could|would|will|geturðu|getur|gætirðu|gætir|viltu|vilt|mættirðu|please|vinsamlegast) /;
-var isQuestion = (text, t, f) => asksQuestion(text, f) || t.some((w) => QUESTION_WORDS.has(w)) || /\?\s*$/.test(String(text ?? "")) && !POLITE_OPENER.test(f);
+var isQuestion = (text, t, f) => asksQuestion(text, f) || t.some((w) => QUESTION_WORDS.has(w)) || /\?/.test(String(text ?? "")) && !POLITE_OPENER.test(f);
 var OWN = /* @__PURE__ */ new Set(["minn", "min", "mitt", "minum", "minni", "mina", "minnar", "mins", "okkar", "nuverandi", "my", "our", "current"]);
 var DEFINITE_PLAN = /^(?:vikumatseð|matseð|matarplan|mataraætlun|æfingaaætlun|æfingaplan|æfingaprogramm|programm)[a-zæðþ]*(?:inn|inum|ins|sins|ið|inu|ina|inni|innar)$/;
 var PLAN_WORD_EN = /^(?:plan|meal|meals|program|programme|routine|split)$/;
 var planWord = (w) => isMealPlanToken(w) || isProgramToken(w) || PLAN_WORD_EN.test(w);
 var ownPlan = (t) => t.some((w, i) => DEFINITE_PLAN.test(w) || OWN.has(w) && t.slice(Math.max(0, i - 3), i + 4).some(planWord));
-var MODIFY = /^(?:breyt|uppfær|endurgerð|endurger|lagaðu|laga$|skiptu|skipta|update|change|replace|redo|regenerate|swap|fix|adjust|tweak|edit|make|create|build)/;
+var EDIT_EN = /* @__PURE__ */ new Set([
+  "change",
+  "update",
+  "replace",
+  "redo",
+  "regenerate",
+  "swap",
+  "switch",
+  "fix",
+  "adjust",
+  "tweak",
+  "edit",
+  "make",
+  "create",
+  "build",
+  "rebuild",
+  "reduce",
+  "increase",
+  "decrease",
+  "lower",
+  "raise",
+  "add",
+  "remove",
+  "drop",
+  "cut",
+  "limit",
+  "shorten",
+  "redesign",
+  "rework",
+  "modify",
+  "revise"
+]);
+var EDIT_IS = /^(?:breyt|uppfær|endurgerð|endurger|lagaðu$|laga$|skiptu$|skipta$)/;
+var isEditVerb = (w) => EDIT_EN.has(w) || EDIT_IS.test(w) && !/^breyting/.test(w) && w !== "breytti" && !/^breytt(?:ir|irðu|ist|ust)$/.test(w);
+var CLAUSE_QUESTION = /^(?:why|what|whats|what's|how|when|where|which|who|did|didn't|do|does|is|are|was|were|has|have|had|hvað|hvaða|hvar|hvernig|hvenær|hversu|hvers|af|er|eru|var|voru)$/;
+var REQUEST_LEAD = /* @__PURE__ */ new Set([...PREDICATE_WORDS, ...[
+  "can",
+  "could",
+  "will",
+  "just",
+  "also",
+  "then",
+  "and",
+  "so",
+  "now",
+  "kindly",
+  "maybe",
+  "instead",
+  "let's",
+  "let\u2019s",
+  "lets",
+  "getur\xF0u",
+  "getur",
+  "g\xE6tir\xF0u",
+  "g\xE6tir",
+  "viltu",
+  "vilt",
+  "vinsamlegast",
+  "bara",
+  "og",
+  "\xFEa",
+  "lika",
+  "please"
+].map(foldIs)]);
+function editRequested(text) {
+  for (const raw of clauses(text)) {
+    let c = raw;
+    while (c.length && /^(?:and|so|then|also|og|þa|ok|okay)$/.test(c[0])) c = c.slice(1);
+    if (!c.length) continue;
+    if (CLAUSE_QUESTION.test(c[0]) && !(c[0] === "af" && c[1] !== "hverju") && !(c[0] === "hvers" && c[1] !== "vegna")) continue;
+    for (let v = 0; v < c.length; v++) {
+      if (!isEditVerb(c[v])) continue;
+      let ok = true;
+      for (let k = v - 1; k >= 0; k--) {
+        if (NEGATORS.has(c[k]) || /^(?:never|nothing|don't|don’t|dont|doesn't|doesn’t|aldrei)$/.test(c[k])) {
+          ok = false;
+          break;
+        }
+        if (!REQUEST_LEAD.has(c[k])) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) return true;
+    }
+  }
+  return false;
+}
 var EXPLAIN = (t, f) => anyPhrase(t, EXPLAIN_PHRASES) || / (?:af hverju|hvers vegna|utskyrðu|utskyra|hvað þyðir) /.test(f) || /\b(?:why|explain)\b/.test(f);
 function classifyRequest(text) {
   const t = tokensOf(text);
@@ -3245,8 +3338,9 @@ function classifyRequest(text) {
   const progNoun = programNoun(t, f);
   if ((mealNoun || progNoun) && !create) {
     if (/^ (?:hvar|where) /.test(f) || / (?:hvar finn|hvernig finn|how do i find|where do i find|where is|where's) /.test(f)) return "app_navigation";
-    if (EXPLAIN(t, f) || anyPhrase(t, PROGRAM_NEGATIVE.filter((p) => !p.includes("ekki")))) return mealNoun && !progNoun ? "explain_existing_meal_plan" : "explain_existing_program";
-    if (isQuestion(text, t, f) && ownPlan(t) && !t.some((w) => MODIFY.test(w))) return mealNoun && !progNoun ? "explain_existing_meal_plan" : "explain_existing_program";
+    const editMeal = mealNoun && !progNoun && editRequested(text);
+    if (!editMeal && (EXPLAIN(t, f) || anyPhrase(t, PROGRAM_NEGATIVE.filter((p) => !p.includes("ekki"))))) return mealNoun && !progNoun ? "explain_existing_meal_plan" : "explain_existing_program";
+    if (isQuestion(text, t, f) && ownPlan(t) && !editRequested(text)) return mealNoun && !progNoun ? "explain_existing_meal_plan" : "explain_existing_program";
   }
   if (mealNoun && negatedCreate(text, isMealPlanToken, EN_MEAL_PLAN)) return "declined";
   if (progNoun && (negatedCreate(text, isProgramToken, EN_PROGRAM_NOUN) || anyPhrase(t, PROGRAM_NEGATIVE.filter((p) => p.includes("ekki"))))) return "declined";
@@ -3268,7 +3362,7 @@ function classifyRequest(text) {
 function asksAboutExistingPlan(text) {
   const kind = classifyRequest(text);
   if (kind !== "explain_existing_meal_plan" && kind !== "explain_existing_program") return null;
-  if (tokensOf(text).some((w) => MODIFY.test(w))) return null;
+  if (editRequested(text)) return null;
   return kind === "explain_existing_meal_plan" ? "meal_plan" : "program";
 }
 var PAIN_TOKENS = set([...V.pain_discomfort.tokens, "aum", "aumur", "aumt", "auma", "aumir", "pain", "painful", "hurts", "hurt", "sore", "injured", "injury", "ache", "aches", "aching"]);
@@ -5996,6 +6090,42 @@ var copulaDenies = (tokens, k) => {
   const r = copulaReading(tokens, k);
   return r.ok && r.negated;
 };
+var TRAIL_EXCLUDE = [
+  ["excluded"],
+  ["omitted"],
+  ["banned"],
+  ["forbidden"],
+  ["prohibited"],
+  ["disallowed"],
+  ["removed"],
+  ["left", "out"],
+  ["ruled", "out"],
+  ["off", "limits"],
+  ["off", "limit"],
+  ["off-limits"],
+  ["off-limit"],
+  ["not", "wanted"],
+  ["not", "permitted"],
+  ["not", "welcome"],
+  ["sleppt"]
+];
+var TRAIL_EXCLUDE_WEAK = /* @__PURE__ */ new Set(["out", "no", "not", "never", "ekki", "aldrei"]);
+var TRAIL_SKIP = /* @__PURE__ */ new Set(["really", "totally", "completely", "entirely", "strictly", "also", "too", "still", "alveg", "lika", "enn", "\xFEa"]);
+function trailingDenial(tokens, k, weakOk = false) {
+  let o = k;
+  const copula = COPULA.has(tokens[o]) || NEG_COPULA.has(tokens[o]);
+  if (copula && copulaDenies(tokens, o)) return true;
+  if (copula) o++;
+  while (TRAIL_SKIP.has(tokens[o])) o++;
+  if (!copula && COPULA_NEG.has(tokens[o]) && tokens[o] !== "no" && copulaDenies(["is", ...tokens.slice(o, o + 6)], 0)) return true;
+  if (TRAIL_EXCLUDE.some((p) => p.every((w, n) => tokens[o + n] === w))) return true;
+  if (weakOk && TRAIL_EXCLUDE_WEAK.has(tokens[o])) {
+    let e = o + 1;
+    while (TRAIL_SKIP.has(tokens[e]) || tokens[e] === "either" || tokens[e] === "please") e++;
+    return e >= tokens.length || isClauseEnd(tokens, e);
+  }
+  return false;
+}
 var LEAD_VERBS = /* @__PURE__ */ new Set([
   "eat",
   "want",
@@ -6203,7 +6333,7 @@ var CLAUSE_BREAK = /* @__PURE__ */ new Set([
   "\xFEessa",
   "\xFEessari"
 ]);
-var QUERY_GLUE = /* @__PURE__ */ new Set([...SEP_WORDS, ...LIST_END, ...LEAD_FILLER, ...TRAIL_FILLER, ...CLAUSE_BREAK, ...CLARIFIERS.flat()]);
+var QUERY_GLUE = /* @__PURE__ */ new Set([...SEP_WORDS, ...LIST_END, ...LEAD_FILLER, ...TRAIL_FILLER, ...CLAUSE_BREAK, ...CLARIFIERS.flat(), ...TRAIL_EXCLUDE.flat(), ...TRAIL_SKIP, "out", "allowed"]);
 var IS_DAY_END = "(?:ur|inn|s|sins|a|ana|ar|arnir|um|inum)?";
 var WEEKDAY_TOKENS = [
   [new RegExp(`^(?:mondays?|mon|manud[ao]g${IS_DAY_END})$`), ["monday"]],
@@ -6725,7 +6855,7 @@ function parseExclusionTokens(text) {
     if (item && item.kind !== "days") items.push(item);
   }
   tokens.forEach((w, k) => {
-    if (question[k] || !(COPULA.has(w) || NEG_COPULA.has(w)) || !copulaDenies(tokens, k)) return;
+    if (question[k] || !isWord(w)) return;
     const head = [];
     for (let h = k - 1; h >= 0 && head.length < 3; h--) {
       const x = tokens[h];
@@ -6734,6 +6864,8 @@ function parseExclusionTokens(text) {
     }
     if (!head.length || head.some((h) => consumed.has(h))) return;
     const item = classifyHead(head.map((h) => tokens[h]));
+    const weakOk = item?.kind === "allergens" || POSITIVE_WITH.has(tokens[head[0] - 1] ?? "");
+    if (!trailingDenial(tokens, k, weakOk)) return;
     if (item && item.kind !== "days") {
       items.push(item);
       head.forEach((h) => consumed.add(h));
@@ -6765,6 +6897,7 @@ function affirmedWanted(tokens, k, question, wantedWith = /* @__PURE__ */ new Se
   let e = k;
   while (e < tokens.length && !isClauseEnd(tokens, e)) e++;
   if (tokens[e] === "?") return false;
+  for (let c = k + 1; c < e; c++) if (trailingDenial(tokens, c, true)) return false;
   const clause = tokens.slice(s, e);
   if (clause.some((w) => NEG_COPULA.has(w))) return false;
   for (let c = s; c < e; c++) {

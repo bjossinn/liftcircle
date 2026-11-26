@@ -306,6 +306,34 @@ const copulaDenies = (tokens: string[], k: number) => {
   const r = copulaReading(tokens, k);
   return r.ok && r.negated;
 };
+/** Words that rule out the food they FOLLOW, with or without a copula: "peanut butter excluded", "… is banned",
+ *  "… left out", "… off limits", "hnetusmjör sleppt" (approved skip word). */
+const TRAIL_EXCLUDE: string[][] = [['excluded'], ['omitted'], ['banned'], ['forbidden'], ['prohibited'], ['disallowed'], ['removed'], ['left', 'out'],
+  ['ruled', 'out'], ['off', 'limits'], ['off', 'limit'], ['off-limits'], ['off-limit'], ['not', 'wanted'], ['not', 'permitted'], ['not', 'welcome'], ['sleppt']];
+/** Weak trailing exclusions ("peanut butter OUT", "with peanut butter, NO"): only after an allergen or a "with" food. */
+const TRAIL_EXCLUDE_WEAK = new Set(['out', 'no', 'not', 'never', 'ekki', 'aldrei']);
+const TRAIL_SKIP = new Set(['really', 'totally', 'completely', 'entirely', 'strictly', 'also', 'too', 'still', 'alveg', 'lika', 'enn', 'þa']);
+/**
+ * Token k, right after a food, starts a clause tail that RULES THE FOOD OUT — with or without a copula: "is not okay",
+ * "not allowed", "not ok", "er ekki í lagi", "excluded (too)", "is banned", "left out", "off limits". `weakOk`: the food
+ * is an allergen or a positive "with" food, so a bare "out" / "no" / "not" at the end of the clause counts too.
+ */
+function trailingDenial(tokens: string[], k: number, weakOk = false): boolean {
+  let o = k;
+  const copula = COPULA.has(tokens[o]) || NEG_COPULA.has(tokens[o]);
+  if (copula && copulaDenies(tokens, o)) return true;
+  if (copula) o++;
+  while (TRAIL_SKIP.has(tokens[o])) o++;
+  // "not allowed / not okay / ekki í lagi" without a copula: read as if one stood before it.
+  if (!copula && COPULA_NEG.has(tokens[o]) && tokens[o] !== 'no' && copulaDenies(['is', ...tokens.slice(o, o + 6)], 0)) return true;
+  if (TRAIL_EXCLUDE.some((p) => p.every((w, n) => tokens[o + n] === w))) return true;
+  if (weakOk && TRAIL_EXCLUDE_WEAK.has(tokens[o])) {
+    let e = o + 1;
+    while (TRAIL_SKIP.has(tokens[e]) || tokens[e] === 'either' || tokens[e] === 'please') e++;
+    return e >= tokens.length || isClauseEnd(tokens, e);
+  }
+  return false;
+}
 /** Verbs between a negation and its item: "don't EAT fish", "can't HAVE gluten", "don't ADD nuts", "ekki SETJA hnetur". */
 const LEAD_VERBS = new Set(['eat', 'want', 'like', 'have', 'need', 'use', 'include', 'put', 'add', 'give', 'get',
   'borða', 'borðað', 'borðar', 'vil', 'vilja', 'nota', 'setja', 'hafa', 'fa', 'gefa', 'innihalda', 'inniheldur', 'innihaldi', 'vera', 'contain', 'contains']);
@@ -327,7 +355,7 @@ const NOT_AN_ITEM = new Set(['one', 'two', 'three', 'four', 'five', 'six', 'day'
 const CLAUSE_BREAK = new Set(['in', 'for', 'because', 'since', 'as', 'when', 'while', 'during', 'with', 'to', 'at', 'on', 'from', 'this', 'next',
   'iis', 'a', 'fyrir', 'af', 'þvi', 'þar', 'vegna', 'með', 'um', 'þegar', 'svo', 'til', 'fra', 'eftir', 'næstu', 'þessa', 'þessari']);
 /** Connectors and fillers that never name a food, so they are never search words. */
-const QUERY_GLUE = new Set([...SEP_WORDS, ...LIST_END, ...LEAD_FILLER, ...TRAIL_FILLER, ...CLAUSE_BREAK, ...CLARIFIERS.flat()]);
+const QUERY_GLUE = new Set([...SEP_WORDS, ...LIST_END, ...LEAD_FILLER, ...TRAIL_FILLER, ...CLAUSE_BREAK, ...CLARIFIERS.flat(), ...TRAIL_EXCLUDE.flat(), ...TRAIL_SKIP, 'out', 'allowed']);
 // Weekdays match WHOLE tokens only — full English names (or plurals) and the usual abbreviations, and Icelandic day
 // names with their case endings — so food words never become days ("fries", "satay", "monkfish", "sunnudagssteik").
 const IS_DAY_END = '(?:ur|inn|s|sins|a|ana|ar|arnir|um|inum)?';
@@ -741,9 +769,10 @@ function parseExclusionTokens(text: string): ExclusionParse {
     const item = classifyHead([(m[1] ?? m[2] ?? '').trim()].filter(Boolean));
     if (item && item.kind !== 'days') items.push(item);
   }
-  // "<food> is not okay" / "<food> er ekki í lagi" / "<food> isn't allowed" on its own: a restriction too.
+  // "<food> is not okay" / "<food> er ekki í lagi" / "<food> isn't allowed" on its own: a restriction too — and so is a
+  // trailing exclusion without a copula: "with peanut butter excluded too", "peanut butter not allowed", "… left out".
   tokens.forEach((w, k) => {
-    if (question[k] || !(COPULA.has(w) || NEG_COPULA.has(w)) || !copulaDenies(tokens, k)) return;
+    if (question[k] || !isWord(w)) return;
     const head: number[] = [];
     for (let h = k - 1; h >= 0 && head.length < 3; h--) {
       const x = tokens[h];
@@ -752,6 +781,8 @@ function parseExclusionTokens(text: string): ExclusionParse {
     }
     if (!head.length || head.some((h) => consumed.has(h))) return;
     const item = classifyHead(head.map((h) => tokens[h]));
+    const weakOk = item?.kind === 'allergens' || POSITIVE_WITH.has(tokens[head[0] - 1] ?? '');
+    if (!trailingDenial(tokens, k, weakOk)) return;
     if (item && item.kind !== 'days') {
       items.push(item);
       head.forEach((h) => consumed.add(h));
@@ -797,6 +828,9 @@ function affirmedWanted(tokens: string[], k: number, question: boolean[], wanted
   while (e < tokens.length && !isClauseEnd(tokens, e)) e++;
   // "?" ending the clause: asked, not stated.
   if (tokens[e] === '?') return false;
+  // A trailing exclusion after the food, with or without a copula ("with peanut butter excluded too", "peanut butter not
+  // allowed", "… is banned", "… er ekki í lagi"): ruled out, never wanted.
+  for (let c = k + 1; c < e; c++) if (trailingDenial(tokens, c, true)) return false;
   const clause = tokens.slice(s, e);
   if (clause.some((w) => NEG_COPULA.has(w))) return false;
   // A negation before the food negates the wanting ("I don't love peanut butter", "ég vil ekki hnetusmjör"). One AFTER it

@@ -173,14 +173,22 @@ export function mealsPerDayIn(text: string): { value: number } | { invalid: stri
   const f = foldIs(String(text ?? ''));
   const frac = f.match(new RegExp(`(?<![${L}.,])(\\d+[.,]\\d+)\\s+(?:maltið[${L}]*|meals?)(?![${L}])`));
   if (frac) return { invalid: frac[1] };
-  const t = tokensOf(text);
-  for (let i = 0; i < t.length; i++) {
-    const num = numberAt(t, i);
-    if (!num) continue;
-    const unit = t[i + num.len] ?? '';
-    if (/^(?:maltið(?:ir|um|a|in)?|meals?)$/.test(unit)) return num.value >= 1 && num.value <= 6 && Number.isInteger(num.value) ? { value: num.value } : { invalid: String(num.value) };
+  // A count in a question ("Why does my meal plan have three meals? Reduce it to two meals a day.") describes what is
+  // there, not what is asked for: a count stated outside a question wins.
+  const found: { value: number; asked: boolean }[] = [];
+  for (const sentence of String(text ?? '').match(/[^.!?\n]+[.!?\n]*/g) ?? []) {
+    const t = tokensOf(sentence);
+    const asked = /\?/.test(sentence) && CLAUSE_QUESTION.test(t[0] ?? '');
+    for (let i = 0; i < t.length; i++) {
+      const num = numberAt(t, i);
+      if (!num) continue;
+      const unit = t[i + num.len] ?? '';
+      if (/^(?:maltið(?:ir|um|a|in)?|meals?)$/.test(unit)) found.push({ value: num.value, asked });
+    }
   }
-  return null;
+  const pick = found.find((x) => !x.asked) ?? found[0];
+  if (!pick) return null;
+  return pick.value >= 1 && pick.value <= 6 && Number.isInteger(pick.value) ? { value: pick.value } : { invalid: String(pick.value) };
 }
 
 /* ------------------------------------------------------------------ relative days */
@@ -296,20 +304,20 @@ function sessionKind(t: string[], f: string): RequestKind | null {
 const QUESTION_START = /^ (?:hvað|hvar|hvernig|hvenær|af hverju|hvers vegna|getur|geturðu|what|where|why|how|when|can|could|is|are|does|do) /;
 /** A question that READS something (not a polite request like "Could you do my meal plan?" / "Geturðu …?"): it opens with
  *  a question word or an inverted copula/auxiliary. Icelandic "er/eru" only with the "?": "Er með hnetuofnæmi" is a
- *  declaration with the subject dropped. */
+ *  declaration with the subject dropped ("Er matseðillinn minn vegan? Ekki breyta matseðlinum." is a question). */
 const asksQuestion = (text: string, f: string) =>
   /^ (?:hvað|hvaða|hvar|hvernig|hvenær|af hverju|hvers vegna|inniheldur|what|what's|whats|which|where|why|how|when|is|are|does|did|has) /.test(f) ||
-  (/^ (?:er|eru) /.test(f) && /\?\s*$/.test(String(text ?? '')));
+  (/^ (?:er|eru) /.test(f) && /\?/.test(String(text ?? '')));
 /** Interrogative words anywhere in the message ("Segðu mér HVERSU mikið prótein er í matseðlinum mínum", "how many
  *  calories are in my meal plan"). */
 const QUESTION_WORDS = new Set(['hvað', 'hvaða', 'hvar', 'hvernig', 'hvenær', 'hversu', 'hve', 'hver', 'hverjir', 'hverjar', 'hvert', 'hverju', 'hverja', 'hvers',
   'hvort', 'hvor', 'what', "what's", 'whats', 'which', 'where', "where's", 'why', 'how', 'when', 'who', 'whether'].map(foldIs));
 /** Polite request openers: "Could you do my meal plan?" / "Geturðu …?" asks for something, it isn't a question about it. */
 const POLITE_OPENER = /^ (?:can|could|would|will|geturðu|getur|gætirðu|gætir|viltu|vilt|mættirðu|please|vinsamlegast) /;
-/** A question about something: a question word anywhere, an inverted copula/auxiliary at the start, or a "?" that does
- *  not close a polite request. */
+/** A question about something: a question word anywhere, an inverted copula/auxiliary at the start, or a "?" (in any
+ *  sentence) in a message that does not open as a polite request. */
 const isQuestion = (text: string, t: string[], f: string) =>
-  asksQuestion(text, f) || t.some((w) => QUESTION_WORDS.has(w)) || (/\?\s*$/.test(String(text ?? '')) && !POLITE_OPENER.test(f));
+  asksQuestion(text, f) || t.some((w) => QUESTION_WORDS.has(w)) || (/\?/.test(String(text ?? '')) && !POLITE_OPENER.test(f));
 /** The user's own, existing plan: a possessive ("minn", "my") or the definite noun ("matseðillinn", "æfingaáætlunina"). */
 const OWN = new Set(['minn', 'min', 'mitt', 'minum', 'minni', 'mina', 'minnar', 'mins', 'okkar', 'nuverandi', 'my', 'our', 'current']);
 const DEFINITE_PLAN = /^(?:vikumatseð|matseð|matarplan|mataraætlun|æfingaaætlun|æfingaplan|æfingaprogramm|programm)[a-zæðþ]*(?:inn|inum|ins|sins|ið|inu|ina|inni|innar)$/;
@@ -318,8 +326,42 @@ const planWord = (w: string) => isMealPlanToken(w) || isProgramToken(w) || PLAN_
 /** A possessive counts only next to a plan word ("my meal plan", "matseðlinum mínum", "my current plan"): "Meal plan for
  *  next week. What do you recommend for MY peanut allergy?" is about the allergy, not about an existing plan. */
 const ownPlan = (t: string[]) => t.some((w, i) => DEFINITE_PLAN.test(w) || (OWN.has(w) && t.slice(Math.max(0, i - 3), i + 4).some(planWord)));
-/** Verbs that ask to change a plan (a request, not a question about it). */
-const MODIFY = /^(?:breyt|uppfær|endurgerð|endurger|lagaðu|laga$|skiptu|skipta|update|change|replace|redo|regenerate|swap|fix|adjust|tweak|edit|make|create|build)/;
+/**
+ * An AFFIRMATIVE request to edit (create, change, reduce, …) something, in at least one clause: an imperative ("Reduce it to
+ * two meals a day", "Breyttu matseðlinum mínum", "Change it to …"), a polite request ("Can you change my meal plan?",
+ * "Geturðu breytt …?") or a stated wish ("I want to swap …", "Ég vil breyta …"). Not one: a question about a change ("Why did
+ * you change my meal plan?", "Af hverju …?"), a past-tense mention ("You changed it", "ég breytti …"), a noun ("no
+ * changes", "breytingar"), or a negated verb ("Do not change anything", "Don't change it", "Ekki breyta áætluninni").
+ */
+const EDIT_EN = new Set(['change', 'update', 'replace', 'redo', 'regenerate', 'swap', 'switch', 'fix', 'adjust', 'tweak', 'edit', 'make', 'create', 'build', 'rebuild',
+  'reduce', 'increase', 'decrease', 'lower', 'raise', 'add', 'remove', 'drop', 'cut', 'limit', 'shorten', 'redesign', 'rework', 'modify', 'revise']);
+/** Icelandic change verbs (stems); "breytti" (past, "ég breytti stillingunum") and the noun "breyting…" are no request. */
+const EDIT_IS = /^(?:breyt|uppfær|endurgerð|endurger|lagaðu$|laga$|skiptu$|skipta$)/;
+const isEditVerb = (w: string) => EDIT_EN.has(w) || (EDIT_IS.test(w) && !/^breyting/.test(w) && w !== 'breytti' && !/^breytt(?:ir|irðu|ist|ust)$/.test(w));
+const CLAUSE_QUESTION = /^(?:why|what|whats|what's|how|when|where|which|who|did|didn't|do|does|is|are|was|were|has|have|had|hvað|hvaða|hvar|hvernig|hvenær|hversu|hvers|af|er|eru|var|voru)$/;
+/** Words that may stand before an edit verb in a request: subjects, polite openers, want/need verbs, "please", fillers. */
+const REQUEST_LEAD = new Set([...PREDICATE_WORDS, ...['can', 'could', 'will', 'just', 'also', 'then', 'and', 'so', 'now', 'kindly', 'maybe', 'instead', "let's", 'let’s', 'lets',
+  'geturðu', 'getur', 'gætirðu', 'gætir', 'viltu', 'vilt', 'vinsamlegast', 'bara', 'og', 'þa', 'lika', 'please'].map(foldIs)]);
+export function editRequested(text: string): boolean {
+  for (const raw of clauses(text)) {
+    let c = raw;
+    while (c.length && /^(?:and|so|then|also|og|þa|ok|okay)$/.test(c[0])) c = c.slice(1);
+    if (!c.length) continue;
+    // "Why did you change …?", "Hvað …?", "Af hverju …?": a question about it, not a request.
+    if (CLAUSE_QUESTION.test(c[0]) && !(c[0] === 'af' && c[1] !== 'hverju') && !(c[0] === 'hvers' && c[1] !== 'vegna')) continue;
+    for (let v = 0; v < c.length; v++) {
+      if (!isEditVerb(c[v])) continue;
+      // Only request words (and no negation) may stand before the verb: "Do NOT change", "Ekki breyta", "please reduce".
+      let ok = true;
+      for (let k = v - 1; k >= 0; k--) {
+        if (NEGATORS.has(c[k]) || /^(?:never|nothing|don't|don’t|dont|doesn't|doesn’t|aldrei)$/.test(c[k])) { ok = false; break; }
+        if (!REQUEST_LEAD.has(c[k])) { ok = false; break; }
+      }
+      if (ok) return true;
+    }
+  }
+  return false;
+}
 const EXPLAIN = (t: string[], f: string) =>
   anyPhrase(t, EXPLAIN_PHRASES) || / (?:af hverju|hvers vegna|utskyrðu|utskyra|hvað þyðir) /.test(f) || /\b(?:why|explain)\b/.test(f);
 
@@ -340,11 +382,14 @@ export function classifyRequest(text: string): RequestKind | null {
   // Questions about what already exists.
   if ((mealNoun || progNoun) && !create) {
     if (/^ (?:hvar|where) /.test(f) || / (?:hvar finn|hvernig finn|how do i find|where do i find|where is|where's) /.test(f)) return 'app_navigation';
-    if (EXPLAIN(t, f) || anyPhrase(t, PROGRAM_NEGATIVE.filter((p) => !p.includes('ekki')))) return mealNoun && !progNoun ? 'explain_existing_meal_plan' : 'explain_existing_program';
+    // "Why does my meal plan have three meals? Reduce it to two meals a day.": a question AND an affirmative edit request
+    // in another clause — a request for the (changed) meal plan, not only a question about it.
+    const editMeal = mealNoun && !progNoun && editRequested(text);
+    if (!editMeal && (EXPLAIN(t, f) || anyPhrase(t, PROGRAM_NEGATIVE.filter((p) => !p.includes('ekki'))))) return mealNoun && !progNoun ? 'explain_existing_meal_plan' : 'explain_existing_program';
     // "Er matseðillinn minn vegan?", "Is my meal plan vegan?", "Hversu mikið prótein er í matseðlinum mínum?", "How many
     // calories are in my meal plan?": a question about the user's OWN plan (possessive or definite form, any case) reads
     // it; it never creates or replaces one. Only an explicit create/change verb does ("Geturðu breytt matseðlinum mínum?").
-    if (isQuestion(text, t, f) && ownPlan(t) && !t.some((w) => MODIFY.test(w))) return mealNoun && !progNoun ? 'explain_existing_meal_plan' : 'explain_existing_program';
+    if (isQuestion(text, t, f) && ownPlan(t) && !editRequested(text)) return mealNoun && !progNoun ? 'explain_existing_meal_plan' : 'explain_existing_program';
   }
   // Negated creation.
   if (mealNoun && negatedCreate(text, isMealPlanToken, EN_MEAL_PLAN)) return 'declined';
@@ -386,13 +431,16 @@ export function classifyRequest(text: string): RequestKind | null {
 /**
  * The message only ASKS about the user's existing meal plan or program ("Hversu mikið prótein er í matseðlinum mínum?",
  * "How much protein is in my meal plan?", "Af hverju er æfingaáætlunin mín svona?") and asks for no change to it: a tool
- * proposal (propose_meal_plan / propose_program_change) must not create or replace one then. A change verb anywhere
- * ("… and change it", "Breyttu matseðlinum") makes it a request again (null).
+ * proposal (propose_meal_plan / propose_program_change) must not create or replace one then. An affirmative edit request
+ * in any clause ("… Reduce it to two meals a day.", "Breyttu matseðlinum mínum") makes it a request again (null); a
+ * question about a change ("Why did you change my meal plan?") or a negated one ("Do not change anything") does not.
  */
 export function asksAboutExistingPlan(text: string): 'meal_plan' | 'program' | null {
   const kind = classifyRequest(text);
   if (kind !== 'explain_existing_meal_plan' && kind !== 'explain_existing_program') return null;
-  if (tokensOf(text).some((w) => MODIFY.test(w))) return null;
+  // Only an AFFIRMATIVE edit request lifts the guard: "Why did you change my meal plan?" and "… Do not change anything."
+  // stay questions.
+  if (editRequested(text)) return null;
   return kind === 'explain_existing_meal_plan' ? 'meal_plan' : 'program';
 }
 

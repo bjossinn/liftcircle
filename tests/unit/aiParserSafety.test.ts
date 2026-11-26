@@ -19,6 +19,7 @@ import { handleAiCoach, type CoachDeps } from '../../supabase/functions/_shared/
 import { runTool, type ToolState } from '../../supabase/functions/_shared/ai/tools';
 import { asksForMealPlan, dietTagsIn, parseExclusions, parseQuery } from '../../supabase/functions/_shared/ai/meals';
 import { classifyIntent, classifyRequest } from '../../supabase/functions/_shared/ai/conversation';
+import { asksAboutExistingPlan, editRequested, mealsPerDayIn } from '../../supabase/functions/_shared/ai/requestSignals';
 import { nutritionStatus } from '../../supabase/functions/_shared/ai/dataStatus';
 import type { AccountStatePayload, AiDb, AiScopes, AiSettingsRow, FetchLike, MealPlanAction, RefIngredient, RefRecipe, StoredMessage, UserFacts } from '../../supabase/functions/_shared/ai/types';
 import { RECIPES } from '@/data/recipes';
@@ -592,4 +593,78 @@ describe('P2 (review 3): a model-issued propose_meal_plan never creates a plan f
     const make = ctx('Gerðu matseðil fyrir næstu viku');
     expect(JSON.parse((await runTool('propose_meal_plan', { week: 'next' }, make)).content).status).toBe('offered');
   });
+});
+
+/* ================================================================== review 4: P1 (copula-less trailing exclusion after "with") */
+// "with peanut butter excluded too" / "with peanut butter not allowed": an exclusion word AFTER the food — with or without
+// "is" — rules it out; it is never a wanted "with" food. Peanuts stay excluded, and so do tree nuts.
+describe('P1 (review 4): a trailing exclusion after "with <food>" rules the food out, with or without a copula', () => {
+  const nuts = union(peanutIds, treeNutIds);
+  const CASES = ['Breakfast without nuts, with peanut butter excluded too.', 'No nuts, with peanut butter not allowed.'];
+  it('parser: peanuts and tree nuts excluded; peanut butter is never a search word', () => {
+    for (const msg of [...CASES, 'No nuts, with peanut butter not okay', 'No nuts, with peanut butter left out', 'No nuts, with peanut butter is banned', 'No nuts, with peanut butter off limits',
+      'Án hneta, með hnetusmjöri ekki í lagi']) {
+      expect([...parseExclusions(msg).allergens].sort(), msg).toEqual(['peanuts', 'tree_nuts']);
+      expect(parseQuery(msg).words.filter((w) => /peanut|nut|excluded|allowed|banned|limits/.test(w)), msg).toEqual([]);
+    }
+    expect(parseExclusions('Breakfast with eggs excluded').allergens).toEqual(['egg']);
+    // The existing wanted cases are unchanged.
+    for (const msg of ['Breakfast without nuts, with peanut butter', 'No nuts, but I like peanut butter without sugar', 'Morgunmatur án hneta, með hnetusmjöri']) {
+      expect(parseExclusions(msg).allergens, msg).toEqual(['tree_nuts']);
+      expect(parseQuery(msg).words, msg).toContain('peanut butter');
+    }
+    expect(parseExclusions('Engar hnetur, ekkert með hnetusmjöri eða með möndlum').allergens).toEqual(expect.arrayContaining(['peanuts', 'tree_nuts']));
+  });
+
+  for (const msg of CASES) {
+    it(`handler + catalog: "${msg}" never returns peanut butter (tool, handler, meal-plan fallback)`, async () => {
+      // Full catalog: peanut-butter recipes appear for the plain request and never with the restriction.
+      const base = await findRecipes({ query: 'peanut butter', max_results: 10 }, 'Breakfast', ALL_RECIPES);
+      expect(base.some((c) => cardIngredients(c, ALL_RECIPES).some((id) => peanutIds.has(id))), 'baseline finds peanut butter').toBe(true);
+      const cards = await findRecipes({ query: 'peanut butter', max_results: 10 }, msg, ALL_RECIPES);
+      for (const c of cards) expect(cardIngredients(c, ALL_RECIPES).filter((id) => nuts.has(id)), `${msg}: ${c.id}`).toEqual([]);
+      const h0 = await chat('Breakfast', [toolUse('find_recipes', { query: 'peanut butter', max_results: 10 }), text('Here are some ideas.')]);
+      expect((h0.action?.recipes ?? []).some((c) => cardIngredients(c, ALL_RECIPES).some((id) => peanutIds.has(id))), 'handler baseline finds peanut butter').toBe(true);
+      const h = await chat(msg, [toolUse('find_recipes', { query: 'peanut butter', max_results: 10 }), text('Here are some ideas.')]);
+      for (const c of h.action?.recipes ?? []) expect(cardIngredients(c, ALL_RECIPES).filter((id) => nuts.has(id)), `${msg}: handler ${c.id}`).toEqual([]);
+      await proveExcluded(`peanuts: ${msg}`, peanutIds, 'Breakfast', msg, EN_PLAN, undefined, nuts);
+      await proveExcluded(`tree nuts: ${msg}`, treeNutIds, 'Breakfast', msg, EN_PLAN, undefined, nuts);
+    });
+  }
+});
+
+/* ================================================================== review 4: P2 (existing-plan guard vs change mentions) */
+// Only an AFFIRMATIVE edit request (imperative, polite request or stated wish) in some clause lifts the existing-plan
+// guard. A question about a change ("Why did you change …?") or a negated change ("Do not change anything") does not.
+describe('P2 (review 4): a model-issued propose_meal_plan respects questions vs. affirmative edit requests', () => {
+  const GUARDED = ['Why did you change my meal plan?', 'Why are there eggs in my meal plan? Do not change anything.', 'Er matseðillinn minn vegan? Ekki breyta matseðlinum.'];
+  const EDITS = ['Why does my meal plan have three meals? Reduce it to two meals a day.', 'Er matseðillinn minn vegan? Breyttu matseðlinum mínum.'];
+  it('classification', () => {
+    for (const msg of GUARDED) {
+      expect(asksAboutExistingPlan(msg), msg).toBe('meal_plan');
+      expect(editRequested(msg), msg).toBe(false);
+      expect(asksForMealPlan(msg), msg).toBe(false);
+    }
+    for (const msg of EDITS) {
+      expect(asksAboutExistingPlan(msg), msg).toBeNull();
+      expect(editRequested(msg), msg).toBe(true);
+      expect(classifyRequest(msg), msg).toBe('meal_plan');
+    }
+    for (const msg of ["Don't change my meal plan.", 'No changes to my meal plan, why is it vegan?', 'You changed my meal plan, why?']) expect(editRequested(msg), msg).toBe(false);
+    for (const msg of ['Can you change my meal plan?', 'Please swap the eggs in my meal plan', 'Why is my meal plan vegan? Change it to two meals a day.', 'I want to reduce my meal plan to two meals']) expect(editRequested(msg), msg).toBe(true);
+    expect(mealsPerDayIn(EDITS[0])).toEqual({ value: 2 });
+  });
+  for (const msg of GUARDED) {
+    it(`forced tool: "${msg}" gets no plan`, async () => {
+      const r = await chat(msg, [toolUse('propose_meal_plan', { week: 'next' }), text('Svar.')]);
+      expect(r.action ?? null, msg).toBeNull();
+    });
+  }
+  for (const msg of EDITS) {
+    it(`forced tool: "${msg}" gets a plan`, async () => {
+      const r = await chat(msg, [toolUse('propose_meal_plan', { week: 'next' }), text('Hér er planið.')]);
+      expect(r.action?.kind, msg).toBe('meal_plan');
+      if (msg === EDITS[0]) for (const d of planOf(r)!) expect(d.items.length, `${msg}: ${d.date}`).toBe(2);
+    });
+  }
 });
