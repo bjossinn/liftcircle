@@ -6,6 +6,7 @@
 import type { PullChange, PullResult, PushResult, SyncRemote } from './contract';
 import { requireSupabase } from './supabase';
 import { ACCOUNT_ROW_ID, type SyncedEntity } from '@/db/db';
+import { t } from '@/i18n';
 
 /** Error with the backend's code/status attached so callers can tell auth/network/validation apart. */
 export class BackendError extends Error {
@@ -40,24 +41,28 @@ interface PgLikeError {
   name?: string;
 }
 
-/** Normalize Supabase/PostgREST/fetch errors into a BackendError with a user-readable message. */
-export function toBackendError(e: unknown, fallback = 'Something went wrong. Please try again.'): BackendError {
+/**
+ * Normalize Supabase/PostgREST/fetch errors into a BackendError with a user-readable message (app-authored messages in
+ * the current language). Raw server messages are passed through unchanged: callers classify by `code`/`status` and
+ * some match the raw text, so they stay as the server sent them.
+ */
+export function toBackendError(e: unknown, fallback = t('sync.genericError')): BackendError {
   if (e instanceof BackendError) return e;
   const err = (e ?? {}) as PgLikeError;
   const msg = String(err.message ?? '');
-  if (err.name === 'AbortError') return new BackendError('Cancelled.', 'aborted');
+  if (err.name === 'AbortError') return new BackendError(t('sync.cancelled'), 'aborted');
   if (/failed to fetch|networkerror|network request failed|load failed|fetch failed/i.test(msg)) {
-    return new BackendError('You appear to be offline. Check your connection and try again.', 'network');
+    return new BackendError(t('sync.offlineError'), 'network');
   }
   if (/jwt expired|invalid jwt|jwt.*(malformed|invalid)|not authenticated|session.*(expired|missing)/i.test(msg) ||
       err.code === 'PGRST301' || err.code === 'PGRST302') {
-    return new BackendError('Your session has expired. Please sign in again.', 'auth', 401);
+    return new BackendError(t('sync.sessionExpired'), 'auth', 401);
   }
   if (err.code === '42501') {
-    return new BackendError(/^permission denied/i.test(msg) ? 'You don’t have permission to do that.' : msg || fallback, '42501', 403);
+    return new BackendError(/^permission denied/i.test(msg) ? t('sync.noPermission') : msg || fallback, '42501', 403);
   }
   if (err.code === 'PGRST202') {
-    return new BackendError('The server is missing a required update. Please try again later.', err.code, 404);
+    return new BackendError(t('sync.serverUpdateRequired'), err.code, 404);
   }
   // Our RPCs raise user-readable messages (P0001 validation, PT429 rate limit, 22023 bad input).
   if (msg && (err.code === 'P0001' || err.code === 'PT429' || err.code === '22023')) {
@@ -72,7 +77,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 function remoteId(entity: SyncedEntity, id: string): string {
   if (entity === 'account_state') return NIL_UUID; // server uses auth.uid()
-  if (!UUID_RE.test(id)) throw new BackendError(`Record id "${id}" is not a UUID and cannot be synced.`, '22023', 400);
+  if (!UUID_RE.test(id)) throw new BackendError(t('sync.invalidRecordId', { id }), '22023', 400);
   return id;
 }
 
@@ -104,7 +109,7 @@ export const syncRemote: SyncRemote = {
     } catch (e) {
       throw toBackendError(e);
     }
-    if (res.error) throw toBackendError(res.error, 'Could not sync this change.');
+    if (res.error) throw toBackendError(res.error, t('sync.changeFailed'));
     const r = res.data as RawPush;
     const version = Number(r.version);
     switch (r.status) {
@@ -115,7 +120,7 @@ export const syncRemote: SyncRemote = {
       case 'conflict':
         return { status: 'conflict', version, payload: r.payload, deleted: Boolean(r.deleted) };
       default:
-        throw new BackendError('Unexpected sync response from the server.');
+        throw new BackendError(t('sync.unexpectedResponse'));
     }
   },
 
@@ -127,7 +132,7 @@ export const syncRemote: SyncRemote = {
     } catch (e) {
       throw toBackendError(e);
     }
-    if (res.error) throw toBackendError(res.error, 'Could not download changes.');
+    if (res.error) throw toBackendError(res.error, t('sync.downloadFailed'));
     const r = res.data as RawPull;
     const changes: PullChange[] = (r.changes ?? []).map((c) => ({
       entity: c.entity,

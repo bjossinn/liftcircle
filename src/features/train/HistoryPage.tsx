@@ -6,7 +6,8 @@ import { useApp } from '@/state/app';
 import { Card, EmptyState, IconButton, Input, ListRow, Page, Segmented, Spinner, Button } from '@/components/ui';
 import { useAllActivities, useAllSessions } from './hooks';
 import { useExercises } from '@/data/catalog';
-import { addDays, formatDate, formatMinutes, startOfWeek, todayISO, WEEKDAY_SHORT } from '@/lib/dates';
+import { addDays, formatDate, formatMinutes, startOfWeek, todayISO, weekdayShort } from '@/lib/dates';
+import { useT } from '@/i18n';
 import { activityLabel } from '@/domain/activities';
 import { formatDistance } from '@/domain/units';
 import { exercisesDone, sessionDurationSec } from '@/domain/stats';
@@ -36,6 +37,7 @@ export default function HistoryPage() {
   const today = todayISO(settings.timeZone);
   const [month, setMonth] = useState(today.slice(0, 7));
   const [day, setDay] = useState<string | null>(null);
+  const { t, tp } = useT();
 
   const items: Item[] = useMemo(() => {
     const out: Item[] = [];
@@ -48,7 +50,7 @@ export default function HistoryPage() {
         date: s.date,
         sort: s.startedAt,
         title: s.name,
-        subtitle: `${formatMinutes(sessionDurationSec(s))} · ${exercisesDone(s)} exercise${exercisesDone(s) === 1 ? '' : 's'}`,
+        subtitle: tp('train.historyMeta', exercisesDone(s), { duration: formatMinutes(sessionDurationSec(s)) }),
         search: [s.name, s.notes, ...names].join(' ').toLowerCase(),
         href: `/train/history/${s.id}`,
       });
@@ -66,7 +68,7 @@ export default function HistoryPage() {
       });
     }
     return out.sort((a, b) => (a.date === b.date ? b.sort - a.sort : b.date.localeCompare(a.date)));
-  }, [sessions, activities, byId, settings.units.distance]);
+  }, [sessions, activities, byId, settings.units.distance, tp]);
 
   if (!sessions || !activities) return <Spinner />;
 
@@ -86,28 +88,28 @@ export default function HistoryPage() {
     setMonth(d.toISOString().slice(0, 7));
     setDay(null);
   };
-  const weekdays = Array.from({ length: 7 }, (_, i) => WEEKDAY_SHORT[(settings.weekStart + i) % 7]);
+  const weekdays = Array.from({ length: 7 }, (_, i) => weekdayShort((settings.weekStart + i) % 7));
 
   return (
     <Page
-      title="History"
+      title={t('train.historyTitle')}
       back={
-        <IconButton label="Back" onClick={() => nav(-1)}>
+        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
           <ChevronLeft className="size-6" />
         </IconButton>
       }
     >
       <Card className="p-3">
         <div className="flex items-center justify-between">
-          <IconButton label="Previous month" onClick={() => shiftMonth(-1)}>
+          <IconButton label={t('train.previousMonth')} onClick={() => shiftMonth(-1)}>
             <ChevronLeft className="size-5" />
           </IconButton>
           <h2 className="font-semibold">{formatDate(first, { month: 'long', year: 'numeric' })}</h2>
-          <IconButton label="Next month" onClick={() => shiftMonth(1)} disabled={month >= today.slice(0, 7)}>
+          <IconButton label={t('train.nextMonth')} onClick={() => shiftMonth(1)} disabled={month >= today.slice(0, 7)}>
             <ChevronRight className="size-5" />
           </IconButton>
         </div>
-        <div className="grid grid-cols-7 gap-1 mt-1 text-center" role="grid" aria-label="Calendar">
+        <div className="grid grid-cols-7 gap-1 mt-1 text-center" role="grid" aria-label={t('train.calendar')}>
           {weekdays.map((w) => (
             <div key={w} className="text-[11px] text-muted py-1" role="columnheader">
               {w.slice(0, 2)}
@@ -122,7 +124,7 @@ export default function HistoryPage() {
               <button
                 key={d}
                 role="gridcell"
-                aria-label={`${formatDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}: ${its.length} entr${its.length === 1 ? 'y' : 'ies'}`}
+                aria-label={tp('train.calendarEntries', its.length, { date: formatDate(d, { weekday: 'long', day: 'numeric', month: 'long' }) })}
                 aria-selected={day === d}
                 onClick={() => setDay(day === d ? null : d)}
                 className={clsx(
@@ -142,10 +144,10 @@ export default function HistoryPage() {
         </div>
         <div className="flex gap-4 justify-center text-[11px] text-muted mt-2">
           <span className="flex items-center gap-1">
-            <span className="size-1.5 rounded-full bg-ember" /> Workout
+            <span className="size-1.5 rounded-full bg-ember" /> {t('train.historyWorkout')}
           </span>
           <span className="flex items-center gap-1">
-            <span className="size-1.5 rounded-full bg-info" /> Activity
+            <span className="size-1.5 rounded-full bg-info" /> {t('train.historyActivity')}
           </span>
         </div>
       </Card>
@@ -153,32 +155,32 @@ export default function HistoryPage() {
       <div className="mt-4 space-y-3">
         <div className="relative">
           <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-faint" aria-hidden />
-          <Input aria-label="Search history" placeholder="Search by name, exercise or notes" className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input aria-label={t('train.searchHistory')} placeholder={t('train.searchHistoryPlaceholder')} className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <Segmented
-          label="Filter"
+          label={t('train.filterHistory')}
           value={kind}
           onChange={setKind}
           options={[
-            { value: 'all', label: 'All' },
-            { value: 'workouts', label: 'Workouts' },
-            { value: 'activities', label: 'Activities' },
+            { value: 'all', label: t('common.all') },
+            { value: 'workouts', label: t('train.filterWorkouts') },
+            { value: 'activities', label: t('train.filterActivities') },
           ]}
         />
         {day && (
           <div className="flex items-center justify-between text-sm">
-            <span>Showing {formatDate(day)}</span>
+            <span>{t('train.showingDate', { date: formatDate(day) })}</span>
             <Button size="sm" variant="ghost" onClick={() => setDay(null)}>
-              Show all
+              {t('train.showAll')}
             </Button>
           </div>
         )}
       </div>
 
       {items.length === 0 ? (
-        <EmptyState illustration={<NoWorkoutsArt />} title="Your training history starts with your first workout." body="Finished workouts and activities collect here." action={<Button variant="primary" onClick={() => nav('/train')}>Log a workout</Button>} />
+        <EmptyState illustration={<NoWorkoutsArt />} title={t('train.historyEmptyTitle')} body={t('train.historyEmptyHelp')} action={<Button variant="primary" onClick={() => nav('/train')}>{t('train.historyLog')}</Button>} />
       ) : filtered.length === 0 ? (
-        <EmptyState title="No matches" body="Try another search or filter." />
+        <EmptyState title={t('train.noMatches')} body={t('train.noMatchesHelp')} />
       ) : (
         <Card className="divide-y divide-line overflow-hidden mt-3">
           {filtered.slice(0, 300).map((i) => (

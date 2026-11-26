@@ -5,6 +5,7 @@ import { useApp } from '@/state/app';
 import { configureSync, useSyncStatus } from './engine';
 import { clearSignedUrlCache } from '@/backend/social';
 import { setPendingPostsAccount } from '@/social/pendingPosts';
+import { useT } from '@/i18n';
 
 /** Wires the sync engine to the current account / auth / connectivity. Mounted once in the shell. */
 export function SyncRunner() {
@@ -24,13 +25,14 @@ export function SyncRunner() {
 export function SyncStatusBanner() {
   const { auth, db } = useApp();
   const s = useSyncStatus();
+  const { t, tp } = useT();
   if (db.isGuest) return null;
   if (auth.status === 'expired' || (s.phase === 'paused_auth' && auth.status !== 'loading')) {
     return (
       <Link to="/auth?reauth=1" className="flex items-center gap-2 bg-warn-soft border-b border-warn/30 px-4 py-2 text-sm">
         <CloudOff className="size-4 text-warn shrink-0" aria-hidden />
         <span className="flex-1">
-          Backup paused: sign in again to resume{s.pending > 0 ? ` (${s.pending} change${s.pending === 1 ? '' : 's'} waiting)` : ''}. Your data is safe on this device.
+          {s.pending > 0 ? t('sync.pausedPending', { count: s.pending }) : t('sync.paused')}
         </span>
       </Link>
     );
@@ -40,7 +42,7 @@ export function SyncStatusBanner() {
       <Link to="/settings/data#sync" className="flex items-center gap-2 bg-warn-soft border-b border-warn/30 px-4 py-2 text-sm">
         <GitMerge className="size-4 text-warn shrink-0" aria-hidden />
         <span className="flex-1">
-          {s.conflicts} record{s.conflicts === 1 ? ' was' : 's were'} edited on two devices. Choose which version to keep.
+          {tp('sync.conflicts', s.conflicts)}
         </span>
       </Link>
     );
@@ -49,7 +51,7 @@ export function SyncStatusBanner() {
     return (
       <Link to="/settings/data#sync" className="flex items-center gap-2 bg-danger-soft border-b border-danger/30 px-4 py-2 text-sm">
         <AlertTriangle className="size-4 text-danger shrink-0" aria-hidden />
-        <span className="flex-1">Some changes couldn’t be backed up. Tap to retry.</span>
+        <span className="flex-1">{t('sync.retryBackup')}</span>
       </Link>
     );
   }

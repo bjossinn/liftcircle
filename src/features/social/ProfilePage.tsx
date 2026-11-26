@@ -12,16 +12,18 @@ import { PendingPostCard, PostCard } from './PostCard';
 import { PAGE_SIZE, usePostList } from './usePostList';
 import { useMyProfile } from './useMyProfile';
 import { useApp } from '@/state/app';
+import { useT } from '@/i18n';
 
 export default function ProfilePage() {
   const { username } = useParams();
   const nav = useNavigate();
   const { access, meId } = useSocialAccess();
+  const { t } = useT();
   return (
     <Page
-      title={username ? `@${username}` : 'Profile'}
+      title={username ? `@${username}` : t('nav.profile')}
       back={
-        <IconButton label="Back" onClick={() => nav(-1)}>
+        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
           <ChevronLeft className="size-6" />
         </IconButton>
       }
@@ -46,13 +48,14 @@ export default function ProfilePage() {
 export function ProfileShortcuts() {
   const { account, backendConfigured } = useApp();
   const nutritionOn = !!account?.settings?.nutritionEnabled && account.nutrition?.mode !== 'none';
+  const { t } = useT();
   const items = [
-    { to: '/nutrition', icon: Apple, title: 'Nutrition', subtitle: nutritionOn ? 'Protein, food log, recipes and meal plans' : 'Optional: protein target, food log, recipes' },
-    ...(backendConfigured ? [{ to: '/friends', icon: Users, title: 'Friends', subtitle: 'Friends and friend requests' }] : []),
-    { to: '/settings', icon: Settings, title: 'Settings', subtitle: 'Units, theme, workout, notifications, your data' },
+    { to: '/nutrition', icon: Apple, title: t('profile.nutrition'), subtitle: nutritionOn ? t('profile.nutritionEnabledHelp') : t('profile.nutritionDisabledHelp') },
+    ...(backendConfigured ? [{ to: '/friends', icon: Users, title: t('profile.friends'), subtitle: t('profile.friendsHelp') }] : []),
+    { to: '/settings', icon: Settings, title: t('profile.settings'), subtitle: t('profile.settingsHelp') },
   ];
   return (
-    <nav aria-label="Profile shortcuts" className="mb-4 rounded-2xl border border-line bg-surface card-shadow overflow-hidden">
+    <nav aria-label={t('profile.shortcuts')} className="mb-4 rounded-2xl border border-line bg-surface card-shadow overflow-hidden">
       <ul className="divide-y divide-line">
         {items.map((it) => (
           <li key={it.to}>
@@ -80,13 +83,14 @@ export function ProfileShortcuts() {
  */
 export function PendingUploads({ access }: { access: string }) {
   const pending = usePendingPosts();
+  const { t } = useT();
   if (pending.length === 0 || access === 'guest' || access === 'personal' || access === 'loading') return null;
   const failed = pending.some((p) => p.status === 'error');
   return (
     <section aria-labelledby="pending-uploads-title" className="mb-4">
-      <SectionTitle id="pending-uploads-title">{failed ? 'Uploads that need attention' : 'Not posted yet'}</SectionTitle>
-      {access === 'expired' && <Notice className="mb-2">These will upload after you sign in again.</Notice>}
-      {access === 'offline' && <Notice className="mb-2">These will upload when you’re back online.</Notice>}
+      <SectionTitle id="pending-uploads-title">{failed ? t('profile.pendingTitle') : t('profile.notPosted')}</SectionTitle>
+      {access === 'expired' && <Notice className="mb-2">{t('profile.pendingSignIn')}</Notice>}
+      {access === 'offline' && <Notice className="mb-2">{t('profile.pendingOffline')}</Notice>}
       <ul className="flex flex-col gap-3">
         {pending.map((p) => (
           <li key={p.id}>
@@ -125,6 +129,7 @@ function UserPosts({ userId, meId, empty, onBlocked, reloadOn }: { userId: ID; m
   // When a queued share finishes publishing (fewer pending), pull it into the list.
   const prevReload = useRef(reloadOn);
   const { refresh } = list;
+  const { t } = useT();
   useEffect(() => {
     if (reloadOn != null && prevReload.current != null && reloadOn < prevReload.current) void refresh();
     prevReload.current = reloadOn;
@@ -155,7 +160,7 @@ function UserPosts({ userId, meId, empty, onBlocked, reloadOn }: { userId: ID; m
                 </p>
               )}
               <Button onClick={() => void list.loadMore()} loading={list.loadingMore}>
-                {list.moreError ? 'Try again' : 'Load more'}
+                {list.moreError ? t('common.retry') : 'Load more' /* i18n: social posts list is outside this fragment */}
               </Button>
             </div>
           )}
@@ -174,6 +179,7 @@ function MyProfile({ meId }: { meId: string }) {
   const { profile, loading, error, reload } = useMyProfile(meId);
   const pendingCount = usePendingPosts().length;
   const [moderator, setModerator] = useState(false);
+  const { t } = useT();
   useEffect(() => {
     let off = false;
     socialApi
@@ -185,17 +191,17 @@ function MyProfile({ meId }: { meId: string }) {
     };
   }, []);
 
-  if (loading) return <Spinner label="Loading your profile" />;
-  if (error && !profile) return <ErrorState title="Couldn’t load your profile" message={error} onRetry={reload} />;
+  if (loading) return <Spinner label={t('profile.loading')} />;
+  if (error && !profile) return <ErrorState title={t('profile.loadFailed')} message={error} onRetry={reload} />;
   if (!profile)
     return (
       <EmptyState
         icon={<Users className="size-6" aria-hidden />}
-        title="Create your profile"
-        body="Pick a username so friends can find you. Your age, weight, measurements and health data are never part of your profile."
+        title={t('profile.createTitle')}
+        body={t('profile.createHelp')}
         action={
           <Button variant="primary" onClick={() => nav('/profile/edit')}>
-            Create profile
+            {t('profile.create')}
           </Button>
         }
       />
@@ -205,23 +211,23 @@ function MyProfile({ meId }: { meId: string }) {
       <ProfileHeader profile={profile}>
         <div className="flex flex-wrap justify-center gap-2 mt-4">
           <Button icon={<Pencil className="size-4" />} onClick={() => nav('/profile/edit')}>
-            Edit profile
+            {t('profile.edit')}
           </Button>
           <Button icon={<Share2 className="size-4" />} onClick={() => void shareLink(profileUrl(profile.username), `${profile.displayName} on Hard Earned`, toast)}>
-            Share profile link
+            {t('profile.shareLink')}
           </Button>
           <Button icon={<Users className="size-4" />} onClick={() => nav('/friends')}>
-            Friends
+            {t('profile.friends')}
           </Button>
         </div>
-        {!profile.discoverable && <p className="text-xs text-muted mt-3">Your profile is hidden from username search. Friends can still see it.</p>}
+        {!profile.discoverable && <p className="text-xs text-muted mt-3">{t('profile.hidden')}</p>}
         {moderator && (
           <Link to="/moderation" className="inline-flex items-center gap-1.5 min-h-11 mt-2 text-sm text-accent font-medium">
-            <ShieldCheck className="size-4" aria-hidden /> Moderation queue
+            <ShieldCheck className="size-4" aria-hidden /> {t('profile.moderationQueue')}
           </Link>
         )}
       </ProfileHeader>
-      <UserPosts userId={profile.id} meId={meId} empty="Posts you share will appear here." reloadOn={pendingCount} />
+      <UserPosts userId={profile.id} meId={meId} empty={t('profile.postsEmpty')} reloadOn={pendingCount} />
     </>
   );
 }

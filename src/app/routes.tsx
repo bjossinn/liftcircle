@@ -5,6 +5,7 @@ import { Shell } from './Shell';
 import { Spinner, Page, EmptyState, Button } from '@/components/ui';
 import { RouteError } from './RouteError';
 import { CoachMarketplaceOff, FeatureGate, FeedOff } from './FeatureGate';
+import { useT } from '@/i18n';
 
 const L = (f: () => Promise<{ default: ComponentType }>) => {
   const C = lazy(f);
@@ -16,9 +17,10 @@ const L = (f: () => Promise<{ default: ComponentType }>) => {
 };
 
 function NotFound() {
+  const { t } = useT();
   return (
-    <Page title="Not found">
-      <EmptyState title="This page doesn’t exist" action={<Button onClick={() => history.back()}>Go back</Button>} />
+    <Page title={t('nav.notFound')}>
+      <EmptyState title={t('nav.missingPage')} action={<Button onClick={() => history.back()}>{t('nav.goBack')}</Button>} />
     </Page>
   );
 }

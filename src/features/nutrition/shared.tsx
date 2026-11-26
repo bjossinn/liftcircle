@@ -8,13 +8,28 @@ import { planPrefsFrom, type PlanPrefs } from '@/domain/nutrition/mealplan';
 import { displayMacro } from '@/domain/nutrition/recipes';
 import { computeNutritionTargets, type TargetInput } from '@/domain/nutrition/targets';
 import { remainingVsTargets, type DayTotals, type MacroKey } from '@/domain/nutrition/log';
+import { numberText, t, useT } from '@/i18n';
 
-export const MACRO_LABEL: Record<MacroKey, string> = { kcal: 'Calories', protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
+/** Macro display names in the current language (read at render). */
+export const MACRO_LABEL: Readonly<Record<MacroKey, string>> = {
+  get kcal() {
+    return t('aiCard.macro.calories');
+  },
+  get protein() {
+    return t('aiCard.macro.protein');
+  },
+  get carbs() {
+    return t('aiCard.macro.carbs');
+  },
+  get fat() {
+    return t('aiCard.macro.fat');
+  },
+};
 export const MACRO_UNIT: Record<MacroKey, string> = { kcal: 'kcal', protein: 'g', carbs: 'g', fat: 'g' };
 
 export function fmtMacro(v: number | undefined | null, key: MacroKey): string {
   if (v == null) return '–';
-  return key === 'kcal' ? `${displayMacro(v, key)} kcal` : `${displayMacro(v, key)} g`;
+  return key === 'kcal' ? `${numberText(displayMacro(v, key))} kcal` : `${numberText(displayMacro(v, key))} g`;
 }
 
 /** Latest logged bodyweight in kg; undefined while loading, null if none. */
@@ -66,6 +81,9 @@ export function computeFromAccount(account: AccountState, weightKg: number | nul
 export function MacroProgress({ totals, targets, compact }: { totals: DayTotals; targets: NutritionTargets; compact?: boolean }) {
   const rows = remainingVsTargets(totals, targets).filter((r) => r.key === 'protein' || targets.mode === 'full' || targets.mode === 'manual');
   const shown = compact ? rows.filter((r) => r.key === 'protein' || r.key === 'kcal') : rows;
+  const { t, tp, language } = useT();
+  // "at least {{amount}}" with the amount in bold: split the sentence around the amount.
+  const [atLeastBefore, atLeastAfter] = t('aiCard.macro.atLeast', { amount: '\u0000' }).split('\u0000');
   return (
     <div className="flex flex-col gap-3">
       {shown.map((r) => {
@@ -75,22 +93,26 @@ export function MacroProgress({ totals, targets, compact }: { totals: DayTotals;
             <div className="flex items-baseline justify-between gap-2 mb-1">
               <span className={cx('font-medium', r.key === 'protein' && !compact ? 'text-[15px]' : 'text-sm')}>{MACRO_LABEL[r.key]}</span>
               <span className="text-sm tabular">
-                {r.partial && r.eaten > 0 ? 'at least ' : ''}
-                <span className="font-semibold">{displayMacro(r.eaten, r.key)}</span>
-                {r.target != null ? <span className="text-muted"> / {r.key === 'kcal' ? `${r.target} kcal` : `${r.target} g`}</span> : <span className="text-muted"> {MACRO_UNIT[r.key]}</span>}
+                {r.partial && r.eaten > 0 ? atLeastBefore : ''}
+                <span className="font-semibold">{numberText(displayMacro(r.eaten, r.key))}</span>
+                {r.partial && r.eaten > 0 ? atLeastAfter : ''}
+                {r.target != null ? <span className="text-muted"> / {`${numberText(r.target)} ${MACRO_UNIT[r.key]}`}</span> : <span className="text-muted"> {MACRO_UNIT[r.key]}</span>}
               </span>
             </div>
-            {r.target != null && <ProgressBar value={r.eaten} max={r.target} label={`${MACRO_LABEL[r.key]} progress`} tone={r.remaining != null && r.remaining < 0 && r.key === 'kcal' ? 'warn' : 'accent'} />}
+            {r.target != null && <ProgressBar value={r.eaten} max={r.target} label={t('aiCard.macro.progress', { macro: MACRO_LABEL[r.key] })} tone={r.remaining != null && r.remaining < 0 && r.key === 'kcal' ? 'warn' : 'accent'} />}
             {!compact && (r.remaining != null || missing > 0) && (
               <p className="text-xs text-muted mt-1">
                 {r.remaining != null &&
                   (r.remaining > 0
-                    ? `${displayMacro(r.remaining, r.key)}${r.key === 'kcal' ? ' kcal' : ' g'} to go`
+                    ? t('aiCard.macro.remaining', { amount: displayMacro(r.remaining, r.key), unit: MACRO_UNIT[r.key] })
                     : r.remaining === 0
-                      ? 'Target reached'
-                      : `${displayMacro(-r.remaining, r.key)}${r.key === 'kcal' ? ' kcal' : ' g'} over target`)}
+                      ? t('aiCard.macro.targetReached')
+                      : t('aiCard.macro.overTarget', { amount: displayMacro(-r.remaining, r.key), unit: MACRO_UNIT[r.key] }))}
                 {r.remaining != null && missing > 0 && ' · '}
-                {missing > 0 && `${missing} item${missing === 1 ? '' : 's'} without a ${r.key === 'kcal' ? 'calorie' : MACRO_LABEL[r.key].toLowerCase()} value`}
+                {missing > 0 &&
+                  tp('aiCard.macro.missing', missing, {
+                    macro: language === 'en' && r.key === 'kcal' ? 'calorie' : MACRO_LABEL[r.key].toLocaleLowerCase(language),
+                  })}
               </p>
             )}
           </div>
@@ -101,17 +123,20 @@ export function MacroProgress({ totals, targets, compact }: { totals: DayTotals;
 }
 
 export function AllergenNote({ className }: { className?: string }) {
+  const { t } = useT();
   return (
     <p className={cx('text-xs text-muted', className)}>
-      Allergen and diet filtering is based on generic ingredient data and can't guarantee safety. Always check the labels of packaged foods you buy.
+      {t('aiCard.nutrition.allergenNote')}
     </p>
   );
 }
 
 /** Macros as a compact line: "420 kcal · 32 g protein". Unknown values are shown as "?". */
 export function macroLine(e: { kcal?: number; protein?: number; carbs?: number; fat?: number }, full = true): string {
-  const parts = [`${e.kcal != null ? displayMacro(e.kcal, 'kcal') : '?'} kcal`, `${e.protein != null ? displayMacro(e.protein, 'protein') : '?'} g protein`];
-  if (full && (e.carbs != null || e.fat != null)) parts.push(`${e.carbs != null ? displayMacro(e.carbs, 'carbs') : '?'} C`, `${e.fat != null ? displayMacro(e.fat, 'fat') : '?'} F`);
+  const amount = (v: number | undefined, key: MacroKey) => (v != null ? numberText(displayMacro(v, key)) : '?');
+  const parts = [`${amount(e.kcal, 'kcal')} kcal`, t('aiCard.macro.lineProtein', { amount: amount(e.protein, 'protein') })];
+  if (full && (e.carbs != null || e.fat != null))
+    parts.push(t('aiCard.macro.lineCarbs', { amount: amount(e.carbs, 'carbs') }), t('aiCard.macro.lineFat', { amount: amount(e.fat, 'fat') }));
   return parts.join(' · ');
 }
 

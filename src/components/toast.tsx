@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
 import { Bot, X } from 'lucide-react';
+import { useT } from '@/i18n';
 
 export interface ToastOptions {
   tone?: 'info' | 'success' | 'error' | 'warn';
@@ -22,6 +23,7 @@ let nextId = 1;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
+  const { t: tr } = useT();
   const dismiss = useCallback((id: number) => setItems((xs) => xs.filter((x) => x.id !== id)), []);
   const dismissCoach = useCallback(() => setItems((xs) => xs.filter((x) => x.variant !== 'coach')), []);
   const show = useCallback(
@@ -63,7 +65,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 {t.action.label}
               </button>
             )}
-            <button aria-label="Dismiss" className="text-muted min-h-11 min-w-11 -mr-2 inline-flex items-center justify-center" onClick={() => dismiss(t.id)}>
+            <button aria-label={tr('common.dismiss')} className="text-muted min-h-11 min-w-11 -mr-2 inline-flex items-center justify-center" onClick={() => dismiss(t.id)}>
               <X className="size-4" aria-hidden />
             </button>
           </div>
@@ -84,7 +86,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <Bot className="size-4" />
               </span>
               <span className="flex-1 py-1.5 pr-2">
-                <span className="sr-only">Training assistant: </span>
+                <span className="sr-only">{tr('common.assistantPrefix')} </span>
                 {t.message}
               </span>
               {t.action && (

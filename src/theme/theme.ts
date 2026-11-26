@@ -12,16 +12,27 @@
  * - the inline script in index.html paints the right theme before React starts (`lc-theme-applied`).
  */
 import type { Settings } from '@/domain/types';
+import { t as translate, type MessageKey } from '@/i18n';
 
 export type ThemeChoice = NonNullable<Settings['theme']>;
 export type ResolvedTheme = 'dark' | 'light';
 
-export const THEME_OPTIONS: { value: ThemeChoice; label: string; description: string }[] = [
-  { value: 'dark', label: 'Dark', description: 'Charcoal with ember accents' },
-  { value: 'light', label: 'Light', description: 'Chalk with ember accents' },
-  { value: 'system', label: 'Match my phone', description: 'Follows your phone’s light or dark mode' },
+/** Label and description are read in the current language each time they're used. */
+const themeOption = (value: ThemeChoice, labelKey: MessageKey, descriptionKey: MessageKey) => ({
+  value,
+  get label() {
+    return translate(labelKey);
+  },
+  get description() {
+    return translate(descriptionKey);
+  },
+});
+export const THEME_OPTIONS: readonly { readonly value: ThemeChoice; readonly label: string; readonly description: string }[] = [
+  themeOption('dark', 'settings.themeDark', 'settings.themeDarkHelp'),
+  themeOption('light', 'settings.themeLight', 'settings.themeLightHelp'),
+  themeOption('system', 'settings.themeSystem', 'settings.themeSystemHelp'),
 ];
-export const themeLabel = (t: ThemeChoice) => THEME_OPTIONS.find((o) => o.value === t)?.label ?? 'Dark';
+export const themeLabel = (t: ThemeChoice) => THEME_OPTIONS.find((o) => o.value === t)?.label ?? translate('settings.themeDark');
 
 /** Status-bar / PWA theme-color per theme. Equal to each theme's --c-bg (checked in themeContrast.test.ts). */
 export const THEME_META_COLOR: Record<ResolvedTheme, string> = { dark: '#17191b', light: '#f3efe7' };

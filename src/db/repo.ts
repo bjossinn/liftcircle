@@ -2,6 +2,7 @@ import { getDb, SYNCED_ENTITIES, type LiftDb, type SyncedEntity } from './db';
 import type { SyncFields } from '@/domain/types';
 import { uuid } from '@/lib/id';
 import { reportStorageError } from '@/pwa/health';
+import { t } from '@/i18n';
 
 type Listener = () => void;
 const writeListeners = new Set<Listener>();
@@ -11,9 +12,14 @@ export function onLocalWrite(fn: Listener) {
   return () => writeListeners.delete(fn);
 }
 
+/**
+ * A local write failed. The message uses the current (persisted device) language via plain `t()`, since this can be
+ * thrown before any account or React tree exists; `code` stays stable for callers that render their own copy.
+ */
 export class StorageWriteError extends Error {
+  readonly code = 'storage_write' as const;
   constructor(cause: unknown) {
-    super('Could not save to this device’s storage. Your browser may be out of space or blocking storage.');
+    super(t('sync.saveStorageFailed'));
     this.cause = cause;
   }
 }

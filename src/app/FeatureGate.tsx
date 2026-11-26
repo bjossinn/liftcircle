@@ -8,6 +8,7 @@ import { Bot, HeartHandshake, Home, UserRound, Users } from 'lucide-react';
 import { EmptyState, Page } from '@/components/ui';
 import { isFeatureEnabled, type FeatureFlag } from '@/config/featureFlags';
 import { TopActions } from './TopActions';
+import { useT } from '@/i18n';
 
 export function FeatureGate({ flag, off, children }: { flag: FeatureFlag; off: ReactNode; children?: ReactNode }) {
   return <>{isFeatureEnabled(flag) ? children : off}</>;
@@ -19,21 +20,22 @@ const secondaryLink = `${linkBtn} bg-surface-2 text-ink hover:bg-surface-3 borde
 
 /** /feed while the social feed is off. Sharing, post pages, profile and friends keep working. */
 export function FeedOff() {
+  const { t } = useT();
   return (
-    <Page title="Feed" actions={<TopActions />}>
+    <Page title={t('nav.feed')} actions={<TopActions />}>
       <EmptyState
         icon={<Users className="size-6" aria-hidden />}
-        title="The feed isn’t available right now"
-        body="You can still share a workout. Posts you share stay on your profile, and links to a post still open it. Nothing has been deleted."
+        title={t('nav.feedUnavailable')}
+        body={t('nav.feedUnavailableHelp')}
         action={
           <div className="flex flex-col gap-2 w-full max-w-xs">
             <Link to="/profile" className={primaryLink}>
               <UserRound className="size-4" aria-hidden />
-              Your profile
+              {t('nav.yourProfile')}
             </Link>
             <Link to="/" className={secondaryLink}>
               <Home className="size-4" aria-hidden />
-              Back to Today
+              {t('nav.backToday')}
             </Link>
           </div>
         }
@@ -44,17 +46,18 @@ export function FeedOff() {
 
 /** /coaching/find, coach profiles and new requests while the coach marketplace is off. */
 export function CoachMarketplaceOff() {
+  const { t } = useT();
   return (
-    <Page title="Find a coach">
+    <Page title={t('nav.findCoach')}>
       <EmptyState
         icon={<HeartHandshake className="size-6" aria-hidden />}
-        title="Finding a coach isn’t open yet"
-        body="The training assistant can help with your plan in the meantime. If you already work with a coach, everything with them keeps working under Coaching."
+        title={t('nav.marketplaceUnavailable')}
+        body={t('nav.marketplaceUnavailableHelp')}
         action={
           <div className="flex flex-col gap-2 w-full max-w-xs">
             <Link to="/coaching" className={primaryLink}>
               <Bot className="size-4" aria-hidden />
-              Go to Coaching
+              {t('nav.goCoaching')}
             </Link>
           </div>
         }

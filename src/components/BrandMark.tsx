@@ -7,6 +7,7 @@
 import clsx from 'clsx';
 import iconUrl from '@/assets/brand/hard-earned-icon-1024.png';
 import { BRAND } from '@/config/brand';
+import { useT } from '@/i18n';
 
 export function BrandMark({ size = 56, className }: { size?: number; className?: string }) {
   return (
@@ -18,12 +19,13 @@ export function BrandMark({ size = 56, className }: { size?: number; className?:
 
 /** Mark, wordmark and the primary line. `title` adds a heading (e.g. "Welcome to Hard Earned"). */
 export function BrandMoment({ title, size = 56 }: { title?: string; size?: number }) {
+  const { t } = useT();
   return (
     <div className="flex items-center gap-3">
       <BrandMark size={size} />
       <div className="min-w-0">
         <div className="wordmark text-[22px] leading-6 text-ink">{BRAND.wordmark}</div>
-        <div className="text-sm text-muted">{BRAND.tagline}</div>
+        <div className="text-sm text-muted">{t('brand.tagline')}</div>
         {title && <div className="font-semibold text-ink mt-1">{title}</div>}
       </div>
     </div>
