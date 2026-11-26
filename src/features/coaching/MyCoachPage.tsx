@@ -57,7 +57,7 @@ export default function MyCoachPage() {
                   Look for a coach
                 </Button>
               )}
-              <Button variant={marketplace ? undefined : 'primary'} icon={<Sparkles className="size-4" />} onClick={() => nav('/coaching/ai')}>
+              <Button variant={marketplace ? undefined : 'primary'} icon={<Sparkles className="size-4" />} onClick={() => nav('/coach')}>
                 Try the training assistant
               </Button>
             </div>
@@ -77,7 +77,7 @@ export default function MyCoachPage() {
                   Look for a coach
                 </Button>
               ) : (
-                <Button className="mt-3" icon={<Sparkles className="size-4" />} onClick={() => nav('/coaching/ai')}>
+                <Button className="mt-3" icon={<Sparkles className="size-4" />} onClick={() => nav('/coach')}>
                   Try the training assistant
                 </Button>
               )}

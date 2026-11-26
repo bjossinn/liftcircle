@@ -8,8 +8,14 @@ test('coaching and training assistant show truthful unavailable states and the t
   page.on('pageerror', (e) => errors.push(String(e)));
   await completeOnboarding(page);
 
-  await page.getByRole('link', { name: 'Coaching' }).click();
-  await expect(page).toHaveURL(/\/coaching$/);
+  // The Coach tab opens the training assistant directly (here: truthfully not available in the personal version).
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Coach' }).click();
+  await expect(page).toHaveURL(/\/coach$/);
+  await expect(page.getByText('The training assistant isn’t set up on this server yet')).toBeVisible();
+  await expect(page.getByRole('textbox')).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Coach channels' })).toHaveCount(0); // no human coaching here
+
+  await page.goto('/coaching');
   await expect(page.getByText('Coaching needs the online version')).toBeVisible();
 
   await page.goto('/coaching/ai');

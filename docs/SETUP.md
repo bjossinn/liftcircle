@@ -108,7 +108,7 @@ turn on airplane mode, reload, keep logging.
 
 ## 7. Coaching and the training assistant (added 29 Oct 2026)
 
-Everything below is optional: without it, the Coaching tab truthfully says what isn't available and the rest of the
+Everything below is optional: without it, the Coach tab truthfully says what isn't available and the rest of the
 app keeps working. Details: docs/BACKEND.md §8 (coaching), docs/AI_COACH.md (Training assistant).
 
 1. **Apply the 4 new migrations, in this order** (additive; no existing table is rewritten):

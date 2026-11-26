@@ -156,7 +156,7 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
             </div>
           </>
         )}
-        {!account.settings.nutritionEnabled && !applied && <Notice tone="info">Nutrition features are off in Settings. The plan is saved, but turn them on to see it in the Nutrition tab.</Notice>}
+        {!account.settings.nutritionEnabled && !applied && <Notice tone="info">Nutrition features are off in Settings. The plan is saved, but turn them on to see it under Nutrition (Profile → Nutrition).</Notice>}
       </div>
     </section>
   );

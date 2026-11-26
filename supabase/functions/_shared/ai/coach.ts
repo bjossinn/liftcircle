@@ -19,7 +19,7 @@ import { MAX_TOOL_ROUNDS, runTool, TOOL_DEFS, type ToolState } from './tools.ts'
 // @ts-ignore see above
 import { splitWhy, tidyReply, wordCount } from './reply.ts';
 // @ts-ignore see above
-import { validateOpenLinks } from './appGuide.ts';
+import { guideFeaturesFromEnv, validateOpenLinks } from './appGuide.ts';
 // @ts-ignore see above
 import { humanizeDates } from './humanDates.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
@@ -232,7 +232,9 @@ async function answer(a: Answering): Promise<CoachResult> {
   const { deps, uid, id, text, mode, unsynced, prov, settings, tally, fail, recordOnce } = a;
   const now = deps.now?.() ?? new Date();
   const started = Date.now();
-  const ctx = await buildContext({ db: deps.db, uid, settings, text, mode, now, unsynced });
+  // Hidden product areas (coach marketplace, social feed) stay out of the app guide and its links.
+  const features = guideFeaturesFromEnv(deps.env);
+  const ctx = await buildContext({ db: deps.db, uid, settings, text, mode, now, unsynced, features });
   const model = prov.model;
   const maxTokens = intEnv(deps, 'AI_MAX_OUTPUT_TOKENS', 1200, 64, 8192);
   const state: ToolState = { proposal: null, proposalAttempts: 0, weekPlan: null, weekAttempts: 0, mealPlan: null, mealPlanAttempts: 0, recipes: null };
@@ -373,7 +375,7 @@ async function answer(a: Answering): Promise<CoachResult> {
   // know); the rest are stripped, lead-in lines removed, and the kept links moved to the end.
   const known = { ...ctx.known };
   if (/\[\[\s*open\s*:\s*\/nutrition\/recipes\//i.test(reply)) known.recipe = new Set((await deps.db.getRecipes()).map((r) => r.id));
-  const links = validateOpenLinks(reply, known);
+  const links = validateOpenLinks(reply, known, features);
   reply = links.text;
   if (!reply) {
     reply = weekPlan

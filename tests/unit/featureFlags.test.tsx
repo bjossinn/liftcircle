@@ -133,15 +133,15 @@ describe('feature flags module', () => {
 });
 
 describe('social feed flag: navigation', () => {
-  it('OFF (default): no Feed tab; the other five tabs remain, Coaching last', () => {
+  it('OFF (default): no Feed tab; the four tabs are Today, Train, Coach, Progress', () => {
     const tabs = mainTabs();
-    expect(tabs.map((t) => t.label)).toEqual(['Today', 'Train', 'Nutrition', 'Progress', 'Coaching']);
+    expect(tabs.map((t) => t.label)).toEqual(['Today', 'Train', 'Coach', 'Progress']);
     expect(tabs.map((t) => t.to)).not.toContain('/feed');
   });
 
-  it('ON via VITE_ENABLE_SOCIAL_FEED: the Feed tab is back in its old place', () => {
+  it('ON via VITE_ENABLE_SOCIAL_FEED: Feed comes back as a fifth tab', () => {
     vi.stubEnv('VITE_ENABLE_SOCIAL_FEED', 'true');
-    expect(mainTabs().map((t) => t.label)).toEqual(['Today', 'Train', 'Feed', 'Nutrition', 'Progress', 'Coaching']);
+    expect(mainTabs().map((t) => t.label)).toEqual(['Today', 'Train', 'Coach', 'Progress', 'Feed']);
   });
 
   it('OFF: /feed explains the feed is off and links to the profile and Today (the feed page itself is not rendered)', async () => {

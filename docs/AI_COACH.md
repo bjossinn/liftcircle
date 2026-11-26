@@ -269,7 +269,11 @@ lists, italic rarely, no headings/tables/code blocks, emoji rarely). `tidyReply`
 what you do there, how to reach it from the tab bar). It goes into the system prompt; "how do I…" questions are in
 scope and answered in 1–3 steps with a link. `tests/unit/aiAppGuide.test.ts` fails when a route in
 `src/app/routes.tsx` is neither in `APP_GUIDE` nor in `GUIDE_IGNORED` (admin/auth/internal screens and pages that
-need ids the coach can't know) — **update the guide whenever routes change**.
+need ids the coach can't know) — **update the guide whenever routes change**. Navigation is four tabs (Today, Train,
+Coach, Progress) with Profile in the header leading to Nutrition, Friends and Settings. Entries for flagged areas (the
+social feed, finding a coach) are left out of the prompt and their links refused unless the function's env switches
+them on: `ENABLE_SOCIAL_FEED` / `ENABLE_COACH_MARKETPLACE` (or the app's `VITE_` names; same values as
+`src/config/featureFlags.ts`, default off). Set them on the `ai-coach` function whenever you turn the app flags on.
 
 **In-app links.** The model may write `[[open:/path|Button label]]`. Before storing, `validateOpenLinks` keeps at most 2
 whose path matches a guide route — `:id` routes only with ids the server knows (catalog exercises, catalog recipes,

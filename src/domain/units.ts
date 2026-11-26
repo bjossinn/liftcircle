@@ -1,4 +1,4 @@
-import type { DistanceUnit, LengthUnit } from './types';
+import type { DistanceUnit, LengthUnit, UnitPrefs } from './types';
 
 // Weight conversion and display are shared with the ai-coach function (one implementation for both).
 export { KG_PER_LB, lbToKg, kgToLb, round, toKg, fromKg, displayWeight, formatWeight, trimNum } from '../../supabase/functions/_shared/training/units';
@@ -12,6 +12,42 @@ export const inToCm = (inch: number) => inch * CM_PER_IN;
 export const cmToIn = (cm: number) => cm / CM_PER_IN;
 export const miToM = (mi: number) => mi * M_PER_MI;
 export const mToMi = (m: number) => m / M_PER_MI;
+
+/* -------------------------------------------------------------- locale */
+/** Regions that use pounds, feet/inches and miles day to day (US, Liberia, Myanmar). Everywhere else: kg, cm, km. */
+const IMPERIAL_REGIONS = new Set(['US', 'LR', 'MM']);
+
+/** The region of a BCP 47 tag ("en-US" → "US"), via Intl.Locale when available. Undefined when there is none. */
+export function localeRegion(locale: string | undefined | null): string | undefined {
+  if (!locale || typeof locale !== 'string') return undefined;
+  try {
+    const r = new Intl.Locale(locale.replace(/_/g, '-')).region;
+    if (r) return r.toUpperCase();
+  } catch {
+    /* fall back to parsing below */
+  }
+  const m = /^[a-z]{2,3}(?:[-_][A-Za-z]{4})?[-_]([A-Za-z]{2}|\d{3})\b/i.exec(locale);
+  return m ? m[1].toUpperCase() : undefined;
+}
+
+/**
+ * Default units for a device locale: en-US (and other imperial regions) → lb / ft-in / mi, everything else → kg / cm / km.
+ * Only used as a starting point for new users; units can be changed any time in Settings.
+ */
+export function unitsForLocale(locale: string | undefined | null): UnitPrefs {
+  const region = localeRegion(locale);
+  return region && IMPERIAL_REGIONS.has(region) ? { weight: 'lb', length: 'ftin', distance: 'mi' } : { weight: 'kg', length: 'cm', distance: 'km' };
+}
+
+/** The device's preferred locale (navigator.language, then Intl), or undefined outside a browser. */
+export function deviceLocale(): string | undefined {
+  try {
+    const nav = typeof navigator !== 'undefined' ? navigator : undefined;
+    return nav?.languages?.[0] || nav?.language || Intl.DateTimeFormat().resolvedOptions().locale || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /* -------------------------------------------------------------- length */
 export function cmToFtIn(cm: number): { ft: number; inch: number } {

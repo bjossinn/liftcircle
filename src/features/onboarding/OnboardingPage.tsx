@@ -1,7 +1,8 @@
 /**
- * /onboarding — short multi-step setup wizard. Progress is saved to kv('onboarding-draft') after every
- * change so a reload resumes. Ends with a suggested, editable program (or a manual program) and
- * optional nutrition targets.
+ * /onboarding — six quick questions (goal, experience, which days, session length, where you train, anything to be
+ * careful with; about a minute), then a suggested, editable program. Units come from the device locale; body details
+ * and nutrition are set up later from Profile, Progress, Nutrition or Settings. Progress is saved to
+ * kv('onboarding-draft') after every change so a reload resumes.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { useNavigate } from 'react-router';
@@ -11,36 +12,27 @@ import { Button, ConfirmDialog, IconButton, Notice, ProgressBar, Spinner } from 
 import { useToast } from '@/components/toast';
 import { useApp } from '@/state/app';
 import { useExercises } from '@/data/catalog';
-import { alive, kvGet, kvSet, newRecord, saveRecord } from '@/db/repo';
-import { computeNutritionTargets, type TargetInput } from '@/domain/nutrition/targets';
+import { alive, kvGet, kvSet, saveRecord } from '@/db/repo';
 import { createProgram } from '@/domain/program/program';
 import { emptyTemplate, generateProgram, suggestProgramName } from '@/domain/program/generator';
 import { splitKeyOfVersion } from '@/domain/program/splits';
 import { SPLITS } from '@/domain/program/templates';
-import { fromKg, round } from '@/domain/units';
 import { formatDate, todayISO } from '@/lib/dates';
-import type { AccountState, NutritionTargets, OnboardingAnswers, ProgramVersion, SplitKey } from '@/domain/types';
-import { DRAFT_KEY, isUnder18, migrateDraft, newDraft, STEP_TITLES, stepsFor, validateStep, type Draft, type StepKey } from './draft';
-import {
-  AboutStep, BodyStep, EquipmentStep, ExercisesStep, ExperienceStep, GoalStep, LifestyleStep, LimitsStep, ManualStep, NutritionStep, ScheduleStep, WelcomeStep,
-  type StepProps,
-} from './steps';
-import { ResultStep, ReviewStep } from './result';
+import type { AccountState, OnboardingAnswers, ProgramVersion, SplitKey } from '@/domain/types';
+import { DRAFT_KEY, migrateDraft, newDraft, QUESTION_STEPS, questionNumber, STEP_TITLES, stepsFor, validateStep, type Draft, type StepKey } from './draft';
+import { DaysStep, DurationStep, ExperienceStep, GoalStep, LimitsStep, LocationStep, ManualStep, WelcomeStep, type StepProps } from './steps';
+import { ResultStep } from './result';
 import { startFirstWorkout } from './firstWorkout';
 import { trackOnboardingCompleted } from '@/analytics/analytics';
 
 const STEP_COMPONENTS: Partial<Record<StepKey, (p: StepProps) => JSX.Element>> = {
   welcome: WelcomeStep,
-  about: AboutStep,
-  body: BodyStep,
   goal: GoalStep,
   experience: ExperienceStep,
-  schedule: ScheduleStep,
-  equipment: EquipmentStep,
-  exercises: ExercisesStep,
+  days: DaysStep,
+  duration: DurationStep,
+  location: LocationStep,
   limits: LimitsStep,
-  lifestyle: LifestyleStep,
-  nutrition: NutritionStep,
   manual: ManualStep,
 };
 
@@ -48,62 +40,12 @@ function isDraft(v: unknown): v is Draft {
   return !!v && typeof v === 'object' && (v as Draft).v === 1 && typeof (v as Draft).step === 'string' && !!(v as Draft).a;
 }
 
-function nutritionInput(a: OnboardingAnswers, d: Draft): TargetInput {
-  const ref: 'goal' | 'current' = a.targetWeightKg != null && (d.nutri.refSource === 'goal' || a.weightKg == null) ? 'goal' : 'current';
-  return {
-    age: a.age,
-    weightKg: a.weightKg,
-    heightCm: a.heightCm,
-    sexParam: a.nutritionMode === 'full' ? a.sexParam : undefined,
-    activityLevel: a.activityLevel,
-    goal: a.goal,
-    mode: isUnder18(a) ? 'protein_only' : (a.nutritionMode ?? 'protein_only'),
-    proteinPerKg: d.nutri.proteinPerKg,
-    referenceWeightKg: ref === 'goal' ? a.targetWeightKg : undefined,
-    referenceWeightSource: ref,
-    mealsPerDay: a.diet.mealsPerDay,
-    individualizedNutrition: a.individualizedNutrition,
-    weightUnit: a.units.weight,
-  };
-}
-
-function manualTargets(d: Draft, base: NutritionTargets | null, reason: NutritionTargets['autoDisabledReason']): NutritionTargets {
-  const n = d.nutri;
-  const t: NutritionTargets = {
-    mode: 'manual',
-    proteinPerKg: n.proteinPerKg,
-    mealsPerDay: d.a.diet.mealsPerDay,
-    autoDisabledReason: reason ?? null,
-    updatedAt: Date.now(),
-  };
-  if (n.manualProtein != null) t.proteinG = n.manualProtein;
-  if (n.manualCalories != null) t.calories = n.manualCalories;
-  if (n.manualCarbs != null) t.carbsG = n.manualCarbs;
-  if (n.manualFat != null) t.fatG = n.manualFat;
-  if (base?.referenceWeightKg != null) t.referenceWeightKg = base.referenceWeightKg;
-  return t;
-}
-
-function profileFrom(a: OnboardingAnswers, prev: AccountState['profile']): AccountState['profile'] {
-  const full = a.wantsNutrition && a.nutritionMode === 'full' && !isUnder18(a);
-  return {
-    ...prev,
-    displayName: a.displayName.trim(),
-    age: a.age,
-    ageRecordedAt: a.age != null ? Date.now() : undefined,
-    heightCm: a.heightCm,
-    sexParam: full ? a.sexParam : undefined,
-    goal: a.goal,
-    secondaryGoal: a.secondaryGoal,
-    targetWeightKg: a.targetWeightKg,
-    experience: a.experience,
-    activityLevel: a.activityLevel,
-    limitations: a.limitations,
-    injuryNotes: a.limitationNotes,
-    diet: a.diet,
-    individualizedNutrition: !!a.individualizedNutrition,
-    onboardedAt: Date.now(),
-  };
+/**
+ * The profile after setup: only what the six questions ask (goal, experience, areas to be careful with) changes.
+ * Everything else an existing account already has (name, body details, diet, nutrition choices) is kept as it is.
+ */
+export function profileFrom(a: OnboardingAnswers, prev: AccountState['profile']): AccountState['profile'] {
+  return { ...prev, goal: a.goal, experience: a.experience, limitations: a.limitations, onboardedAt: Date.now() };
 }
 
 export default function OnboardingPage() {
@@ -161,10 +103,6 @@ export default function OnboardingPage() {
     return generateProgram(draft.a, catalog, { startDate: today, variant: draft.variant });
   }, [draft, answersKey, catalog, today]);
 
-  const nutrition = useMemo(() => {
-    if (!draft || !draft.a.wantsNutrition || draft.mode !== 'plan') return null;
-    return computeNutritionTargets(nutritionInput(draft.a, draft));
-  }, [draft]);
 
   if (!draft) {
     return (
@@ -178,9 +116,9 @@ export default function OnboardingPage() {
   const idx = Math.max(0, steps.indexOf(draft.step));
   const step = steps[idx] ?? 'welcome';
 
-  const goTo = (s: StepKey, fromReview = false) => {
+  const goTo = (s: StepKey) => {
     setErrors({});
-    setDraft((d) => ({ ...d, step: s, fromReview }));
+    setDraft((d) => ({ ...d, step: s }));
     requestAnimationFrame(() => {
       window.scrollTo({ top: 0 });
       headingRef.current?.focus();
@@ -193,19 +131,12 @@ export default function OnboardingPage() {
   };
   const next = () => {
     if (!validate()) return;
-    if (draft.fromReview && step !== 'review') return goTo('review');
     if (idx < steps.length - 1) goTo(steps[idx + 1]);
   };
   const back = () => {
     if (idx === 0) return nav(-1);
     goTo(steps[idx - 1]);
   };
-  const skipBody = () => {
-    set({ age: undefined, weightKg: undefined, heightCm: undefined });
-    setErrors({});
-    goTo(draft.fromReview ? 'review' : steps[idx + 1]);
-  };
-
   async function deactivateOthers() {
     const progs = alive(await db.programs.toArray()).filter((p) => p.active);
     for (const p of progs) await saveRecord('programs', { ...p, active: false }, db);
@@ -236,22 +167,9 @@ export default function OnboardingPage() {
       program = createProgram(a, suggestion, today, suggestProgramName(a, suggestion), 'generated');
       await deactivateOthers();
       await saveRecord('programs', program, db);
-      if (a.weightKg != null) {
-        const unit = a.units.weight;
-        await saveRecord('measurements', newRecord({ kind: 'bodyweight' as const, date: today, value: a.weightKg, entered: { value: round(fromKg(a.weightKg, unit), 1), unit } }), db);
-      }
-      let targets: NutritionTargets | null = null;
-      if (a.wantsNutrition) {
-        const reason = nutrition?.targets.autoDisabledReason ?? null;
-        targets = draft.nutri.manual || reason ? manualTargets(draft, nutrition?.targets ?? null, reason) : (nutrition?.targets ?? null);
-      }
-      await updateAccount((acc) => ({
-        ...acc,
-        profile: profileFrom(a, acc.profile),
-        settings: { ...acc.settings, units: a.units, nutritionEnabled: a.wantsNutrition },
-        nutrition: targets ?? acc.nutrition,
-      }));
-      settings = { ...account.settings, units: a.units, nutritionEnabled: a.wantsNutrition };
+      // Units: the locale default (or the units already in use). Nutrition settings and targets are left as they are.
+      await updateAccount((acc) => ({ ...acc, profile: profileFrom(a, acc.profile), settings: { ...acc.settings, units: a.units } }));
+      settings = { ...account.settings, units: a.units };
       experience = a.experience;
     } catch (e) {
       finished.current = false;
@@ -283,7 +201,7 @@ export default function OnboardingPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      const a = { ...draft.a, displayName: draft.a.displayName.trim() };
+      const a = draft.a;
       const letters = Array.from({ length: draft.manual.sessions }, (_, i) => String.fromCharCode(65 + i));
       const templates = letters.map((l) => emptyTemplate(`custom:${l.toLowerCase()}`, `Session ${l}`));
       const days = [...draft.manual.days].sort((x, y) => ((x + 6) % 7) - ((y + 6) % 7));
@@ -300,12 +218,7 @@ export default function OnboardingPage() {
       };
       await deactivateOthers();
       await saveRecord('programs', createProgram(null, version, today, 'My program', 'manual'), db);
-      await updateAccount((acc) => ({
-        ...acc,
-        profile: { ...acc.profile, displayName: a.displayName, onboardedAt: Date.now() },
-        settings: { ...acc.settings, units: a.units, nutritionEnabled: a.wantsNutrition },
-        nutrition: a.wantsNutrition ? manualTargets(draft, null, null) : acc.nutrition,
-      }));
+      await updateAccount((acc) => ({ ...acc, profile: { ...acc.profile, onboardedAt: Date.now() }, settings: { ...acc.settings, units: a.units } }));
       void trackOnboardingCompleted(db, 'manual');
       toast.show('Program created: add your exercises', { tone: 'success' });
       await finish('/train/program');
@@ -321,7 +234,8 @@ export default function OnboardingPage() {
   const stepProps: StepProps = { d: draft, set, setDraft, errors, byId };
   const isResult = step === 'result';
   const isManual = step === 'manual';
-  const primaryLabel = step === 'welcome' ? 'Get started' : step === 'review' ? 'Build my plan' : draft.fromReview ? 'Back to review' : 'Continue';
+  const qn = questionNumber(step);
+  const primaryLabel = step === 'welcome' ? 'Get started' : step === QUESTION_STEPS[QUESTION_STEPS.length - 1] ? 'Build my plan' : 'Continue';
   const hasErrors = Object.keys(errors).length > 0;
 
   return (
@@ -332,7 +246,7 @@ export default function OnboardingPage() {
             {idx === 0 ? <X className="size-5" /> : <ChevronLeft className="size-5" />}
           </IconButton>
           <span className="flex-1 text-sm text-muted" aria-live="polite">
-            Step {idx + 1} of {steps.length}
+            {qn ? `Question ${qn} of ${QUESTION_STEPS.length}` : step === 'welcome' ? 'About a minute' : step === 'result' ? 'Your suggested plan' : 'Set up your own program'}
           </span>
           {idx > 0 && (
             <IconButton label="Start over" onClick={() => setConfirmRestart(true)}>
@@ -353,14 +267,12 @@ export default function OnboardingPage() {
           </Notice>
         )}
         {Comp && <Comp {...stepProps} />}
-        {step === 'review' && <ReviewStep d={draft} byId={byId} onEdit={(s) => goTo(s, true)} />}
         {isResult && suggestion && (
           <ResultStep
             d={draft}
             version={suggestion}
             catalog={catalog}
             byId={byId}
-            nutrition={nutrition}
             today={formatDate(today)}
             setDraft={setDraft}
             onVersion={(v) => setDraft((d) => ({ ...d, version: v, versionKey: JSON.stringify(d.a) }))}
@@ -401,14 +313,9 @@ export default function OnboardingPage() {
 
       <footer className="fixed bottom-0 inset-x-0 z-20 bg-surface/95 backdrop-blur border-t border-line pb-safe">
         <div className="mx-auto max-w-2xl px-4 py-3 flex gap-2">
-          {step === 'body' && (
-            <Button variant="ghost" onClick={skipBody}>
-              Skip
-            </Button>
-          )}
           {isResult ? (
             <>
-              <Button variant="ghost" onClick={() => goTo('review')}>
+              <Button variant="ghost" onClick={() => goTo(QUESTION_STEPS[0])}>
                 Edit answers
               </Button>
               <Button variant="primary" size="lg" className="flex-1" loading={saving} onClick={() => void accept({ start: true })}>

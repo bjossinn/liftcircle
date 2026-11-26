@@ -319,8 +319,10 @@ function validateWeekAdjustment(raw, ctx) {
 }
 
 // supabase/functions/_shared/ai/appGuide.ts
+var PROFILE = "Profile icon (top right of the main screens)";
+var NUTRITION = `Today \u2192 Nutrition card or quick action, or ${PROFILE} \u2192 Nutrition`;
 var APP_GUIDE = [
-  { path: "/", what: "Today: today's planned session (start, skip or move it), this week, nutrition snapshot", how: "Today tab" },
+  { path: "/", what: "Today: today's planned session (start, skip or move it), this week, protein/nutrition card, quick actions", how: "Today tab" },
   { path: "/train", what: "Train hub: start a workout, plan, history, templates, exercises, activities", how: "Train tab" },
   { path: "/train/program", what: "Your program: sessions, weekly schedule, versions, edit or switch plans", how: "Train tab \u2192 Program" },
   { path: "/train/history", what: "Workout history", how: "Train tab \u2192 History" },
@@ -328,50 +330,76 @@ var APP_GUIDE = [
   { path: "/train/templates", what: "Workout templates (create, edit, start)", how: "Train tab \u2192 Templates" },
   { path: "/train/exercises", what: "Exercise library: search, favourites, custom exercises", how: "Train tab \u2192 Exercises" },
   { path: "/train/exercises/:id", what: "One exercise: how-to, history, substitutions", how: "Train tab \u2192 Exercises \u2192 an exercise", param: "exercise" },
-  { path: "/train/activity/new", what: "Log a run, walk, ride or other activity", how: "Train tab \u2192 Log activity" },
+  { path: "/train/activity/new", what: "Log a run, walk, ride or other activity", how: "Train tab \u2192 Log activity, or Today \u2192 Log activity" },
   { path: "/train/intervals", what: "Interval timer", how: "Train tab \u2192 Interval timer" },
-  { path: "/onboarding", what: "Setup questions \u2192 a new suggested program", how: "Settings \u2192 Redo setup questions" },
-  { path: "/progress", what: "Progress: records, charts, bodyweight and measurements", how: "Progress tab" },
-  { path: "/nutrition", what: "Nutrition hub (only when Nutrition features is on in Settings)", how: "Nutrition tab" },
-  { path: "/nutrition/targets", what: "Protein, calorie and macro targets", how: "Nutrition tab \u2192 Targets, or Settings \u2192 Nutrition targets" },
-  { path: "/nutrition/recipes", what: "Recipe catalog with favourites", how: "Nutrition tab \u2192 Recipes" },
-  { path: "/nutrition/recipes/:id", what: "One recipe: ingredients, steps, macros, log it", how: "Nutrition tab \u2192 Recipes \u2192 a recipe", param: "recipe" },
-  { path: "/nutrition/plan", what: "Weekly meal plan (generate, swap, balance to targets)", how: "Nutrition tab \u2192 Meal plan" },
-  { path: "/nutrition/shopping", what: "Shopping list from the meal plan", how: "Nutrition tab \u2192 Meal plan \u2192 Shopping list" },
-  { path: "/nutrition/log", what: "Food log (log meals, foods, quick entries)", how: "Nutrition tab \u2192 Food log" },
-  { path: "/feed", what: "Social feed of friends\u2019 workouts", how: "Feed tab" },
-  { path: "/feed/new", what: "Write a post", how: "Feed tab \u2192 New post" },
-  { path: "/friends", what: "Friends and friend requests", how: "Feed tab \u2192 Friends" },
-  { path: "/profile", what: "Your public profile", how: "Feed tab \u2192 your avatar" },
-  { path: "/profile/edit", what: "Edit your public profile", how: "Profile \u2192 Edit" },
+  { path: "/onboarding", what: "Six setup questions (goal, experience, days, session length, where you train, areas to be careful with) \u2192 a new suggested program", how: `${PROFILE} \u2192 Settings \u2192 Redo setup questions` },
+  { path: "/progress", what: "Progress: records, charts, bodyweight and body measurements", how: "Progress tab" },
+  { path: "/nutrition", what: "Nutrition hub (optional; turn on with Nutrition features in Settings)", how: NUTRITION },
+  { path: "/nutrition/targets", what: "Protein, calorie and macro targets", how: "Nutrition \u2192 Targets, or Settings \u2192 Nutrition targets" },
+  { path: "/nutrition/recipes", what: "Recipe catalog with favourites", how: "Nutrition \u2192 Recipes" },
+  { path: "/nutrition/recipes/:id", what: "One recipe: ingredients, steps, macros, log it", how: "Nutrition \u2192 Recipes \u2192 a recipe", param: "recipe" },
+  { path: "/nutrition/plan", what: "Weekly meal plan (generate, swap, balance to targets)", how: "Nutrition \u2192 Meal plan" },
+  { path: "/nutrition/shopping", what: "Shopping list from the meal plan", how: "Nutrition \u2192 Meal plan \u2192 Shopping list" },
+  { path: "/nutrition/log", what: "Food log (log meals, foods, quick entries)", how: "Today \u2192 Nutrition card \u2192 Log food, or Nutrition \u2192 Food log" },
+  { path: "/feed", what: "Social feed of friends\u2019 workouts", how: "Feed tab", flag: "socialFeed" },
+  { path: "/feed/new", what: "Share a workout as a post", how: "Workout summary \u2192 Share" },
+  { path: "/friends", what: "Friends and friend requests", how: `${PROFILE} \u2192 Friends` },
+  { path: "/profile", what: "Your profile, with links to Nutrition, Friends and Settings", how: PROFILE },
+  { path: "/profile/edit", what: "Edit your public profile", how: "Profile \u2192 Edit profile" },
   { path: "/notifications", what: "In-app notifications", how: "Bell icon at the top of the main screens" },
   {
     path: "/settings",
     what: "Settings: units, theme, week start; Workout (rest timer, warm-ups, Empty bar weight, Coach cheers during workouts); Notifications incl. Push notifications on this device; Plan & nutrition (Nutrition features toggle, Nutrition targets, Redo setup questions); Sharing & privacy (discoverable, auto-share)",
-    how: "Gear icon at the top of the main screens"
+    how: `${PROFILE} \u2192 Settings`
   },
   { path: "/settings/data", what: "Your data: export, backups, import, delete account", how: "Settings \u2192 Your data" },
   { path: "/install", what: "Install the app on your phone (Home Screen)", how: "Settings \u2192 Install on your phone" },
-  { path: "/coaching", what: "Coaching hub: Training assistant, your human coach, find a coach", how: "Coaching tab" },
-  { path: "/coaching/find", what: "Find a human coach", how: "Coaching tab \u2192 Find a coach" },
-  { path: "/coaching/my", what: "Your human coach and their plan", how: "Coaching tab \u2192 My coach" },
-  { path: "/coaching/apply", what: "Apply to become a coach", how: "Coaching tab \u2192 Become a coach" },
-  { path: "/coaching/ai", what: "This training assistant chat", how: "Coaching tab \u2192 training assistant" },
-  { path: "/coaching/ai/setup", what: "Training assistant setup and consent", how: "Coaching tab \u2192 training assistant \u2192 Set up" },
-  { path: "/coaching/ai/settings", what: "Training assistant settings: what the AI can see (Profile, Training, Measurements, Nutrition), notes, assistant style, pause", how: "Training assistant \u2192 \u22EE \u2192 Settings" },
-  { path: "/coaching/ai/proposals", what: "AI suggestions: plan changes to review and apply", how: "Training assistant \u2192 \u22EE \u2192 AI suggestions" }
+  { path: "/coach", what: "Coach tab: this training assistant chat", how: "Coach tab" },
+  { path: "/coaching", what: "Human coaching: your coach, past coaching, coach workspace and applications", how: "Coach tab \u2192 Coaching (shown when you have or had a coach, or coach yourself)" },
+  { path: "/coaching/find", what: "Find a human coach", how: "Coach tab \u2192 Coaching \u2192 Look for a coach", flag: "coachMarketplace" },
+  { path: "/coaching/my", what: "Your human coach and their plan", how: "Coach tab \u2192 Coaching \u2192 My coach" },
+  { path: "/coaching/apply", what: "Apply to become a coach", how: "Coach tab \u2192 Coaching \u2192 Apply" },
+  { path: "/coaching/ai", what: "This training assistant chat, full screen", how: "Coach tab" },
+  { path: "/coaching/ai/setup", what: "Training assistant setup and consent", how: "Coach tab \u2192 Set up training assistant" },
+  { path: "/coaching/ai/settings", what: "Training assistant settings: what the AI can see (Profile, Training, Measurements, Nutrition), notes, assistant style, pause", how: "Coach tab \u2192 \u22EE \u2192 Settings" },
+  { path: "/coaching/ai/proposals", what: "AI suggestions: plan changes to review and apply", how: "Coach tab \u2192 \u22EE \u2192 AI suggestions" }
 ];
+var FLAG_DEFAULTS = { coachMarketplace: false, socialFeed: false };
+var GUIDE_FLAG_ENV = { coachMarketplace: "ENABLE_COACH_MARKETPLACE", socialFeed: "ENABLE_SOCIAL_FEED" };
+function parseFlagValue(v) {
+  const t = (v ?? "").trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(t)) return true;
+  if (["0", "false", "no", "off"].includes(t)) return false;
+  return void 0;
+}
+function guideFeaturesFromEnv(env2) {
+  const out = { ...FLAG_DEFAULTS };
+  for (const k of Object.keys(GUIDE_FLAG_ENV)) {
+    const v = parseFlagValue(env2(GUIDE_FLAG_ENV[k])) ?? parseFlagValue(env2(`VITE_${GUIDE_FLAG_ENV[k]}`));
+    if (v !== void 0) out[k] = v;
+  }
+  return out;
+}
+var flagOn = (flag, features) => features?.[flag] ?? FLAG_DEFAULTS[flag];
+function guideEntries(features) {
+  return APP_GUIDE.filter((g) => !g.flag || flagOn(g.flag, features)).map((g) => {
+    if (g.path === "/coaching" && flagOn("coachMarketplace", features)) return { ...g, what: `${g.what}, find a coach`, how: "Coach tab \u2192 Coaching" };
+    if (g.path === "/feed/new" && flagOn("socialFeed", features)) return { ...g, how: "Feed tab \u2192 New post, or Workout summary \u2192 Share" };
+    return g;
+  });
+}
 var MAX_OPEN_LINKS = 2;
 var MAX_RECIPE_LINKS = 3;
-function appGuideText() {
-  return APP_GUIDE.map((g) => `- ${g.path} \u2014 ${g.what} (${g.how})`).join("\n");
+function appGuideText(features) {
+  return guideEntries(features).map((g) => `- ${g.path} \u2014 ${g.what} (${g.how})`).join("\n");
 }
 var OPEN_RE = /\[\[\s*open\s*:\s*([^|\]\s]+)\s*(?:\|\s*([^\]]*?))?\s*\]\]/gi;
 var ID_RE = /^[A-Za-z0-9_-]{1,100}$/;
-function matchGuidePath(path, known) {
+function matchGuidePath(path, known, features) {
   if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//") || /[?#\\\s]/.test(path)) return null;
   const parts2 = path.split("/");
   for (const g of APP_GUIDE) {
+    if (g.flag && !flagOn(g.flag, features)) continue;
     const gp = g.path.split("/");
     if (gp.length !== parts2.length) continue;
     let ok = true;
@@ -418,7 +446,7 @@ function cleanAfterMarkers(withPlaceholders) {
   while (out.length && (!out[out.length - 1].trim() || /:\s*$/.test(out[out.length - 1]))) out.pop();
   return out.join("\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
-function validateOpenLinks(text, known) {
+function validateOpenLinks(text, known, features) {
   const kept = [];
   let removed = 0;
   let any = false;
@@ -427,7 +455,7 @@ function validateOpenLinks(text, known) {
     const path = rawPath.trim();
     const recipe = isRecipePath(path);
     const room = kept.filter((k) => isRecipePath(k.path) === recipe).length < (recipe ? MAX_RECIPE_LINKS : MAX_OPEN_LINKS);
-    if (room && matchGuidePath(path, known) && !kept.some((k) => k.path === path)) kept.push({ path, label: cleanLabel(rawLabel) });
+    if (room && matchGuidePath(path, known, features) && !kept.some((k) => k.path === path)) kept.push({ path, label: cleanLabel(rawLabel) });
     else removed++;
     return "";
   });
@@ -1596,7 +1624,7 @@ var STYLE_RULES = {
   balanced: `Coach style: BALANCED (chosen by the user). Be encouraging with light accountability. If they want to skip for a weak reason, ask what's going on, suggest the minimum version and remind them of their goal, but respect their final call. Safety limits (rule 9) still apply.`,
   strict: `Coach style: STRICT (chosen by the user: they asked for firm accountability). Push back firmly on reasons like "no time" or "don't feel like it" (never on tiredness: rule 9): say plainly that this is exactly when the habit is built, give the minimum version as the plan (e.g. "first two exercises, 20 minutes. Start now.") and remind them of their goal and what they've done this week. Be firm and direct, never mean, never guilt ("No excuses", "You fell behind" and similar are not allowed). The safety limits (rule 9) always win: pain, injury, illness or the other listed situations mean rest or an adjusted plan, never pushing.`
 };
-async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0 }) {
+async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0, features }) {
   const scopes = settings.scopes;
   const [account, active, exercises] = await Promise.all([db.getAccountState(uid), db.getActiveProgram(uid), db.getExercises()]);
   const catalog2 = new Map(exercises.map((e) => [e.id, e]));
@@ -1653,8 +1681,8 @@ async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0 }
     }),
     ...unsynced > 0 ? [`- Not synced yet: ${unsynced} recent change${unsynced === 1 ? "" : "s"} on the user's device (offline or still syncing) haven't reached you. Your view of their latest workouts and logs may be missing them: if that matters for this answer, say so in one short clause, and don't conclude they skipped or didn't log something.`] : [],
     "",
-    "App guide (path \u2014 what you do there (how to get there)); use these paths in [[open:\u2026]] links:",
-    appGuideText()
+    "App guide (path \u2014 what you do there (how to get there)); use these paths in [[open:\u2026]] links. The app has four tabs (Today, Train, Coach, Progress), plus Feed only if listed below; Nutrition, Friends and Settings are reached from Profile (top right) or Today. Screens that are not listed are not available to this user \u2014 never point to them:",
+    appGuideText(features)
   );
   if (added.length) {
     parts2.push("", `Sharing changed since your previous reply: the user now also shares ${added.map((k) => SCOPE_NAMES[k]).join(" and ")}. Start with a brief thanks (e.g. "Thanks \u2014 I can see your ${SCOPE_NAMES[added[0]]} now") and continue the open request right away.`);
@@ -4404,7 +4432,8 @@ async function answer(a) {
   const { deps, uid, id, text, mode, unsynced, prov, settings, tally, fail, recordOnce } = a;
   const now = deps.now?.() ?? /* @__PURE__ */ new Date();
   const started = Date.now();
-  const ctx = await buildContext({ db: deps.db, uid, settings, text, mode, now, unsynced });
+  const features = guideFeaturesFromEnv(deps.env);
+  const ctx = await buildContext({ db: deps.db, uid, settings, text, mode, now, unsynced, features });
   const model = prov.model;
   const maxTokens = intEnv(deps, "AI_MAX_OUTPUT_TOKENS", 1200, 64, 8192);
   const state = { proposal: null, proposalAttempts: 0, weekPlan: null, weekAttempts: 0, mealPlan: null, mealPlanAttempts: 0, recipes: null };
@@ -4528,7 +4557,7 @@ ${text}` : text;
   }
   const known = { ...ctx.known };
   if (/\[\[\s*open\s*:\s*\/nutrition\/recipes\//i.test(reply)) known.recipe = new Set((await deps.db.getRecipes()).map((r) => r.id));
-  const links = validateOpenLinks(reply, known);
+  const links = validateOpenLinks(reply, known, features);
   reply = links.text;
   if (!reply) {
     reply = weekPlan ? summarizeWeekPlan(weekPlan, ctx.today, ctx.facts.weekStart, lang) : state.mealPlan ? summarizeMealPlan(state.mealPlan, ctx.today, ctx.facts.weekStart, lang) : proposalInfo ? summarizeProposal(proposalInfo, lang) : state.recipes ? summarizeRecipes(state.recipes, lang) : lang === "is" ? "\xDEv\xED mi\xF0ur n\xE1\xF0i \xE9g ekki a\xF0 setja saman svar. Pr\xF3fa\xF0u a\xF0 spyrja aftur." : "Sorry \u2014 I couldn\u2019t put together a reply. Please try asking again.";

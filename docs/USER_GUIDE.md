@@ -88,7 +88,7 @@ protein consistency (if nutrition is on) and goals you set. Observations are pla
 
 ## Nutrition (optional)
 
-Turn it on from the Nutrition tab: **protein only**, or protein + calories + macros. The default protein target is
+Turn it on from Nutrition (Today → Track protein, or Profile → Nutrition): **protein only**, or protein + calories + macros. The default protein target is
 1.8 g per kg of a reference weight you choose (current weight, a goal weight, or a custom number) — an adjustable
 starting point within a 1.6–2.2 g/kg range, not an exact requirement. Calorie estimates use the Mifflin–St Jeor
 equation plus an activity factor and a small goal adjustment, all shown and editable. Log food via quick entries,

@@ -5,15 +5,15 @@ import { expect, test, type Page } from '@playwright/test';
  * (Contrast of the theme tokens is computed separately; real keyboards/safe areas need devices — docs/DEVICE_CHECKS.md.)
  */
 const WIDTHS = [360, 375, 390, 430, 768, 1280];
-const ROUTES = ['/', '/train', '/feed', '/nutrition', '/progress', '/coaching', '/settings', '/train/exercises', '/nutrition/recipes', '/train/history'];
+const ROUTES = ['/', '/train', '/coach', '/progress', '/profile', '/feed', '/nutrition', '/coaching', '/settings', '/train/exercises', '/nutrition/recipes', '/train/history'];
 
 async function overflow(page: Page) {
   return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 }
 
-// Default build: the social feed flag is off (src/config/featureFlags.ts), so there are five tabs and /feed shows the
-// "feed isn’t available" screen (still checked for overflow).
-test('no horizontal scrolling on key screens at 360–1280 px, and the five tabs fit', async ({ page }) => {
+// Default build: the social feed flag is off (src/config/featureFlags.ts), so there are four tabs (Today, Train, Coach,
+// Progress) and /feed shows the "feed isn’t available" screen (still checked for overflow).
+test('no horizontal scrolling on key screens at 360–1280 px, and the four tabs fit', async ({ page }) => {
   test.setTimeout(180_000);
   for (const w of WIDTHS) {
     await page.setViewportSize({ width: w, height: w >= 768 ? 1024 : 780 });
@@ -23,8 +23,8 @@ test('no horizontal scrolling on key screens at 360–1280 px, and the five tabs
       expect(await overflow(page), `${r} @ ${w}px`).toBeLessThanOrEqual(0);
     }
     const tabs = page.getByRole('navigation', { name: 'Main' }).getByRole('link');
-    await expect(tabs).toHaveCount(5);
-    await expect(tabs.filter({ hasText: 'Feed' })).toHaveCount(0);
+    await expect(tabs).toHaveCount(4);
+    await expect(tabs).toHaveText(['Today', 'Train', 'Coach', 'Progress']);
     for (const box of await tabs.evaluateAll((els) => els.map((e) => ({ h: e.getBoundingClientRect().height, w: e.getBoundingClientRect().width, clipped: e.scrollWidth > e.clientWidth + 1 })))) {
       expect(box.h).toBeGreaterThanOrEqual(44);
       expect(box.w).toBeGreaterThanOrEqual(44);

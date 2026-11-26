@@ -222,6 +222,33 @@ describe('MOCKED ai-coach v4: in-app links are validated before storing', () => 
   });
 });
 
+describe('MOCKED ai-coach: the app guide follows the four tabs and the hidden areas', () => {
+  it('the prompt describes the four tabs and leaves the feed and finding a coach out by default', async () => {
+    const ctx = await ctxFor(data());
+    expect(ctx.system).toMatch(/four tabs \(Today, Train, Coach, Progress\)/);
+    expect(ctx.system).toContain('- /coach — Coach tab');
+    expect(ctx.system).not.toContain('- /feed —');
+    expect(ctx.system).not.toContain('/coaching/find');
+    const on = await buildContext({ db: makeDb(data()).db, uid: U, settings: { enabled: true, paused: false, scopes: data().scopes, profileNotes: '' }, text: 'hi', mode: 'chat', now: NOW, features: { socialFeed: true, coachMarketplace: true } });
+    expect(on.system).toContain('- /feed —');
+    expect(on.system).toContain('/coaching/find');
+  });
+
+  it('links to the feed or the coach directory are stripped unless the function env switches them on', async () => {
+    const reply = 'Here you go.\n[[open:/feed|Open the feed]]\n[[open:/coaching/find|Find a coach]]';
+    const off = makeDb(data());
+    const res = await handleAiCoach(deps(off.db, provider([text(reply)]).fetch), U, send('where is the feed?'));
+    const content = (res.body.reply as StoredMessage).content;
+    expect(content).not.toContain('[[open:/feed');
+    expect(content).not.toContain('/coaching/find');
+    const on = makeDb(data());
+    const envOn: CoachDeps = { ...deps(on.db, provider([text(reply)]).fetch), env: (k) => (k === 'ANTHROPIC_API_KEY' ? 'sk-test' : k === 'ENABLE_SOCIAL_FEED' ? 'true' : undefined) };
+    const res2 = await handleAiCoach(envOn, U, send('where is the feed?'));
+    expect((res2.body.reply as StoredMessage).content).toContain('[[open:/feed|Open the feed]]');
+    expect((res2.body.reply as StoredMessage).content).not.toContain('/coaching/find');
+  });
+});
+
 /* ================================================================== recipes (meal plans: aiCoachFixes.test.ts) */
 describe('MOCKED ai-coach v4: recipe cards', () => {
   it('find_recipes results become a recipe_suggestions action (allergen-filtered, server macros)', async () => {

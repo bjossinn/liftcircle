@@ -8,15 +8,24 @@ import { Badge, Card, ErrorState, Notice, Page, SectionTitle, Spinner } from '@/
 import { TopActions } from '@/app/TopActions';
 import { STATUS_LABELS, STATUS_TONE, dateText } from '@/domain/coaching/display';
 import { CoachPhoto, CoachingAccessNotice, GuestCoachingIntro, useCoachingAccess, useLoad, type Loaded } from './directory/common';
+import { CoachSwitcher, useHumanCoaching } from './coachChannels';
 
 const linkBtn = 'inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl text-[15px] transition-colors';
 const primaryLink = `${linkBtn} ember-fill font-semibold`;
 const secondaryLink = `${linkBtn} bg-surface-2 text-ink hover:bg-surface-3 border border-line`;
 
+/**
+ * /coaching — human coaching (My coach, past coaching, the coach workspace, applications, admin). Part of the Coach tab:
+ * the switcher at the top goes back to the training assistant (/coach), the tab's main screen.
+ */
 export default function CoachingHubPage() {
   const { access } = useCoachingAccess();
+  const human = useHumanCoaching();
   return (
     <Page title="Coaching" actions={<TopActions />}>
+      <div className="mb-3">
+        <CoachSwitcher current="human" unread={human.unread} />
+      </div>
       {access === 'guest' ? <GuestCoachingIntro /> : access !== 'ok' ? <CoachingAccessNotice access={access} /> : <HubContent />}
     </Page>
   );
@@ -217,7 +226,7 @@ function AiSection() {
             </button>
           </Notice>
         ) : st.available ? (
-          <Link to={enabled ? '/coaching/ai' : '/coaching/ai/setup'} className={enabled ? secondaryLink : primaryLink}>
+          <Link to={enabled ? '/coach' : '/coaching/ai/setup'} className={enabled ? secondaryLink : primaryLink}>
             <Bot className="size-4" aria-hidden />
             {enabled ? 'Open training assistant' : 'Start with the training assistant'}
           </Link>

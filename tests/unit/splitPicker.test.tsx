@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 /**
- * Split selector in the wizard's schedule step (UI-level; no backend). Uses react-dom/client + act
+ * Split selector (UI-level; no backend). Onboarding asks only which days you train; the split is chosen on the plan
+ * preview ("Change split"), which renders this same SplitPicker. Changing the days keeps the chosen intent. Uses react-dom/client + act
  * directly (see aiUi.test.ts for why @testing-library is not used).
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, createElement, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { ScheduleStep } from '@/features/onboarding/steps';
-import { newDraft, type Draft } from '@/features/onboarding/draft';
+import { SplitPicker } from '@/features/onboarding/steps';
+import { newDraft, SPREAD_DAYS, withTrainingDays, type Draft } from '@/features/onboarding/draft';
 import { defaultAccountState } from '@/state/defaults';
 import type { OnboardingAnswers } from '@/domain/types';
 
@@ -16,6 +17,7 @@ import type { OnboardingAnswers } from '@/domain/types';
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
 let latest: Draft | null = null;
+let setDraft: ((fn: (x: Draft) => Draft) => void) | null = null;
 
 afterEach(() => {
   act(() => root?.unmount());
@@ -28,8 +30,8 @@ afterEach(() => {
 function Harness({ initial }: { initial: Draft }) {
   const [d, setD] = useState(initial);
   latest = d;
-  const set = (patch: Partial<OnboardingAnswers>) => setD((x) => ({ ...x, a: { ...x.a, ...patch } }));
-  return createElement(ScheduleStep, { d, set, setDraft: (fn: (x: Draft) => Draft) => setD(fn), errors: {}, byId: new Map() });
+  setDraft = setD;
+  return createElement(SplitPicker, { a: d.a, onSelect: (splitPreference) => setD((x) => ({ ...x, a: { ...x.a, splitPreference } })) });
 }
 
 function mount(over: Partial<OnboardingAnswers> = {}) {
@@ -46,13 +48,10 @@ const splitGroup = () => [...host!.querySelectorAll('[role="radiogroup"]')].find
 const splitRadios = () => [...splitGroup().querySelectorAll('[role="radio"]')] as HTMLElement[];
 const checkedSplit = () => text(splitRadios().find((r) => r.getAttribute('aria-checked') === 'true') ?? null);
 const radioNamed = (re: RegExp) => splitRadios().find((r) => re.test(text(r)))!;
-const setLiftingDays = (n: number) => {
-  const g = host!.querySelector('[aria-label="Lifting days per week"]')!;
-  const b = [...g.querySelectorAll('[role="radio"]')].find((x) => text(x) === String(n)) as HTMLElement;
-  act(() => b.click());
-};
+/** As if the user picked n training days in "Which days?" (every picked day is a lifting day). */
+const setLiftingDays = (n: number) => act(() => setDraft!((x) => ({ ...x, a: withTrainingDays(x.a, n ? SPREAD_DAYS[n] : []) })));
 
-describe('wizard split selector', () => {
+describe('split selector', () => {
   it('shows the structures that fit, with the recommendation and tradeoffs', () => {
     mount({ experience: 'new' });
     expect(splitRadios().map((r) => text(r.querySelector('.font-medium')))).toEqual(['Full-body A/B/C Recommended', 'Upper / Lower / Full body', 'Push / Pull / Legs']);
@@ -78,7 +77,7 @@ describe('wizard split selector', () => {
   });
 
   it('1 lifting day: full body only; 0 days: no selector', () => {
-    mount({ liftingDaysPerWeek: 1 });
+    mount(withTrainingDays(newDraft(defaultAccountState()).a, [2]));
     expect(splitRadios()).toHaveLength(1);
     expect(checkedSplit()).toMatch(/^Full-body session/);
     setLiftingDays(0);

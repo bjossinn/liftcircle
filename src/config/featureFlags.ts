@@ -5,7 +5,9 @@
  * Defaults live in DEFAULT_FLAGS. To switch an area on without a code change, set its Vite env var at build time
  * (Netlify → Site configuration → Environment variables, or `.env.local`), then rebuild:
  *   VITE_ENABLE_COACH_MARKETPLACE=true   browse/find coaches, coach profiles, new coaching requests
- *   VITE_ENABLE_SOCIAL_FEED=true         the Feed tab and the /feed list
+ *   VITE_ENABLE_SOCIAL_FEED=true         the Feed tab (a fifth tab after Today, Train, Coach, Progress) and the /feed list
+ * Set the same names without the VITE_ prefix on the ai-coach Edge Function too, so the training assistant's app guide
+ * mentions (and links to) those areas only when they're on (supabase/functions/_shared/ai/appGuide.ts).
  * Accepted values: true/false, 1/0, yes/no, on/off (any case). Anything else keeps the default.
  *
  * What stays on regardless of the flags:

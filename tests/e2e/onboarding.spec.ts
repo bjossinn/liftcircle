@@ -1,26 +1,59 @@
 import { expect, test } from '@playwright/test';
-import { completeOnboarding } from './helpers';
+import { completeOnboarding, setName } from './helpers';
 
-test('new user completes onboarding and gets a schedule matching days, equipment and session length', async ({ page }) => {
-  await completeOnboarding(page, 'Björn');
-  await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening), Björn$/ })).toBeVisible();
+test('six questions, about a minute: the plan matches the days, session length and equipment; units follow the locale', async ({ page }) => {
+  await page.goto('/onboarding');
+  await expect(page.getByText('About a minute', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Get started' }).click();
+
+  const titles: string[] = [];
+  for (let q = 1; q <= 6; q++) {
+    await expect(page.getByText(`Question ${q} of 6`)).toBeVisible();
+    titles.push(await page.getByRole('heading', { level: 1 }).innerText());
+    if (q === 1) await page.getByRole('radio', { name: /^Improve strength/ }).click();
+    if (q === 2) await page.getByRole('radio', { name: /^Intermediate/ }).click();
+    if (q === 3) await page.getByRole('group', { name: 'Training days' }).getByRole('checkbox', { name: 'Tue' }).click();
+    if (q === 4) await page.getByRole('radio', { name: /^45 minutes/ }).click();
+    if (q === 5) await page.getByRole('radio', { name: /^Home gym/ }).click();
+    if (q === 6) await page.getByRole('group', { name: 'Limitation areas' }).getByRole('checkbox', { name: 'Knees' }).click();
+    await page.getByRole('button', { name: q === 6 ? 'Build my plan' : 'Continue' }).click();
+  }
+  expect(titles).toEqual(['What’s your main goal?', 'How much have you lifted before?', 'Which days can you train?', 'How long is a workout?', 'Where do you train?', 'Anything to be careful with?']);
+
+  await expect(page.getByRole('heading', { name: 'Your plan', level: 1 })).toBeVisible();
+  await expect(page.getByTestId('answers-summary')).toHaveText('Improve strength · Intermediate · Mon, Tue, Wed and Fri · 45 min · Home gym · Careful with knees');
+  await page.getByRole('button', { name: 'Save plan, start later' }).click();
+  await page.waitForURL((u) => u.pathname === '/');
   await expect(page.getByRole('button', { name: /Start workout|Log this activity/ })).toBeVisible();
 
   await page.goto('/train/program');
-  // Default answers: 3 lifting days, every weekday available, 60 minutes, full gym.
-  const week = page.getByText(/Full body [ABC]/);
-  await expect(week.first()).toBeVisible();
+  await expect(page.getByText(/~\d+ min/).first()).toBeVisible();
   const text = await page.locator('main').innerText();
   const minutes = [...text.matchAll(/~(\d+) min/g)].map((m) => Number(m[1]));
   expect(minutes.length).toBeGreaterThan(0);
-  for (const m of minutes) expect(m).toBeLessThanOrEqual(60);
+  for (const m of minutes) expect(m).toBeLessThanOrEqual(45);
+
+  // The test device is en-US, so weights default to pounds (changeable in Settings).
+  await page.goto('/settings');
+  await expect(page.getByRole('radiogroup', { name: /weight unit/i }).getByRole('radio', { name: /lb|Pounds/ })).toHaveAttribute('aria-checked', 'true');
+});
+
+test('defaults: the greeting uses the name set in Settings; nothing about body or nutrition is asked', async ({ page }) => {
+  await page.goto('/onboarding');
+  for (let i = 0; i < 8 && !(await page.getByRole('button', { name: 'Save plan, start later' }).count()); i++) {
+    await expect(page.getByText(/What should we call you|Current weight|Food preferences|Everyday activity/)).toHaveCount(0);
+    await page.getByRole('button', { name: /^(Get started|Continue|Build my plan)$/ }).last().click();
+    await page.waitForTimeout(150);
+  }
+  await page.getByRole('button', { name: 'Save plan, start later' }).click();
+  await page.waitForURL((u) => u.pathname === '/');
+  await setName(page, 'Björn');
+  await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening), Björn$/ })).toBeVisible();
 });
 
 test('Accept & start saves the plan and opens its first workout in the logger', async ({ page }) => {
   await page.goto('/onboarding');
-  for (let i = 0; i < 20 && !(await page.getByRole('button', { name: 'Accept & start' }).count()); i++) {
-    const step = await page.getByText(/Step \d+ of \d+/).innerText().catch(() => '');
-    if (step.startsWith('Step 2')) await page.getByLabel('What should we call you?').fill('Starter');
+  for (let i = 0; i < 10 && !(await page.getByRole('button', { name: 'Accept & start' }).count()); i++) {
     await page.getByRole('button', { name: /^(Get started|Continue|Build my plan)$/ }).last().click();
     await page.waitForTimeout(150);
   }
@@ -44,30 +77,27 @@ test('a user can skip nutrition and still use the complete tracker', async ({ pa
   await expect(page.getByRole('table').first()).toBeVisible();
 });
 
-test('an explicit split choice survives refresh, review, shuffling and acceptance', async ({ page }) => {
+test('a split chosen on the plan preview survives refresh, shuffling and acceptance', async ({ page }) => {
   await page.goto('/onboarding');
-  for (let i = 0; i < 12 && !(await page.getByText('Workout split', { exact: true }).count()); i++) {
-    const step = await page.getByText(/Step \d+ of \d+/).innerText();
-    if (step.startsWith('Step 2')) await page.getByLabel('What should we call you?').fill('Split');
+  for (let i = 0; i < 6 && !(await page.getByText('Question 3 of 6').count()); i++) {
     await page.getByRole('button', { name: /^(Get started|Continue)$/ }).last().click();
     await page.waitForTimeout(150);
   }
-  await page.getByRole('radiogroup', { name: 'Lifting days per week' }).getByRole('radio', { name: '2', exact: true }).click();
-  const ul = page.getByRole('radio', { name: /^Upper \/ Lower/ });
-  await ul.click();
-  await expect(ul).toHaveAttribute('aria-checked', 'true');
-
-  await page.waitForTimeout(500); // draft is saved with a short debounce
-  await page.reload();
-  await expect(page.getByRole('radio', { name: /^Upper \/ Lower/ })).toHaveAttribute('aria-checked', 'true');
-
-  for (let i = 0; i < 12 && !(await page.getByRole('button', { name: 'Build my plan' }).count()); i++) {
+  // Two training days: Mon and Wed (Fri off).
+  await page.getByRole('group', { name: 'Training days' }).getByRole('checkbox', { name: 'Fri' }).click();
+  for (let i = 0; i < 6 && !(await page.getByRole('button', { name: 'Build my plan' }).count()); i++) {
     await page.getByRole('button', { name: /^Continue$/ }).last().click();
     await page.waitForTimeout(150);
   }
-  await expect(page.getByText('Upper / Lower', { exact: true }).first()).toBeVisible(); // review row
   await page.getByRole('button', { name: 'Build my plan' }).click();
+  await page.getByRole('button', { name: 'Change split' }).click();
+  const ul = page.getByRole('dialog').getByRole('radio', { name: /^Upper \/ Lower/ });
+  await ul.click();
   await expect(page.getByText('Split:').first()).toBeVisible();
+  await expect(page.getByRole('article', { name: 'Upper A' })).toBeVisible();
+
+  await page.waitForTimeout(500); // draft is saved with a short debounce
+  await page.reload();
   await expect(page.getByRole('article', { name: 'Upper A' })).toBeVisible();
   await page.getByRole('button', { name: 'Shuffle exercises', exact: true }).click();
   await expect(page.getByRole('article', { name: 'Lower A' })).toBeVisible();
