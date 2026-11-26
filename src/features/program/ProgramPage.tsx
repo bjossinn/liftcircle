@@ -304,7 +304,7 @@ export default function ProgramPage() {
             <li key={ver.version}>
               <ListRow
                 title={`Version ${ver.version}${ver.version === program.currentVersion ? ' (current)' : ''}`}
-                subtitle={`${dateTimeText(ver.createdAt, account.settings.timeZone, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${versionReasonText(ver.reason)}`}
+                subtitle={`${dateTimeText(ver.createdAt, account.settings.timeZone, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${versionReasonText(ver.reason, ver.templates)}`}
                 right={
                   ver.version !== program.currentVersion ? (
                     <Button size="sm" onClick={() => setRestoreTarget(ver)}>

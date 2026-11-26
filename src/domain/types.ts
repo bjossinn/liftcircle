@@ -196,6 +196,8 @@ export interface Prescription {
   calibrate?: boolean;
   alternatives: ID[];
   notes?: string;
+  /** Set when someone saved the notes in the program editor: they are shown verbatim, never as generated text. */
+  notesEdited?: true;
 }
 
 export type SessionKind = 'lifting' | 'cardio' | 'walk' | 'mobility' | 'conditioning';
@@ -207,8 +209,11 @@ export interface SessionTemplate {
   kind: SessionKind;
   exercises: Prescription[];
   estimatedMinutes: number;
-  cardio?: { activity: ActivityType; minutes: number; intensity: 'easy' | 'moderate' | 'hard'; notes: string };
+  /** `notesEdited`: the notes were saved in the program editor, so they are shown verbatim (see program/localize.ts). */
+  cardio?: { activity: ActivityType; minutes: number; intensity: 'easy' | 'moderate' | 'hard'; notes: string; notesEdited?: true };
   trimmedExerciseIds?: ID[]; // accessories removed to fit the time budget
+  /** Set when the session was renamed: the name is the user's (or coach's) text and is shown verbatim, never localized. */
+  nameEdited?: true;
 }
 
 export interface ScheduleSlot {

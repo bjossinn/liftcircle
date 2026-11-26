@@ -25,7 +25,15 @@ export default function SettingsPage() {
   const { t } = useT();
   const { account, updateAccount, auth, backendConfigured, db } = useApp();
   const s = account.settings;
-  const set = (fn: (s: Settings) => Settings) => updateAccount((a) => ({ ...a, settings: fn(a.settings) })).catch((e) => toast.show(knownErrorText(e), { tone: 'error' }));
+  /** Saves a settings change; resolves true when it was saved, false after showing the error (never rejects). */
+  const set = (fn: (s: Settings) => Settings): Promise<boolean> =>
+    updateAccount((a) => ({ ...a, settings: fn(a.settings) })).then(
+      () => true,
+      (e) => {
+        toast.show(knownErrorText(e), { tone: 'error' });
+        return false;
+      },
+    );
   const zones = useMemo(() => {
     try {
       return (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? [s.timeZone];
@@ -113,7 +121,8 @@ export default function SettingsPage() {
           label={t('settings.languageAria')}
           value={effectiveLanguage(s.language)}
           onChange={(v) => {
-            void set((x) => ({ ...x, language: v })).then(() => toast.show(tFor('settings.languageSaved', undefined, v)));
+            // Confirm only a saved change: a failed write shows its error and never the "language changed" toast.
+            void set((x) => ({ ...x, language: v })).then((saved) => saved && toast.show(tFor('settings.languageSaved', undefined, v)));
           }}
           options={[
             { value: 'en', label: <span lang="en">{t('settings.languageEnglish')}</span> },

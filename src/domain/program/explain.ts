@@ -139,7 +139,8 @@ export function exerciseCue(rx: Pick<Prescription, 'warmup'>, language: Language
   return { cue: localizeGeneratedText(cue, language), generic: false };
 }
 /** Exercise note worth showing on the row (the default calibration note is covered by the session tip). */
-export function exerciseNote(rx: Pick<Prescription, 'notes'>, language: Language = getLanguage()): string | null {
+export function exerciseNote(rx: Pick<Prescription, 'notes' | 'notesEdited'>, language: Language = getLanguage()): string | null {
+  if (rx.notesEdited) return rx.notes || null; // typed in the editor: verbatim, even when it equals a generated note
   return rx.notes && rx.notes !== CALIBRATION_NOTE ? localizeGeneratedText(rx.notes, language) : null;
 }
 

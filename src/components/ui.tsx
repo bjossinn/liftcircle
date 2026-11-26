@@ -194,6 +194,17 @@ export function NumberInput({
   // Keep the raw string while typing so "2." or "2," aren't clobbered.
   const raw = useRef<string>(numberInputText(value, language));
   if (ref.current && document.activeElement !== ref.current) raw.current = numberInputText(value, language);
+  // The field is uncontrolled, so a language switch does not re-render its text: when it still shows the saved value
+  // (unfocused, not edited), rewrite it with the new decimal separator. A draft (focused or edited) is left alone.
+  const shownLanguage = useRef(language);
+  useEffect(() => {
+    const prev = shownLanguage.current;
+    if (prev === language) return;
+    shownLanguage.current = language;
+    const input = ref.current;
+    if (!input || document.activeElement === input) return;
+    if (input.value === numberInputText(value, prev)) input.value = numberInputText(value, language);
+  }, [language, value]);
   const el = (
     <div className={clsx('relative', className)}>
       <input

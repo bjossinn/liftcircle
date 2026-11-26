@@ -34,6 +34,19 @@ const ASK: [RegExp, Lang][] = [
   [new RegExp(`${START}(?:á|a)\\s+ensku\\s+(?:takk|please)${END}`, 'giu'), 'en'],
 ];
 
+/**
+ * A negation right before a request ("ekki svara á ensku", "don't answer in Icelandic", "not in English please",
+ * "please never reply in English") turns it into a refusal of that language, so it never selects it. Such a clause is
+ * skipped and the language falls through to the normal resolution (the message's own language, the app setting, …).
+ * Only a negation directly before the request counts; "No, answer in English" (comma) still asks for English.
+ */
+const NEGATED = new RegExp(`${START}(?:ekki|aldrei|not|never|don['’]?t|do\\s+not|doesn['’]?t|does\\s+not|won['’]?t|will\\s+not)\\s+(?:to\\s+)?$`, 'iu');
+
+function negated(t: string, m: RegExpExecArray): boolean {
+  const lead = /^[^\p{L}\p{N}]*/u.exec(m[0])?.[0].length ?? 0;
+  return NEGATED.test(t.slice(0, m.index + lead));
+}
+
 /** The language the message explicitly asks the assistant to use, or null. The last request in the message wins. */
 export function requestedReplyLang(text: string | null | undefined): Lang | null {
   const t = String(text ?? '').normalize('NFC');
@@ -42,6 +55,10 @@ export function requestedReplyLang(text: string | null | undefined): Lang | null
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(t))) {
+      if (negated(t, m)) {
+        if (m[0].length === 0) re.lastIndex++;
+        continue;
+      }
       if (!best || m.index >= best.at) best = { at: m.index, lang };
       if (m[0].length === 0) re.lastIndex++;
     }

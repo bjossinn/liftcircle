@@ -907,9 +907,9 @@ function rebuildTemplate(t: SessionTemplate, ctx: Ctx, variant: number, weekUsed
   const day = split?.days.find((d) => d.key === dayKey);
   if (split && day) {
     const { template } = buildLiftingTemplate(day, split, ctx, variant, weekUsed, t.name);
-    return { ...template, focus: t.focus };
+    return { ...template, focus: t.focus, ...(t.nameEdited ? { nameEdited: true as const } : {}) };
   }
-  if (t.id === 'act:mobility' && t.exercises.length) return { ...mobilityTemplate(ctx, variant), name: t.name };
+  if (t.id === 'act:mobility' && t.exercises.length) return { ...mobilityTemplate(ctx, variant), name: t.name, ...(t.nameEdited ? { nameEdited: true as const } : {}) };
   if (t.id === 'act:conditioning') return conditioningTemplate(ctx, variant) ?? t;
   if (t.kind !== 'lifting' || !t.exercises.length) return t;
   // Custom / manual session: swap each exercise for another that does the same job.

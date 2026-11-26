@@ -6,7 +6,7 @@
  */
 import { z } from 'zod';
 import type { ActivityLog, ActivityType, DistanceUnit, Intensity } from './types';
-import { fromMeters, round } from './units';
+import { formatSpeed, fromMeters } from './units';
 import { getLanguage, tKey, type Language } from '@/i18n';
 
 export type ActivityField = 'distance' | 'elevation' | 'hr' | 'pace';
@@ -130,7 +130,7 @@ export function paceOrSpeed(
     case 'speed': {
       const v = fromMeters(d, unit) / (t / 3600);
       const per = unit === 'km' ? 'km/h' : 'mph';
-      return { kind: 'speed', value: v, per, text: `${round(v, 1)} ${per}` };
+      return { kind: 'speed', value: v, per, text: formatSpeed(v, unit) };
     }
   }
 }

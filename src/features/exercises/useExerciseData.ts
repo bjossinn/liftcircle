@@ -4,8 +4,8 @@ import type { DistanceUnit, Exercise, ID, ISODate, LoggedSet, WeightUnit, Workou
 import { alive } from '@/db/repo';
 import type { LiftDb } from '@/db/db';
 import { useApp } from '@/state/app';
-import { formatDistance, formatWeight, fromMeters, round } from '@/domain/units';
-import { getLanguage, numberText, t, type Language, type MessageKey, type Params } from '@/i18n';
+import { formatDistance, formatWeight } from '@/domain/units';
+import { getLanguage, t, type Language, type MessageKey, type Params } from '@/i18n';
 import { formatDuration } from '@/lib/dates';
 
 /** Completed, non-deleted sessions, newest first. */
@@ -135,5 +135,5 @@ export function formatLoggedSet(set: LoggedSet, ex: Exercise, unit: WeightUnit, 
 /** "800 m" / "1.5 km" (1,5 km in Icelandic); units and rounding as before. */
 function distanceText(m: number, unit: DistanceUnit, lang: Language): string {
   if (m < 1000 && unit === 'km') return `${Math.round(m)} m`;
-  return lang === 'en' ? formatDistance(m, unit) : `${numberText(round(fromMeters(m, unit), 2), 2, false, lang)} ${unit}`;
+  return formatDistance(m, unit, 2, lang);
 }

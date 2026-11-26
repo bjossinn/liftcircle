@@ -12,7 +12,7 @@ import { ExercisePicker } from '@/components/ExercisePicker';
 import { displayWeight } from '@/domain/units';
 import { defaultPrescription, estimateSessionMinutes, WEEK_ORDER } from '@/domain/program/generator';
 import { currentRationale, exerciseCue, exerciseNote, prescriptionText, restText, rirPlain, sessionCalibrationTip, sessionWarmupTip } from '@/domain/program/explain';
-import { activityName, cardioNotesText, localizeGeneratedText, sessionDisplayName } from '@/domain/program/localize';
+import { activityName, cardioNotesText, isGeneratedTemplateId, localizeGeneratedText, sessionDisplayName } from '@/domain/program/localize';
 import { isBeginner } from '@/domain/progression';
 import { weekdayShort } from '@/lib/dates';
 import { rationaleLineText, versionReasonText as proposalReasonText } from '@/domain/program/proposals';
@@ -60,7 +60,7 @@ function matchTemplate(key: MessageKey, text: string): Record<string, string> | 
 }
 
 /** Session name for display: manual "Session A" names and generated names are localized; custom names unchanged. */
-export function displaySessionName(t: Pick<SessionTemplate, 'id' | 'name'>): string {
+export function displaySessionName(t: Pick<SessionTemplate, 'id' | 'name' | 'nameEdited'>): string {
   if (t.id.startsWith('custom:')) {
     const m = matchTemplate('onboarding.manualSessionName', t.name);
     if (m && /^[A-Z]$/.test(m.letter)) return translate('onboarding.manualSessionName', { letter: m.letter });
@@ -77,14 +77,20 @@ export function planTextForDisplay(text: string): string {
 
 /** Edit reasons SessionCard stores on new versions (English), localized for display (e.g. in version history). */
 const REASON_KEYS: MessageKey[] = ['program.reordered', 'program.removed', 'program.editedExercise', 'program.swapped', 'program.added', 'program.renamed', 'program.edited'];
-export function versionReasonText(reason: string): string {
+export function versionReasonText(reason: string, templates: readonly SessionTemplate[] = []): string {
   for (const key of REASON_KEYS) {
     const params = matchTemplate(key, reason);
-    if (params) return translate(key, params.sessionName ? { ...params, sessionName: sessionDisplayName({ name: params.sessionName }) } : params);
+    if (params) return translate(key, params.sessionName ? { ...params, sessionName: reasonSessionName(params.sessionName, templates) } : params);
   }
   // Coach/AI/progression/take-over reasons written by applyProposal (exact English), else generated-plan text.
   const fromProposal = proposalReasonText(reason);
   return fromProposal !== reason ? fromProposal : planTextForDisplay(reason);
+}
+
+/** A session name inside a stored reason: localized only when a generated, unrenamed session of the version has it. */
+function reasonSessionName(name: string, templates: readonly SessionTemplate[]): string {
+  const tpl = templates.find((x) => x.name === name && !x.nameEdited && isGeneratedTemplateId(x.id));
+  return tpl ? sessionDisplayName(tpl) : name;
 }
 
 export function KindIcon({ kind, className = 'size-4' }: { kind: SessionTemplate['kind']; className?: string }) {
@@ -225,7 +231,7 @@ export function SessionCard(props: SessionCardProps) {
                   intensity: tr(INTENSITY_KEYS[t.cardio.intensity]).toLocaleLowerCase(locale()),
                 })}
               </div>
-              {t.cardio.notes && <p className="text-muted text-xs mt-1">{cardioNotesText(t.cardio)}</p>}
+              {t.cardio.notes && <p className="text-muted text-xs mt-1">{cardioNotesText(t)}</p>}
               {editable && (
                 <Button size="sm" variant="ghost" className="mt-1 -ml-2" icon={<Pencil className="size-4" />} onClick={() => setEditCardio(true)}>
                   {tr('program.edit')}
@@ -395,7 +401,8 @@ export function SessionCard(props: SessionCardProps) {
         title={tr('program.renameTitle')}
         onClose={() => setRenaming(false)}
         onSave={(name) => {
-          commit({ ...t, name }, enText('program.renamed', { from: t.name, to: name }));
+          // The typed name is the user's text: mark it so it is never shown as (localized) generated text.
+          commit({ ...t, name, nameEdited: true }, enText('program.renamed', { from: t.name, to: name }));
           setRenaming(false);
         }}
       />
@@ -403,7 +410,7 @@ export function SessionCard(props: SessionCardProps) {
         <DaysSheet open={editDays} days={days ?? []} title={tr('program.daysFor', { sessionName: shownName })} onClose={() => setEditDays(false)} onSave={(d) => { props.onDaysChange!(d); setEditDays(false); }} />
       )}
       {t.cardio && (
-        <CardioSheet open={editCardio} template={t} onClose={() => setEditCardio(false)} onSave={(cardio) => { commit({ ...t, cardio }, enText('program.edited', { sessionName: t.name })); setEditCardio(false); }} />
+        <CardioSheet open={editCardio} template={t} onClose={() => setEditCardio(false)} onSave={(cardio) => { commit({ ...t, cardio: cardio.notes !== t.cardio!.notes ? { ...cardio, notesEdited: true } : cardio }, enText('program.edited', { sessionName: t.name })); setEditCardio(false); }} />
       )}
       {props.onDelete && (
         <ConfirmDialog
@@ -446,7 +453,7 @@ function PrescriptionForm({ rx, ex, onSave, onCancel }: { rx: Prescription; ex?:
       className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!errors.length) onSave(d);
+        if (!errors.length) onSave(d.notes !== rx.notes ? { ...d, notesEdited: true } : d);
       }}
     >
       <div className="grid grid-cols-2 gap-3">

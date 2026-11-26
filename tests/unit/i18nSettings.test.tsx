@@ -12,7 +12,7 @@ import type { AccountState } from '@/domain/types';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const h = vi.hoisted(() => ({ app: null as unknown, updates: [] as unknown[] }));
+const h = vi.hoisted(() => ({ app: null as unknown, updates: [] as unknown[], fail: false }));
 vi.mock('@/state/app', () => ({ useApp: () => h.app }));
 vi.mock('@/features/settings/UpdateCheckRow', () => ({ UpdateCheckRow: () => null }));
 
@@ -35,6 +35,7 @@ function Harness({ initial }: { initial: AccountState }) {
   h.app = {
     account,
     updateAccount: async (fn: (a: AccountState) => AccountState) => {
+      if (h.fail) throw new Error('IndexedDB write failed');
       const next = fn(account);
       h.updates.push(next);
       setAccount(next);
@@ -59,6 +60,7 @@ const radio = (name: string) => [...document.querySelectorAll('[role="radio"]')]
 beforeEach(() => {
   vi.stubEnv('VITE_VAPID_PUBLIC_KEY', '');
   h.updates = [];
+  h.fail = false;
   setLanguage('en');
 });
 afterEach(() => {
@@ -94,6 +96,38 @@ describe('Settings language switcher', () => {
     // Autonyms stay in their own language.
     expect(radio('English')).not.toBeNull();
     expect(radio('Íslenska')?.getAttribute('aria-checked')).toBe('true');
+  });
+});
+
+describe('Settings language save result', () => {
+  it('shows "Language changed" only after a successful save', async () => {
+    await render(defaultAccountState());
+    await act(async () => void radio('Íslenska')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(text()).toContain(t('settings.languageSaved', undefined, 'is'));
+  });
+
+  it('a rejected write shows the error and never the "language changed" toast', async () => {
+    h.fail = true;
+    await render(defaultAccountState());
+    await act(async () => void radio('Íslenska')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await act(async () => {});
+    expect(h.updates).toHaveLength(0);
+    const page = text();
+    expect(page).toContain(t('common.error', undefined, 'en'));
+    expect(page).not.toContain(t('settings.languageSaved', undefined, 'is'));
+    expect(page).not.toContain(t('settings.languageSaved', undefined, 'en'));
+    expect(radio('English')?.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('unfocused numeric fields switch to the decimal comma with the language', async () => {
+    const initial = defaultAccountState();
+    initial.settings = { ...initial.settings, workout: { ...initial.settings.workout, plateIncrementKg: 2.5 } };
+    await render(initial);
+    const values = () => [...document.querySelectorAll('input')].map((i) => i.value);
+    expect(values()).toContain('2.5');
+    await act(async () => void radio('Íslenska')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(values()).toContain('2,5');
+    expect(values()).not.toContain('2.5');
   });
 });
 

@@ -3,6 +3,7 @@ import type { DistanceUnit, LengthUnit, UnitPrefs } from './types';
 // Weight conversion and display are shared with the ai-coach function (one implementation for both).
 export { KG_PER_LB, lbToKg, kgToLb, round, toKg, fromKg, displayWeight, formatWeight, trimNum } from '../../supabase/functions/_shared/training/units';
 import { round } from '../../supabase/functions/_shared/training/units';
+import { getLanguage, numberText, type Language } from '@/i18n';
 
 /** Exact definitions (international inch and mile). */
 export const CM_PER_IN = 2.54;
@@ -63,15 +64,15 @@ export function cmToFtIn(cm: number): { ft: number; inch: number } {
 export function ftInToCm(ft: number, inch: number): number {
   return inToCm(ft * 12 + inch);
 }
-export function formatLength(cm: number | undefined, unit: LengthUnit): string {
+export function formatLength(cm: number | undefined, unit: LengthUnit, language: Language = getLanguage()): string {
   if (cm == null) return '–';
-  if (unit === 'cm') return `${round(cm, 1)} cm`;
+  if (unit === 'cm') return `${numberText(round(cm, 1), 1, false, language)} cm`;
   const { ft, inch } = cmToFtIn(cm);
-  return `${ft}′ ${inch}″`;
+  return `${ft}′ ${numberText(inch, 1, false, language)}″`;
 }
 /** Circumference measurements in imperial are shown in inches. */
-export function formatCircumference(cm: number, unit: LengthUnit): string {
-  return unit === 'cm' ? `${round(cm, 1)} cm` : `${round(cmToIn(cm), 1)} in`;
+export function formatCircumference(cm: number, unit: LengthUnit, language: Language = getLanguage()): string {
+  return unit === 'cm' ? `${numberText(round(cm, 1), 1, false, language)} cm` : `${numberText(round(cmToIn(cm), 1), 1, false, language)} in`;
 }
 
 /* ------------------------------------------------------------ distance */
@@ -81,9 +82,10 @@ export function toMeters(value: number, unit: DistanceUnit): number {
 export function fromMeters(m: number, unit: DistanceUnit): number {
   return unit === 'km' ? m / 1000 : mToMi(m);
 }
-export function formatDistance(m: number | undefined, unit: DistanceUnit, decimals = 2): string {
+/** "10.25 km" (en) / "10,25 km" (is): same rounding, unit unchanged; only the decimal separator follows the language. */
+export function formatDistance(m: number | undefined, unit: DistanceUnit, decimals = 2, language: Language = getLanguage()): string {
   if (m == null) return '–';
-  return `${round(fromMeters(m, unit), decimals)} ${unit}`;
+  return `${numberText(round(fromMeters(m, unit), decimals), decimals, false, language)} ${unit}`;
 }
 
 /** Pace in seconds per km or per mile. Returns null when not computable. */
@@ -105,4 +107,9 @@ export function formatPace(secPerUnit: number | null, unit: DistanceUnit): strin
 export function speedPerHour(distanceM: number | undefined, durationSec: number | undefined, unit: DistanceUnit): number | null {
   if (!distanceM || !durationSec || durationSec <= 0) return null;
   return fromMeters(distanceM, unit) / (durationSec / 3600);
+}
+/** "20.5 km/h" (en) / "20,5 km/h" (is), one decimal; the unit (km/h, mph) is unchanged. */
+export function formatSpeed(perHour: number | null | undefined, unit: DistanceUnit, language: Language = getLanguage()): string {
+  if (perHour == null || !isFinite(perHour)) return '–';
+  return `${numberText(round(perHour, 1), 1, false, language)} ${unit === 'km' ? 'km/h' : 'mph'}`;
 }

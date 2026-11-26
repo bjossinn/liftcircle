@@ -31,11 +31,45 @@ export function localizeGeneratedList(list: readonly string[], language: Languag
   return list.map((s) => localizeGeneratedText(s, language));
 }
 
-export const sessionDisplayName = (s: Pick<SessionTemplate, 'name'>, language: Language = getLanguage()) => localizeGeneratedText(s.name, language);
-export const sessionDisplayFocus = (s: Pick<SessionTemplate, 'focus'>, language: Language = getLanguage()) => localizeGeneratedText(s.focus, language);
-export const cardioNotesText = (c: { notes: string }, language: Language = getLanguage()) => localizeGeneratedText(c.notes, language);
+/*
+ * Provenance. Matching the exact English of a generated string does not prove the generator wrote it: a user can name
+ * a session "Easy walk" or type a note that equals a generated one. So the user-editable template fields are only
+ * localized when they are demonstrably generator text:
+ *  - session name / focus / cardio notes: the template has an id the generator assigns (`fb3:a`, `act:walk`,
+ *    `end:easy`, …; see `isGeneratedTemplateId`) and the field carries no edit marker (`nameEdited`,
+ *    `cardio.notesEdited`, set by the program editor when someone saves that field). Custom (`custom:`), library,
+ *    coach- and AI-created sessions have other ids and are always shown as stored — except the focus of a blank custom
+ *    session, which the app itself writes (`emptyTemplate`) and nobody can edit.
+ *  - exercise notes: shown verbatim once edited (`notesEdited`); otherwise only exact generator/app notes are localized.
+ * Plans stored before the markers existed: a generator-id session that was renamed then is indistinguishable from one
+ * that wasn't, so its name is localized only when it still equals a generated string; every other origin shows as
+ * stored. Stored English is never rewritten.
+ */
+const ACT_ID = /^act:(?:walk|cardio|mobility|conditioning)$/;
+const END_ID = /^end:(?:easy|long|steady)$/;
+/** True when `id` is one the program generator gives the sessions it builds. */
+export function isGeneratedTemplateId(id: string | undefined | null): boolean {
+  if (!id) return false;
+  if (ACT_ID.test(id) || END_ID.test(id)) return true;
+  const parts = id.split(':');
+  if (parts.length !== 2) return false;
+  return Object.hasOwn(SPLITS, parts[0]) && SPLITS[parts[0] as SplitKey].days.some((d) => d.key === parts[1]);
+}
+type NameSource = Pick<SessionTemplate, 'name'> & Partial<Pick<SessionTemplate, 'id' | 'nameEdited'>>;
+/** Session name for display: generated names are localized; renamed and non-generated sessions show as stored. */
+export const sessionDisplayName = (s: NameSource, language: Language = getLanguage()) =>
+  !s.nameEdited && isGeneratedTemplateId(s.id) ? localizeGeneratedText(s.name, language) : s.name;
+const CUSTOM_FOCUS = () => en('program.rationale.custom');
+export const sessionDisplayFocus = (s: Pick<SessionTemplate, 'focus'> & Partial<Pick<SessionTemplate, 'id'>>, language: Language = getLanguage()) =>
+  isGeneratedTemplateId(s.id) || (s.id?.startsWith('custom:') && s.focus === CUSTOM_FOCUS()) ? localizeGeneratedText(s.focus, language) : s.focus;
+/** Cardio notes of a session: localized only for an unedited generated session (pass the template). */
+export const cardioNotesText = (s: Pick<SessionTemplate, 'id' | 'cardio'>, language: Language = getLanguage()) => {
+  const notes = s.cardio?.notes ?? '';
+  return !s.cardio?.notesEdited && isGeneratedTemplateId(s.id) ? localizeGeneratedText(notes, language) : notes;
+};
 export const warmupDisplayText = (rx: { warmup: string }, language: Language = getLanguage()) => localizeGeneratedText(rx.warmup, language);
-export const rxNotesText = (rx: { notes?: string }, language: Language = getLanguage()) => (rx.notes == null ? undefined : localizeGeneratedText(rx.notes, language));
+export const rxNotesText = (rx: { notes?: string; notesEdited?: true }, language: Language = getLanguage()) =>
+  rx.notes == null ? undefined : rx.notesEdited ? rx.notes : localizeGeneratedText(rx.notes, language);
 /** A stored program name: generated default names are localized, names the user typed are shown as typed. */
 export const programDisplayName = (name: string, language: Language = getLanguage()) => localizeGeneratedText(name, language);
 
