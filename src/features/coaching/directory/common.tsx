@@ -10,6 +10,7 @@ import { useApp } from '@/state/app';
 import { friendlyError } from '@/social/pendingPosts';
 import { initials } from '@/domain/coaching/display';
 import { authHref } from '@/features/auth/authReturn';
+import { isFeatureEnabled } from '@/config/featureFlags';
 
 /* ================================================================ access */
 export type CoachingAccess = 'personal' | 'loading' | 'guest' | 'expired' | 'offline' | 'ok';
@@ -43,8 +44,12 @@ export function CoachingAccessNotice({ access }: { access: Exclude<CoachingAcces
       return (
         <EmptyState
           icon={<GraduationCap className="size-6" aria-hidden />}
-          title="Train with a coach"
-          body="Find an approved coach near you or online, or apply to coach others. Sign in to get started. Your workouts on this device can come with you."
+          title={isFeatureEnabled('coachMarketplace') ? 'Train with a coach' : 'Your training assistant'}
+          body={
+            isFeatureEnabled('coachMarketplace')
+              ? 'Find an approved coach near you or online, or apply to coach others. Sign in to get started. Your workouts on this device can come with you.'
+              : 'Sign in to use the training assistant and keep your coaching in one place. Your workouts on this device can come with you.'
+          }
           action={
             <Button variant="primary" onClick={() => nav(authHref('signup', pathname))}>
               Sign in or create an account
@@ -78,30 +83,36 @@ export const authLink = (path: string) => authHref('signup', path);
 export function GuestCoachingIntro({ browse = true }: { browse?: boolean }) {
   const nav = useNavigate();
   const { pathname } = useLocation();
+  // Marketplace off: AI-first, no human-coach pitch a guest couldn't act on.
+  const marketplace = isFeatureEnabled('coachMarketplace');
   return (
     <div className="flex flex-col gap-3 pt-1">
-      <p className="text-[15px] text-muted px-1">Choose how you’d like to be coached. You can use either one, or both.</p>
-      <Card as="section" aria-labelledby="guest-human" className="p-4 flex flex-col gap-2">
-        <div className="flex items-center gap-3">
-          <span className="size-10 rounded-xl bg-accent-soft text-accent flex items-center justify-center shrink-0">
-            <GraduationCap className="size-5" aria-hidden />
-          </span>
-          <h2 id="guest-human" className="font-semibold">
-            A human coach
-          </h2>
-        </div>
-        <p className="text-sm">A real coach, approved by our team, who works with you in person or online.</p>
-        <p className="text-sm text-muted">
-          <span className="font-medium text-ink">What they see:</span> only your request and intro until they accept. After that, only the categories you
-          allow: training, measurements, nutrition, check-ins. You can change or revoke this at any time.
-        </p>
-        {browse && (
-          <Link to="/coaching/find" className="mt-1 inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl bg-surface-2 text-ink hover:bg-surface-3 border border-line text-[15px]">
-            <Search className="size-4" aria-hidden />
-            Browse approved coaches
-          </Link>
-        )}
-      </Card>
+      <p className="text-[15px] text-muted px-1">
+        {marketplace ? 'Choose how you’d like to be coached. You can use either one, or both.' : 'Get answers and plan suggestions from the training assistant.'}
+      </p>
+      {marketplace && (
+        <Card as="section" aria-labelledby="guest-human" className="p-4 flex flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <span className="size-10 rounded-xl bg-accent-soft text-accent flex items-center justify-center shrink-0">
+              <GraduationCap className="size-5" aria-hidden />
+            </span>
+            <h2 id="guest-human" className="font-semibold">
+              A human coach
+            </h2>
+          </div>
+          <p className="text-sm">A real coach, approved by our team, who works with you in person or online.</p>
+          <p className="text-sm text-muted">
+            <span className="font-medium text-ink">What they see:</span> only your request and intro until they accept. After that, only the categories you
+            allow: training, measurements, nutrition, check-ins. You can change or revoke this at any time.
+          </p>
+          {browse && (
+            <Link to="/coaching/find" className="mt-1 inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl bg-surface-2 text-ink hover:bg-surface-3 border border-line text-[15px]">
+              <Search className="size-4" aria-hidden />
+              Browse approved coaches
+            </Link>
+          )}
+        </Card>
+      )}
       <Card as="section" aria-labelledby="guest-ai" className="p-4 flex flex-col gap-2">
         <div className="flex items-center gap-3">
           <span className="size-10 rounded-xl bg-surface-3 text-info flex items-center justify-center shrink-0">
@@ -117,7 +128,7 @@ export function GuestCoachingIntro({ browse = true }: { browse?: boolean }) {
           nutrition only if you allow them. Your messages are processed by an AI provider. It never sees your photos, posts or human-coach chats.
         </p>
       </Card>
-      <Notice>Both need an account, so your records and conversations stay in your account and are shared only as you choose. Workouts already on this device can come with you.</Notice>
+      <Notice>{marketplace ? 'Both need' : 'It needs'} an account, so your records and conversations stay in your account and are shared only as you choose. Workouts already on this device can come with you.</Notice>
       <Button variant="primary" size="lg" block onClick={() => nav(authLink(pathname))}>
         Sign in or create an account
       </Button>

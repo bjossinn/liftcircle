@@ -49,7 +49,8 @@ function useSessionEditor(id: string) {
         const cur = await db.sessions.get(id);
         if (!cur || cur.deletedAt || cur.status !== 'active') return true; // never edit a finished/discarded session from the logger
         const next = fn(cur);
-        if (next) await saveRecord('sessions', next, db);
+        if (!next) return true; // nothing to write (e.g. Finish only opening the confirmation): keep any earlier save error and its Retry
+        await saveRecord('sessions', next, db);
         setSaveError(null);
         return true;
       };

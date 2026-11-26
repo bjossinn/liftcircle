@@ -7,6 +7,7 @@ import type { AppNotification, SocialNotificationType } from '@/domain/types';
 import { useApp, useSettings } from '@/state/app';
 import { friendlyError } from '@/social/pendingPosts';
 import { AccessNotice, Avatar, Time, useSocialAccess } from './common';
+import { feedHome } from './feedHome';
 import { allNotificationTypesEnabled, enabledNotificationTypes, notifyUnreadChanged } from './useUnreadCount';
 
 const SOCIAL_TEXT: Record<SocialNotificationType, string> = {
@@ -86,7 +87,7 @@ export function linkFor(n: AppNotification, me?: string): string {
       return n.actor?.username ? `/u/${n.actor.username}` : '/friends';
     case 'like':
     case 'comment':
-      return n.postId ? `/feed/post/${n.postId}` : '/feed';
+      return n.postId ? `/feed/post/${n.postId}` : feedHome().path;
     case 'coach_request':
     case 'coach_request_cancelled':
       return '/coaching/dashboard';

@@ -12,6 +12,7 @@ import { cancelPendingPost, friendlyError, processPendingPosts, queuePost, retry
 import { AccessNotice, SnapshotView, useSocialAccess } from './common';
 import { AUDIENCE_OPTIONS, CAPTION_MAX } from './PostCard';
 import { PhotoPicker, usePhotoPicker } from './PhotoPicker';
+import { isFeatureEnabled } from '@/config/featureFlags';
 
 type Phase = 'edit' | 'publishing' | 'failed' | 'posted' | 'queued';
 
@@ -260,7 +261,7 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
             )}
           </>
         )}
-        {phase === 'posted' && <Notice tone="accent">Posted. You can see it in your feed.</Notice>}
+        {phase === 'posted' && <Notice tone="accent">{isFeatureEnabled('socialFeed') ? 'Posted. You can see it in your feed.' : 'Posted. You can see it on your profile.'}</Notice>}
         {phase === 'queued' && <Notice>Saved on this device. Waiting to upload. It isn’t visible to anyone yet.</Notice>}
       </div>
     </div>

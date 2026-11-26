@@ -12,19 +12,25 @@ import { SyncRunner, SyncStatusBanner } from '@/sync/SyncStatus';
 import { PendingPostsRunner } from '@/social/pendingPosts';
 import { GuestImportPrompt } from '@/features/auth/GuestImportPrompt';
 import { usePushScheduler } from '@/pwa/pushScheduler';
+import { isFeatureEnabled } from '@/config/featureFlags';
 
 // The demo module bundles the program generator and the exercise catalogue to seed sample data;
 // load it only when the demo is actually open so it stays out of the startup bundle.
 const DemoBanner = lazy(() => import('@/features/settings/demo').then((m) => ({ default: m.DemoBanner })));
 
-const TABS = [
+const ALL_TABS = [
   { to: '/', label: 'Today', icon: Home, end: true },
   { to: '/train', label: 'Train', icon: Dumbbell },
-  { to: '/feed', label: 'Feed', icon: Users },
+  { to: '/feed', label: 'Feed', icon: Users, flag: 'socialFeed' as const },
   { to: '/nutrition', label: 'Nutrition', icon: Apple },
   { to: '/progress', label: 'Progress', icon: LineChart },
   { to: '/coaching', label: 'Coaching', icon: HeartHandshake },
 ];
+
+/** Main tabs, minus any whose feature flag is off (src/config/featureFlags.ts). */
+export function mainTabs() {
+  return ALL_TABS.filter((t) => !t.flag || isFeatureEnabled(t.flag));
+}
 
 /** Routes that render full-screen without the tab bar. */
 const FULLSCREEN = [/^\/train\/session\//, /^\/onboarding/, /^\/auth/, /^\/coaching\/messages\//, /^\/coaching\/ai$/];
@@ -77,10 +83,11 @@ function PushRunner() {
 
 function TabBar() {
   const coachingUnread = useCoachingUnread();
+  const tabs = mainTabs();
   return (
     <nav aria-label="Main" className="fixed bottom-0 inset-x-0 z-40 bg-surface/95 backdrop-blur border-t border-line pb-safe">
-      <ul className="mx-auto max-w-2xl grid grid-cols-6">
-        {TABS.map((t) => (
+      <ul className={clsx('mx-auto max-w-2xl grid', tabs.length === 6 ? 'grid-cols-6' : 'grid-cols-5')}>
+        {tabs.map((t) => (
           <li key={t.to}>
             <NavLink
               to={t.to}

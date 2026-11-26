@@ -4,6 +4,8 @@ import { ChevronLeft } from 'lucide-react';
 import { Button, EmptyState, IconButton, Page, Spinner } from '@/components/ui';
 import { useDb } from '@/state/app';
 import { SharePreview } from './SharePreview';
+import { isFeatureEnabled } from '@/config/featureFlags';
+import type { ID } from '@/domain/types';
 
 /** /feed/new — standalone text/photo post, or share a finished workout (?session=) / activity (?activity=). */
 export default function ComposePage() {
@@ -26,7 +28,14 @@ export default function ComposePage() {
   }, [db, sessionId, activityId]);
 
   const title = sessionId ? 'Share workout' : activityId ? 'Share activity' : 'New post';
-  const done = () => nav('/feed', { replace: true });
+  // With the feed on, land on it. With it off, open the new post (or, if it's still waiting to upload, go back to
+  // where the share started: the workout, or Today when the page was opened directly).
+  const done = (postId: ID | null) => {
+    if (isFeatureEnabled('socialFeed')) nav('/feed', { replace: true });
+    else if (postId) nav(`/feed/post/${postId}`, { replace: true });
+    else if (sessionId) nav(`/train/history/${sessionId}`, { replace: true });
+    else nav('/', { replace: true });
+  };
 
   let body;
   if (!source) body = <Spinner />;

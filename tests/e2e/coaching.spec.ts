@@ -16,7 +16,12 @@ test('coaching and training assistant show truthful unavailable states and the t
   await expect(page.getByText('The training assistant isn’t set up on this server yet')).toBeVisible();
   await expect(page.getByRole('textbox')).toHaveCount(0); // no composer that could never send
 
-  for (const path of ['/coaching/find', '/coaching/my', '/coaching/dashboard', '/coaching/admin', '/coaching/admin/reports']) {
+  // The coach marketplace flag is off by default: finding a coach explains that instead of loading the directory.
+  await page.goto('/coaching/find');
+  await expect(page.getByText('Finding a coach isn’t open yet')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Go to Coaching' })).toBeVisible();
+
+  for (const path of ['/coaching/my', '/coaching/dashboard', '/coaching/admin', '/coaching/admin/reports']) {
     await page.goto(path);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await expect(page.getByText(/needs (an account|the online version)/)).toBeVisible();

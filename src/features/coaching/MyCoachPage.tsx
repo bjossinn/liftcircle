@@ -17,6 +17,7 @@ import { formatDate } from '@/lib/dates';
 import { coachingError } from '@/coaching/errors';
 import { RELATIONSHIP_STATUS_LABEL, closedExplanation, sortClientRelationships } from '@/coaching/relationship';
 import { Avatar } from '@/features/social/common';
+import { isFeatureEnabled } from '@/config/featureFlags';
 import { BackButton, CheckInAnswers, CoachingAccessNotice, ProposalStatusBadge, ScopeEditor, fmtDateTime, useCoachingAccess, useLoad, useScrollToHash } from './tools/common';
 
 export default function MyCoachPage() {
@@ -29,6 +30,7 @@ export default function MyCoachPage() {
   const requested = rels.data?.filter((r) => r.status === 'requested') ?? [];
   const closed = rels.data?.filter((r) => r.status === 'ended' || r.status === 'declined' || r.status === 'cancelled') ?? [];
   useScrollToHash(!!rels.data);
+  const marketplace = isFeatureEnabled('coachMarketplace');
 
   return (
     <Page title="My coach" back={<BackButton to="/coaching" />}>
@@ -43,13 +45,19 @@ export default function MyCoachPage() {
         <EmptyState
           icon={<HeartHandshake className="size-6" aria-hidden />}
           title="No coach yet"
-          body="Find an approved coach near you or online. You choose what to share, and you can change it or end coaching at any time."
+          body={
+            marketplace
+              ? 'Find an approved coach near you or online. You choose what to share, and you can change it or end coaching at any time.'
+              : 'The training assistant can answer questions and suggest changes to your plan. Nothing changes unless you accept it.'
+          }
           action={
             <div className="flex flex-col gap-2 w-full max-w-xs">
-              <Button variant="primary" icon={<Search className="size-4" />} onClick={() => nav('/coaching/find')}>
-                Look for a coach
-              </Button>
-              <Button icon={<Sparkles className="size-4" />} onClick={() => nav('/coaching/ai')}>
+              {marketplace && (
+                <Button variant="primary" icon={<Search className="size-4" />} onClick={() => nav('/coaching/find')}>
+                  Look for a coach
+                </Button>
+              )}
+              <Button variant={marketplace ? undefined : 'primary'} icon={<Sparkles className="size-4" />} onClick={() => nav('/coaching/ai')}>
                 Try the training assistant
               </Button>
             </div>
@@ -64,9 +72,15 @@ export default function MyCoachPage() {
           {!active && requested.length === 0 && (
             <Card className="px-4 py-4 mt-2">
               <p className="text-sm">You don’t have an active coach right now.</p>
-              <Button className="mt-3" variant="primary" icon={<Search className="size-4" />} onClick={() => nav('/coaching/find')}>
-                Look for a coach
-              </Button>
+              {marketplace ? (
+                <Button className="mt-3" variant="primary" icon={<Search className="size-4" />} onClick={() => nav('/coaching/find')}>
+                  Look for a coach
+                </Button>
+              ) : (
+                <Button className="mt-3" icon={<Sparkles className="size-4" />} onClick={() => nav('/coaching/ai')}>
+                  Try the training assistant
+                </Button>
+              )}
             </Card>
           )}
           {closed.length > 0 && (
@@ -223,16 +237,18 @@ function ActiveCoach({ rel, onChanged }: { rel: CoachingRelationship; onChanged:
 
       <SectionTitle>Change coaching</SectionTitle>
       <Card className="px-4 py-3 flex flex-col gap-3">
-        <div>
-          <p className="text-sm">
-            <span className="font-medium">Switch coach.</span> You can request another coach while this one is active. When a new coach accepts, your coaching with {name} ends
-            automatically: you have one primary coach at a time.
-          </p>
-          <Button className="mt-2" icon={<Repeat className="size-4" />} onClick={() => nav('/coaching/find')}>
-            Find another coach
-          </Button>
-        </div>
-        <div className="border-t border-line pt-3">
+        {isFeatureEnabled('coachMarketplace') && (
+          <div>
+            <p className="text-sm">
+              <span className="font-medium">Switch coach.</span> You can request another coach while this one is active. When a new coach accepts, your coaching with {name} ends
+              automatically: you have one primary coach at a time.
+            </p>
+            <Button className="mt-2" icon={<Repeat className="size-4" />} onClick={() => nav('/coaching/find')}>
+              Find another coach
+            </Button>
+          </div>
+        )}
+        <div className={isFeatureEnabled('coachMarketplace') ? 'border-t border-line pt-3' : undefined}>
           <Button variant="danger" icon={<UserX className="size-4" />} onClick={() => setEnding(true)}>
             End coaching
           </Button>
