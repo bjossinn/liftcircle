@@ -61,6 +61,12 @@ const SYNONYMS: Record<string, string[]> = {
   shake: ['shake', 'smoothie'],
   tofu: ['tofu', 'tempeh'],
   veggie: ['vegetable', 'veg'],
+  // A few Icelandic dish and fruit words (folded) for "pönnukökur án bláberja" (1.0.3); broader coverage is a follow-up.
+  ponnukokur: ['pancake'], ponnukaka: ['pancake'], ponnukokum: ['pancake'], ponnukoku: ['pancake'],
+  blaber: ['blueberr'], blaberja: ['blueberr'], blaberjum: ['blueberr'],
+  hindber: ['raspberr'], hindberja: ['raspberr'], hindberjum: ['raspberr'],
+  jardarber: ['strawberr'], jardarberja: ['strawberr'], jardarberjum: ['strawberr'],
+  banani: ['banana'], bananar: ['banana'], bananann: ['banana'],
 };
 const MEAL_WORDS: Record<string, MealSlotName> = { breakfast: 'breakfast', brunch: 'breakfast', lunch: 'lunch', dinner: 'dinner', supper: 'dinner', snack: 'snack', snacks: 'snack' };
 // English and Icelandic (text is folded first: accents dropped, but æ, ð and þ stay).
@@ -231,6 +237,9 @@ const IS_FOOD: [string, string][] = [
   ['skink', 'ham'], ['svin', 'pork'], ['naut', 'beef'], ['hakk', 'mince'], ['kjot', 'meat'], ['svepp', 'mushroom'], ['lauk', 'onion'], ['tomat', 'tomato'],
   ['papri', 'pepper'], ['avokado', 'avocado'], ['banan', 'banana'], ['baun', 'bean'], ['hafra', 'oat'], ['ost', 'cheese'], ['lax', 'salmon'], ['þorsk', 'cod'],
   ['tunfisk', 'tuna'], ['spinat', 'spinach'], ['kokos', 'coconut'], ['mondl', 'almond'],
+  // Found by the independent allergen fixture (tests/unit/aiAllergenFixture.test.ts, 1.0.3).
+  ['ysa', 'haddock'], ['ysu', 'haddock'], ['makril', 'mackerel'], ['ufsa', 'saithe'], ['ufsi', 'saithe'], ['kræklin', 'mussel'], ['smokkfisk', 'squid'],
+  ['smjor', 'butter'], ['mysuprot', 'whey'], ['rugbrau', 'rye bread'],
 ];
 const FREE_RE = new RegExp(`(?<![${L}])([a-zæðþ]+)[\\s-]free(?![${L}])|(?<![${L}])([a-zæðþ]{3,}?)laus(?:ir|ar|an|um|ri|a|t)?(?![${L}])`, 'g');
 const TOKEN_RE = /[a-z0-9æðþ'’-]+|[.,;:!?\n()/&]/g;
@@ -459,7 +468,7 @@ export function explainNoRecipes(c: ConstraintSet, recipes: RefRecipe[], ing: Ma
         if (!x.optional && i.proteinGroup && k.proteinExcluded?.includes(i.proteinGroup)) return false;
         const bad = (i.allergens ?? []).some((a) => k.allergens.includes(a)) || k.disliked.includes(i.id) ||
           k.dietTags.some((t) => DIET_FLAG[t] && i.diet?.[DIET_FLAG[t] as keyof NonNullable<RefIngredient['diet']>] !== true);
-        return !bad || x.optional;
+        return !bad; // optional ones too: find_recipes rejects a recipe that would need one left out (1.0.3)
       });
     });
   void facts;
@@ -478,7 +487,7 @@ export function explainNoRecipes(c: ConstraintSet, recipes: RefRecipe[], ing: Ma
 /* ------------------------------------------------------------------ meal plans from intent */
 // English and Icelandic stems (folded text: "fiskur", "hnetum", "glútens", "rækjur", "jarðhnetur", "mjólk").
 const ALLERGEN_WORDS: [RegExp, Allergen[]][] = [
-  [/\bfish\b|\bseafood\b|\bfisk|\bsjavarfang/, ['fish', 'shellfish']], [/\bshellfish\b|\bprawns?\b|\bshrimps?\b|\brækj|\bskelfisk/, ['shellfish']],
+  [/\bfish\b|\bseafood\b|\bfisk|\bsjavarfang/, ['fish', 'shellfish']], [/\bshellfish\b|\bprawns?\b|\bshrimps?\b|\bcrustaceans?\b|\bmollus[ck]s?\b|\brækj|\bskelfisk|\bkrabbadyr|\blindyr/, ['shellfish']],
   [/\bdairy\b|\bmilk\b|\blactose\b|\bcheese\b|\bmjolk|\blaktos/, ['milk']],
   [/\beggs?\b|\beggj/, ['egg']], [/\bpeanuts?\b|\bjarðhnet|\bhnetusmjor/, ['peanuts']], [/\bnuts?\b|\btree nuts?\b|(?<![a-zæðþ])hnet(?!usmjor)|\btrjahnet|\balmonds?\b|\bcashews?\b|\bwalnuts?\b|\bhazelnuts?\b|\bpecans?\b|\bpistachios?\b|\bmacadamias?\b|\bmondl|\bvalhnet|\bheslihnet|\bkasju/, ['tree_nuts']], [/\bgluten/, ['gluten']], [/\bwheat\b|\bhveiti/, ['wheat']],
   [/\bsoy\b|\bsoya\b|\btofu\b|\bsoja/, ['soy']], [/\bsesame\b|\bsesam/, ['sesame']], [/\bmustard\b|\bsinnep/, ['mustard']], [/\bcelery\b|\bsellerí|\bselleri/, ['celery']],

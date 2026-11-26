@@ -91,7 +91,13 @@ export interface MealPlanAction {
 export interface RecipeSuggestionsAction {
   kind: 'recipe_suggestions';
   id: string;
-  recipes: { id: string; name: string; meal: string; totalMinutes: number; perServing: { kcal: number; protein_g: number; carbs_g: number; fat_g: number } }[];
+  recipes: {
+    id: string; name: string; meal: string; totalMinutes: number; perServing: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
+    /** Optional ingredient ids left out (1.0.3). */
+    omit?: string[];
+    /** Ingredient swaps the recipe is shown with: proteins marked "not for me", or what this request asked to leave out. */
+    swaps?: { from: string; to: string }[];
+  }[];
 }
 
 export type AiAction = WeekAdjustmentAction | MealPlanAction | RecipeSuggestionsAction;
@@ -297,11 +303,26 @@ export interface RecordExchangeInput {
  * argument and must filter by it (the Supabase implementation also uses the user's JWT, so RLS applies).
  * There are deliberately no methods for coach messages, coach notes/feedback, social data or other users.
  */
+/** `attempt` identifies this run of the request; only it may settle the request as failed (null: older database). */
+export type BeginRequestResult = { status: 'started'; attempt: string | null; remaining?: number } | { status: 'duplicate' } | { status: 'in_progress' };
+
 export interface AiDb {
   getSettings(uid: string): Promise<AiSettingsRow | null>;
   getExchange(uid: string, messageId: string): Promise<StoredExchange | null>;
   /** Counts one request; returns remaining. Throws an error with code 'PT429' when over the limit. */
   checkAndCountUsage(uid: string, limit: number): Promise<number>;
+  /**
+   * Reserves this message id and counts one request (1.0.3). 'duplicate': already answered; 'in_progress': the same
+   * message is being answered right now (a replay must not start it twice); 'started': go ahead. Throws code 'PT429'
+   * when over the limit. Optional: without it the function uses checkAndCountUsage (older databases, test doubles).
+   */
+  beginRequest?(uid: string, messageId: string, limit: number): Promise<BeginRequestResult>;
+  /**
+   * Attempt `attempt` failed: if it still owns the running request, the request is given back and tokens from completed
+   * rounds are booked as FAILED usage (never as successful usage). A no-op for an older attempt, a request already
+   * settled (failed or succeeded) and repeated calls. Optional, like beginRequest.
+   */
+  failRequest?(uid: string, messageId: string, attempt: string, usage: { inputTokens: number; outputTokens: number; costUsd: number | null }): Promise<void>;
   getUsage(uid: string, day: string): Promise<UsageRow | null>;
   getAccountState(uid: string): Promise<AccountStatePayload | null>;
   getActiveProgram(uid: string): Promise<ActiveProgramRow | null>;

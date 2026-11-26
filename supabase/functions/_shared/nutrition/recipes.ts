@@ -7,7 +7,7 @@ import type { Allergen, DietTag, ID, Ingredient, Macros, MealSlot, ProteinGroup,
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { catalog } from './catalog.ts';
 // @ts-ignore see above
-import { proteinFitSwaps } from './proteins.ts';
+import { LEFT_OUT, proteinFitSwaps } from './proteins.ts';
 // @ts-ignore see above
 export * from './proteins.ts';
 
@@ -18,6 +18,8 @@ const round = (n: number, decimals = 2) => {
 
 export type IngredientIndex = Map<ID, Ingredient>;
 export type Swap = { from: ID; to: ID };
+// LEFT_OUT ("left out" swap target for optional ingredients) lives in proteins.ts and is re-exported below.
+export const isLeftOut = (recipe: Recipe, s: Swap): boolean => s.to === LEFT_OUT && recipe.ingredients.some((i) => i.ingredientId === s.from && i.optional);
 
 export const ALLERGEN_LABELS: Record<Allergen, string> = {
   milk: 'Milk',
@@ -111,14 +113,16 @@ export interface ResolvedIngredient {
   swappedFrom?: ID;
 }
 
-/** Apply swaps (from → to) to a recipe's ingredient list. Unknown targets are ignored. */
+/** Apply swaps (from → to) to a recipe's ingredient list. Unknown targets are ignored; optional ingredients swapped to
+ *  LEFT_OUT are dropped. */
 export function resolveIngredients(recipe: Recipe, swaps: Swap[] = [], byId: IngredientIndex = catalog().byId): ResolvedIngredient[] {
-  return recipe.ingredients.map((ri) => {
+  return recipe.ingredients.flatMap((ri) => {
+    if (ri.optional && swaps.some((s) => s.from === ri.ingredientId && s.to === LEFT_OUT)) return [];
     const sw = swaps.find((s) => s.from === ri.ingredientId && byId.has(s.to));
     if (sw && sw.to !== ri.ingredientId) {
-      return { ri, ingredientId: sw.to, ingredient: byId.get(sw.to), grams: ri.grams * substitutionRatio(sw.from, sw.to, byId), swappedFrom: ri.ingredientId };
+      return [{ ri, ingredientId: sw.to, ingredient: byId.get(sw.to), grams: ri.grams * substitutionRatio(sw.from, sw.to, byId), swappedFrom: ri.ingredientId }];
     }
-    return { ri, ingredientId: ri.ingredientId, ingredient: byId.get(ri.ingredientId), grams: ri.grams };
+    return [{ ri, ingredientId: ri.ingredientId, ingredient: byId.get(ri.ingredientId), grams: ri.grams }];
   });
 }
 

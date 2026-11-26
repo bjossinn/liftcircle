@@ -5,7 +5,7 @@
  * you leave). The screen is kept awake while open where the browser supports the Screen Wake Lock API.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { CalendarPlus, Check, ChevronLeft, Clock, Minus, NotebookPen, Plus, Repeat2, Star } from 'lucide-react';
 import { Badge, Button, Card, EmptyState, IconButton, Notice, NumberInput, Page, SectionTitle, Select, Sheet, Stat, cx } from '@/components/ui';
 import { useToast } from '@/components/toast';
@@ -17,7 +17,7 @@ import { INGREDIENTS_BY_ID } from '@/data/ingredients';
 import { RECIPES_BY_ID } from '@/data/recipes';
 import {
   ALLERGEN_LABELS, DIET_TAG_LABELS, MEAL_LABELS, MEAL_ORDER, displayMacro, formatGrams, recipeAllergens, recipeDietTags, recipeMinutes,
-  recipeNutrition, scaleRecipe, allowedSubstitutes, ingredientAllowed, mainProteinGroup, normalizeProteinPrefs, PROTEIN_GROUP_LABELS, proteinFitSwaps, proteinListText, recipeProteinGroups, type Swap,
+  recipeNutrition, scaleRecipe, allowedSubstitutes, ingredientAllowed, mainProteinGroup, normalizeProteinPrefs, PROTEIN_GROUP_LABELS, proteinFitSwaps, proteinListText, recipeProteinGroups, LEFT_OUT, type Swap,
 } from '@/domain/nutrition/recipes';
 import { entryFromRecipe } from '@/domain/nutrition/log';
 import { holdWakeLock } from '@/features/train/feedback';
@@ -72,6 +72,24 @@ function TickRow({ checked, onChange, label, children, action }: { checked: bool
   );
 }
 
+/** Parse "from:to,from:to" into swaps the recipe itself offers, or an OPTIONAL ingredient left out (`from:__left_out__`);
+ *  anything else is ignored. */
+export function linkSwaps(recipe: { ingredients: { ingredientId: ID; optional?: boolean }[]; substitutions: { ingredientId: ID; alternatives: ID[] }[] }, raw: string | null): Swap[] {
+  const out: Swap[] = [];
+  for (const pair of (raw ?? '').split(',').slice(0, 10)) {
+    const [from, to] = pair.split(':');
+    if (!from || !to || out.some((s) => s.from === from)) continue;
+    if (to === LEFT_OUT) {
+      if (recipe.ingredients.some((i) => i.ingredientId === from && i.optional)) out.push({ from, to });
+      continue;
+    }
+    if (!INGREDIENTS_BY_ID.has(to) || !recipe.ingredients.some((i) => i.ingredientId === from)) continue;
+    if (!recipe.substitutions.some((s) => s.ingredientId === from && s.alternatives.includes(to))) continue;
+    out.push({ from, to });
+  }
+  return out;
+}
+
 function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
   const recipe = RECIPES_BY_ID.get(recipeId)!;
   const { account, updateAccount } = useApp();
@@ -84,7 +102,10 @@ function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
     () => proteinFitSwaps(recipe, excluded, (i) => ingredientAllowed(i, { tags: diet.tags.filter((t) => t !== 'high_protein'), allergens: diet.allergens, disliked: diet.dislikedIngredientIds })) ?? [],
     [recipe, excluded, diet],
   );
-  const [swaps, setSwaps] = useState<Swap[]>(autoSwaps);
+  // Swaps from a training assistant recipe card (?swap=from:to,…, 1.0.3): only substitutes this recipe lists are taken.
+  const [params] = useSearchParams();
+  const linkedSwaps = useMemo(() => linkSwaps(recipe, params.get('swap')), [recipe, params]);
+  const [swaps, setSwaps] = useState<Swap[]>(() => [...linkedSwaps, ...autoSwaps.filter((a) => !linkedSwaps.some((l) => l.from === a.from))]);
   const [swapFor, setSwapFor] = useState<ID | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
@@ -160,6 +181,16 @@ function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
             ? `This recipe is built around ${PROTEIN_GROUP_LABELS[mainExcluded].toLowerCase()}, which you marked Not for me.`
             : `Uses ${proteinListText(proteinClash)}, which you marked Not for me. Try a swap below.`}
         </Notice>
+      )}
+      {swaps.some((s) => s.to === LEFT_OUT) && (
+        <div data-testid="left-out">
+          <Notice className="mt-3">
+            Left out: {swaps.filter((s) => s.to === LEFT_OUT).map((s) => ingName(s.from).toLowerCase()).join(', ')}.{' '}
+            <button type="button" className="underline" onClick={() => setSwaps((l) => l.filter((s) => s.to !== LEFT_OUT))}>
+              Add back
+            </button>
+          </Notice>
+        </div>
       )}
       {autoSwaps.length > 0 && proteinClash.length === 0 && (
         <Notice className="mt-3">
@@ -293,7 +324,7 @@ function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
                   <li key={s.ingredientId} className="flex items-center gap-2 py-2.5">
                     <span className="flex-1 min-w-0 text-sm">
                       Instead of <span className="font-medium">{ingName(s.ingredientId)}</span>: {s.alternatives.map(ingName).join(' or ')}
-                      {current && <span className="block text-xs text-accent">Using {ingName(current)}</span>}
+                      {current && <span className="block text-xs text-accent">{current === LEFT_OUT ? 'Left out' : `Using ${ingName(current)}`}</span>}
                     </span>
                     <Button size="sm" variant="ghost" onClick={() => setSwapFor(s.ingredientId)} aria-label={`Choose a substitute for ${ingName(s.ingredientId)}`}>
                       Choose

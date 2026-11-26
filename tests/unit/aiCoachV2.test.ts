@@ -278,11 +278,13 @@ describe('MOCKED ai-coach v2: context builder (real plan + this week)', () => {
     expect(w.remaining.map((r) => r.date)).toEqual(['2026-10-28', '2026-10-31']);
   });
 
-  it('stale "Training setup:" note vs typed inputs: typed settings win and the note is labelled stale', async () => {
+  it('stale "Training setup:" note vs typed inputs (1.0.3): refreshed from the saved plan, the old note quoted with its differences', async () => {
     const d = data();
     d.settings.profileNotes = 'Training setup: 2 training days a week; 30-minute sessions; equipment: Barbell, Rack.\nPrefers mornings.';
     const s = (await ctxFor(d)).system;
-    expect(s).toContain('STALE NOTE (ignore it)');
+    expect(s).toContain('Training setup (refreshed from the saved plan; replaces the older "Training setup" note): 3 lifting days a week; 45-minute sessions; equipment: dumbbell, bench.');
+    expect(s).toContain('OLDER SETUP NOTE');
+    expect(s).toMatch(/Don't silently use the old note; if it matters for this answer, ask whether they want their plan updated to match/);
     expect(s).toContain('training days per week: note says 2, current setting 3');
     expect(s).toContain('session length: note says 30 min, current setting 45 min');
     expect(s).toContain('equipment: note says "Barbell, Rack", current setting dumbbell, bench');
@@ -292,11 +294,11 @@ describe('MOCKED ai-coach v2: context builder (real plan + this week)', () => {
     expect(notes.split('\n').filter((l) => l.startsWith('Training setup:'))).toHaveLength(0);
   });
 
-  it('a matching "Training setup:" note stays as a normal note; with no typed plan it is kept too', () => {
+  it('a matching "Training setup:" note is refreshed (not stale); with no typed plan it is kept as written', () => {
     const typed = { days: 3, minutes: 45, equipment: ['dumbbell', 'bench', 'pullup_bar', 'smith'] };
     const line = 'Training setup: 3 training days a week; 45-minute sessions; equipment: Dumbbells, Bench, Pull-up bar, Smith machine.';
-    expect(resolveSetupNote(line, typed)).toEqual({ notes: line, stale: null });
-    expect(resolveSetupNote('Training setup: 2 training days a week.', null).stale).toBeNull();
+    expect(resolveSetupNote(`${line}\nPrefers mornings.`, typed)).toEqual({ notes: 'Prefers mornings.', stale: null, refreshed: true });
+    expect(resolveSetupNote('Training setup: 2 training days a week.', null)).toEqual({ notes: 'Training setup: 2 training days a week.', stale: null, refreshed: false });
     expect(resolveSetupNote('Training setup: equipment: bodyweight only.', { ...typed, equipment: [] }).stale).toBeNull();
   });
 
@@ -458,14 +460,14 @@ const styled = (style: CoachStyle | undefined, over: Partial<Data> = {}) => {
 };
 
 describe('MOCKED ai-coach v3: coach styles reach the prompt', () => {
-  it('each style puts its own rules into the system prompt; missing/unknown → Balanced', async () => {
+  it('each style puts its own rules into the system prompt; missing/unknown → Supportive (the default since 1.0.3)', async () => {
     for (const st of COACH_STYLES) {
       const { system } = await ctxFor(styled(st), 'hi');
       expect(system).toContain(STYLE_RULES[st]);
       for (const other of COACH_STYLES.filter((o) => o !== st)) expect(system).not.toContain(STYLE_RULES[other]);
     }
-    expect((await ctxFor(styled(undefined), 'hi')).system).toContain(STYLE_RULES.balanced);
-    expect((await ctxFor(styled('drill' as CoachStyle), 'hi')).system).toContain('Coach style: BALANCED');
+    expect((await ctxFor(styled(undefined), 'hi')).system).toContain(STYLE_RULES.supportive);
+    expect((await ctxFor(styled('drill' as CoachStyle), 'hi')).system).toContain('Coach style: SUPPORTIVE');
   });
 
   it('the handler sends the stored style to the provider (MOCKED provider)', async () => {
@@ -476,11 +478,14 @@ describe('MOCKED ai-coach v3: coach styles reach the prompt', () => {
     expect(requests[0].system).toContain('Coach style: SUPPORTIVE');
   });
 
-  it('Strict + "too tired": the prompt instructs firm pushback and a minimum version, still bound by the safety limits', async () => {
+  it('Strict + "too tired" (1.0.3): tiredness is never pushed back on, even in Strict; lighter option and rest offered', async () => {
     const { system, messages } = await ctxFor(styled('strict'), 'I’m too tired, skipping today');
     expect(String(messages.at(-1)?.content)).toBe('I’m too tired, skipping today');
     expect(system).toMatch(/Coach style: STRICT/);
-    expect(system).toMatch(/Push back firmly on reasons like "too tired", "no time" or "don't feel like it"/);
+    expect(system).toMatch(/Push back firmly on reasons like "no time" or "don't feel like it" \(never on tiredness: rule 9\)/);
+    expect(system).not.toMatch(/reasons like "too tired"/);
+    expect(system).toMatch(/If the user says they're tired, too tired, exhausted, wiped out or drained .*: respond supportively, never push back/);
+    expect(system).toMatch(/The newest message says the user is tired\. Whatever the coach style: be supportive/);
     expect(system).toMatch(/minimum version as the plan \(e\.g\. "first two exercises, 20 minutes/);
     expect(system).toMatch(/Offer a minimum version, e\.g\. "just the first two exercises, 20 minutes"/);
     expect(system).toMatch(/remind them of their goal and what they've done this week/i);
@@ -517,7 +522,7 @@ describe('MOCKED ai-coach v3: coach styles reach the prompt', () => {
   it('accountability rules: ask what is going on, push back on weak reasons, minimum version, goal + this week', () => {
     expect(SYSTEM_RULES).toMatch(/when the user wants to skip, or this week's data shows skipped or missed sessions/);
     expect(SYSTEM_RULES).toMatch(/Don't just accept it: ask what's going on/);
-    expect(SYSTEM_RULES).toMatch(/Push back kindly on weak reasons \("too tired", "no time", "don't feel like it"\)/);
+    expect(SYSTEM_RULES).toMatch(/Push back kindly on weak reasons \("no time", "don't feel like it"\)\. Tiredness is never a weak reason \(rule 9\)/);
     expect(STYLE_RULES.supportive).toMatch(/never push/);
     expect(STYLE_RULES.balanced).toMatch(/light accountability/);
   });

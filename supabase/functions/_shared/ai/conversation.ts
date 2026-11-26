@@ -32,6 +32,14 @@ export function isFollowUp(text: string): boolean {
     /(?<![a-zæðþ])(profaðu|reyndu|profa) (aftur|nuna)|(?<![a-zæðþ])gerðu það|(?<![a-zæðþ])(buið|buinn|buin) (að )?(deila|kveikja)|(?<![a-zæðþ])kveikti a/.test(t);
 }
 
+/** The user says they're tired (EN/IS). Tiredness is never treated as a weak reason: see SYSTEM_RULES rule 9. */
+export function mentionsTiredness(text: string): boolean {
+  const t = fold(text);
+  // "tired of chicken" / "þreytt á kjúklingi" means fed up with something, not low on energy.
+  return /\b(?:tired(?! of\b)|exhausted|wiped(?: out)?|drained|knackered|shattered|worn out|burn(?:t|ed) out|no energy|sleepy|fatigued)\b/.test(t) ||
+    /(?<![a-zæðþ])(?:þreytt[a-zæðþ]*(?![a-zæðþ])(?! a\b)|uppgefin|orkulaus|orkulitil|syfjuð|syfjaður|buin a þvi|buinn a þvi|alveg buin|alveg buinn|lufin|lufinn)/.test(t);
+}
+
 const BLOCK_RE = /\/coaching\/ai\/settings|\/nutrition\/targets|\[\[open:\/settings|\[\[open:\/onboarding|can['’]t see|cannot see|isn['’]t shared|not shared/i;
 
 export interface OpenRequest {

@@ -26,6 +26,8 @@ import type { NormProgram } from './validate.ts';
 import { decideTarget, missingEquipment, normalizeProposedProgram, validateForUser, validateProposedProgram } from './validate.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { likedBonus, proteinFitSwaps } from '../nutrition/proteins.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { substitutionRatio } from '../nutrition/recipes.ts';
 import type { Ingredient, ProteinGroup, Recipe } from '../nutrition/types.ts';
 
 /** find_recipes → propose_meal_plan (→ one corrected attempt) → final text. */
@@ -231,33 +233,68 @@ const DIET_FLAG: Record<string, keyof NonNullable<RefIngredient['diet']>> = {
   gluten_free: 'glutenFree',
 };
 
-export function recipeFits(recipe: RefRecipe, ing: Map<string, RefIngredient>, facts: UserFacts): { ok: boolean; omit: string[]; swaps?: { from: string; to: string }[] } {
+/**
+ * Whether a recipe fits the hard constraints. Optional ingredients that don't fit are left out (omit: names, omitIds:
+ * ids). `swappable` (1.0.3) lists ingredient ids THIS request ruled out by name ("pancakes without raspberries"): a
+ * non-optional one that is not a protein may be replaced by an alternative the recipe itself lists, when that
+ * alternative fits every constraint. Allergens, diet, proteins and the user's own dislikes are never swapped here:
+ * those still exclude the recipe.
+ */
+export function recipeFits(
+  recipe: RefRecipe, ing: Map<string, RefIngredient>, facts: UserFacts, swappable: ReadonlySet<string> = new Set(),
+): { ok: boolean; omit: string[]; omitIds?: string[]; swaps?: { from: string; to: string }[] } {
   const allergens = new Set(facts.allergens);
   const disliked = new Set(facts.dislikedIngredientIds);
   const flags = facts.dietTags.map((t) => DIET_FLAG[t]).filter(Boolean);
+  const fits = (i: RefIngredient) => !(i.allergens ?? []).some((a) => allergens.has(a)) && !disliked.has(i.id) && flags.every((f) => i.diet?.[f] === true);
   const omit: string[] = [];
+  const omitIds: string[] = [];
+  const asked: { from: string; to: string }[] = [];
   for (const ri of recipe.ingredients ?? []) {
     const i = ing.get(ri.ingredientId);
     if (!i) return { ok: false, omit }; // unknown ingredient → can't vouch for allergens
-    const bad = (i.allergens ?? []).some((a) => allergens.has(a)) || disliked.has(i.id) || flags.some((f) => i.diet?.[f] !== true);
-    if (bad) {
-      if (ri.optional) omit.push(i.name);
-      else return { ok: false, omit };
+    if (fits(i)) continue;
+    // Only an ingredient THIS request named, and that is otherwise fine (no allergen, diet or own-dislike problem), may be
+    // left out or swapped. Anything restricted rules the recipe out, optional or not: the app shows and plans whole
+    // recipes, so an omitted allergen could come back (review of PR #17).
+    // (`swappable` never holds the user's own dislikes; clearing the id skips only the request's own exclusion.)
+    if (!swappable.has(i.id) || !fits({ ...i, id: '' })) return { ok: false, omit };
+    if (ri.optional) {
+      omit.push(i.name);
+      omitIds.push(i.id);
+      continue;
     }
+    // Proteins are never swapped this way: "no meat" / "no fish" rules out "Turkey pitta", not turns it into a tofu one.
+    const to = !i.proteinGroup
+      ? (recipe.substitutions ?? []).find((s) => s.ingredientId === i.id)?.alternatives.map((a) => ing.get(a)).find((a): a is RefIngredient => !!a && fits(a))
+      : undefined;
+    if (!to) return { ok: false, omit };
+    asked.push({ from: i.id, to: to.id });
   }
+  const extra = { ...(omitIds.length ? { omitIds } : {}) };
   // Proteins marked "not for me": the same rule as the app (main protein excluded → out; any other use needs an allowed swap).
   if (facts.proteinExcluded?.length) {
-    const flagsOk = (i: RefIngredient) => !(i.allergens ?? []).some((a) => allergens.has(a)) && !disliked.has(i.id) && flags.every((f) => i.diet?.[f] === true);
+    // Checked on the recipe as it will be made (request swaps applied), so a swap never brings an excluded protein in.
+    const made = asked.length || omitIds.length
+      ? {
+          ...recipe,
+          ingredients: (recipe.ingredients ?? [])
+            .filter((ri) => !omitIds.includes(ri.ingredientId))
+            .map((ri) => ({ ...ri, ingredientId: asked.find((s) => s.from === ri.ingredientId)?.to ?? ri.ingredientId })),
+        }
+      : recipe;
     const swaps = proteinFitSwaps(
-      recipe as unknown as Recipe,
+      made as unknown as Recipe,
       facts.proteinExcluded as ProteinGroup[],
-      (i) => flagsOk(i as unknown as RefIngredient),
+      (i) => fits(i as unknown as RefIngredient),
       ing as unknown as Map<string, Ingredient>,
     );
     if (swaps === null) return { ok: false, omit };
-    if (swaps.length) return { ok: true, omit, swaps };
+    // A protein swap on an ingredient that was itself swapped in would chain swaps the app can't store: leave it out.
+    if (swaps.some((s) => asked.some((a) => a.to === s.from))) return { ok: false, omit };
+    if (swaps.length || asked.length) return { ok: true, omit, ...extra, swaps: [...asked, ...swaps] };
   }
-  return { ok: true, omit };
+  return asked.length ? { ok: true, omit, ...extra, swaps: asked } : { ok: true, omit, ...extra };
 }
 
 /** Recipe with a liked protein as its main protein or a featured one (same rule as the app's ranking). */
@@ -269,9 +306,11 @@ const LIKED_GRAMS = 8;
 export function perServingMacros(recipe: RefRecipe, ing: Map<string, RefIngredient>, omitNames: string[] = [], swaps: { from: string; to: string }[] = []) {
   const tot = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
   for (const ri of recipe.ingredients ?? []) {
-    const i = ing.get(swaps.find((s) => s.from === ri.ingredientId)?.to ?? ri.ingredientId);
+    const to = swaps.find((s) => s.from === ri.ingredientId)?.to;
+    const i = ing.get(to ?? ri.ingredientId);
     if (!i || omitNames.includes(i.name) || ri.optional) continue; // optional extras not counted
-    const f = (ri.grams ?? 0) / 100;
+    // A swap uses the app's quantity conversion (e.g. dry couscous → cooked quinoa), so the card matches the recipe screen.
+    const f = ((ri.grams ?? 0) * (to ? substitutionRatio(ri.ingredientId, to, ing as unknown as Map<string, Ingredient>) : 1)) / 100;
     tot.kcal += (i.per100g.kcal ?? 0) * f;
     tot.protein += (i.per100g.protein ?? 0) * f;
     tot.carbs += (i.per100g.carbs ?? 0) * f;
@@ -318,13 +357,15 @@ async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Pr
         dislikedIngredientIds: [...new Set([...ctx.facts.dislikedIngredientIds, ...excludedIngredientIds(intent.exclude.words, ingredients)])],
       }
     : ctx.facts;
-  const allowed: { r: RefRecipe; omit: string[]; swaps?: { from: string; to: string }[]; macros: ReturnType<typeof perServingMacros>; minutes: number; liked: boolean }[] = [];
+  // Ingredients ruled out by name in THIS request (not the user's own dislikes): a recipe may swap them (recipeFits).
+  const askedOut = new Set(fromRequest ? excludedIngredientIds(intent.exclude.words, ingredients).filter((x) => !ctx.facts.dislikedIngredientIds.includes(x)) : []);
+  const allowed: { r: RefRecipe; omit: string[]; omitIds?: string[]; swaps?: { from: string; to: string }[]; macros: ReturnType<typeof perServingMacros>; minutes: number; liked: boolean }[] = [];
   for (const r of recipes) {
     const minutes = totalMinutes(r);
     if (hard.maxCookMinutes != null && minutes > hard.maxCookMinutes) continue;
-    const fit = recipeFits(r, ing, hard);
+    const fit = recipeFits(r, ing, hard, askedOut);
     if (!fit.ok) continue;
-    allowed.push({ r, omit: fit.omit, swaps: fit.swaps, macros: perServingMacros(r, ing, fit.omit, fit.swaps), minutes, liked: likedRecipe(r, ing, hard) });
+    allowed.push({ r, omit: fit.omit, omitIds: fit.omitIds, swaps: fit.swaps, macros: perServingMacros(r, ing, fit.omit, fit.swaps), minutes, liked: likedRecipe(r, ing, hard) });
   }
   if (!allowed.length) {
     const reason = explainNoRecipes(
@@ -383,11 +424,16 @@ async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Pr
   ctx.state.recipes = {
     kind: 'recipe_suggestions',
     id: ctx.messageId ?? '',
-    recipes: shown.map((r) => ({ id: r.id, name: r.name, meal: r.meal, totalMinutes: r.total_minutes, perServing: r.per_serving })),
+    // The card says what was left out or swapped, and Add to plan / Open carry the swaps (1.0.3).
+    recipes: picked.slice(0, max).map((x, k) => ({
+      id: shown[k].id, name: shown[k].name, meal: shown[k].meal, totalMinutes: shown[k].total_minutes, perServing: shown[k].per_serving,
+      ...(x.omitIds?.length ? { omit: x.omitIds } : {}),
+      ...(x.swaps?.length ? { swaps: x.swaps } : {}),
+    })),
   };
   return {
     content: JSON.stringify({
-      note: 'Filtered for the user\'s allergens, diet, dislikes and proteins marked "not for me" (made_with lists automatic swaps for those). Macros are per serving, computed from ingredient data (optional extras excluded).',
+      note: 'Filtered for the user\'s allergens, diet, dislikes and proteins marked "not for me" (made_with lists automatic swaps for those and for ingredients this request asked to leave out; omit_optional lists optional extras left out). The cards show these swaps and omissions. Macros are per serving, computed from ingredient data (optional extras excluded).',
       ...(note ? { fallback: note } : {}),
       results: shown,
       shown_to_user: 'These appear as recipe cards under your reply (Open, Add to plan, Save). Link a recipe with [[open:/nutrition/recipes/<id>|Open recipe]]; never write out its ingredients or steps.',

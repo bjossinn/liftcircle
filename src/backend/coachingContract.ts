@@ -379,7 +379,8 @@ export interface AiApi {
   saveSettings(s: Partial<AiSettings> & { acceptConsent?: boolean; provider?: AiProvider }): Promise<AiSettings>;
   history(limit?: number): Promise<AiMessage[]>;
   /** Idempotent on id. Server builds context from the authenticated user's permitted records only. */
-  send(input: { id: ID; text: string; mode?: 'chat' | 'checkin_review' }): Promise<{ reply: AiMessage; proposal?: ProgramProposal | null }>;
+  /** `unsynced`: changes still only on this device after the pre-send sync (the coach is told its view may miss them). */
+  send(input: { id: ID; text: string; mode?: 'chat' | 'checkin_review'; unsynced?: number }): Promise<{ reply: AiMessage; proposal?: ProgramProposal | null }>;
   clearHistory(): Promise<void>;
   listProposals(): Promise<ProgramProposal[]>;
   respondProposal(id: ID, accept: boolean, applied?: { programId: ID; version: number }): Promise<void>;

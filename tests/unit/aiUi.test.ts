@@ -807,3 +807,92 @@ describe('AI chat v4 (MOCKED aiApi): Markdown, in-app links, meal plan and recip
     expect(card.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 });
+
+describe('PR #17 review: recipe card changes survive the real Open and Add-to-plan paths; pending sends stay with their account', () => {
+  it('omitted + swapped ingredients: Add to plan… stores them (plan nutrition, shopping list); Open shows them and Log this meal logs them', async () => {
+    const db = h.db as LiftDb;
+    const base = defaultAccountState();
+    h.account = { ...base, settings: { ...base.settings, nutritionEnabled: true } };
+    const { RECIPES_BY_ID } = await import('@/data/recipes');
+    const { toRecipeSuggestions } = await import('@/domain/nutrition/aiActions');
+    const { LEFT_OUT, recipeNutrition } = await import('@/domain/nutrition/recipes');
+    const { buildShoppingList, planItemNutrition } = await import('@/domain/nutrition/mealplan');
+    const { entryFromRecipe } = await import('@/domain/nutrition/log');
+    const RecipeDetailPage = (await import('@/features/nutrition/RecipeDetailPage')).default;
+    const recipe = RECIPES_BY_ID.get('skyr-oat-pancakes')!;
+    const expectedSwaps = [{ from: 'skyr-plain', to: 'cottage-cheese' }, { from: 'blueberries', to: LEFT_OUT }];
+    api.history.mockResolvedValue([
+      { id: 'u-p', role: 'user', content: 'Pancakes without blueberries', createdAt: '2026-10-27T09:00:00Z' },
+      {
+        id: 'a-p', role: 'assistant', content: 'Here you go.', createdAt: '2026-10-27T09:00:05Z',
+        // As find_recipes sends it (the server's action shape), parsed by the app.
+        recipes: toRecipeSuggestions({ kind: 'recipe_suggestions', id: 'u-p', recipes: [{ id: recipe.id, totalMinutes: 13, perServing: { kcal: 500, protein_g: 35, carbs_g: 50, fat_g: 15 }, omit: ['blueberries'], swaps: [{ from: 'skyr-plain', to: 'cottage-cheese' }] }] }),
+      },
+    ]);
+    render(createElement(ToastProvider, null, createElement(MemoryRouter, { initialEntries: ['/coaching/ai'] },
+      createElement(Routes, null,
+        createElement(Route, { path: '/coaching/ai', element: createElement(AiChatPage) }),
+        createElement(Route, { path: '/nutrition/recipes/:id', element: createElement(RecipeDetailPage) })))));
+    const card = (await screen.findByRole('article', { name: recipe.name })) as HTMLElement;
+    expect(card.textContent).toMatch(/Without blueberries/);
+
+    // Add to plan… (the card's own sheet)
+    fireEvent.click(within(card).getByRole('button', { name: 'Add to plan…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to plan' }));
+    const plan = await waitFor(async () => {
+      const plans = await db.mealPlans.toArray();
+      expect(plans).toHaveLength(1);
+      return plans[0];
+    });
+    const item = plan.days.flatMap((d) => d.items)[0];
+    expect(item.swaps).toEqual(expectedSwaps);
+    const shopping = buildShoppingList(plan, RECIPES_BY_ID).flatMap((g) => g.items.map((x) => x.ingredientId));
+    expect(shopping).not.toContain('blueberries');
+    expect(shopping).not.toContain('skyr-plain');
+    expect(shopping).toContain('cottage-cheese');
+    const withSwaps = recipeNutrition(recipe, { servings: 1, swaps: expectedSwaps }).total;
+    expect(Math.abs(planItemNutrition(item, RECIPES_BY_ID).kcal - withSwaps.kcal)).toBeLessThanOrEqual(0.5);
+    expect(withSwaps.kcal).toBeLessThan(recipeNutrition(recipe, { servings: 1, swaps: [expectedSwaps[0]] }).total.kcal); // blueberries really gone
+
+    // Open → the recipe screen with the same changes
+    fireEvent.click(within(card).getByRole('link', { name: 'Open' }));
+    const ingredients = await waitFor(() => {
+      const el = document.querySelector('section[data-section="ingredients"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(ingredients.textContent!.toLowerCase()).not.toContain('blueberr');
+    expect(ingredients.textContent!.toLowerCase()).toContain('cottage cheese');
+    expect(document.querySelector('[data-testid="left-out"]')?.textContent).toMatch(/Left out: blueberries/);
+    // … Log this meal logs exactly that
+    fireEvent.click(screen.getByRole('button', { name: 'Log this meal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Log' }));
+    const logged = await waitFor(async () => {
+      const rows = await db.foodLogs.toArray();
+      expect(rows).toHaveLength(1);
+      return rows[0];
+    });
+    expect(Math.abs(logged.kcal! - entryFromRecipe(recipe, 1, expectedSwaps).kcal!)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(logged.kcal! - entryFromRecipe(recipe, 1, [expectedSwaps[0]]).kcal!)).toBeGreaterThan(5); // not with blueberries
+  });
+
+  it('a pending message saved under another account is never shown or re-sent here', async () => {
+    await kvSet(AI_PENDING_KEY, { id: '00000000-0000-4000-8000-000000000099', text: 'Other account’s question', mode: 'chat', status: 'failed', createdAt: '2026-10-28T09:00:00Z', userId: 'someone-else' }, h.db as LiftDb);
+    renderAt('/coaching/ai', createElement(AiChatPage));
+    const box = await screen.findByLabelText('Message the training assistant');
+    await waitFor(() => expect((box as HTMLTextAreaElement).disabled).toBe(false));
+    expect(screen.queryByText('Other account’s question')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(api.send).not.toHaveBeenCalled();
+  });
+
+  it('a message sent here is bound to the signed-in account', async () => {
+    api.send.mockImplementation(() => new Promise(() => undefined)); // stays in flight
+    renderAt('/coaching/ai', createElement(AiChatPage));
+    const box = await screen.findByLabelText('Message the training assistant');
+    await waitFor(() => expect((box as HTMLTextAreaElement).disabled).toBe(false));
+    fireEvent.change(box, { target: { value: 'Hello' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(async () => expect((await kvGet<{ userId?: string }>(AI_PENDING_KEY, h.db as LiftDb))?.userId).toBe('user-1'));
+  });
+});

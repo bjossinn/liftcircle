@@ -29,6 +29,8 @@ export interface PendingSend {
   status: 'sending' | 'failed';
   error?: string;
   createdAt: string;
+  /** The account that wrote it (1.0.3): never sent under another signed-in account. */
+  userId?: string;
 }
 
 export interface QueuedAck {
@@ -71,7 +73,7 @@ export const NEVER_SENT = 'Your email, photos, social posts and friends, message
 export const COACH_STYLE_INFO: { key: CoachStyle; title: string; body: string }[] = [
   { key: 'supportive', title: 'Supportive', body: 'Gentle and encouraging. It never pushes: if you want a day off, it checks in kindly and accepts your call.' },
   { key: 'balanced', title: 'Balanced', body: 'Encouraging with light accountability. If you want to skip, it asks what’s up and suggests a shorter version.' },
-  { key: 'strict', title: 'Strict', body: 'Firm and direct. It pushes back on reasons like “too tired” and holds you to a minimum session.' },
+  { key: 'strict', title: 'Strict', body: 'Firm and direct. It pushes back on reasons like “no time” and holds you to a minimum session (never when you’re tired or unwell).' },
 ];
 export const COACH_STYLE_SAFETY = 'In every style: pain, injury, illness, poor sleep or feeling overwhelmed always mean rest or an easier plan, and rest days are never “skipping”.';
 

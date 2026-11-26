@@ -145,6 +145,7 @@ function makeDb(users: Record<string, UserData>, opts: { limit?: number } = {}) 
   const db = new Proxy(impl, {
     get(target, prop: string) {
       const fn = (target as unknown as Record<string, (...a: unknown[]) => unknown>)[prop];
+      if (typeof fn !== 'function') return fn; // optional methods (beginRequest/failRequest) stay absent
       return (...args: unknown[]) => {
         calls.push({ method: prop, uid: (USER_SCOPED as readonly string[]).includes(prop) ? (args[0] as string) : undefined, args });
         return fn(...args);

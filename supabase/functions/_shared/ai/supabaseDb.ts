@@ -81,6 +81,26 @@ export function createSupabaseAiDb(user: SbClient, admin: SbClient): AiDb {
       if (error) throw new DbError(error.message || 'Usage check failed', error.code);
       return Number(data ?? 0);
     },
+    async beginRequest(uid, messageId, limit) {
+      const { data, error } = await admin.rpc('ai_begin_request', { p_user: uid, p_message_id: messageId, p_limit: limit });
+      if (error) {
+        // Before the 20261126 migration: no reservation, just count (the previous behaviour).
+        if (error.code === 'PGRST202' || error.code === '42883') {
+          await this.checkAndCountUsage(uid, limit);
+          return { status: 'started', attempt: null };
+        }
+        throw new DbError(error.message || 'Usage check failed', error.code);
+      }
+      const d = (data ?? {}) as { status?: string; attempt?: unknown; remaining?: number };
+      if (d.status === 'duplicate' || d.status === 'in_progress') return { status: d.status };
+      if (d.status !== 'started' || typeof d.attempt !== 'string') throw new DbError('Unexpected response from ai_begin_request.');
+      return { status: 'started', attempt: d.attempt, ...(typeof d.remaining === 'number' ? { remaining: d.remaining } : {}) };
+    },
+    async failRequest(uid, messageId, attempt, usage) {
+      const { error } = await admin.rpc('ai_fail_request', { p_user: uid, p_message_id: messageId, p_attempt: attempt, p_usage: usage });
+      // Best effort: an older database (no RPC) simply keeps the old behaviour.
+      if (error && error.code !== 'PGRST202' && error.code !== '42883') throw new DbError(error.message || 'Usage update failed', error.code);
+    },
     async getUsage(uid, day) {
       const r = await run<{ requests: number; input_tokens: number; output_tokens: number; cost_usd: number | null } | null>(
         user.from('ai_usage').select('requests, input_tokens, output_tokens, cost_usd').eq('user_id', uid).eq('day', day).maybeSingle(),
@@ -131,13 +151,12 @@ export function createSupabaseAiDb(user: SbClient, admin: SbClient): AiDb {
       return (rows ?? []).reverse().map(historyMessage);
     },
     async recordExchange(uid, input) {
-      const r = await run<StoredExchange>(admin.rpc('ai_record_exchange', {
-        p_user: uid,
-        p_message: input.message,
-        p_reply: input.reply,
-        p_proposal: input.proposal,
-        p_usage: input.usage,
-      }));
+      const args = { p_user: uid, p_message: input.message, p_reply: input.reply, p_proposal: input.proposal, p_usage: input.usage };
+      // 1.0.3: store the exchange and settle its request as succeeded in one transaction; older databases lack the RPC.
+      const settled = await admin.rpc('ai_record_exchange_settled', args);
+      const r = settled.error && (settled.error.code === 'PGRST202' || settled.error.code === '42883')
+        ? await run<StoredExchange>(admin.rpc('ai_record_exchange', args))
+        : await run<StoredExchange>(Promise.resolve(settled as SbResult<StoredExchange>));
       if (!r) throw new DbError('Could not store the reply.');
       return r;
     },

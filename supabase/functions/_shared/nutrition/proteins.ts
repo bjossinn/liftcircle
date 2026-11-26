@@ -11,6 +11,13 @@ import { catalog } from './catalog.ts';
 // @ts-ignore see above
 import type { IngredientIndex, Swap } from './recipes.ts';
 
+/**
+ * Swap target meaning "left out" (1.0.3): `{ from: 'blueberries', to: LEFT_OUT }`. Honoured only for an OPTIONAL
+ * ingredient (a main ingredient can't be dropped this way), and everywhere swaps are: nutrition, scaled ingredients,
+ * allergens/diet, protein groups, plan items, the shopping list and logging. Not an ingredient id.
+ */
+export const LEFT_OUT = '__left_out__';
+
 export const PROTEIN_GROUPS: ProteinGroup[] = [
   'chicken', 'turkey', 'beef', 'pork', 'lamb',
   'white_fish', 'oily_fish', 'tuna', 'prawns', 'shellfish',
@@ -134,6 +141,7 @@ export function featuredProteinGroups(recipe: Recipe, swaps: Swap[] = [], byId: 
 export function recipeProteinGroups(recipe: Recipe, swaps: Swap[] = [], byId: IngredientIndex = catalog().byId): ProteinGroup[] {
   const set = new Set<ProteinGroup>();
   for (const ri of recipe.ingredients) {
+    if (ri.optional && swaps.some((s) => s.from === ri.ingredientId && s.to === LEFT_OUT)) continue;
     const sw = swaps.find((s) => s.from === ri.ingredientId && byId.has(s.to));
     const g = proteinGroupOf(sw ? sw.to : ri.ingredientId, byId);
     if (g) set.add(g);

@@ -234,9 +234,9 @@ async function main() {
     assert(p.paused && p.enabled, 'paused');
     ok(await rpc('alice', 'save_ai_settings', { p: J({ paused: false, scopes: { training: true } }) }), 'resume');
   });
-  await test('settings', 'coach style: defaults to balanced, saves a valid style, refuses unknown values, own row only, no direct write', async () => {
+  await test('settings', 'coach style: defaults to supportive (20261126), saves a valid style, refuses unknown values, own row only, no direct write', async () => {
     const before = ok(await rpc('alice', 'get_ai_settings'), 'get');
-    eq(before.coachStyle, 'balanced', 'default');
+    eq(before.coachStyle, 'supportive', 'default');
     const s = ok(await rpc('alice', 'save_ai_settings', { p: J({ coachStyle: 'strict' }) }), 'strict');
     eq(s.coachStyle, 'strict', 'saved');
     eq(s.scopesChangedAt, before.scopesChangedAt, 'style change does not touch scopes_changed_at');
@@ -351,6 +351,107 @@ async function main() {
     eq(n.rows[0].requests, 2, 'not incremented past the limit');
     fails(await rpc('service', 'ai_check_and_count_usage', { p_user: [U.bob, '::uuid'], p_limit: 0 }), 'zero limit', /PT429|limit/);
   });
+
+  /* ------------------------------------------------------------ PR 1b: request state machine (20261126000001) */
+  {
+    const E = [U.eve, '::uuid'];
+    const day = async () => (await admin.query(`select coalesce(sum(requests), 0)::int r, coalesce(sum(failed_requests), 0)::int f, coalesce(sum(failed_input_tokens), 0)::int i from public.ai_usage where user_id = $1`, [U.eve])).rows[0];
+    const row = async (id) => (await admin.query(`select attempt::text, state, charged from public.ai_requests where message_id = $1`, [id])).rows[0];
+    const begin = (id, limit = 100) => rpc('service', 'ai_begin_request', { p_user: E, p_message_id: [id, '::uuid'], p_limit: limit });
+    const fail = (id, attempt, usage = {}) => rpc('service', 'ai_fail_request', { p_user: E, p_message_id: [id, '::uuid'], p_attempt: [attempt, '::uuid'], p_usage: J(usage) });
+    const record = (id) => rpc('service', 'ai_record_exchange_settled', withUser(U.eve, exchange(id, `q ${id.slice(0, 4)}`)));
+    const age = (id) => admin.query(`update public.ai_requests set started_at = now() - interval '4 minutes' where message_id = $1`, [id]);
+
+    await test('usage-v5', 'begin: started → replay in_progress (not counted) → answered → duplicate; one charge', async () => {
+      const M = randomUUID();
+      const d0 = await day();
+      const s = ok(await begin(M), 'begin');
+      eq([s.status, typeof s.attempt], ['started', 'string'], 'started with an attempt id');
+      eq(ok(await begin(M), 'replay').status, 'in_progress', 'replay while running');
+      eq((await day()).r, d0.r + 1, 'counted once');
+      eq(ok(await record(M), 'record').duplicate, false, 'stored');
+      eq(await row(M), { attempt: s.attempt, state: 'succeeded', charged: true }, 'success settled with the stored answer');
+      eq(ok(await begin(M), 'after answer').status, 'duplicate', 'answered → duplicate');
+      eq((await day()).r, d0.r + 1, 'still one charge');
+    });
+
+    await test('usage-v5', 'fail: refunds once and books failed tokens; repeated calls are no-ops; a retry is a new charge', async () => {
+      const M = randomUUID();
+      const d0 = await day();
+      const s = ok(await begin(M), 'begin');
+      eq(ok(await fail(M, s.attempt, { inputTokens: 700, outputTokens: 50, costUsd: 0.002 }), 'fail'), { settled: true, refunded: true }, 'settled');
+      eq(await day(), { r: d0.r, f: d0.f + 1, i: d0.i + 700 }, 'refunded + failed usage');
+      eq(ok(await fail(M, s.attempt, { inputTokens: 700 }), 'fail again'), { settled: false }, 'second call');
+      eq(ok(await fail(M, randomUUID(), { inputTokens: 1 }), 'unknown attempt'), { settled: false }, 'unknown attempt');
+      eq(await day(), { r: d0.r, f: d0.f + 1, i: d0.i + 700 }, 'idempotent: nothing more booked');
+      const s2 = ok(await begin(M), 'retry');
+      eq(s2.status, 'started', 'retry starts');
+      assert(s2.attempt !== s.attempt, 'new attempt id');
+      eq((await day()).r, d0.r + 1, 'retry charged');
+      ok(await record(M), 'record');
+      eq((await day()).r, d0.r + 1, 'answer keeps that one charge');
+    });
+
+    await test('usage-v5', 'expired reservation: the retry takes over the SAME charge — with limit 1 it succeeds and uses one slot', async () => {
+      const M = randomUUID();
+      const lim = (await day()).r + 1; // exactly one slot left
+      const dead = ok(await begin(M, lim), 'first worker (dies)');
+      eq(dead.status, 'started', 'started');
+      fails(await begin(randomUUID(), lim), 'another message at the limit', /PT429|limit/);
+      eq(ok(await begin(M, lim), 'too early').status, 'in_progress', 'still running < 3 min');
+      await age(M); // really age the SAME reservation
+      const t = ok(await begin(M, lim), 'takeover');
+      eq([t.status, t.takeover], ['started', true], 'takeover allowed at the limit');
+      assert(t.attempt !== dead.attempt, 'new attempt id');
+      eq((await day()).r, lim, 'no second charge');
+      ok(await record(M), 'record');
+      eq(await row(M), { attempt: t.attempt, state: 'succeeded', charged: true }, 'succeeded');
+      eq((await day()).r, lim, 'one slot for one answer');
+    });
+
+    await test('usage-v5', 'takeover, then the stale worker fails: no refund of the newer attempt; the newer attempt still settles normally', async () => {
+      const M = randomUUID();
+      const d0 = await day();
+      const a1 = ok(await begin(M), 'a1').attempt;
+      await age(M);
+      const a2 = ok(await begin(M), 'a2').attempt;
+      eq(ok(await fail(M, a1, { inputTokens: 999 }), 'stale fail'), { settled: false }, 'stale worker ignored');
+      eq(await row(M), { attempt: a2, state: 'running', charged: true }, 'newer attempt untouched');
+      eq(await day(), { r: d0.r + 1, f: d0.f, i: d0.i }, 'no refund, no failed tokens');
+      eq(ok(await fail(M, a2, { inputTokens: 10 }), 'owner fails'), { settled: true, refunded: true }, 'owner settles');
+      eq(await day(), { r: d0.r, f: d0.f + 1, i: d0.i + 10 }, 'refunded once');
+    });
+
+    await test('usage-v5', 'lost response after a successful record: the failure call refunds nothing and books no failed usage', async () => {
+      const M = randomUUID();
+      const d0 = await day();
+      const s = ok(await begin(M), 'begin');
+      ok(await record(M), 'record committed (response lost)');
+      eq(ok(await fail(M, s.attempt, { inputTokens: 1200, outputTokens: 300 }), 'fail after success'), { settled: false }, 'no-op');
+      eq(await day(), { r: d0.r + 1, f: d0.f, i: d0.i }, 'still charged once, no failed_*');
+      eq((await row(M)).state, 'succeeded', 'terminal');
+      // An older attempt that was taken over and then stores its answer after the newer one failed (refunded) pays once.
+      const M2 = randomUUID();
+      ok(await begin(M2), 'b1');
+      await age(M2);
+      const b2 = ok(await begin(M2), 'b2').attempt;
+      ok(await fail(M2, b2, {}), 'newer fails → refunded');
+      const before = (await day()).r;
+      ok(await record(M2), 'the slow first attempt stores its answer');
+      eq([(await row(M2)).state, (await row(M2)).charged, (await day()).r], ['succeeded', true, before + 1], 'charged again exactly once');
+    });
+
+    await test('usage-v5', 'service role only; other users’ message ids refused; reservations unreadable by clients', async () => {
+      const M = randomUUID();
+      const s = ok(await begin(M), 'begin');
+      fails(await rpc('service', 'ai_begin_request', { p_user: [U.alice, '::uuid'], p_message_id: [M, '::uuid'], p_limit: 100 }), 'other user', /already used/);
+      eq(ok(await rpc('service', 'ai_fail_request', { p_user: [U.alice, '::uuid'], p_message_id: [M, '::uuid'], p_attempt: [s.attempt, '::uuid'], p_usage: J({}) }), 'other user fail'), { settled: false }, 'other user cannot settle');
+      fails(await rpc('eve', 'ai_begin_request', { p_user: E, p_message_id: [randomUUID(), '::uuid'], p_limit: 5 }), 'client begin', /permission denied/);
+      fails(await rpc('eve', 'ai_fail_request', { p_user: E, p_message_id: [M, '::uuid'], p_attempt: [s.attempt, '::uuid'] }), 'client fail', /permission denied/);
+      fails(await rpc('eve', 'ai_record_exchange_settled', withUser(U.eve, exchange(M, 'x'))), 'client record', /permission denied/);
+      fails(await as('eve', `select * from public.ai_requests`), 'client reads requests', /permission denied/);
+    });
+  }
 
   /* ------------------------------------------------------------ v2: why + this-week action (20261030000002) */
   await test('exchange-v2', 'stores why + week_adjustment action with the reply; replay and history return them; other kinds dropped', async () => {
