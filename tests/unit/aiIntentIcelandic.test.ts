@@ -362,6 +362,7 @@ async function checkFood(c: Case) {
     expect(requestConflicts(c.text), `${c.id}: conflict found`).toEqual(['chicken']);
     expect(q.diet).toContain('vegan');
     expect(wanted).toContain('chicken');
+    await checkClarification(c.text, /which to keep/);
   }
   if (e.requiresClarificationIfOnlyIngredientCannotBuildMeal) {
     // "ekkert nema egg": eggs ONLY — wanted, never excluded, and the search is for eggs alone.
@@ -374,6 +375,35 @@ async function checkFood(c: Case) {
     for (const card of r.cards) expect(cardIngredients(card, ALL_RECIPES).filter((id) => FOOD['allergen:mustard'].includes(id)), `${c.id}: saved mustard restriction`).toEqual([]);
   }
   if (e.runRecipeAndMealFallbackSafetyNet) await safetyNet(c, bannedOf(c));
+}
+
+/**
+ * A request only the user can settle: the handler returns NO plan and NO recipe cards — whether the model answers in text
+ * (the meal-plan fallback builds nothing), calls propose_meal_plan (refused: needs_clarification) or find_recipes — and the
+ * model is told to ask (the question goes into the system prompt and the tool results).
+ */
+async function checkClarification(msg: string, question: RegExp, withRecipes = true) {
+  const plain = await chat(msg, [text('Hvort viltu halda?')]);
+  expect(plain.reply.action ?? null, `${msg}: no plan from the fallback`).toBeNull();
+  expect(systemOf(plain.requests[0]), `${msg}: the model is told to ask`).toMatch(question);
+  expect(plain.conv.recorded.every((r) => r.action == null && !r.proposal)).toBe(true);
+  const tool = await chat(msg, [toolUse('propose_meal_plan', { meals_per_day: 3 }), text('Hvort viltu halda?')]);
+  expect(tool.reply.action ?? null, `${msg}: propose_meal_plan builds nothing`).toBeNull();
+  const result = JSON.stringify(tool.requests[1].messages.at(-1));
+  expect(result).toContain('needs_clarification');
+  expect(result).toMatch(question);
+  if (withRecipes) {
+    const cards = await chat(msg, [toolUse('find_recipes', { query: 'chicken', max_results: 5 }), text('Hvort viltu halda?')]);
+    expect(cards.reply.action ?? null, `${msg}: no recipe cards`).toBeNull();
+    expect(JSON.stringify(cards.requests[1].messages.at(-1))).toContain('needs_clarification');
+  }
+}
+/** Every recipe in a handler result (cards or plan) takes at most `cap` minutes. */
+const minutesOf = (id: string) => { const r = ALL_RECIPES.find((x) => x.id === id)!; return (r.prepMinutes ?? 0) + (r.cookMinutes ?? 0); };
+function expectWithinCap(action: Reply['action'], cap: number, label: string) {
+  const ids = action?.kind === 'meal_plan' ? action.days!.flatMap((d) => d.items.map((i) => i.recipeId)) : (action?.recipes ?? []).map((r) => r.id);
+  for (const id of ids) expect(minutesOf(id), `${label}: ${id}`).toBeLessThanOrEqual(cap);
+  return ids;
 }
 
 /* ================================================================== days and plan dates */
@@ -399,11 +429,16 @@ async function checkDays(c: Case) {
   if (e.meal) expect(parseQuery(c.text).meal).toBe(e.meal);
   if (!('wantedWeekdays' in e) && !('excludedWeekdays' in e)) {
     if ('relativeDayOffset' in e && asksForMealPlan(c.text)) {
-      // "Matseðill fyrir á hinn morgun": the day resolves to Saturday 28 Nov, which the default plan (rest of this week) covers.
+      // "Matseðill fyrir á hinn morgun": exactly Saturday 28 Nov — that one day, never the rest of the week.
       const day = addDays(TODAY, e.relativeDayOffset);
       expect(day).toBe('2026-11-28');
       const { reply } = await chat(c.text, [text('Hér er planið.')]);
-      expect(reply.action?.days?.map((d) => d.date)).toContain(day);
+      expect(reply.action?.kind).toBe('meal_plan');
+      expect(reply.action!.weekStart).toBe('2026-11-23');
+      expect(reply.action!.days!.map((d) => d.date)).toEqual([day]);
+      // The same when the model calls propose_meal_plan without saying which day.
+      const tool = await chat(c.text, [toolUse('propose_meal_plan', {}), text('Hér er planið.')]);
+      expect(tool.reply.action!.days!.map((d) => d.date)).toEqual([day]);
     }
     return;
   }
@@ -605,11 +640,20 @@ describe('numbers and durations', () => {
     if (e.maxMinutes != null) {
       expect(maxMinutesIn(c.text)).toBe(e.maxMinutes);
       expect(parseQuery(c.text).maxMinutes).toBe(e.maxMinutes);
-      // "Fljótlegur" also asks for quick recipes; find_recipes still returns dinners for it.
+      // "Fljótlegur" also asks for quick recipes; find_recipes still returns dinners for it, every one within the cap.
       expect(parseQuery(c.text).quick).toBe(true);
       const r = await findRecipes({ query: 'dinner', max_results: 5 }, c.text);
       expect(r.cards.length).toBeGreaterThan(0);
       for (const card of r.cards) expect(ALL_RECIPES.find((x) => x.id === card.id)!.meal).toBe('dinner');
+      for (const card of r.cards) expect(minutesOf(card.id), card.id).toBeLessThanOrEqual(e.maxMinutes);
+      // Through the handler: the model's search drops the limit; the user's cap still holds for every card.
+      const h = await chat(c.text, [toolUse('find_recipes', { query: 'dinner', max_results: 5 }), text('Hér eru hugmyndir.')]);
+      expect(h.reply.action?.kind).toBe('recipe_suggestions');
+      expect(expectWithinCap(h.reply.action, e.maxMinutes, c.id).length).toBeGreaterThan(0);
+      // And a meal plan with the same words: every planned recipe within the cap.
+      const plan = await chat(`Matseðill fyrir næstu viku. ${c.text}`, [text('Hér er planið.')]);
+      expect(plan.reply.action?.kind).toBe('meal_plan');
+      expect(expectWithinCap(plan.reply.action, e.maxMinutes, `${c.id} plan`).length).toBeGreaterThan(0);
     }
     if (e.highProtein) expect(parseQuery(c.text).highProtein).toBe(true);
     if (e.mealsPerDay) {
@@ -624,6 +668,8 @@ describe('numbers and durations', () => {
     if (e.mustAskForIntegerMealsPerDay) {
       expect(mealsPerDayIn(c.text)).toEqual({ invalid: '2,5' });
       expect(mealPlanIntentFromText(c.text).meals_per_day, 'never rounded').toBeUndefined();
+      // Handler: no plan with 2 or 3 meals — the model is told to ask for a whole number.
+      await checkClarification(`Matseðill fyrir næstu viku. ${c.text}`, /how many meals a day/, false);
     }
     if (e.proteinGrams) expect(proteinGramsIn(c.text)).toBe(e.proteinGrams);
     if (e.mustNotChangeSavedTargetsWithoutConfirmation || e.mustNotChangeSavedTargets) {
@@ -644,7 +690,16 @@ describe('numbers and durations', () => {
       expect(parseChatNumber('1,25')).toBe(1.25);
     }
     if (e.durationMinutes != null) expect(minutesIn(c.text)).toBe(e.durationMinutes);
-    if (e.dayCount != null) expect(dayCountIn(c.text)).toBe(e.dayCount);
+    if (e.dayCount != null) {
+      expect(dayCountIn(c.text)).toBe(e.dayCount);
+      // Handler: exactly the first N plan days from today (Thursday 26 Nov → Sunday 29 Nov), fallback and tool alike.
+      const want = THIS_WEEK.filter((d) => d >= TODAY).slice(0, e.dayCount);
+      expect(want).toHaveLength(e.dayCount);
+      const { reply } = await chat(c.text, [text('Hér er planið.')]);
+      expect(reply.action!.days!.map((d) => d.date)).toEqual(want);
+      const tool = await chat(c.text, [toolUse('propose_meal_plan', {}), text('Hér er planið.')]);
+      expect(tool.reply.action!.days!.map((d) => d.date)).toEqual(want);
+    }
     if (e.expectedDates) await checkDays(c);
   }, 60_000);
 });
@@ -728,5 +783,99 @@ describe('reply post-processing understands Icelandic', () => {
     expect(weekPlanConflict('Full body B fellur niður á mánudaginn.', a, TODAY)).toBeNull();
     expect(weekPlanConflict('Full body A, svo sunnudagssteik.', a, TODAY)).toBeNull();
     expect(weekPlanConflict('Full body A, then monkfish and fries.', a, TODAY)).toBeNull();
+  });
+});
+
+/* ================================================================== review findings: final handler output */
+describe('resolved constraints reach the final output (2026-11-26, Monday week start)', () => {
+  it('a diet that rules out a wanted food is a question, never a plan or cards (English too)', async () => {
+    await checkClarification('Vegan meal plan with chicken, please.', /which to keep/);
+    // Without the conflict the same request builds a vegan plan.
+    const ok = await chat('Vegan meal plan, please.', [text('Here it is.')]);
+    expect(ok.reply.action?.kind).toBe('meal_plan');
+  });
+
+  it('an explicit cooking-time cap is hard: every card within it, and no widening when nothing fits', async () => {
+    // The app catalog alone (its quickest dinner takes 11 minutes).
+    const tight = await chat('Finndu kvöldmat, hámark 10 mínútur.', [toolUse('find_recipes', { query: 'dinner', max_results: 5 }), text('Ekkert passar.')], { recipes: RECIPES as unknown as RefRecipe[] });
+    expect(tight.reply.action ?? null, 'no dinner takes ≤ 10 min: empty stays empty').toBeNull();
+    const result = JSON.parse((tight.requests[1].messages.at(-1)!.content as { content: string }[])[0].content);
+    expect(result.results).toEqual([]);
+    expect(result.reason).toMatch(/10/);
+    // The cap from the tool argument alone, without "quick".
+    const arg = await findRecipes({ query: 'chicken', max_minutes: 15, max_results: 5 });
+    expect(arg.cards.length).toBeGreaterThan(0);
+    for (const c of arg.cards) expect(minutesOf(c.id), c.id).toBeLessThanOrEqual(15);
+    const loose = await chat('Find dinner, at most 25 minutes.', [toolUse('find_recipes', { query: '', max_results: 5 }), text('Here you go.')]);
+    expect(expectWithinCap(loose.reply.action, 25, 'en 25 min').length).toBeGreaterThan(0);
+    const plan = await chat('Meal plan for next week, max 20 minutes per recipe.', [toolUse('propose_meal_plan', { week: 'next' }), text('Here it is.')]);
+    expect(plan.reply.action?.kind).toBe('meal_plan');
+    expectWithinCap(plan.reply.action, 20, 'plan 20 min');
+  });
+
+  it.each([
+    ['Meal plan for four days next week.', NEXT_WEEK.slice(0, 4)],
+    ['Matseðill fyrir fjóra daga í næstu viku.', NEXT_WEEK.slice(0, 4)],
+    ['Meal plan for the day after tomorrow.', ['2026-11-28']],
+    ['Meal plan for tomorrow.', ['2026-11-27']],
+    ['Meal plan for 4 days next week, not Monday.', NEXT_WEEK.slice(1, 5)],
+    ['Matseðill fyrir tvo daga.', ['2026-11-26', '2026-11-27']],
+    ['Matseðill á morgun.', ['2026-11-27']],
+    ['Matseðill á hinn morgun.', ['2026-11-28']],
+    ["Tomorrow's meal plan, please.", ['2026-11-27']],
+  ])('"%s" plans exactly %j', async (msg, dates) => {
+    const fallback = await chat(msg, [text('Here it is.')]);
+    expect(fallback.reply.action?.kind).toBe('meal_plan');
+    expect(fallback.reply.action!.days!.map((d) => d.date)).toEqual(dates);
+    const tool = await chat(msg, [toolUse('propose_meal_plan', {}), text('Here it is.')]);
+    expect(tool.reply.action!.days!.map((d) => d.date)).toEqual(dates);
+  });
+
+  it.each([
+    'Meal plan, I shop tomorrow.',
+    'Make a meal plan because I shop tomorrow.',
+    'Ég fer í búð á morgun, gerðu matseðil fyrir vikuna.',
+    'Gerðu matseðil, ég fer í búð á morgun.',
+  ])('a relative day in another clause keeps the normal week: "%s"', async (msg) => {
+    const rest = THIS_WEEK.filter((d) => d >= TODAY);
+    const fallback = await chat(msg, [text('Here it is.')]);
+    expect(fallback.reply.action?.kind).toBe('meal_plan');
+    expect(fallback.reply.action!.days!.map((d) => d.date)).toEqual(rest);
+    const tool = await chat(msg, [toolUse('propose_meal_plan', {}), text('Here it is.')]);
+    expect(tool.reply.action!.days!.map((d) => d.date)).toEqual(rest);
+  });
+
+  it('more days than a week can hold, or than are left in the asked week, is a question', async () => {
+    await checkClarification('Meal plan for ten days.', /1–7 days/, false);
+    const left = await chat('Meal plan for five days this week.', [text('Which days?')]);
+    expect(left.reply.action ?? null, 'only four days are left this week').toBeNull();
+    // Five days with no week named: next week's first five days.
+    const five = await chat('Meal plan for five days.', [text('Here it is.')]);
+    expect(five.reply.action!.days!.map((d) => d.date)).toEqual(NEXT_WEEK.slice(0, 5));
+  });
+
+  it('a fractional meal count from the model is never rounded', async () => {
+    const out = await runTool('propose_meal_plan', { week: 'next', meals_per_day: 2.5 }, toolCtx('Meal plan for next week.'));
+    expect(out.isError).toBe(true);
+    expect(JSON.parse(out.content).status).toBe('needs_clarification');
+  });
+});
+
+describe('workout blockers name equipment and areas with the app labels', () => {
+  it('uses workout.meta labels in Icelandic, never enum ids', () => {
+    const w = live({ intent: 'swap', focusId: 'se-bench' });
+    const input = { change: 'swap', session_exercise_id: 'se-bench', to_exercise_id: 'dumbbell-bench-press' };
+    const noDumbbells = buildSessionAdjustment(input, { catalog: CATALOG, facts: facts({ equipment: ['barbell', 'bench'] }), messageId: mid(1), workout: w, trainingShared: true, lang: 'is' });
+    expect(noDumbbells.action).toBeNull();
+    expect(noDumbbells.say!.join(' ')).toContain('(handlóð)');
+    expect(noDumbbells.say!.join(' ')).not.toContain('dumbbell)');
+    const stressing = new Map(CATALOG);
+    stressing.set('dumbbell-bench-press', { ...CATALOG.get('dumbbell-bench-press')!, stresses: ['shoulder'] } as RefExercise);
+    const shoulder = buildSessionAdjustment(input, { catalog: stressing, facts: facts({ limitations: ['shoulder'] }), messageId: mid(1), workout: w, trainingShared: true, lang: 'is' });
+    expect(shoulder.say!.join(' ')).toContain('(axlir)');
+    expect(shoulder.say!.join(' ')).not.toContain('(shoulder)');
+    // English keeps its diagnostics as they were.
+    const en = buildSessionAdjustment(input, { catalog: stressing, facts: facts({ limitations: ['shoulder'] }), messageId: mid(1), workout: w, trainingShared: true });
+    expect(en.errors[0]).toContain('(shoulder)');
   });
 });

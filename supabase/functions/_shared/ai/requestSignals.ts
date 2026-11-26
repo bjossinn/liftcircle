@@ -219,7 +219,28 @@ const mealPlanNoun = (t: string[], f: string) => t.some(isMealPlanToken) || anyP
 const programNoun = (t: string[], f: string) => t.some(isProgramToken) || EN_PROGRAM_NOUN.test(f);
 const CREATE_VERBS = [...PROGRAM_VERBS, ...['gerðu', 'útbúðu', 'búðu til', 'settu saman', 'skipuleggðu', 'make', 'create', 'build', 'give me', 'write', 'design'].map(toks)];
 const hasCreateVerb = (t: string[]) => anyPhrase(t, CREATE_VERBS);
-const NEGATORS = new Set(['ekki', 'aldrei', 'not', "don't", 'don’t', 'dont', 'never', "won't", 'won’t']);
+const NEGATORS = new Set(['ekki', 'aldrei', 'not', "don't", 'don’t', 'dont', 'never', "won't", 'won’t', 'no', 'engan', 'enga', 'engin', 'ekkert', 'neinn']);
+/**
+ * Words of the creation PREDICATE that governs the plan noun: subjects, want/need/make verbs, articles, "new", "me". A
+ * negation counts against the request only inside this predicate ("Ekki búa til matseðil", "Ég vil ekki nýja
+ * æfingaáætlun", "I don't want a meal plan"); a negation of something else in the sentence ("Ég borða EKKI fisk og vil
+ * matseðil", "I don't eat fish and want a meal plan") is a food restriction, not a refusal of the plan.
+ */
+const PREDICATE_WORDS = new Set([
+  ...CREATE_VERBS.flat(),
+  ...['ég', 'eg', 'við', 'þu', 'mer', 'mig', 'okkur', 'vil', 'viljum', 'vilja', 'langar', 'þarf', 'þurfum', 'vantar', 'að', 'fa', 'nyjan', 'nyja', 'nytt', 'nyjum', 'nyr',
+    'annan', 'aðra', 'neinn', 'neina', 'nein', 'ennþa', 'strax', 'nuna', 'buir', 'gerir', 'gera', 'bua', 'til', 'setja', 'saman',
+    'i', "i'd", 'id', 'we', 'you', 'please', 'want', 'need', 'like', 'would', 'to', 'do', 'does', 'a', 'an', 'the', 'my', 'me', 'us', 'new', 'another', 'any', 'yet', 'now',
+    'get', 'make', 'create', 'build', 'give', 'write', 'design'].map(foldIs),
+]);
+/** The plan noun at `at` is negated by its own predicate: walk back over predicate words only. */
+function predicateNegated(c: string[], at: number): boolean {
+  for (let k = at - 1; k >= 0 && at - k <= 7; k--) {
+    if (NEGATORS.has(c[k])) return true;
+    if (!PREDICATE_WORDS.has(c[k])) return false;
+  }
+  return false;
+}
 
 /** Clauses of the folded text (split at punctuation and "but"/"en"). */
 function clauses(text: string): string[][] {
@@ -228,13 +249,13 @@ function clauses(text: string): string[][] {
     .map((c) => c.match(/[\p{L}\p{N}]+(?:['’][\p{L}]+)*/gu) ?? [])
     .filter((c) => c.length);
 }
-/** A creation request that is negated in its own clause: "Ekki búa til matseðil ennþá", "Ég vil ekki nýja æfingaáætlun". */
+/** A creation request that is negated in its own predicate: "Ekki búa til matseðil ennþá", "Ég vil ekki nýja æfingaáætlun". */
 function negatedCreate(text: string, noun: (w: string) => boolean, enNoun: RegExp): boolean {
   let negated = false;
   for (const c of clauses(text)) {
     const at = c.findIndex((w, i) => noun(w) || enNoun.test(c.slice(i, i + 3).join(' ')));
     if (at < 0) continue;
-    if (c.slice(0, at).some((w) => NEGATORS.has(w)) || (c[at - 1] === 'not' && c[at - 2] === 'do')) negated = true;
+    if (predicateNegated(c, at)) negated = true;
     else return false; // a positive clause asks for it after all
   }
   return negated;
@@ -273,6 +294,18 @@ function sessionKind(t: string[], f: string): RequestKind | null {
 }
 
 const QUESTION_START = /^ (?:hvað|hvar|hvernig|hvenær|af hverju|hvers vegna|getur|geturðu|what|where|why|how|when|can|could|is|are|does|do) /;
+/** A question that READS something (not a polite request like "Could you do my meal plan?" / "Geturðu …?"): it opens with
+ *  a question word or an inverted copula/auxiliary. Icelandic "er/eru" only with the "?": "Er með hnetuofnæmi" is a
+ *  declaration with the subject dropped. */
+const asksQuestion = (text: string, f: string) =>
+  /^ (?:hvað|hvaða|hvar|hvernig|hvenær|af hverju|hvers vegna|inniheldur|what|what's|whats|which|where|why|how|when|is|are|does|did|has) /.test(f) ||
+  (/^ (?:er|eru) /.test(f) && /\?\s*$/.test(String(text ?? '')));
+/** The user's own, existing plan: a possessive ("minn", "my") or the definite noun ("matseðillinn", "æfingaáætlunina"). */
+const OWN = new Set(['minn', 'min', 'mitt', 'minum', 'minni', 'mina', 'minnar', 'mins', 'okkar', 'nuverandi', 'my', 'our', 'current']);
+const DEFINITE_PLAN = /^(?:vikumatseð|matseð|matarplan|mataraætlun|æfingaaætlun|æfingaplan|æfingaprogramm|programm)[a-zæðþ]*(?:inn|inum|ins|sins|ið|inu|ina|inni|innar)$/;
+const ownPlan = (t: string[]) => t.some((w) => OWN.has(w) || DEFINITE_PLAN.test(w));
+/** Verbs that ask to change a plan (a request, not a question about it). */
+const MODIFY = /^(?:breyt|uppfær|endurgerð|endurger|lagaðu|laga$|skiptu|skipta|update|change|replace|redo|regenerate|swap|fix|adjust|tweak|edit|make|create|build)/;
 const EXPLAIN = (t: string[], f: string) =>
   anyPhrase(t, EXPLAIN_PHRASES) || / (?:af hverju|hvers vegna|utskyrðu|utskyra|hvað þyðir) /.test(f) || /\b(?:why|explain)\b/.test(f);
 
@@ -294,6 +327,9 @@ export function classifyRequest(text: string): RequestKind | null {
   if ((mealNoun || progNoun) && !create) {
     if (/^ (?:hvar|where) /.test(f) || / (?:hvar finn|hvernig finn|how do i find|where do i find|where is|where's) /.test(f)) return 'app_navigation';
     if (EXPLAIN(t, f) || anyPhrase(t, PROGRAM_NEGATIVE.filter((p) => !p.includes('ekki')))) return mealNoun && !progNoun ? 'explain_existing_meal_plan' : 'explain_existing_program';
+    // "Er matseðillinn minn vegan?", "Is my meal plan vegan?": a question about the user's OWN plan reads it; it never
+    // creates or replaces one (unless it asks to change it: "Geturðu breytt matseðlinum mínum?").
+    if (asksQuestion(text, f) && ownPlan(t) && !t.some((w) => MODIFY.test(w))) return mealNoun && !progNoun ? 'explain_existing_meal_plan' : 'explain_existing_program';
   }
   // Negated creation.
   if (mealNoun && negatedCreate(text, isMealPlanToken, EN_MEAL_PLAN)) return 'declined';

@@ -26,7 +26,7 @@ import type { NutritionStatus } from './dataStatus.ts';
 // @ts-ignore see above
 import { mealPlanBlocker } from './dataStatus.ts';
 // @ts-ignore see above
-import { buildMealPlanAction, excludedIngredientIds, explainNoRecipes, parseQuery, stemWord, totalMinutes, wordsMatch } from './meals.ts';
+import { buildMealPlanAction, clarificationNote, excludedIngredientIds, explainNoRecipes, parseQuery, requestClarification, stemWord, totalMinutes, wordsMatch } from './meals.ts';
 import type { NormProgram } from './validate.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { decideTarget, missingEquipment, normalizeProposedProgram, validateForUser, validateProposedProgram } from './validate.ts';
@@ -73,6 +73,7 @@ export const TOOL_DEFS = [
         query: { type: 'string', description: 'Optional, free text, e.g. "quick high protein breakfast", "chicken", "no-cook lunch".' },
         meal: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
         min_protein_g: { type: 'number', description: 'Minimum protein per serving.' },
+        max_minutes: { type: 'integer', minimum: 1, maximum: 240, description: 'Only if the user set a cooking-time limit ("at most 10 minutes"): a hard cap on total minutes.' },
         max_results: { type: 'integer', minimum: 1, maximum: 5 },
       },
     },
@@ -173,6 +174,8 @@ export const TOOL_DEFS = [
         week: { type: 'string', enum: ['this', 'next'], description: 'Only if the user said which week.' },
         days: { type: 'array', items: { type: 'string' }, description: 'Only if the user named days: weekday names ("Wednesday") or YYYY-MM-DD dates.' },
         meals_per_day: { type: 'integer', minimum: 1, maximum: 6, description: 'Only if the user asked for a different number than their setting.' },
+        day_count: { type: 'integer', minimum: 1, maximum: 7, description: 'Only if the user asked for a number of days ("four days"): the first N plan days of that week.' },
+        max_minutes: { type: 'integer', minimum: 1, maximum: 240, description: 'Only if the user set a cooking-time limit ("at most 20 minutes"): a hard cap per recipe.' },
         quick: { type: 'boolean', description: 'User wants quick meals (≤ 15 min).' },
         diet: { type: 'array', items: { type: 'string', enum: ['vegetarian', 'vegan', 'pescatarian', 'dairy_free', 'gluten_free'] }, description: 'Extra diet rules for this plan.' },
         avoid: { type: 'array', items: { type: 'string' }, description: 'Foods to leave out for this plan, e.g. "fish", "mushrooms".' },
@@ -366,6 +369,17 @@ async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Pr
   const [recipes, ingredients] = await Promise.all([ctx.db.getRecipes(), ctx.db.getIngredients()]);
   const ing = new Map(ingredients.map((i) => [i.id, i]));
   const intent = parseQuery(typeof input.query === 'string' ? input.query : '');
+  // A diet that rules out a food the user asked for ("vegan … with chicken"): ask which to keep — no cards, nothing dropped.
+  const conflict = requestClarification(ctx.requestText ?? (typeof input.query === 'string' ? input.query : ''));
+  if (conflict?.kind === 'diet_conflict') {
+    ctx.state.recipes = null;
+    return { content: JSON.stringify({ status: 'needs_clarification', results: [], ask_user: clarificationNote(conflict), note: 'Show no recipes. Ask the user this question in your reply, in the reply language.' }) };
+  }
+  // An explicit cooking-time cap (tool argument, the query or the user's own words) is a hard limit, independent of "quick".
+  const userQ = ctx.requestText ? parseQuery(ctx.requestText) : null;
+  const caps = [typeof input.max_minutes === 'number' ? input.max_minutes : null, intent.maxMinutes, userQ?.maxMinutes ?? null]
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0);
+  const cap = caps.length ? Math.min(...caps) : null;
   // Restrictions the USER stated count even if the model's query dropped them ("no nuts" → query "breakfast ideas").
   if (ctx.requestText) {
     const said = parseQuery(ctx.requestText);
@@ -385,13 +399,14 @@ async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Pr
   // 1. Hard constraints — never relaxed: the user's own settings (allergens, diet, dislikes, cook time) PLUS what this
   //    request rules out ("vegan", "gluten-free", "no fish", "án hneta"). Only the softer parts of a request (words,
   //    meal type, quick, protein) are loosened in step 2.
-  const fromRequest = intent.diet.length > 0 || intent.exclude.allergens.length > 0 || intent.exclude.words.length > 0;
+  const fromRequest = intent.diet.length > 0 || intent.exclude.allergens.length > 0 || intent.exclude.words.length > 0 || cap != null;
   const hard: UserFacts = fromRequest
     ? {
         ...ctx.facts,
         dietTags: [...new Set([...ctx.facts.dietTags, ...intent.diet])],
         allergens: [...new Set([...ctx.facts.allergens, ...intent.exclude.allergens])],
         dislikedIngredientIds: [...new Set([...ctx.facts.dislikedIngredientIds, ...excludedIngredientIds(intent.exclude.words, ingredients)])],
+        maxCookMinutes: cap != null ? Math.min(cap, ctx.facts.maxCookMinutes ?? cap) : ctx.facts.maxCookMinutes,
       }
     : ctx.facts;
   // Ingredients ruled out by name in THIS request (not the user's own dislikes): a recipe may swap them (recipeFits).
@@ -418,6 +433,17 @@ async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Pr
           : 'The user\'s own settings exclude every recipe. Explain this reason; don\'t invent recipes.',
       }),
     };
+  }
+
+  // An explicit time cap with a meal type ("kvöldmatur, hámark 10 mínútur"): when no recipe for that meal fits, say so —
+  // never other meals or longer recipes instead.
+  const capMeal = meal ?? userQ?.meal ?? null;
+  if (cap != null && capMeal && !allowed.some((x) => x.r.meal === capMeal)) {
+    const reason = explainNoRecipes(
+      { allergens: hard.allergens, dietTags: hard.dietTags, disliked: hard.dislikedIngredientIds, maxMinutes: hard.maxCookMinutes, meal: capMeal, proteinExcluded: hard.proteinExcluded },
+      recipes, ing, hard, ctx.lang ?? 'en',
+    );
+    return { content: JSON.stringify({ results: [], reason, note: 'No recipe for that meal fits the user\'s cooking-time limit. Say so plainly and name the reason; never relax the limit and never invent recipes.' }) };
   }
 
   // 2. What this search asked for, loosened step by step until something matches (never past the user's constraints).
@@ -604,6 +630,16 @@ function proposeWeekAdjustment(input: Record<string, unknown>, ctx: ToolContext)
 /* ------------------------------------------------------------------ today's workout */
 const clip = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
+/** An equipment / limitation id as the app labels it (workout.meta.*, lower-case inside a sentence); unknown ids stay as they are. */
+function metaLabel(kind: 'equipment' | 'limitation', id: string, lang: Lang): string {
+  const tr = sharedT(lang);
+  const key = `workout.meta.${kind}.${id}`;
+  if (!tr.has(key)) return id;
+  const s = tr.t(key as SharedKey);
+  const loc = lang === 'is' ? 'is-IS' : 'en-GB';
+  return s.length > 1 && s[1] !== s[1].toLocaleLowerCase(loc) ? s : s.charAt(0).toLocaleLowerCase(loc) + s.slice(1);
+}
+
 /**
  * Validate a today-only workout change against the snapshot, the catalog and the user's constraints. Pure: also used by
  * the reply fallback (coach.ts) when the model answered a "Short on time" / "Equipment busy" request without the tool.
@@ -691,13 +727,13 @@ export function buildSessionAdjustment(
     const missing = missingEquipment(to, ctx.facts.equipment);
     if (missing.length) {
       errors.push(`${to.name} needs equipment the user doesn't have (${missing.join(', ')}).`);
-      tell('aiServer.session.missingEquipment', { exerciseName: to.name, equipment: lang === 'en' ? missing.join(', ') : listText(missing, lang) });
+      tell('aiServer.session.missingEquipment', { exerciseName: to.name, equipment: lang === 'en' ? missing.join(', ') : listText(missing.map((e: string) => metaLabel('equipment', e, lang)), lang) });
     }
   }
   const easy = (to.stresses ?? []).filter((x) => ctx.facts.limitations.includes(x));
   if (easy.length) {
     errors.push(`${to.name} loads an area the user asked to go easy on (${easy.join(', ')}); pick another.`);
-    tell('aiServer.session.limitedArea', { exerciseName: to.name, areas: lang === 'en' ? easy.join(', ') : listText(easy, lang) });
+    tell('aiServer.session.limitedArea', { exerciseName: to.name, areas: lang === 'en' ? easy.join(', ') : listText(easy.map((a) => metaLabel('limitation', a, lang)), lang) });
   }
   if (w.exercises.some((e) => e.id !== se.id && e.exerciseId === to.id && pendingWorking(e) > 0)) {
     errors.push(`${to.name} is already later in today's workout; pick another.`);
@@ -755,10 +791,15 @@ async function proposeMealPlan(input: Record<string, unknown>, ctx: ToolContext)
   const lang = ctx.lang ?? 'en';
   const today = ctx.today ?? new Date().toISOString().slice(0, 10);
   const [recipes, ingredients] = mealPlanBlocker(nutrition) ? [[], []] : await Promise.all([ctx.db.getRecipes(), ctx.db.getIngredients()]);
-  const { action, errors, adjusted } = buildMealPlanAction(input, {
+  const { action, errors, adjusted, clarify } = buildMealPlanAction(input, {
     facts: ctx.facts, account: ctx.account ?? null, today, nutrition, messageId: ctx.messageId ?? '', recipes, ingredients,
     requestText: ctx.requestText, lang,
   });
+  // Something only the user can decide (a diet vs a food they asked for, "2,5 meals", too many days): no plan — ask.
+  if (clarify) {
+    ctx.state.mealPlan = null;
+    return { content: JSON.stringify({ status: 'needs_clarification', ask_user: errors[0], note: 'No plan was built. Do not call propose_meal_plan again in this reply; ask the user this question, in the reply language.' }), isError: true };
+  }
   if (!action) return { content: JSON.stringify({ status: 'not_built', errors, note: 'Tell the user exactly this reason (with its link if any). Do not invent meals.' }), isError: true };
   ctx.state.mealPlan = action;
   return {

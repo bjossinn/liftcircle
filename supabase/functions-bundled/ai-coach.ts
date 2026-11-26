@@ -354,6 +354,28 @@ var SHARED_EN = {
   "progression.seconds": "{{seconds}} s",
   "progression.suggestion": "Progression suggestion",
   "progression.why": "Why?",
+  "workout.meta.equipment.band": "Band",
+  "workout.meta.equipment.barbell": "Barbell",
+  "workout.meta.equipment.bench": "Bench",
+  "workout.meta.equipment.bodyweight": "Bodyweight",
+  "workout.meta.equipment.cable": "Cable",
+  "workout.meta.equipment.cardio_machine": "Cardio machine",
+  "workout.meta.equipment.dip_station": "Dip station",
+  "workout.meta.equipment.dumbbell": "Dumbbells",
+  "workout.meta.equipment.ez_bar": "EZ bar",
+  "workout.meta.equipment.kettlebell": "Kettlebell",
+  "workout.meta.equipment.machine": "Machine",
+  "workout.meta.equipment.pullup_bar": "Pull-up bar",
+  "workout.meta.equipment.rack": "Rack",
+  "workout.meta.equipment.smith": "Smith machine",
+  "workout.meta.limitation.ankle": "Ankles",
+  "workout.meta.limitation.elbow": "Elbows",
+  "workout.meta.limitation.hip": "Hips",
+  "workout.meta.limitation.knee": "Knees",
+  "workout.meta.limitation.lower_back": "Lower back",
+  "workout.meta.limitation.neck": "Neck",
+  "workout.meta.limitation.shoulder": "Shoulders",
+  "workout.meta.limitation.wrist": "Wrists",
   "workout.validation.distanceLong": "That distance looks too long.",
   "workout.validation.distanceNonnegative": "Distance must be zero or more.",
   "workout.validation.distanceOrTime": "Enter a distance or a time.",
@@ -631,6 +653,28 @@ var SHARED_IS = {
   "progression.seconds": "{{seconds}} sek.",
   "progression.suggestion": "Tillaga um framvindu",
   "progression.why": "Af hverju?",
+  "workout.meta.equipment.band": "Teygja",
+  "workout.meta.equipment.barbell": "St\xF6ng",
+  "workout.meta.equipment.bench": "Bekkur",
+  "workout.meta.equipment.bodyweight": "Eigin \xFEyngd",
+  "workout.meta.equipment.cable": "Togst\xF6\xF0",
+  "workout.meta.equipment.cardio_machine": "\xDEolt\xE6ki",
+  "workout.meta.equipment.dip_station": "D\xFDfust\xF6\xF0",
+  "workout.meta.equipment.dumbbell": "Handl\xF3\xF0",
+  "workout.meta.equipment.ez_bar": "EZ-st\xF6ng",
+  "workout.meta.equipment.kettlebell": "Ketilbjalla",
+  "workout.meta.equipment.machine": "T\xE6ki",
+  "workout.meta.equipment.pullup_bar": "Upph\xEDfingarst\xF6ng",
+  "workout.meta.equipment.rack": "Hn\xE9beygjugrind",
+  "workout.meta.equipment.smith": "Smith-t\xE6ki",
+  "workout.meta.limitation.ankle": "\xD6kklar",
+  "workout.meta.limitation.elbow": "Olnbogar",
+  "workout.meta.limitation.hip": "Mja\xF0mir",
+  "workout.meta.limitation.knee": "Hn\xE9",
+  "workout.meta.limitation.lower_back": "Mj\xF3bak",
+  "workout.meta.limitation.neck": "H\xE1ls",
+  "workout.meta.limitation.shoulder": "Axlir",
+  "workout.meta.limitation.wrist": "\xDAlnli\xF0ir",
   "workout.validation.distanceLong": "\xDEessi vegalengd vir\xF0ist of l\xF6ng.",
   "workout.validation.distanceNonnegative": "Vegalengd m\xE1 ekki vera undir n\xFAlli.",
   "workout.validation.distanceOrTime": "Skr\xE1\xF0u vegalengd e\xF0a t\xEDma.",
@@ -3001,6 +3045,15 @@ function maxMinutesIn(text) {
   if (!m) return null;
   return minutesIn(f.slice(m.index));
 }
+function dayCountIn(text) {
+  const t = tokensOf(text);
+  for (let i = 0; i < t.length; i++) {
+    if (!["fyrir", "for", "i", "next"].includes(t[i])) continue;
+    const num3 = numberAt(t, i + 1);
+    if (num3 && /^(?:daga|dag|dogum|days?)$/.test(t[i + 1 + num3.len] ?? "")) return num3.value;
+  }
+  return null;
+}
 function mealsPerDayIn(text) {
   const f = foldIs(String(text ?? ""));
   const frac = f.match(new RegExp(`(?<![${L}.,])(\\d+[.,]\\d+)\\s+(?:malti\xF0[${L}]*|meals?)(?![${L}])`));
@@ -3025,19 +3078,98 @@ var mealPlanNoun = (t, f) => t.some(isMealPlanToken) || anyPhrase(t, MEAL_PLAN_P
 var programNoun = (t, f) => t.some(isProgramToken) || EN_PROGRAM_NOUN.test(f);
 var CREATE_VERBS = [...PROGRAM_VERBS, ...["ger\xF0u", "\xFAtb\xFA\xF0u", "b\xFA\xF0u til", "settu saman", "skipulegg\xF0u", "make", "create", "build", "give me", "write", "design"].map(toks)];
 var hasCreateVerb = (t) => anyPhrase(t, CREATE_VERBS);
-var NEGATORS = /* @__PURE__ */ new Set(["ekki", "aldrei", "not", "don't", "don\u2019t", "dont", "never", "won't", "won\u2019t"]);
+var NEGATORS = /* @__PURE__ */ new Set(["ekki", "aldrei", "not", "don't", "don\u2019t", "dont", "never", "won't", "won\u2019t", "no", "engan", "enga", "engin", "ekkert", "neinn"]);
+var PREDICATE_WORDS = /* @__PURE__ */ new Set([
+  ...CREATE_VERBS.flat(),
+  ...[
+    "\xE9g",
+    "eg",
+    "vi\xF0",
+    "\xFEu",
+    "mer",
+    "mig",
+    "okkur",
+    "vil",
+    "viljum",
+    "vilja",
+    "langar",
+    "\xFEarf",
+    "\xFEurfum",
+    "vantar",
+    "a\xF0",
+    "fa",
+    "nyjan",
+    "nyja",
+    "nytt",
+    "nyjum",
+    "nyr",
+    "annan",
+    "a\xF0ra",
+    "neinn",
+    "neina",
+    "nein",
+    "enn\xFEa",
+    "strax",
+    "nuna",
+    "buir",
+    "gerir",
+    "gera",
+    "bua",
+    "til",
+    "setja",
+    "saman",
+    "i",
+    "i'd",
+    "id",
+    "we",
+    "you",
+    "please",
+    "want",
+    "need",
+    "like",
+    "would",
+    "to",
+    "do",
+    "does",
+    "a",
+    "an",
+    "the",
+    "my",
+    "me",
+    "us",
+    "new",
+    "another",
+    "any",
+    "yet",
+    "now",
+    "get",
+    "make",
+    "create",
+    "build",
+    "give",
+    "write",
+    "design"
+  ].map(foldIs)
+]);
+function predicateNegated(c, at) {
+  for (let k = at - 1; k >= 0 && at - k <= 7; k--) {
+    if (NEGATORS.has(c[k])) return true;
+    if (!PREDICATE_WORDS.has(c[k])) return false;
+  }
+  return false;
+}
 function clauses(text) {
   return foldIs(String(text ?? "")).split(/[.,;:!?\n]+|(?<![\p{L}])(?:but|en)(?![\p{L}])/u).map((c) => c.match(/[\p{L}\p{N}]+(?:['’][\p{L}]+)*/gu) ?? []).filter((c) => c.length);
 }
 function negatedCreate(text, noun, enNoun) {
-  let negated = false;
+  let negated2 = false;
   for (const c of clauses(text)) {
     const at = c.findIndex((w, i) => noun(w) || enNoun.test(c.slice(i, i + 3).join(" ")));
     if (at < 0) continue;
-    if (c.slice(0, at).some((w) => NEGATORS.has(w)) || c[at - 1] === "not" && c[at - 2] === "do") negated = true;
+    if (predicateNegated(c, at)) negated2 = true;
     else return false;
   }
-  return negated;
+  return negated2;
 }
 var SWAP_FOOD = (t) => t.some((w) => FOOD_TOKENS.has(w) || /^(?:kjukling|tofu|lax|fisk|nautakjot|svinakjot|kjot|ost|hrisgrjon|pasta)/.test(w));
 var EQUIPMENT = /^(?:bekk|tæki|stong|stang|rekk|handloð|loð|buna|velin$|kapal|allt$)/;
@@ -3065,6 +3197,11 @@ function sessionKind(t, f) {
   return null;
 }
 var QUESTION_START = /^ (?:hvað|hvar|hvernig|hvenær|af hverju|hvers vegna|getur|geturðu|what|where|why|how|when|can|could|is|are|does|do) /;
+var asksQuestion = (text, f) => /^ (?:hvað|hvaða|hvar|hvernig|hvenær|af hverju|hvers vegna|inniheldur|what|what's|whats|which|where|why|how|when|is|are|does|did|has) /.test(f) || /^ (?:er|eru) /.test(f) && /\?\s*$/.test(String(text ?? ""));
+var OWN = /* @__PURE__ */ new Set(["minn", "min", "mitt", "minum", "minni", "mina", "minnar", "mins", "okkar", "nuverandi", "my", "our", "current"]);
+var DEFINITE_PLAN = /^(?:vikumatseð|matseð|matarplan|mataraætlun|æfingaaætlun|æfingaplan|æfingaprogramm|programm)[a-zæðþ]*(?:inn|inum|ins|sins|ið|inu|ina|inni|innar)$/;
+var ownPlan = (t) => t.some((w) => OWN.has(w) || DEFINITE_PLAN.test(w));
+var MODIFY = /^(?:breyt|uppfær|endurgerð|endurger|lagaðu|laga$|skiptu|skipta|update|change|replace|redo|regenerate|swap|fix|adjust|tweak|edit|make|create|build)/;
 var EXPLAIN = (t, f) => anyPhrase(t, EXPLAIN_PHRASES) || / (?:af hverju|hvers vegna|utskyrðu|utskyra|hvað þyðir) /.test(f) || /\b(?:why|explain)\b/.test(f);
 function classifyRequest(text) {
   const t = tokensOf(text);
@@ -3076,6 +3213,7 @@ function classifyRequest(text) {
   if ((mealNoun || progNoun) && !create) {
     if (/^ (?:hvar|where) /.test(f) || / (?:hvar finn|hvernig finn|how do i find|where do i find|where is|where's) /.test(f)) return "app_navigation";
     if (EXPLAIN(t, f) || anyPhrase(t, PROGRAM_NEGATIVE.filter((p) => !p.includes("ekki")))) return mealNoun && !progNoun ? "explain_existing_meal_plan" : "explain_existing_program";
+    if (asksQuestion(text, f) && ownPlan(t) && !t.some((w) => MODIFY.test(w))) return mealNoun && !progNoun ? "explain_existing_meal_plan" : "explain_existing_program";
   }
   if (mealNoun && negatedCreate(text, isMealPlanToken, EN_MEAL_PLAN)) return "declined";
   if (progNoun && (negatedCreate(text, isProgramToken, EN_PROGRAM_NOUN) || anyPhrase(t, PROGRAM_NEGATIVE.filter((p) => p.includes("ekki"))))) return "declined";
@@ -5564,17 +5702,22 @@ var DIET_WORDS = [
   [/\bdairy[\s-]?free\b|\bno dairy\b|\blactose[\s-]?free\b|\bmjolkurlaus|\blaktosalaus/, "dairy_free"],
   [/\bgluten[\s-]?free\b|\bno gluten\b|\bglutenlaus/, "gluten_free"]
 ];
+var IS_DIET_PHRASES = Object.entries(IS_VOCAB.diet.map).flatMap(([tag, forms]) => forms.filter((f) => !((tag === "dairy_free" || tag === "gluten_free") && /^án\s/.test(f))).map((f) => [foldIs(f).split(/\s+/).map((w) => w === "an" ? "(?:an|without)" : w).join("\\s+"), tag]));
+var DIET_BOUND_L = "(?<![a-z0-9\xE6\xF0\xFE])";
+var DIET_BOUND_R = "(?![a-z0-9\xE6\xF0\xFE])";
+DIET_WORDS.push(...IS_DIET_PHRASES.map(([p, tag]) => [new RegExp(`${DIET_BOUND_L}${p}${DIET_BOUND_R}`), tag]));
 var NEGATED_DIET = new RegExp(
-  `(?<![${"a-z0-9\xE6\xF0\xFE"}])(?:not|never|no longer|isn'?t|aren'?t|am not|ekki lengur|ekki|non)[\\s-]+(?:(?:a|an|really|strictly|fully|alveg|neitt|neinn)\\s+)?(?:vegan[a-z\xE6\xF0\xFE]*|vegetarian|veggie|pescatarian|gr\xE6n[a-z\xE6\xF0\xFE]*|(?:dairy|lactose|gluten)[\\s-]?free|mjolkurlaus[a-z\xE6\xF0\xFE]*|glutenlaus[a-z\xE6\xF0\xFE]*|laktosalaus[a-z\xE6\xF0\xFE]*)`,
+  `(?<![${"a-z0-9\xE6\xF0\xFE"}])(?:not|never|no longer|isn'?t|aren'?t|am not|ekki lengur|ekki|non)[\\s-]+(?:(?:a|an|really|strictly|fully|alveg|neitt|neinn|a\xF0|vera|lengur|endilega|to|be|need|have|necessarily)\\s+){0,3}(?:vegan[a-z\xE6\xF0\xFE]*|vegetarian|veggie|pescatarian|gr\xE6n[a-z\xE6\xF0\xFE]*|(?:dairy|lactose|gluten)[\\s-]?free|mjolkurlaus[a-z\xE6\xF0\xFE]*|glutenlaus[a-z\xE6\xF0\xFE]*|laktosalaus[a-z\xE6\xF0\xFE]*|${IS_DIET_PHRASES.map(([p]) => p).join("|")})`,
   "g"
 );
 var stripNegatedDiets = (folded) => folded.replace(NEGATED_DIET, " ");
 function dietTagsIn(text) {
-  if (classifyRequest(text) === "nutrition_explanation") return [];
-  const t = stripNegatedDiets(fold2(text));
-  return DIET_WORDS.filter(([re]) => re.test(t)).map(([, tag]) => tag);
+  const tokens = fold2(markIsWords(String(text ?? ""))).match(TOKEN_RE) ?? [];
+  const question = questionClauses(tokens);
+  const t = stripNegatedDiets(` ${tokens.filter((_, k) => !question[k]).join(" ")} `);
+  return [...new Set(DIET_WORDS.filter(([re]) => re.test(t)).map(([, tag]) => tag))];
 }
-var STOP = /* @__PURE__ */ new Set(["a", "an", "the", "and", "or", "with", "for", "of", "in", "on", "some", "any", "meal", "meals", "recipe", "recipes", "idea", "ideas", "food", "dish", "something", "me", "my", "easy", "simple", "healthy", "good", "tasty", "high", "protein", "quick", "fast", "free", "low", "cal", "calorie", "kcal"]);
+var STOP = /* @__PURE__ */ new Set(["a", "an", "the", "and", "or", "with", "for", "of", "in", "on", "some", "any", "meal", "meals", "recipe", "recipes", "idea", "ideas", "food", "dish", "something", "me", "my", "easy", "simple", "healthy", "good", "tasty", "high", "protein", "quick", "fast", "free", "low", "cal", "calorie", "kcal", "ok", "okay", "fine"]);
 function parseQuery(query) {
   const q = fold2(query);
   const diet = dietTagsIn(q);
@@ -5582,7 +5725,7 @@ function parseQuery(query) {
   const highProtein = /\bprotein|\bprotin/.test(q);
   const maxMinutes = maxMinutesIn(query);
   const exclude = parseExclusions(query);
-  const negated = new Set(exclude.raw);
+  const negated2 = new Set(exclude.raw);
   let meal = null;
   const words = [];
   const tokens = q.replace(/[^a-z0-9æðþ\s-]/g, " ").split(/\s+/).filter(Boolean);
@@ -5592,17 +5735,17 @@ function parseQuery(query) {
       meal ??= MEAL_WORDS[raw];
       continue;
     }
-    if (negated.has(raw) || NEGATORS2.has(raw) || QUERY_GLUE.has(raw)) continue;
+    if (negated2.has(raw) || NEGATORS2.has(raw) || QUERY_GLUE.has(raw)) continue;
     if (STOP.has(raw) || IS_STOP.has(raw) || raw.length < 3 || DIET_WORDS.some(([re]) => re.test(raw)) || /^(vegan|vegetarian|pescatarian|dairy|gluten|lactose|no|cook|min|under)$/.test(raw)) continue;
     if (/(?:laus|lausa|laust|lausar|lausir|lausum)$|-free$|(?:ofnæmi|oþol)$/.test(raw)) continue;
     const pair = `${raw} ${tokens[i + 1] ?? ""}`;
-    if (EN_FOOD_PHRASES.has(pair) && !negated.has(tokens[i + 1])) {
+    if (EN_FOOD_PHRASES.has(pair) && !negated2.has(tokens[i + 1])) {
       words.push(pair);
       i++;
       continue;
     }
     const lex = lexFoodAt(tokens, i);
-    if (lex && !lex.tokens.some((w) => negated.has(w))) {
+    if (lex && !lex.tokens.some((w) => negated2.has(w))) {
       words.push(stem(lex.english));
       i += lex.tokens.length - 1;
       continue;
@@ -5610,6 +5753,15 @@ function parseQuery(query) {
     words.push(stem(raw));
   }
   return { words: [...new Set(words)].slice(0, 6), meal, diet, quick, highProtein, maxMinutes, exclude };
+}
+function requestConflicts(text) {
+  const q = parseQuery(text);
+  if (!q.diet.length) return [];
+  const meat = ["chicken", "turkey", "beef", "pork", "lamb", "mince", "ham", "bacon", "meat", "red meat", "poultry"];
+  const fish = ["fish", "salmon", "cod", "tuna", "haddock", "mackerel", "saithe", "herring", "prawn", "shrimp", "shellfish", "white fish", "oily fish"];
+  const animal = [...meat, ...fish, "egg", "milk", "cheese", "skyr", "yogurt", "butter", "whey", "dairy"];
+  const banned = new Set(q.diet.includes("vegan") ? animal : q.diet.includes("vegetarian") ? [...meat, ...fish] : q.diet.includes("pescatarian") ? meat : []);
+  return q.words.filter((w) => banned.has(w) || banned.has(`${w}s`));
 }
 var NEGATOR_WORDS = /* @__PURE__ */ new Set([
   "no",
@@ -5698,6 +5850,13 @@ var EXTENDERS = [
   ["til", "a\xF0", "mynda"]
 ];
 var CONTAINERS = [["containing"], ["contains"], ["sem", "innihalda"], ["sem", "inniheldur"], ["sem", "innihelda"]];
+for (const f of IS_VOCAB.negation.extenders) {
+  const p = foldIs(f).match(/[a-z0-9æðþ'’-]+|[.,;:!?\n()/&]/g) ?? [];
+  const into = p[0] === "sem" ? CONTAINERS : EXTENDERS;
+  if (p.length && !into.some((x) => x.join(" ") === p.join(" "))) into.push(p);
+}
+EXTENDERS.sort((a, b) => b.length - a.length);
+CONTAINERS.sort((a, b) => b.length - a.length);
 var CLARIFIERS = [...EXTENDERS, ...CONTAINERS];
 var AFFIRM_START = /* @__PURE__ */ new Set([
   "i",
@@ -5751,6 +5910,51 @@ var AFFIRM_START = /* @__PURE__ */ new Set([
   "gjarnan"
 ]);
 var COPULA = /* @__PURE__ */ new Set(["is", "are", "was", "were", "seems", "er", "eru", "var", "voru"]);
+var NEG_COPULA = /* @__PURE__ */ new Set(["isn't", "isn\u2019t", "isnt", "aren't", "aren\u2019t", "arent", "wasn't", "wasn\u2019t", "weren't", "weren\u2019t"]);
+var OK_WORDS = /* @__PURE__ */ new Set([
+  "ok",
+  "okay",
+  "fine",
+  "allowed",
+  "acceptable",
+  "good",
+  "lagi",
+  "leyfilegt",
+  "leyfileg",
+  "leyfilegur",
+  "leyfilegar",
+  "leyft",
+  "velkomi\xF0",
+  "velkomin",
+  "fin",
+  "fint",
+  "finn",
+  "finar",
+  "finir",
+  "gott",
+  "go\xF0",
+  "go\xF0ur",
+  "go\xF0ar",
+  "go\xF0ir"
+]);
+var COPULA_NEG = /* @__PURE__ */ new Set(["not", "never", "ekki", "aldrei", "no"]);
+function copulaReading(tokens, k) {
+  let o = k + 1;
+  let negated2 = NEG_COPULA.has(tokens[k]);
+  while (COPULA_NEG.has(tokens[o]) || ["really", "totally", "alveg", "iis", "also", "lika", "still", "enn", "\xFEa"].includes(tokens[o])) {
+    if (COPULA_NEG.has(tokens[o])) negated2 = true;
+    o++;
+  }
+  return { negated: negated2, ok: OK_WORDS.has(tokens[o]) };
+}
+var copulaAffirms = (tokens, k) => {
+  const r = copulaReading(tokens, k);
+  return r.ok && !r.negated;
+};
+var copulaDenies = (tokens, k) => {
+  const r = copulaReading(tokens, k);
+  return r.ok && r.negated;
+};
 var LEAD_VERBS = /* @__PURE__ */ new Set([
   "eat",
   "want",
@@ -5913,7 +6117,16 @@ var NOT_AN_ITEM = /* @__PURE__ */ new Set([
   "sterkur",
   "sterk",
   "sterka",
-  "uti"
+  "uti",
+  // Approval words ("is not OKAY", "ekki í LAGI") are never foods.
+  "ok",
+  "okay",
+  "fine",
+  "allowed",
+  "acceptable",
+  "lagi",
+  "leyfilegt",
+  "leyft"
 ]);
 var CLAUSE_BREAK = /* @__PURE__ */ new Set([
   "in",
@@ -6271,6 +6484,31 @@ var IS_STOP = new Set([
 ].map(foldIs));
 var FREE_RE = new RegExp(`(?<![${L2}])([a-z\xE6\xF0\xFE]+)[\\s-]free(?![${L2}])|(?<![${L2}])([a-z\xE6\xF0\xFE]{3,}?)laus(?:ir|ar|an|um|ri|a|t)?(?![${L2}])`, "g");
 var TOKEN_RE = /[a-z0-9æðþ'’-]+|[.,;:!?\n()/&]/g;
+var markIsWords = (text) => text.replace(/(^|[^\p{L}])án(?=\s)/giu, "$1without ").replace(/(^|[^\p{L}])í(?=\s)/giu, "$1iis ");
+var CLAUSE_END = /* @__PURE__ */ new Set([".", "?", "!", ";", ":", "\n", ",", "but", "en"]);
+var ABBREV = /* @__PURE__ */ new Set(["incl", "inc", "etc", "eg", "ca", "ath"]);
+var isClauseEnd = (tokens, k) => CLAUSE_END.has(tokens[k]) && !(tokens[k] === "." && (/^[a-zæðþ]$/.test(tokens[k - 1] ?? "") || ABBREV.has(tokens[k - 1] ?? "")));
+var ASKS_ONLY = /* @__PURE__ */ new Set(["nutrition_explanation", "explain_existing_meal_plan", "explain_existing_program"]);
+var FIRST_PERSON = /* @__PURE__ */ new Set(["\xE9g", "eg", "vi\xF0", "i", "we"]);
+var FIRST_PERSON_VERB = /* @__PURE__ */ new Set(["er", "erum", "hef", "hofum", "\xFEoli", "\xFEolum", "ma", "megum", "bor\xF0a", "bor\xF0um", "am", "have", "are", "react", "get", "can't", "can\u2019t", "cannot", "must", "avoid"]);
+var FIRST_PERSON_TOKEN = /* @__PURE__ */ new Set(["i'm", "i\u2019m", "im", "i've", "i\u2019ve", "we're", "we\u2019re", "we've", "we\u2019ve"]);
+var firstPersonStatement = (w) => w.some((x, k) => FIRST_PERSON_TOKEN.has(x) || FIRST_PERSON.has(x) && FIRST_PERSON_VERB.has(w[k + 1] ?? ""));
+function questionClauses(tokens) {
+  const mask = tokens.map(() => false);
+  let start = 0;
+  const close = (end) => {
+    const words = tokens.slice(start, end).filter((w) => /^[a-z0-9æðþ'’-]+$/.test(w));
+    const asText = `${words.map((w) => w === "iis" ? "i" : w).join(" ")}${tokens[end] === "?" ? "?" : ""}`;
+    if (words.length && !firstPersonStatement(words) && ASKS_ONLY.has(classifyRequest(asText) ?? ""))
+      for (let k = start; k < end; k++) mask[k] = true;
+    start = end + 1;
+  };
+  tokens.forEach((_, k) => {
+    if (isClauseEnd(tokens, k)) close(k);
+  });
+  close(tokens.length);
+  return mask;
+}
 function classifyHead(head) {
   if (!head.length || head.some((w) => DIET_NAME.test(w))) return null;
   const days = head.map(dayOf);
@@ -6295,13 +6533,12 @@ function classifyItem(text) {
   return words.length && words.length <= 3 ? classifyHead(words) : null;
 }
 function parseExclusionTokens(text) {
-  const marked = text.replace(/(^|[^\p{L}])án(?=\s)/giu, "$1without ").replace(/(^|[^\p{L}])í(?=\s)/giu, "$1iis ");
-  const t = stripNegatedDiets(fold2(marked));
+  const t = stripNegatedDiets(fold2(markIsWords(text)));
   const tokens = t.match(TOKEN_RE) ?? [];
   const consumed = /* @__PURE__ */ new Set();
   const items = [];
   const isWord = (w) => !!w && /^[a-z0-9æðþ'’-]+$/.test(w);
-  const question = classifyRequest(text) === "nutrition_explanation";
+  const question = questionClauses(tokens);
   const suppressed = /* @__PURE__ */ new Set();
   tokens.forEach((w, k) => {
     const decl = (x) => !!x && (/(?:ofnæmi|oþol|oþoli)$/.test(x) || x === "allergic" || x === "allergy" || x === "intolerant");
@@ -6321,7 +6558,7 @@ function parseExclusionTokens(text) {
   };
   for (let i = 0; i < tokens.length; i++) {
     if (suppressed.has(i)) continue;
-    const decl = question ? void 0 : declarationAt(i);
+    const decl = question[i] ? void 0 : declarationAt(i);
     if (!decl && !NEGATOR_WORDS.has(tokens[i])) continue;
     if (tokens[i] === "nema" && ONLY_BEFORE_NEMA.has(tokens[i - 1])) continue;
     consumed.add(i);
@@ -6350,12 +6587,14 @@ function parseExclusionTokens(text) {
       const head = [];
       let cut = false;
       let copula = false;
+      let copulaOk = false;
       while (j < tokens.length && isWord(tokens[j]) && !SEP_WORDS.has(tokens[j]) && !LIST_END.has(tokens[j]) && !NEGATOR_WORDS.has(tokens[j]) && !clarifierAt(j)) {
         const w = tokens[j];
         if (w === "at" && tokens[j + 1] === "all") break;
         if (TRAIL_FILLER.has(w)) break;
-        if (COPULA.has(w)) {
+        if (COPULA.has(w) || NEG_COPULA.has(w)) {
           copula = true;
+          copulaOk = copulaAffirms(tokens, j);
           break;
         }
         if (/\d/.test(w) || NOT_AN_ITEM.has(w) || CLAUSE_BREAK.has(w) || AFFIRM_START.has(w) || head.length === 3) {
@@ -6365,7 +6604,7 @@ function parseExclusionTokens(text) {
         head.push(w);
         j++;
       }
-      if (copula && !first) break;
+      if (copula && copulaOk && !first) break;
       const item = classifyHead(head);
       if (!item) break;
       items.push(item);
@@ -6386,9 +6625,24 @@ function parseExclusionTokens(text) {
     const item = classifyHead([(m[1] ?? m[2] ?? "").trim()].filter(Boolean));
     if (item && item.kind !== "days") items.push(item);
   }
-  if (!question) {
+  tokens.forEach((w, k) => {
+    if (question[k] || !(COPULA.has(w) || NEG_COPULA.has(w)) || !copulaDenies(tokens, k)) return;
+    const head = [];
+    for (let h = k - 1; h >= 0 && head.length < 3; h--) {
+      const x = tokens[h];
+      if (!isWord(x) || SEP_WORDS.has(x) || LIST_END.has(x) || NEGATOR_WORDS.has(x) || LEAD_FILLER.has(x) || AFFIRM_START.has(x) || CLAUSE_BREAK.has(x) || NOT_AN_ITEM.has(x) || clarifierAt(h)) break;
+      head.unshift(h);
+    }
+    if (!head.length || head.some((h) => consumed.has(h))) return;
+    const item = classifyHead(head.map((h) => tokens[h]));
+    if (item && item.kind !== "days") {
+      items.push(item);
+      head.forEach((h) => consumed.add(h));
+    }
+  });
+  {
     tokens.forEach((w, k) => {
-      if (suppressed.has(k)) return;
+      if (suppressed.has(k) || question[k]) return;
       const compound = LEX_ALLERGEN_CLASS.has(w) && (/(?:ofnæmi|oþol)$/.test(w) || /^seliak/.test(w));
       const head = compound ? [w] : /^(?:allergy|allergies|intolerance)$/.test(w) && isWord(tokens[k - 1]) && !suppressed.has(k - 1) ? [tokens[k - 1]] : null;
       const item = head && classifyHead(head);
@@ -6400,6 +6654,23 @@ function parseExclusionTokens(text) {
   }
   return { items, tokens, consumed };
 }
+var WANT_VERBS = /* @__PURE__ */ new Set(["love", "loves", "want", "wants", "enjoy", "prefer", "adore", "crave", "vil", "viljum", "vilja", "elska", "elskum", "langar", "likar", "endilega", "gjarnan"]);
+var LIKE_SUBJECT = /* @__PURE__ */ new Set(["i", "we", "i'd", "i\u2019d", "we'd", "we\u2019d", "would", "really", "also", "do", "still"]);
+var GOOD_WORDS = /* @__PURE__ */ new Set(["gott", "go\xF0", "go\xF0ur", "go\xF0ar", "go\xF0ir", "frab\xE6rt", "frab\xE6r", "\xE6\xF0i", "best"]);
+function affirmedWanted(tokens, k, question) {
+  if (question[k]) return false;
+  let s = k;
+  while (s > 0 && !isClauseEnd(tokens, s - 1)) s--;
+  let e = k;
+  while (e < tokens.length && !isClauseEnd(tokens, e)) e++;
+  if (tokens[e] === "?") return false;
+  const clause = tokens.slice(s, e);
+  if (clause.some((w) => NEGATOR_WORDS.has(w) || NEG_COPULA.has(w) || w === "without")) return false;
+  const before = tokens.slice(s, k);
+  if (before.some((w, n) => WANT_VERBS.has(w) || w === "like" && LIKE_SUBJECT.has(before[n - 1] ?? "") || w === "finnst" && tokens.slice(k, e).some((x) => GOOD_WORDS.has(x)))) return true;
+  for (let c = k + 1; c < e; c++) if (COPULA.has(tokens[c])) return copulaAffirms(tokens, c);
+  return false;
+}
 function parseExclusions(text) {
   const { items, tokens, consumed } = parseExclusionTokens(text);
   const allergens = /* @__PURE__ */ new Set();
@@ -6407,7 +6678,8 @@ function parseExclusions(text) {
   const days = /* @__PURE__ */ new Set();
   const raw = /* @__PURE__ */ new Set();
   let lactose = false;
-  const peanutsWanted = tokens.some((w, k) => !consumed.has(k) && PEANUT_WORD(w));
+  const question = questionClauses(tokens);
+  const peanutsWanted = tokens.some((w, k) => !consumed.has(k) && PEANUT_WORD(w) && affirmedWanted(tokens, k, question));
   const explicitPeanuts = items.some((it) => it.kind === "allergens" && it.allergens.includes("peanuts") && !it.implied?.includes("peanuts"));
   for (const it of items) {
     it.tokens.forEach((w) => raw.add(w));
@@ -6532,15 +6804,25 @@ function buildMealPlanAction(input, ctx) {
   const tr = sharedT(lang);
   const blocker = mealPlanBlocker(ctx.nutrition, lang);
   if (blocker) return { action: null, errors: [blocker], adjusted: [] };
-  const recipes = ctx.recipes;
+  const userText = (ctx.requestText ?? "").slice(0, 1200);
+  const said = userText ? mealPlanIntentFromText(userText) : {};
+  const mpdIn = input.meals_per_day ?? said.meals_per_day;
+  const mpd = mpdIn == null ? NaN : Number(mpdIn);
+  const dayCountIn_ = input.day_count ?? said.day_count;
+  const dayCount = dayCountIn_ == null ? null : Number(dayCountIn_);
+  const clarify = requestClarification(userText) ?? (mpdIn != null && !(Number.isInteger(mpd) && mpd >= 1 && mpd <= 6) ? { kind: "meals_per_day", value: String(mpdIn).slice(0, 20) } : null) ?? (dayCount != null && !(Number.isInteger(dayCount) && dayCount >= 1 && dayCount <= 7) ? { kind: "day_count", value: dayCount } : null);
+  if (clarify) return { action: null, errors: [clarificationNote(clarify)], adjusted: [], clarify };
+  const capIn = [input.max_minutes, said.max_minutes, maxMinutesIn(strs(input.preferences).join(" "))].map((v) => v == null ? NaN : Number(v)).filter((v) => Number.isFinite(v) && v > 0);
+  const cap = capIn.length ? Math.min(...capIn) : null;
+  const allRecipes = ctx.recipes;
   const byId = new Map(ctx.ingredients.map((i) => [i.id, i]));
-  setNutritionCatalog({ byId, recipes });
-  const planCtx = { recipes, byId };
+  setNutritionCatalog({ byId, recipes: allRecipes });
   const prefs = { ...prefsFromAccountPayload(ctx.account) };
   const adjusted = [];
-  const mpd = Number(input.meals_per_day);
-  if (Number.isFinite(mpd) && mpd >= 1 && mpd <= 6) prefs.mealsPerDay = Math.round(mpd);
-  const userText = (ctx.requestText ?? "").slice(0, 1200);
+  if (Number.isInteger(mpd)) prefs.mealsPerDay = mpd;
+  if (cap != null) prefs.maxCookMinutes = Math.min(prefs.maxCookMinutes, cap);
+  const recipes = cap != null ? allRecipes.filter((r) => recipeMinutes(r) <= prefs.maxCookMinutes) : allRecipes;
+  const planCtx = { recipes, byId };
   const prefText = fold2([...strs(input.preferences), ...strs(input.avoid), userText].join(" "));
   if (input.quick === true || /\b(quick|fast|no[\s-]?cook)\b/.test(prefText)) prefs.maxCookMinutes = Math.min(prefs.maxCookMinutes, 15);
   const extraTags = [...strs(input.diet), ...dietTagsIn(prefText)].filter((t) => t in DIET_TAG_LABELS && t !== "high_protein");
@@ -6561,12 +6843,20 @@ function buildMealPlanAction(input, ctx) {
   prefs.dislikedIngredientIds = [.../* @__PURE__ */ new Set([...prefs.dislikedIngredientIds, ...excludedIngredientIds(ex.words, byId.values())])];
   const { start: thisStart, end: thisEnd } = weekBounds(ctx.today, ctx.facts.weekStart);
   const left = Math.round((Date.parse(`${thisEnd}T00:00:00Z`) - Date.parse(`${ctx.today}T00:00:00Z`)) / 864e5) + 1;
-  const next = input.week === "next" || input.week !== "this" && left < 3 && !Array.isArray(input.days);
+  const modelDays = strs(input.days);
+  const asked = modelDays.length ? modelDays : strs(said.days);
+  let week = input.week === "this" || input.week === "next" ? input.week : said.week === "this" || said.week === "next" ? said.week : void 0;
+  const relIn = Number(input.relative_day ?? said.relative_day);
+  const relDate = !asked.length && Number.isInteger(relIn) && relIn >= 1 && relIn <= 13 ? addDays(ctx.today, relIn) : null;
+  const relWeek = relDate ? relDate <= thisEnd ? "this" : relDate <= addDays(thisEnd, 7) ? "next" : null : null;
+  const useRel = relDate != null && relWeek != null && (week == null || week === relWeek);
+  if (useRel) week = relWeek;
+  if (week == null && !useRel && !asked.length && dayCount != null && dayCount > left) week = "next";
+  const next = week === "next" || week !== "this" && left < 3 && !asked.length && !useRel;
   const weekStart = next ? addDays(thisStart, 7) : thisStart;
   const weekEnd = addDays(weekStart, 6);
   const allDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)).filter((d) => next || d >= ctx.today);
-  let dates = allDates;
-  const asked = strs(input.days);
+  let dates = useRel ? allDates.filter((d) => d === relDate) : allDates;
   if (asked.length) {
     const picked = /* @__PURE__ */ new Set();
     for (const a of asked) {
@@ -6589,6 +6879,13 @@ function buildMealPlanAction(input, ctx) {
     dates = dates.filter((d) => !fromUser.days.includes(DAY_NAMES[(/* @__PURE__ */ new Date(`${d}T00:00:00Z`)).getUTCDay()]));
     if (!dates.length) return { action: null, errors: [tr.t(next ? "aiServer.mealPlan.allExcludedNext" : "aiServer.mealPlan.allExcludedThis")], adjusted };
   }
+  if (dayCount != null && !useRel) {
+    if (dates.length < dayCount) {
+      const c = { kind: "day_count", value: dayCount };
+      return { action: null, errors: [clarificationNote(c)], adjusted, clarify: c };
+    }
+    dates = dates.slice(0, dayCount);
+  }
   const constraints = {
     allergens: prefs.allergens,
     dietTags: prefs.tags,
@@ -6600,7 +6897,7 @@ function buildMealPlanAction(input, ctx) {
   for (const slot of new Set(slotsForMeals(prefs.mealsPerDay))) {
     const { recipes: pool, relaxedTime } = rankedCandidates(slot, prefs, planCtx);
     if (!pool.length) {
-      return { action: null, errors: [explainNoRecipes({ ...constraints, maxMinutes: null, meal: slot }, ctx.recipes, new Map(ctx.ingredients.map((i) => [i.id, i])), ctx.facts, lang)], adjusted };
+      return { action: null, errors: [explainNoRecipes({ ...constraints, maxMinutes: cap != null ? prefs.maxCookMinutes : null, meal: slot }, ctx.recipes, new Map(ctx.ingredients.map((i) => [i.id, i])), ctx.facts, lang)], adjusted };
     }
     if (relaxedTime) adjusted.push(tr.t("aiServer.mealPlan.timeRelaxed", { slot: tr.t(`aiServer.mealSlotFor.${slot}`), minutes: prefs.maxCookMinutes }));
   }
@@ -6667,6 +6964,12 @@ function mealPlanIntentFromText(text) {
   const intent = { preferences: [text.slice(0, 300)] };
   const mpd = mealsPerDayIn(text);
   if (mpd && "value" in mpd) intent.meals_per_day = mpd.value;
+  const count = planDayCountIn(text);
+  if (count != null && Number.isInteger(count) && count >= 1 && count <= 7) intent.day_count = count;
+  const rel = planRelativeDay(text);
+  if (rel != null && rel >= 1) intent.relative_day = rel;
+  const cap = maxMinutesIn(text);
+  if (cap != null && cap > 0) intent.max_minutes = cap;
   if (/\bnext week\b|(?<![a-zæðþ])næstu viku(?:nni)?(?![a-zæðþ])|(?<![a-zæðþ])næsta viku(?![a-zæðþ])/.test(t)) intent.week = "next";
   else if (/\bthis week\b|(?<![a-zæðþ])þessa(ri)? viku\b/.test(t)) intent.week = "this";
   const ex = parseExclusions(text);
@@ -6679,6 +6982,76 @@ function mealPlanIntentFromText(text) {
   const avoid = [...ex.allergens.map((a) => ALLERGEN_AVOID_WORD[a] ?? a.replace(/_/g, " ")), ...ex.words];
   if (avoid.length) intent.avoid = [...new Set(avoid)];
   return intent;
+}
+function planDayCountIn(text) {
+  const direct = dayCountIn(text);
+  if (direct != null) return direct;
+  const t = tokensOf(text);
+  for (let i = 0; i < t.length; i++) {
+    if (["eftir", "in", "a", "per", "every"].includes(t[i - 1] ?? "")) continue;
+    const n = dayCountIn(`for ${t.slice(i, i + 4).join(" ")}`);
+    if (n != null) return n;
+  }
+  return null;
+}
+function requestClarification(text) {
+  if (!text) return null;
+  const foods = requestConflicts(text);
+  if (foods.length) return { kind: "diet_conflict", diet: dietTagsIn(text), foods };
+  const mpd = mealsPerDayIn(text);
+  if (mpd && "invalid" in mpd) return { kind: "meals_per_day", value: mpd.invalid };
+  const n = planDayCountIn(text);
+  if (n != null && (!Number.isInteger(n) || n < 1 || n > 7)) return { kind: "day_count", value: n };
+  return null;
+}
+function clarificationNote(c) {
+  if (c.kind === "diet_conflict")
+    return `The request asks for ${c.diet.join(" + ")} AND for ${c.foods.join(", ")}, which that diet rules out. Nothing was built. Ask the user which to keep (the diet, or the ${c.foods.join(", ")}); never drop either one silently.`;
+  if (c.kind === "meals_per_day")
+    return `The request asks for ${c.value} meals a day, which isn't a whole number from 1 to 6. Nothing was built. Ask the user how many meals a day (a whole number 1\u20136) they want; never round it.`;
+  return `The request asks for ${c.value} days; a meal plan covers 1\u20137 days of one week. Nothing was built. Ask the user which days (or how many, 1\u20137) they want.`;
+}
+var REL_PLAN_DAYS = [
+  ...IS_VOCAB.weekdays.relative.dayAfterTomorrow.map((p) => [relTokens(p), 2]),
+  ...IS_VOCAB.weekdays.relative.tomorrow.map((p) => [relTokens(p), 1]),
+  [["the", "day", "after", "tomorrow"], 2],
+  [["day", "after", "tomorrow"], 2],
+  [["in", "two", "days"], 2],
+  [["tomorrow"], 1]
+].sort((a, b) => b[0].length - a[0].length);
+function relTokens(text) {
+  return tokensOf(String(text ?? "").replace(/(^|[^\p{L}])á(?=\s)/giu, "$1qqa ").replace(/(^|[^\p{L}])í(?=\s)/giu, "$1qqi ")).map((w) => w.replace(/['’]s$/, ""));
+}
+var PLAN_WORDS = /* @__PURE__ */ new Set([...IS_VOCAB.meal_plan.tokens.map(foldIs), "plan", "plans", "menu", "menus", "meals", "mealplan"]);
+var CLAUSE_WORDS = /* @__PURE__ */ new Set(["and", "but", "because", "since", "as", "when", "while", "so", "og", "en", "\xFEv\xED", "\xFEvi", "\xFEegar", "svo", "af", "vegna"]);
+var ONLY_DAY_FILLER = /* @__PURE__ */ new Set(["for", "fyrir", "just", "only", "bara", "please", "takk"]);
+function planRelativeDay(text) {
+  for (const line of String(text ?? "").split("\n")) {
+    const lineTokens = relTokens(line);
+    for (const part of line.split(/[,.;:!?()]+/)) {
+      const t = relTokens(part);
+      const clauses2 = [[]];
+      for (const w of t) {
+        if (CLAUSE_WORDS.has(w)) clauses2.push([]);
+        else clauses2[clauses2.length - 1].push(w);
+      }
+      for (const c of clauses2) {
+        for (let i = 0; i < c.length; i++) {
+          const hit = REL_PLAN_DAYS.find(([p2]) => p2.every((w, k) => c[i + k] === w));
+          if (!hit) continue;
+          const [p, n] = hit;
+          const end = i + p.length;
+          const hasPlan = c.some((w) => PLAN_WORDS.has(w));
+          const afterFor = ["for", "fyrir"].includes(c[i - 1] ?? "") || c[i - 1] === "the" && c[i - 2] === "for";
+          const nextToPlan = PLAN_WORDS.has(c[i - 1] ?? "") || PLAN_WORDS.has(c[end] ?? "") || c[end] === "meal" && PLAN_WORDS.has(c[end + 1] ?? "");
+          const alone = lineTokens.length > 0 && lineTokens.every((w) => ONLY_DAY_FILLER.has(w) || p.includes(w));
+          if (hasPlan && (afterFor || nextToPlan) || alone) return n;
+          i = end - 1;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 // supabase/functions/_shared/ai/validate.ts
@@ -6978,6 +7351,7 @@ var TOOL_DEFS = [
         query: { type: "string", description: 'Optional, free text, e.g. "quick high protein breakfast", "chicken", "no-cook lunch".' },
         meal: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
         min_protein_g: { type: "number", description: "Minimum protein per serving." },
+        max_minutes: { type: "integer", minimum: 1, maximum: 240, description: 'Only if the user set a cooking-time limit ("at most 10 minutes"): a hard cap on total minutes.' },
         max_results: { type: "integer", minimum: 1, maximum: 5 }
       }
     }
@@ -7074,6 +7448,8 @@ var TOOL_DEFS = [
         week: { type: "string", enum: ["this", "next"], description: "Only if the user said which week." },
         days: { type: "array", items: { type: "string" }, description: 'Only if the user named days: weekday names ("Wednesday") or YYYY-MM-DD dates.' },
         meals_per_day: { type: "integer", minimum: 1, maximum: 6, description: "Only if the user asked for a different number than their setting." },
+        day_count: { type: "integer", minimum: 1, maximum: 7, description: 'Only if the user asked for a number of days ("four days"): the first N plan days of that week.' },
+        max_minutes: { type: "integer", minimum: 1, maximum: 240, description: 'Only if the user set a cooking-time limit ("at most 20 minutes"): a hard cap per recipe.' },
         quick: { type: "boolean", description: "User wants quick meals (\u2264 15 min)." },
         diet: { type: "array", items: { type: "string", enum: ["vegetarian", "vegan", "pescatarian", "dairy_free", "gluten_free"] }, description: "Extra diet rules for this plan." },
         avoid: { type: "array", items: { type: "string" }, description: 'Foods to leave out for this plan, e.g. "fish", "mushrooms".' },
@@ -7174,6 +7550,14 @@ async function findRecipes(input, ctx) {
   const [recipes, ingredients] = await Promise.all([ctx.db.getRecipes(), ctx.db.getIngredients()]);
   const ing = new Map(ingredients.map((i) => [i.id, i]));
   const intent = parseQuery(typeof input.query === "string" ? input.query : "");
+  const conflict = requestClarification(ctx.requestText ?? (typeof input.query === "string" ? input.query : ""));
+  if (conflict?.kind === "diet_conflict") {
+    ctx.state.recipes = null;
+    return { content: JSON.stringify({ status: "needs_clarification", results: [], ask_user: clarificationNote(conflict), note: "Show no recipes. Ask the user this question in your reply, in the reply language." }) };
+  }
+  const userQ = ctx.requestText ? parseQuery(ctx.requestText) : null;
+  const caps = [typeof input.max_minutes === "number" ? input.max_minutes : null, intent.maxMinutes, userQ?.maxMinutes ?? null].filter((v) => typeof v === "number" && Number.isFinite(v) && v > 0);
+  const cap = caps.length ? Math.min(...caps) : null;
   if (ctx.requestText) {
     const said = parseQuery(ctx.requestText);
     intent.diet = [.../* @__PURE__ */ new Set([...intent.diet, ...said.diet])];
@@ -7188,12 +7572,13 @@ async function findRecipes(input, ctx) {
   const meal = typeof input.meal === "string" && ["breakfast", "lunch", "dinner", "snack"].includes(input.meal) ? input.meal : intent.meal;
   const minP = typeof input.min_protein_g === "number" ? input.min_protein_g : intent.highProtein ? meal === "snack" ? 15 : 25 : null;
   const max = Math.min(5, Math.max(1, typeof input.max_results === "number" ? Math.round(input.max_results) : 3));
-  const fromRequest = intent.diet.length > 0 || intent.exclude.allergens.length > 0 || intent.exclude.words.length > 0;
+  const fromRequest = intent.diet.length > 0 || intent.exclude.allergens.length > 0 || intent.exclude.words.length > 0 || cap != null;
   const hard = fromRequest ? {
     ...ctx.facts,
     dietTags: [.../* @__PURE__ */ new Set([...ctx.facts.dietTags, ...intent.diet])],
     allergens: [.../* @__PURE__ */ new Set([...ctx.facts.allergens, ...intent.exclude.allergens])],
-    dislikedIngredientIds: [.../* @__PURE__ */ new Set([...ctx.facts.dislikedIngredientIds, ...excludedIngredientIds(intent.exclude.words, ingredients)])]
+    dislikedIngredientIds: [.../* @__PURE__ */ new Set([...ctx.facts.dislikedIngredientIds, ...excludedIngredientIds(intent.exclude.words, ingredients)])],
+    maxCookMinutes: cap != null ? Math.min(cap, ctx.facts.maxCookMinutes ?? cap) : ctx.facts.maxCookMinutes
   } : ctx.facts;
   const askedOut = new Set(fromRequest ? excludedIngredientIds(intent.exclude.words, ingredients).filter((x) => !ctx.facts.dislikedIngredientIds.includes(x)) : []);
   const allowed = [];
@@ -7219,6 +7604,17 @@ async function findRecipes(input, ctx) {
         note: fromRequest ? "Nothing in the catalog fits the user's settings together with the restrictions in this request. Say so plainly and name the reason; never relax a restriction and never invent recipes." : "The user's own settings exclude every recipe. Explain this reason; don't invent recipes."
       })
     };
+  }
+  const capMeal = meal ?? userQ?.meal ?? null;
+  if (cap != null && capMeal && !allowed.some((x) => x.r.meal === capMeal)) {
+    const reason = explainNoRecipes(
+      { allergens: hard.allergens, dietTags: hard.dietTags, disliked: hard.dislikedIngredientIds, maxMinutes: hard.maxCookMinutes, meal: capMeal, proteinExcluded: hard.proteinExcluded },
+      recipes,
+      ing,
+      hard,
+      ctx.lang ?? "en"
+    );
+    return { content: JSON.stringify({ results: [], reason, note: "No recipe for that meal fits the user's cooking-time limit. Say so plainly and name the reason; never relax the limit and never invent recipes." }) };
   }
   const want = (x, o) => (!o.meal || !meal || x.r.meal === meal) && (!o.extras || (!intent.quick || x.minutes <= 15) && (minP == null || x.macros.protein_g >= minP)) && (!o.words || wordsMatch(x.r, intent.words, ing));
   const steps = [
@@ -7378,6 +7774,14 @@ function proposeWeekAdjustment(input, ctx) {
   };
 }
 var clip = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
+function metaLabel(kind, id2, lang) {
+  const tr = sharedT(lang);
+  const key = `workout.meta.${kind}.${id2}`;
+  if (!tr.has(key)) return id2;
+  const s = tr.t(key);
+  const loc = lang === "is" ? "is-IS" : "en-GB";
+  return s.length > 1 && s[1] !== s[1].toLocaleLowerCase(loc) ? s : s.charAt(0).toLocaleLowerCase(loc) + s.slice(1);
+}
 function buildSessionAdjustment(input, ctx) {
   const lang = ctx.lang ?? "en";
   const { t, tp } = sharedT(lang);
@@ -7453,13 +7857,13 @@ function buildSessionAdjustment(input, ctx) {
     const missing = missingEquipment(to, ctx.facts.equipment);
     if (missing.length) {
       errors.push(`${to.name} needs equipment the user doesn't have (${missing.join(", ")}).`);
-      tell("aiServer.session.missingEquipment", { exerciseName: to.name, equipment: lang === "en" ? missing.join(", ") : listText(missing, lang) });
+      tell("aiServer.session.missingEquipment", { exerciseName: to.name, equipment: lang === "en" ? missing.join(", ") : listText(missing.map((e) => metaLabel("equipment", e, lang)), lang) });
     }
   }
   const easy = (to.stresses ?? []).filter((x) => ctx.facts.limitations.includes(x));
   if (easy.length) {
     errors.push(`${to.name} loads an area the user asked to go easy on (${easy.join(", ")}); pick another.`);
-    tell("aiServer.session.limitedArea", { exerciseName: to.name, areas: lang === "en" ? easy.join(", ") : listText(easy, lang) });
+    tell("aiServer.session.limitedArea", { exerciseName: to.name, areas: lang === "en" ? easy.join(", ") : listText(easy.map((a) => metaLabel("limitation", a, lang)), lang) });
   }
   if (w.exercises.some((e) => e.id !== se.id && e.exerciseId === to.id && pendingWorking(e) > 0)) {
     errors.push(`${to.name} is already later in today's workout; pick another.`);
@@ -7511,7 +7915,7 @@ async function proposeMealPlan(input, ctx) {
   const lang = ctx.lang ?? "en";
   const today = ctx.today ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const [recipes, ingredients] = mealPlanBlocker(nutrition) ? [[], []] : await Promise.all([ctx.db.getRecipes(), ctx.db.getIngredients()]);
-  const { action, errors, adjusted } = buildMealPlanAction(input, {
+  const { action, errors, adjusted, clarify } = buildMealPlanAction(input, {
     facts: ctx.facts,
     account: ctx.account ?? null,
     today,
@@ -7522,6 +7926,10 @@ async function proposeMealPlan(input, ctx) {
     requestText: ctx.requestText,
     lang
   });
+  if (clarify) {
+    ctx.state.mealPlan = null;
+    return { content: JSON.stringify({ status: "needs_clarification", ask_user: errors[0], note: "No plan was built. Do not call propose_meal_plan again in this reply; ask the user this question, in the reply language." }), isError: true };
+  }
   if (!action) return { content: JSON.stringify({ status: "not_built", errors, note: "Tell the user exactly this reason (with its link if any). Do not invent meals." }), isError: true };
   ctx.state.mealPlan = action;
   return {
@@ -7756,6 +8164,11 @@ var ASK = [
   [new RegExp(`${START}(?:\xE1|a)\\s+(?:\xEDslensku|islensku)\\s+(?:takk|please)${END}`, "giu"), "is"],
   [new RegExp(`${START}(?:\xE1|a)\\s+ensku\\s+(?:takk|please)${END}`, "giu"), "en"]
 ];
+var NEGATED = new RegExp(`${START}(?:ekki|aldrei|not|never|don['\u2019]?t|do\\s+not|doesn['\u2019]?t|does\\s+not|won['\u2019]?t|will\\s+not)\\s+(?:to\\s+)?$`, "iu");
+function negated(t, m) {
+  const lead = /^[^\p{L}\p{N}]*/u.exec(m[0])?.[0].length ?? 0;
+  return NEGATED.test(t.slice(0, m.index + lead));
+}
 function requestedReplyLang(text) {
   const t = String(text ?? "").normalize("NFC");
   let best = null;
@@ -7763,6 +8176,10 @@ function requestedReplyLang(text) {
     re.lastIndex = 0;
     let m;
     while (m = re.exec(t)) {
+      if (negated(t, m)) {
+        if (m[0].length === 0) re.lastIndex++;
+        continue;
+      }
       if (!best || m.index >= best.at) best = { at: m.index, lang };
       if (m[0].length === 0) re.lastIndex++;
     }
@@ -7941,9 +8358,15 @@ ${text}` : text;
   const history = [ctx.openRequest?.text, ...earlier];
   const toolLang = resolveReplyLang({ text, history, setting });
   const langSource = replyLangSource({ text, setting });
-  const system = setting || langSource === "asked" ? `${ctx.system}
+  const baseSystem = setting || langSource === "asked" ? `${ctx.system}
 
 ${replyLanguageLine(toolLang, langSource)}` : ctx.system;
+  const resumedPlan = ctx.followUp && ctx.openRequest?.intent === "meal_plan";
+  const kind = classifyRequest(text);
+  const clarify = resumedPlan || kind === "meal_plan" || kind === "recipes" ? requestClarification(requestText) : null;
+  const system = clarify ? `${baseSystem}
+
+Before any meal plan or recipes: ${clarificationNote(clarify)}` : baseSystem;
   const conversation = [...ctx.messages];
   let usage = { inputTokens: 0, outputTokens: 0 };
   let reply = "";
@@ -8027,14 +8450,20 @@ ${replyLanguageLine(toolLang, langSource)}` : ctx.system;
   if (fullRecipe) deps.log?.("ai_full_recipe_warning", { words: wordCount(reply) });
   let replaced = null;
   let fallbackFailure = null;
-  const resumed = ctx.followUp && ctx.openRequest?.intent === "meal_plan";
+  const resumed = resumedPlan;
   const wantsPlan = asksForMealPlan(text) || resumed;
-  if (wantsPlan && !state.mealPlan && !state.weekPlan && !mealPlanBlocker(ctx.nutrition)) {
+  if (wantsPlan && clarify) {
+    state.mealPlan = null;
+    state.recipes = null;
+    deps.log?.("ai_meal_plan_clarify", { kind: clarify.kind });
+  } else if (wantsPlan && !state.mealPlan && !state.weekPlan && !mealPlanBlocker(ctx.nutrition)) {
     const [recipes, ingredients] = await Promise.all([deps.db.getRecipes(), deps.db.getIngredients()]);
     const built = buildMealPlanAction(mealPlanIntentFromText(requestText), { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id2, recipes, ingredients, requestText, lang });
     if (built.action) {
       state.mealPlan = built.action;
       replaced = "meal_plan_fallback";
+    } else if (built.clarify) {
+      deps.log?.("ai_meal_plan_clarify", { kind: built.clarify.kind });
     } else if (built.errors.length) {
       fallbackFailure = built.errors[0];
       deps.log?.("ai_reply_replaced", { reason: "meal_plan_fallback_failed" });

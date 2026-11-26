@@ -31,7 +31,9 @@ import { replyLanguageLine, replyLangSource, requestLanguage, resolveReplyLang }
 // @ts-ignore see above
 import { listText, sharedT } from '../i18n/core.ts';
 // @ts-ignore see above
-import { asksForMealPlan, buildMealPlanAction, mealPlanIntentFromText } from './meals.ts';
+import { asksForMealPlan, buildMealPlanAction, clarificationNote, mealPlanIntentFromText, requestClarification } from './meals.ts';
+// @ts-ignore see above
+import { classifyRequest } from './requestSignals.ts';
 // @ts-ignore see above
 import { mealPlanBlocker } from './dataStatus.ts';
 // @ts-ignore see above
@@ -268,7 +270,13 @@ async function answer(a: Answering): Promise<CoachResult> {
   // Tell the model which language to answer in when the app sent its language or the user asked for one; requests from
   // older apps keep the prompt as it was.
   const langSource = replyLangSource({ text, setting });
-  const system = setting || langSource === 'asked' ? `${ctx.system}\n\n${replyLanguageLine(toolLang, langSource)}` : ctx.system;
+  const baseSystem = setting || langSource === 'asked' ? `${ctx.system}\n\n${replyLanguageLine(toolLang, langSource)}` : ctx.system;
+  // A meal-plan / recipe request the user has to settle first ("Vegan matseðill með kjúklingi", "2,5 máltíðir"): no plan or
+  // recipe cards are built for it (tools and the fallback refuse), and the model is told to ask instead.
+  const resumedPlan = ctx.followUp && ctx.openRequest?.intent === 'meal_plan';
+  const kind = classifyRequest(text);
+  const clarify = resumedPlan || kind === 'meal_plan' || kind === 'recipes' ? requestClarification(requestText) : null;
+  const system = clarify ? `${baseSystem}\n\nBefore any meal plan or recipes: ${clarificationNote(clarify)}` : baseSystem;
   const conversation: ApiMessage[] = [...ctx.messages];
   let usage = { inputTokens: 0, outputTokens: 0 };
   let reply = '';
@@ -353,14 +361,22 @@ async function answer(a: Answering): Promise<CoachResult> {
   // built, the reply says so honestly instead of offering a plan that ignores what was asked.
   let replaced: string | null = null;
   let fallbackFailure: string | null = null;
-  const resumed = ctx.followUp && ctx.openRequest?.intent === 'meal_plan';
+  const resumed = resumedPlan;
   const wantsPlan = asksForMealPlan(text) || resumed;
-  if (wantsPlan && !state.mealPlan && !state.weekPlan && !mealPlanBlocker(ctx.nutrition)) {
+  // A request that needs the user's answer first gets no plan at all (the model was told to ask; see `clarify`).
+  if (wantsPlan && clarify) {
+    state.mealPlan = null;
+    state.recipes = null;
+    deps.log?.('ai_meal_plan_clarify', { kind: clarify.kind });
+  } else if (wantsPlan && !state.mealPlan && !state.weekPlan && !mealPlanBlocker(ctx.nutrition)) {
     const [recipes, ingredients] = await Promise.all([deps.db.getRecipes(), deps.db.getIngredients()]);
     const built = buildMealPlanAction(mealPlanIntentFromText(requestText), { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id, recipes, ingredients, requestText, lang });
     if (built.action) {
       state.mealPlan = built.action;
       replaced = 'meal_plan_fallback';
+    } else if (built.clarify) {
+      // e.g. "four days" when only three are left this week: ask, never a shorter or different plan.
+      deps.log?.('ai_meal_plan_clarify', { kind: built.clarify.kind });
     } else if (built.errors.length) {
       fallbackFailure = built.errors[0];
       deps.log?.('ai_reply_replaced', { reason: 'meal_plan_fallback_failed' });

@@ -31,7 +31,7 @@ import type { Lang } from './lang.ts';
 // @ts-ignore see above
 import { foldIs, IS_VOCAB } from './isLexicon.ts';
 // @ts-ignore see above
-import { classifyRequest, maxMinutesIn, mealsPerDayIn } from './requestSignals.ts';
+import { classifyRequest, dayCountIn, maxMinutesIn, mealsPerDayIn, tokensOf } from './requestSignals.ts';
 
 /* ------------------------------------------------------------------ text matching */
 export const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
@@ -95,23 +95,40 @@ const DIET_WORDS: [RegExp, DietTag][] = [
   [/\bdairy[\s-]?free\b|\bno dairy\b|\blactose[\s-]?free\b|\bmjolkurlaus|\blaktosalaus/, 'dairy_free'],
   [/\bgluten[\s-]?free\b|\bno gluten\b|\bglutenlaus/, 'gluten_free'],
 ];
-// A diet NAME after a negation is a statement, not a request: "I'm not vegan", "ekki vegan", "not gluten-free".
-// ("no dairy" / "no gluten" stay requests for dairy-free / gluten-free: those are exclusions, not diet names.)
+/** Every approved Icelandic diet phrase (isLexicon.ts diet.map: "án dýraafurða", "alfarið úr jurtaríkinu", "veganmat",
+ *  "glútenlausum", …) as a folded, whole-token pattern. "án" folds to "an" (and is read as "without" by the exclusion
+ *  parser), so both spellings match. "án mjólkur(vara)" / "án glútens(ins)" are consumed by the exclusion parser instead —
+ *  as the milk / gluten allergen exclusions they name (the same hard filter) — so they don't add a second, diet-level
+ *  constraint here. */
+const IS_DIET_PHRASES: [string, DietTag][] = Object.entries(IS_VOCAB.diet.map).flatMap(([tag, forms]) =>
+  (forms as readonly string[])
+    .filter((f) => !((tag === 'dairy_free' || tag === 'gluten_free') && /^án\s/.test(f)))
+    .map((f) => [foldIs(f).split(/\s+/).map((w) => (w === 'an' ? '(?:an|without)' : w)).join('\\s+'), tag as DietTag] as [string, DietTag]));
+const DIET_BOUND_L = '(?<![a-z0-9æðþ])';
+const DIET_BOUND_R = '(?![a-z0-9æðþ])';
+DIET_WORDS.push(...IS_DIET_PHRASES.map(([p, tag]) => [new RegExp(`${DIET_BOUND_L}${p}${DIET_BOUND_R}`), tag] as [RegExp, DietTag]));
+// A diet NAME after a negation is a statement, not a request: "I'm not vegan", "ekki vegan", "not gluten-free", "þarf ekki
+// að vera vegan", "ekki lengur vegan". ("no dairy" / "no gluten" stay requests for dairy-free / gluten-free: those are
+// exclusions, not diet names.)
 const NEGATED_DIET = new RegExp(
-  `(?<![${'a-z0-9æðþ'}])(?:not|never|no longer|isn'?t|aren'?t|am not|ekki lengur|ekki|non)[\\s-]+(?:(?:a|an|really|strictly|fully|alveg|neitt|neinn)\\s+)?` +
-    `(?:vegan[a-zæðþ]*|vegetarian|veggie|pescatarian|græn[a-zæðþ]*|(?:dairy|lactose|gluten)[\\s-]?free|mjolkurlaus[a-zæðþ]*|glutenlaus[a-zæðþ]*|laktosalaus[a-zæðþ]*)`,
+  `(?<![${'a-z0-9æðþ'}])(?:not|never|no longer|isn'?t|aren'?t|am not|ekki lengur|ekki|non)[\\s-]+` +
+    `(?:(?:a|an|really|strictly|fully|alveg|neitt|neinn|að|vera|lengur|endilega|to|be|need|have|necessarily)\\s+){0,3}` +
+    `(?:vegan[a-zæðþ]*|vegetarian|veggie|pescatarian|græn[a-zæðþ]*|(?:dairy|lactose|gluten)[\\s-]?free|mjolkurlaus[a-zæðþ]*|glutenlaus[a-zæðþ]*|laktosalaus[a-zæðþ]*|` +
+    `${IS_DIET_PHRASES.map(([p]) => p).join('|')})`,
   'g',
 );
 /** Folded text with negated diet names removed. */
 export const stripNegatedDiets = (folded: string) => folded.replace(NEGATED_DIET, ' ');
 /** Diet tags the text ASKS for (affirmed), never ones it negates. Accepts raw or folded text. */
 export function dietTagsIn(text: string): DietTag[] {
-  // "Segðu mér hvað vegan þýðir" / "what does vegan mean" asks ABOUT a diet: it never sets one.
-  if (classifyRequest(text) === 'nutrition_explanation') return [];
-  const t = stripNegatedDiets(fold(text));
-  return DIET_WORDS.filter(([re]) => re.test(t)).map(([, tag]) => tag);
+  // "Segðu mér hvað vegan þýðir" / "what does vegan mean" asks ABOUT a diet: it never sets one. Judged clause by clause,
+  // so a question never cancels a diet stated elsewhere ("Ég er vegan. Hvað mælirðu með?").
+  const tokens = fold(markIsWords(String(text ?? ''))).match(TOKEN_RE) ?? [];
+  const question = questionClauses(tokens);
+  const t = stripNegatedDiets(` ${tokens.filter((_, k) => !question[k]).join(' ')} `);
+  return [...new Set(DIET_WORDS.filter(([re]) => re.test(t)).map(([, tag]) => tag))];
 }
-const STOP = new Set(['a', 'an', 'the', 'and', 'or', 'with', 'for', 'of', 'in', 'on', 'some', 'any', 'meal', 'meals', 'recipe', 'recipes', 'idea', 'ideas', 'food', 'dish', 'something', 'me', 'my', 'easy', 'simple', 'healthy', 'good', 'tasty', 'high', 'protein', 'quick', 'fast', 'free', 'low', 'cal', 'calorie', 'kcal']);
+const STOP = new Set(['a', 'an', 'the', 'and', 'or', 'with', 'for', 'of', 'in', 'on', 'some', 'any', 'meal', 'meals', 'recipe', 'recipes', 'idea', 'ideas', 'food', 'dish', 'something', 'me', 'my', 'easy', 'simple', 'healthy', 'good', 'tasty', 'high', 'protein', 'quick', 'fast', 'free', 'low', 'cal', 'calorie', 'kcal', 'ok', 'okay', 'fine']);
 
 export interface QueryIntent {
   words: string[];
@@ -245,6 +262,16 @@ const EXTENDERS: string[][] = [
 ];
 /** "Containing …" always describes what is ruled out ("nothing with peanuts or containing milk", "ekkert sem inniheldur mjólk"). */
 const CONTAINERS: string[][] = [['containing'], ['contains'], ['sem', 'innihalda'], ['sem', 'inniheldur'], ['sem', 'innihelda']];
+// The FULL approved Icelandic extender list (isLexicon.ts negation.extenders: every inflection — "þar á meðal", "þar með
+// taldar / talin / talinn", "meðal annars", "einkum", …), as folded token phrases; "sem inniheldur/innihalda/innihelda" are
+// containers. Longest first, so "incl ." wins over "incl".
+for (const f of IS_VOCAB.negation.extenders) {
+  const p = foldIs(f).match(/[a-z0-9æðþ'’-]+|[.,;:!?\n()/&]/g) ?? [];
+  const into = p[0] === 'sem' ? CONTAINERS : EXTENDERS;
+  if (p.length && !into.some((x) => x.join(' ') === p.join(' '))) into.push(p);
+}
+EXTENDERS.sort((a, b) => b.length - a.length);
+CONTAINERS.sort((a, b) => b.length - a.length);
 const CLARIFIERS = [...EXTENDERS, ...CONTAINERS];
 /** A subject or affirmative word: at the start of a later item it starts a new clause and ends the list. Icelandic "í" is
  *  read as "iis" before folding, so "i" here is always the English pronoun. */
@@ -253,6 +280,32 @@ const AFFIRM_START = new Set(['i', "i'm", 'i’m', 'im', "i'd", 'i’d', "i've",
   'ég', 'eg', 'við', 'mér', 'mer', 'mig', 'okkur', 'vil', 'viljum', 'elska', 'elskum', 'langar', 'finnst', 'likar', 'myndi', 'myndum', 'borða', 'borðum', 'endilega', 'gjarnan']);
 /** "<food> is fine", "<food> er í lagi": the food is the subject of an affirmative clause, not something to rule out. */
 const COPULA = new Set(['is', 'are', 'was', 'were', 'seems', 'er', 'eru', 'var', 'voru']);
+/** Negated copulas written as one token ("isn't okay"). */
+const NEG_COPULA = new Set(["isn't", 'isn’t', 'isnt', "aren't", 'aren’t', 'arent', "wasn't", 'wasn’t', "weren't", 'weren’t']);
+/** What makes "<food> is …" an approval: "is fine / ok / okay / allowed", "er í lagi" ("í" is read as "iis"). */
+const OK_WORDS = new Set(['ok', 'okay', 'fine', 'allowed', 'acceptable', 'good', 'lagi', 'leyfilegt', 'leyfileg', 'leyfilegur', 'leyfilegar', 'leyft', 'velkomið', 'velkomin',
+  'fin', 'fint', 'finn', 'finar', 'finir', 'gott', 'goð', 'goður', 'goðar', 'goðir']);
+const COPULA_NEG = new Set(['not', 'never', 'ekki', 'aldrei', 'no']);
+/** The words after the copula at k: whether they negate it and whether they approve ("is not okay": negated, approving word). */
+function copulaReading(tokens: string[], k: number): { negated: boolean; ok: boolean } {
+  let o = k + 1;
+  let negated = NEG_COPULA.has(tokens[k]);
+  while (COPULA_NEG.has(tokens[o]) || ['really', 'totally', 'alveg', 'iis', 'also', 'lika', 'still', 'enn', 'þa'].includes(tokens[o])) {
+    if (COPULA_NEG.has(tokens[o])) negated = true;
+    o++;
+  }
+  return { negated, ok: OK_WORDS.has(tokens[o]) };
+}
+/** "<food> is fine / er í lagi": the clause approves the food. */
+const copulaAffirms = (tokens: string[], k: number) => {
+  const r = copulaReading(tokens, k);
+  return r.ok && !r.negated;
+};
+/** "<food> is not okay / er ekki í lagi / isn't allowed": the clause rules the food out. */
+const copulaDenies = (tokens: string[], k: number) => {
+  const r = copulaReading(tokens, k);
+  return r.ok && r.negated;
+};
 /** Verbs between a negation and its item: "don't EAT fish", "can't HAVE gluten", "don't ADD nuts", "ekki SETJA hnetur". */
 const LEAD_VERBS = new Set(['eat', 'want', 'like', 'have', 'need', 'use', 'include', 'put', 'add', 'give', 'get',
   'borða', 'borðað', 'borðar', 'vil', 'vilja', 'nota', 'setja', 'hafa', 'fa', 'gefa', 'innihalda', 'inniheldur', 'innihaldi', 'vera', 'contain', 'contains']);
@@ -267,7 +320,9 @@ const NOT_AN_ITEM = new Set(['one', 'two', 'three', 'four', 'five', 'six', 'day'
   'want', 'like', 'eat', 'have', 'need', 'make', 'sure', 'it', 'is', 'be', 'me', 'you', 'we', 'they', 'that', 'this', 'very', 'really', 'spicy', 'hungry', 'plan', 'out',
   'ein', 'eina', 'tvær', 'tveimur', 'þrjar', 'fjorar', 'fimm', 'sex', 'dag', 'daga', 'viku', 'vikuna', 'tima', 'timi', 'maltið', 'maltiðir', 'maltiða', 'matur', 'mat',
   'vil', 'borða', 'mikið', 'mikil', 'lengi', 'langt', 'of', 'meira', 'minna', 'fljot', 'fljotlegt', 'fljotlega', 'matarplan', 'ég', 'eg', 'það', 'þetta', 'mig', 'mer',
-  'sterkt', 'sterkur', 'sterk', 'sterka', 'uti']);
+  'sterkt', 'sterkur', 'sterk', 'sterka', 'uti',
+  // Approval words ("is not OKAY", "ekki í LAGI") are never foods.
+  'ok', 'okay', 'fine', 'allowed', 'acceptable', 'lagi', 'leyfilegt', 'leyft']);
 /** Words that start an explanatory clause after an item: the item — and the list — end there. */
 const CLAUSE_BREAK = new Set(['in', 'for', 'because', 'since', 'as', 'when', 'while', 'during', 'with', 'to', 'at', 'on', 'from', 'this', 'next',
   'iis', 'a', 'fyrir', 'af', 'þvi', 'þar', 'vegna', 'með', 'um', 'þegar', 'svo', 'til', 'fra', 'eftir', 'næstu', 'þessa', 'þessari']);
@@ -435,6 +490,45 @@ const IS_STOP = new Set([
 ].map(foldIs));
 const FREE_RE = new RegExp(`(?<![${L}])([a-zæðþ]+)[\\s-]free(?![${L}])|(?<![${L}])([a-zæðþ]{3,}?)laus(?:ir|ar|an|um|ri|a|t)?(?![${L}])`, 'g');
 const TOKEN_RE = /[a-z0-9æðþ'’-]+|[.,;:!?\n()/&]/g;
+/** Icelandic "án" (without) folds to "an", an English article, and "í" (in) folds to "i", the English pronoun: both are
+ *  marked before folding. */
+const markIsWords = (text: string) => text.replace(/(^|[^\p{L}])án(?=\s)/giu, '$1without ').replace(/(^|[^\p{L}])í(?=\s)/giu, '$1iis ');
+
+/* Question vs declaration, CLAUSE BY CLAUSE. A question about a food ("Hvað eru jarðhnetur?", "What is a nut allergy?")
+ * declares nothing — but only within its own clause: a question elsewhere in the message ("Ég er með ofnæmi fyrir mjólk.
+ * Hvað mælirðu með í morgunmat?", "What should I eat? I'm allergic to milk.") never cancels an allergy or diet stated in
+ * another clause, in either order. A first-person statement ("ég er með …", "I'm allergic …", "ef ég er með …") is a
+ * declaration even inside a question; only the inverted form ("Er ég með ofnæmi …?", "Am I allergic …?") asks. */
+const CLAUSE_END = new Set(['.', '?', '!', ';', ':', '\n', ',', 'but', 'en']);
+/** Abbreviations whose dot is not the end of a sentence ("t.d.", "incl.", "e.g."). */
+const ABBREV = new Set(['incl', 'inc', 'etc', 'eg', 'ca', 'ath']);
+const isClauseEnd = (tokens: string[], k: number) =>
+  CLAUSE_END.has(tokens[k]) && !(tokens[k] === '.' && (/^[a-zæðþ]$/.test(tokens[k - 1] ?? '') || ABBREV.has(tokens[k - 1] ?? '')));
+/** Clause kinds that only ask: about a food or diet, or about the user's existing plan ("Is my meal plan vegan?"). */
+const ASKS_ONLY = new Set(['nutrition_explanation', 'explain_existing_meal_plan', 'explain_existing_program']);
+const FIRST_PERSON = new Set(['ég', 'eg', 'við', 'i', 'we']);
+const FIRST_PERSON_VERB = new Set(['er', 'erum', 'hef', 'hofum', 'þoli', 'þolum', 'ma', 'megum', 'borða', 'borðum', 'am', 'have', 'are', 'react', 'get', "can't", 'can’t', 'cannot', 'must', 'avoid']);
+const FIRST_PERSON_TOKEN = new Set(["i'm", 'i’m', 'im', "i've", 'i’ve', "we're", 'we’re', "we've", 'we’ve']);
+/** A subject-first first-person statement in the clause ("ég er …", "ef ég er …", "I'm …", "I have …"). */
+const firstPersonStatement = (w: string[]) =>
+  w.some((x, k) => FIRST_PERSON_TOKEN.has(x) || (FIRST_PERSON.has(x) && FIRST_PERSON_VERB.has(w[k + 1] ?? '')));
+/** True for every token inside a clause that only ASKS about a food, diet or nutrient. */
+function questionClauses(tokens: string[]): boolean[] {
+  const mask: boolean[] = tokens.map(() => false);
+  let start = 0;
+  const close = (end: number) => {
+    const words = tokens.slice(start, end).filter((w) => /^[a-z0-9æðþ'’-]+$/.test(w));
+    const asText = `${words.map((w) => (w === 'iis' ? 'i' : w)).join(' ')}${tokens[end] === '?' ? '?' : ''}`;
+    if (words.length && !firstPersonStatement(words) && ASKS_ONLY.has(classifyRequest(asText) ?? ''))
+      for (let k = start; k < end; k++) mask[k] = true;
+    start = end + 1;
+  };
+  tokens.forEach((_, k) => {
+    if (isClauseEnd(tokens, k)) close(k);
+  });
+  close(tokens.length);
+  return mask;
+}
 
 type Item =
   | { kind: 'allergens'; allergens: Allergen[]; tokens: string[]; implied?: Allergen[]; lactose?: boolean }
@@ -486,14 +580,14 @@ function parseExclusionTokens(text: string): ExclusionParse {
   // Icelandic "án" (without) folds to "an", an English article, and "í" (in) folds to "i", the English pronoun: both are
   // read before folding. Negated diet names ("I'm not vegan", "not gluten-free") are statements about the user, not
   // exclusions: removed first.
-  const marked = text.replace(/(^|[^\p{L}])án(?=\s)/giu, '$1without ').replace(/(^|[^\p{L}])í(?=\s)/giu, '$1iis ');
-  const t = stripNegatedDiets(fold(marked));
+  const t = stripNegatedDiets(fold(markIsWords(text)));
   const tokens = t.match(TOKEN_RE) ?? [];
   const consumed = new Set<number>();
   const items: Item[] = [];
   const isWord = (w: string | undefined) => !!w && /^[a-z0-9æðþ'’-]+$/.test(w);
-  // A question about a food ("Hvað eru jarðhnetur?", "Hvað er hnetuofnæmi?") declares nothing.
-  const question = classifyRequest(text) === 'nutrition_explanation';
+  // A question about a food ("Hvað eru jarðhnetur?", "Hvað er hnetuofnæmi?") declares nothing — in its own clause only
+  // (see questionClauses): "Ég er með ofnæmi fyrir mjólk. Hvað mælirðu með?" still declares the milk allergy.
+  const question = questionClauses(tokens);
   // Negative declarations are not exclusions: "Ég er ekki með hnetuofnæmi", "ekki með ofnæmi fyrir …", "I'm not allergic
   // to …" — the negation and the declaration are both skipped (a later real exclusion in the message still counts).
   const suppressed = new Set<number>();
@@ -517,7 +611,7 @@ function parseExclusionTokens(text: string): ExclusionParse {
   };
   for (let i = 0; i < tokens.length; i++) {
     if (suppressed.has(i)) continue;
-    const decl = question ? undefined : declarationAt(i);
+    const decl = question[i] ? undefined : declarationAt(i);
     if (!decl && !NEGATOR_WORDS.has(tokens[i])) continue;
     // "ekkert nema egg" / "nothing but eggs": ONLY eggs — wanted, never ruled out ("allt nema fisk" still rules fish out).
     if (tokens[i] === 'nema' && ONLY_BEFORE_NEMA.has(tokens[i - 1])) continue;
@@ -555,12 +649,14 @@ function parseExclusionTokens(text: string): ExclusionParse {
       const head: string[] = [];
       let cut = false;
       let copula = false;
+      let copulaOk = false;
       while (j < tokens.length && isWord(tokens[j]) && !SEP_WORDS.has(tokens[j]) && !LIST_END.has(tokens[j]) && !NEGATOR_WORDS.has(tokens[j]) && !clarifierAt(j)) {
         const w = tokens[j];
         if (w === 'at' && tokens[j + 1] === 'all') break; // "nuts at all" — a filler, handled below
         if (TRAIL_FILLER.has(w)) break;
-        if (COPULA.has(w)) {
+        if (COPULA.has(w) || NEG_COPULA.has(w)) {
           copula = true;
+          copulaOk = copulaAffirms(tokens, j);
           break;
         }
         if (/\d/.test(w) || NOT_AN_ITEM.has(w) || CLAUSE_BREAK.has(w) || AFFIRM_START.has(w) || head.length === 3) {
@@ -570,8 +666,10 @@ function parseExclusionTokens(text: string): ExclusionParse {
         head.push(w);
         j++;
       }
-      // "no tuna, salmon IS fine": a later item followed by "is/er …" is what the user wants — not ruled out.
-      if (copula && !first) break;
+      // "no tuna, salmon IS fine" / "…, lax er í lagi": a later item that the clause explicitly AFFIRMS is what the user
+      // wants — not ruled out. Anything else after "is/er" ("peanut butter is NOT okay", "hnetusmjör er ekki í lagi",
+      // "peanuts are dangerous") keeps the item ruled out: a mere mention never relaxes a restriction.
+      if (copula && copulaOk && !first) break;
       const item = classifyHead(head);
       if (!item) break;
       items.push(item);
@@ -593,11 +691,27 @@ function parseExclusionTokens(text: string): ExclusionParse {
     const item = classifyHead([(m[1] ?? m[2] ?? '').trim()].filter(Boolean));
     if (item && item.kind !== 'days') items.push(item);
   }
+  // "<food> is not okay" / "<food> er ekki í lagi" / "<food> isn't allowed" on its own: a restriction too.
+  tokens.forEach((w, k) => {
+    if (question[k] || !(COPULA.has(w) || NEG_COPULA.has(w)) || !copulaDenies(tokens, k)) return;
+    const head: number[] = [];
+    for (let h = k - 1; h >= 0 && head.length < 3; h--) {
+      const x = tokens[h];
+      if (!isWord(x) || SEP_WORDS.has(x) || LIST_END.has(x) || NEGATOR_WORDS.has(x) || LEAD_FILLER.has(x) || AFFIRM_START.has(x) || CLAUSE_BREAK.has(x) || NOT_AN_ITEM.has(x) || clarifierAt(h)) break;
+      head.unshift(h);
+    }
+    if (!head.length || head.some((h) => consumed.has(h))) return;
+    const item = classifyHead(head.map((h) => tokens[h]));
+    if (item && item.kind !== 'days') {
+      items.push(item);
+      head.forEach((h) => consumed.add(h));
+    }
+  });
   // Allergy and intolerance declared in one word ("hnetuofnæmi", "mjólkurofnæmi", "laktósaóþol", "glútenóþol", "selíak")
-  // or as "<food> allergy": a hard exclusion wherever it stands — unless negated or only asked about.
-  if (!question) {
+  // or as "<food> allergy": a hard exclusion wherever it stands — unless negated or only asked about (in its own clause).
+  {
     tokens.forEach((w, k) => {
-      if (suppressed.has(k)) return;
+      if (suppressed.has(k) || question[k]) return;
       const compound = LEX_ALLERGEN_CLASS.has(w) && (/(?:ofnæmi|oþol)$/.test(w) || /^seliak/.test(w));
       const head = compound ? [w] : /^(?:allergy|allergies|intolerance)$/.test(w) && isWord(tokens[k - 1]) && !suppressed.has(k - 1) ? [tokens[k - 1]] : null;
       const item = head && classifyHead(head);
@@ -610,6 +724,33 @@ function parseExclusionTokens(text: string): ExclusionParse {
   return { items, tokens, consumed };
 }
 
+/** Verbs of wanting / liking that make a clause an explicit request FOR a food ("I love …", "ég vil …", "við elskum …"). */
+const WANT_VERBS = new Set(['love', 'loves', 'want', 'wants', 'enjoy', 'prefer', 'adore', 'crave', 'vil', 'viljum', 'vilja', 'elska', 'elskum', 'langar', 'likar', 'endilega', 'gjarnan']);
+const LIKE_SUBJECT = new Set(['i', 'we', "i'd", 'i’d', "we'd", 'we’d', 'would', 'really', 'also', 'do', 'still']);
+/** "mér finnst … gott": liking in Icelandic needs the approving adjective. */
+const GOOD_WORDS = new Set(['gott', 'goð', 'goður', 'goðar', 'goðir', 'frabært', 'frabær', 'æði', 'best']);
+/**
+ * Token k (a food) sits in an explicitly AFFIRMATIVE wanted-food clause: the clause has a wanting/liking verb before it
+ * ("but I love peanut butter", "en ég vil hnetusmjör", "mér finnst hnetusmjör gott") or approves it ("peanut butter is
+ * fine", "hnetusmjör er í lagi"), contains no negation, and is not a question. Anything less — a question, a negated
+ * statement ("is not okay", "ekki í lagi"), a bare mention — is not permission to relax a restriction.
+ */
+function affirmedWanted(tokens: string[], k: number, question: boolean[]): boolean {
+  if (question[k]) return false;
+  let s = k;
+  while (s > 0 && !isClauseEnd(tokens, s - 1)) s--;
+  let e = k;
+  while (e < tokens.length && !isClauseEnd(tokens, e)) e++;
+  // "?" ending the clause: asked, not stated.
+  if (tokens[e] === '?') return false;
+  const clause = tokens.slice(s, e);
+  if (clause.some((w) => NEGATOR_WORDS.has(w) || NEG_COPULA.has(w) || w === 'without')) return false;
+  const before = tokens.slice(s, k);
+  if (before.some((w, n) => WANT_VERBS.has(w) || (w === 'like' && LIKE_SUBJECT.has(before[n - 1] ?? '')) || (w === 'finnst' && tokens.slice(k, e).some((x) => GOOD_WORDS.has(x))))) return true;
+  for (let c = k + 1; c < e; c++) if (COPULA.has(tokens[c])) return copulaAffirms(tokens, c);
+  return false;
+}
+
 /** Parse what a request rules out: allergen groups, other foods and weekdays. Pass the user's text as written. */
 export function parseExclusions(text: string): Exclusions {
   const { items, tokens, consumed } = parseExclusionTokens(text);
@@ -618,9 +759,12 @@ export function parseExclusions(text: string): Exclusions {
   const days = new Set<string>();
   const raw = new Set<string>();
   let lactose = false;
-  // Bare "nuts" / "hnetur" rules peanuts out too (safety), unless the message itself clearly WANTS peanuts ("no nuts like
-  // almonds, but I love peanut butter", "engar hnetur eins og möndlur, ég vil hnetusmjör") and nothing rules them out.
-  const peanutsWanted = tokens.some((w, k) => !consumed.has(k) && PEANUT_WORD(w));
+  // Bare "nuts" / "hnetur" rules peanuts out too (safety), unless the message itself EXPLICITLY wants peanuts in an
+  // affirmative clause ("no nuts like almonds, but I love peanut butter", "engar hnetur eins og möndlur, ég vil
+  // hnetusmjör") and nothing rules them out. A mere mention never relaxes it: not a question ("Hvað með hnetusmjör?"), not
+  // a negated statement ("peanut butter is not okay", "hnetusmjör er ekki í lagi"), not an unconsumed list remnant.
+  const question = questionClauses(tokens);
+  const peanutsWanted = tokens.some((w, k) => !consumed.has(k) && PEANUT_WORD(w) && affirmedWanted(tokens, k, question));
   const explicitPeanuts = items.some((it) => it.kind === 'allergens' && it.allergens.includes('peanuts') && !it.implied?.includes('peanuts'));
   for (const it of items) {
     it.tokens.forEach((w) => raw.add(w));
@@ -767,6 +911,12 @@ export interface MealPlanIntent {
   week?: unknown;
   days?: unknown;
   meals_per_day?: unknown;
+  /** How many days to plan ("for four days", "fjóra daga"): the first N plan days of the week, 1–7. */
+  day_count?: unknown;
+  /** A single day relative to today ("tomorrow" 1, "á hinn morgun" 2); used when no days are named. */
+  relative_day?: unknown;
+  /** An explicit cooking-time cap ("hámark 20 mínútur"): a hard limit, never relaxed. */
+  max_minutes?: unknown;
   quick?: unknown;
   diet?: unknown;
   avoid?: unknown;
@@ -816,22 +966,45 @@ export function prefsFromAccountPayload(account: AccountStatePayload | null): Pl
  * propose_meal_plan: build the plan on the server from intent. Default days: the rest of this week, or next week
  * when fewer than 3 days are left. Returns the action, or errors that say exactly what blocked it.
  */
-export function buildMealPlanAction(input: MealPlanIntent, ctx: MealPlanBuildContext): { action: MealPlanAction | null; errors: string[]; adjusted: string[] } {
+export function buildMealPlanAction(
+  input: MealPlanIntent,
+  ctx: MealPlanBuildContext,
+): { action: MealPlanAction | null; errors: string[]; adjusted: string[]; clarify?: PlanClarification } {
   const lang: Lang = ctx.lang ?? 'en';
   const tr = sharedT(lang);
   const blocker = mealPlanBlocker(ctx.nutrition, lang);
   if (blocker) return { action: null, errors: [blocker], adjusted: [] };
-  const recipes = ctx.recipes as unknown as Recipe[];
+  const userText = (ctx.requestText ?? '').slice(0, 1200);
+  // What the user's own words pin down (week, days, a day count or relative day, meals per day, a cooking-time cap) fills
+  // in whatever the model's intent left out. Something that can't be planned without guessing — a diet that rules out a
+  // food they asked for, "2,5 máltíðir", "ten days" — is a question for the user, never a plan.
+  const said: MealPlanIntent = userText ? mealPlanIntentFromText(userText) : {};
+  const mpdIn = input.meals_per_day ?? said.meals_per_day;
+  const mpd = mpdIn == null ? NaN : Number(mpdIn);
+  const dayCountIn_ = input.day_count ?? said.day_count;
+  const dayCount = dayCountIn_ == null ? null : Number(dayCountIn_);
+  const clarify: PlanClarification | null =
+    requestClarification(userText) ??
+    (mpdIn != null && !(Number.isInteger(mpd) && mpd >= 1 && mpd <= 6) ? { kind: 'meals_per_day', value: String(mpdIn).slice(0, 20) } : null) ??
+    (dayCount != null && !(Number.isInteger(dayCount) && dayCount >= 1 && dayCount <= 7) ? { kind: 'day_count', value: dayCount } : null);
+  if (clarify) return { action: null, errors: [clarificationNote(clarify)], adjusted: [], clarify };
+  const capIn = [input.max_minutes, said.max_minutes, maxMinutesIn(strs(input.preferences).join(' '))]
+    .map((v) => (v == null ? NaN : Number(v)))
+    .filter((v) => Number.isFinite(v) && v > 0);
+  const cap = capIn.length ? Math.min(...capIn) : null;
+
+  const allRecipes = ctx.recipes as unknown as Recipe[];
   const byId = new Map((ctx.ingredients as unknown as Ingredient[]).map((i) => [i.id, i]));
-  setNutritionCatalog({ byId, recipes });
-  const planCtx = { recipes, byId };
+  setNutritionCatalog({ byId, recipes: allRecipes });
 
   // Preferences: the user's saved settings, tightened by what they asked for in this message (never relaxed).
   const prefs: PlanPrefs = { ...prefsFromAccountPayload(ctx.account) };
   const adjusted: string[] = [];
-  const mpd = Number(input.meals_per_day);
-  if (Number.isFinite(mpd) && mpd >= 1 && mpd <= 6) prefs.mealsPerDay = Math.round(mpd);
-  const userText = (ctx.requestText ?? '').slice(0, 1200);
+  if (Number.isInteger(mpd)) prefs.mealsPerDay = mpd;
+  // An explicit cap ("hámark 10 mínútur") is hard: only recipes within it are planned (never "some take longer").
+  if (cap != null) prefs.maxCookMinutes = Math.min(prefs.maxCookMinutes, cap);
+  const recipes = cap != null ? allRecipes.filter((r) => recipeMinutes(r) <= prefs.maxCookMinutes) : allRecipes;
+  const planCtx = { recipes, byId };
   const prefText = fold([...strs(input.preferences), ...strs(input.avoid), userText].join(' '));
   if (input.quick === true || /\b(quick|fast|no[\s-]?cook)\b/.test(prefText)) prefs.maxCookMinutes = Math.min(prefs.maxCookMinutes, 15);
   const extraTags = [...strs(input.diet), ...dietTagsIn(prefText)].filter((t): t is DietTag => t in DIET_TAG_LABELS && t !== 'high_protein');
@@ -855,12 +1028,22 @@ export function buildMealPlanAction(input: MealPlanIntent, ctx: MealPlanBuildCon
   // Days.
   const { start: thisStart, end: thisEnd } = weekBounds(ctx.today, ctx.facts.weekStart);
   const left = Math.round((Date.parse(`${thisEnd}T00:00:00Z`) - Date.parse(`${ctx.today}T00:00:00Z`)) / 86_400_000) + 1;
-  const next = input.week === 'next' || (input.week !== 'this' && left < 3 && !Array.isArray(input.days));
+  const modelDays = strs(input.days);
+  const asked = modelDays.length ? modelDays : strs(said.days);
+  let week = input.week === 'this' || input.week === 'next' ? input.week : said.week === 'this' || said.week === 'next' ? said.week : undefined;
+  // One relative day ("á hinn morgun", "the day after tomorrow") with no days named: exactly that day, in its week.
+  const relIn = Number(input.relative_day ?? said.relative_day);
+  const relDate = !asked.length && Number.isInteger(relIn) && relIn >= 1 && relIn <= 13 ? addDays(ctx.today, relIn) : null;
+  const relWeek = relDate ? (relDate <= thisEnd ? 'this' : relDate <= addDays(thisEnd, 7) ? 'next' : null) : null;
+  const useRel = relDate != null && relWeek != null && (week == null || week === relWeek);
+  if (useRel) week = relWeek!;
+  // "Four days" with no week named: this week when that many days are left, else next week.
+  if (week == null && !useRel && !asked.length && dayCount != null && dayCount > left) week = 'next';
+  const next = week === 'next' || (week !== 'this' && left < 3 && !asked.length && !useRel);
   const weekStart = next ? addDays(thisStart, 7) : thisStart;
   const weekEnd = addDays(weekStart, 6);
   const allDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)).filter((d) => next || d >= ctx.today);
-  let dates = allDates;
-  const asked = strs(input.days);
+  let dates = useRel ? allDates.filter((d) => d === relDate) : allDates;
   if (asked.length) {
     const picked = new Set<string>();
     for (const a of asked) {
@@ -885,6 +1068,14 @@ export function buildMealPlanAction(input: MealPlanIntent, ctx: MealPlanBuildCon
     dates = dates.filter((d) => !fromUser.days.includes(DAY_NAMES[new Date(`${d}T00:00:00Z`).getUTCDay()]));
     if (!dates.length) return { action: null, errors: [tr.t(next ? 'aiServer.mealPlan.allExcludedNext' : 'aiServer.mealPlan.allExcludedThis')], adjusted };
   }
+  // A day count takes the first N plan days; fewer left than asked for is a question, never a shorter or longer plan.
+  if (dayCount != null && !useRel) {
+    if (dates.length < dayCount) {
+      const c: PlanClarification = { kind: 'day_count', value: dayCount };
+      return { action: null, errors: [clarificationNote(c)], adjusted, clarify: c };
+    }
+    dates = dates.slice(0, dayCount);
+  }
 
   // Every slot needs at least one recipe under the constraints; otherwise say which constraint is the blocker.
   const constraints: ConstraintSet = {
@@ -893,7 +1084,7 @@ export function buildMealPlanAction(input: MealPlanIntent, ctx: MealPlanBuildCon
   for (const slot of new Set(slotsForMeals(prefs.mealsPerDay))) {
     const { recipes: pool, relaxedTime } = rankedCandidates(slot, prefs, planCtx);
     if (!pool.length) {
-      return { action: null, errors: [explainNoRecipes({ ...constraints, maxMinutes: null, meal: slot }, ctx.recipes, new Map(ctx.ingredients.map((i) => [i.id, i])), ctx.facts, lang)], adjusted };
+      return { action: null, errors: [explainNoRecipes({ ...constraints, maxMinutes: cap != null ? prefs.maxCookMinutes : null, meal: slot }, ctx.recipes, new Map(ctx.ingredients.map((i) => [i.id, i])), ctx.facts, lang)], adjusted };
     }
     if (relaxedTime) adjusted.push(tr.t('aiServer.mealPlan.timeRelaxed', { slot: tr.t(`aiServer.mealSlotFor.${slot}` as SharedKey), minutes: prefs.maxCookMinutes }));
   }
@@ -968,6 +1159,15 @@ export function mealPlanIntentFromText(text: string): MealPlanIntent {
   // Meals per day: a whole number 1–6 only — "2,5 máltíðir" is left unset (the coach asks), never rounded.
   const mpd = mealsPerDayIn(text);
   if (mpd && 'value' in mpd) intent.meals_per_day = mpd.value;
+  // Days to plan: a count ("fyrir fjóra daga", "four days next week") or one relative day that is the plan's own target
+  // ("matseðill fyrir á hinn morgun", "meal plan for tomorrow"); "í dag" / "í morgun" (this morning) never narrow the plan,
+  // nor does a day in another clause ("I shop tomorrow").
+  const count = planDayCountIn(text);
+  if (count != null && Number.isInteger(count) && count >= 1 && count <= 7) intent.day_count = count;
+  const rel = planRelativeDay(text);
+  if (rel != null && rel >= 1) intent.relative_day = rel;
+  const cap = maxMinutesIn(text);
+  if (cap != null && cap > 0) intent.max_minutes = cap;
   if (/\bnext week\b|(?<![a-zæðþ])næstu viku(?:nni)?(?![a-zæðþ])|(?<![a-zæðþ])næsta viku(?![a-zæðþ])/.test(t)) intent.week = 'next';
   else if (/\bthis week\b|(?<![a-zæðþ])þessa(ri)? viku\b/.test(t)) intent.week = 'this';
   const ex = parseExclusions(text);
@@ -983,4 +1183,95 @@ export function mealPlanIntentFromText(text: string): MealPlanIntent {
   const avoid = [...ex.allergens.map((a) => ALLERGEN_AVOID_WORD[a] ?? a.replace(/_/g, ' ')), ...ex.words];
   if (avoid.length) intent.avoid = [...new Set(avoid)];
   return intent;
+}
+
+/** "fyrir fjóra daga", "for 4 days", "four days next week" → 4 ("eftir tvo daga" / "in two days" is a relative day). */
+export function planDayCountIn(text: string): number | null {
+  const direct = dayCountIn(text);
+  if (direct != null) return direct;
+  const t = tokensOf(text);
+  for (let i = 0; i < t.length; i++) {
+    if (['eftir', 'in', 'a', 'per', 'every'].includes(t[i - 1] ?? '')) continue;
+    const n = dayCountIn(`for ${t.slice(i, i + 4).join(' ')}`);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+/** Something in the request the planner can't follow without guessing: ask the user, never build a plan or show recipes. */
+export type PlanClarification =
+  | { kind: 'diet_conflict'; diet: DietTag[]; foods: string[] }
+  | { kind: 'meals_per_day'; value: string }
+  | { kind: 'day_count'; value: number };
+
+/** What the user's own words leave for them to decide (a diet that rules out a food they asked for, "2,5 máltíðir", "ten days"). */
+export function requestClarification(text: string): PlanClarification | null {
+  if (!text) return null;
+  const foods = requestConflicts(text);
+  if (foods.length) return { kind: 'diet_conflict', diet: dietTagsIn(text), foods };
+  const mpd = mealsPerDayIn(text);
+  if (mpd && 'invalid' in mpd) return { kind: 'meals_per_day', value: mpd.invalid };
+  const n = planDayCountIn(text);
+  if (n != null && (!Number.isInteger(n) || n < 1 || n > 7)) return { kind: 'day_count', value: n };
+  return null;
+}
+
+/** The question for the MODEL to put to the user, in the reply language (English diagnostics; no approved fixed copy). */
+export function clarificationNote(c: PlanClarification): string {
+  if (c.kind === 'diet_conflict')
+    return `The request asks for ${c.diet.join(' + ')} AND for ${c.foods.join(', ')}, which that diet rules out. Nothing was built. Ask the user which to keep (the diet, or the ${c.foods.join(', ')}); never drop either one silently.`;
+  if (c.kind === 'meals_per_day')
+    return `The request asks for ${c.value} meals a day, which isn't a whole number from 1 to 6. Nothing was built. Ask the user how many meals a day (a whole number 1–6) they want; never round it.`;
+  return `The request asks for ${c.value} days; a meal plan covers 1–7 days of one week. Nothing was built. Ask the user which days (or how many, 1–7) they want.`;
+}
+
+/* Relative days a plan can be FOR: the approved vocabulary (weekdays.relative: "á morgun", "á hinn morgun", "eftir tvo
+ * daga") only, plus English. "á" is marked before folding ("í morgun" is this morning). */
+const REL_PLAN_DAYS: [string[], number][] = ([
+  ...IS_VOCAB.weekdays.relative.dayAfterTomorrow.map((p) => [relTokens(p), 2] as [string[], number]),
+  ...IS_VOCAB.weekdays.relative.tomorrow.map((p) => [relTokens(p), 1] as [string[], number]),
+  [['the', 'day', 'after', 'tomorrow'], 2], [['day', 'after', 'tomorrow'], 2],
+  [['in', 'two', 'days'], 2], [['tomorrow'], 1],
+] as [string[], number][]).sort((a, b) => b[0].length - a[0].length);
+function relTokens(text: string): string[] {
+  return tokensOf(String(text ?? '').replace(/(^|[^\p{L}])á(?=\s)/giu, '$1qqa ').replace(/(^|[^\p{L}])í(?=\s)/giu, '$1qqi ')).map((w) => w.replace(/['’]s$/, ''));
+}
+const PLAN_WORDS = new Set([...IS_VOCAB.meal_plan.tokens.map(foldIs), 'plan', 'plans', 'menu', 'menus', 'meals', 'mealplan']);
+/** Words that start another clause: a relative day after them is not the plan's target ("…, because I shop tomorrow"). */
+const CLAUSE_WORDS = new Set(['and', 'but', 'because', 'since', 'as', 'when', 'while', 'so', 'og', 'en', 'því', 'þvi', 'þegar', 'svo', 'af', 'vegna']);
+const ONLY_DAY_FILLER = new Set(['for', 'fyrir', 'just', 'only', 'bara', 'please', 'takk']);
+
+/**
+ * Days from today a relative day means when it is the plan's own time target in the same clause: right after "for" /
+ * "fyrir", next to the plan word ("tomorrow's meal plan", "matseðill á morgun"), or a line that is just the day ("Á morgun.").
+ * A day in another clause ("Meal plan, I shop tomorrow", "Ég fer í búð á morgun, gerðu matseðil") is null.
+ */
+export function planRelativeDay(text: string): number | null {
+  for (const line of String(text ?? '').split('\n')) {
+    const lineTokens = relTokens(line);
+    for (const part of line.split(/[,.;:!?()]+/)) {
+      const t = relTokens(part);
+      // Split the clause again at clause words.
+      const clauses: string[][] = [[]];
+      for (const w of t) {
+        if (CLAUSE_WORDS.has(w)) clauses.push([]);
+        else clauses[clauses.length - 1].push(w);
+      }
+      for (const c of clauses) {
+        for (let i = 0; i < c.length; i++) {
+          const hit = REL_PLAN_DAYS.find(([p]) => p.every((w, k) => c[i + k] === w));
+          if (!hit) continue;
+          const [p, n] = hit;
+          const end = i + p.length;
+          const hasPlan = c.some((w) => PLAN_WORDS.has(w));
+          const afterFor = ['for', 'fyrir'].includes(c[i - 1] ?? '') || (c[i - 1] === 'the' && c[i - 2] === 'for');
+          const nextToPlan = PLAN_WORDS.has(c[i - 1] ?? '') || PLAN_WORDS.has(c[end] ?? '') || (c[end] === 'meal' && PLAN_WORDS.has(c[end + 1] ?? ''));
+          const alone = lineTokens.length > 0 && lineTokens.every((w) => ONLY_DAY_FILLER.has(w) || p.includes(w));
+          if ((hasPlan && (afterFor || nextToPlan)) || alone) return n;
+          i = end - 1;
+        }
+      }
+    }
+  }
+  return null;
 }
