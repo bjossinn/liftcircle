@@ -5,7 +5,7 @@
  * The VAPID public key is a public value (VITE_VAPID_PUBLIC_KEY, set in netlify.toml). Without it the whole feature
  * is hidden. iOS/iPadOS only allows web push for apps installed to the Home Screen (standalone).
  */
-import { isAccountChanged, pushApi } from '@/backend/push';
+import { isAccountChanged, isMissingRpc, pushApi } from '@/backend/push';
 import { DEFAULT_PUSH_PREFS, type PushPrefs } from '@/domain/pushSchedule';
 import { isStandalone } from './install';
 
@@ -19,6 +19,8 @@ const LEGACY_DEVICE_KEY = 'lc-push-device';
 const LEGACY_PREFS_KEY = 'lc-push-prefs';
 export const deviceKey = (uid: string) => `${LEGACY_DEVICE_KEY}:${uid}`;
 export const prefsKey = (uid: string) => `${LEGACY_PREFS_KEY}:${uid}`;
+/** A turned-off device whose server row couldn't be deleted yet (offline, older server): retried on refresh. */
+export const pendingDeleteKey = (uid: string) => `lc-push-pending-delete:${uid}`;
 /** The signed-in user id, or null for guests / signed out. */
 export type PushAccount = string | null | undefined;
 
@@ -144,6 +146,7 @@ export async function enablePush(uid: PushAccount, timeZone: string, isCurrent: 
     await pushApi.saveSubscription(body, uid);
     if (!(await stillFor(uid, isCurrent))) return { ok: false, reason: 'cancelled' };
     write(deviceKey(uid), { endpoint: body.endpoint });
+    write(pendingDeleteKey(uid), null);
     const prefs = await pushApi.setPrefs({ timeZone }, uid);
     if (isCurrent()) cachePushPrefs(uid, prefs);
     else emit();
@@ -154,7 +157,29 @@ export async function enablePush(uid: PushAccount, timeZone: string, isCurrent: 
   }
 }
 
-/** Unsubscribes this device and deletes its server row (only for `uid`, the account that asked). */
+/**
+ * Deletes `endpoint`'s server row for `uid`. Uses the account-bound RPC; on a server that predates it, falls back to the
+ * one-argument RPC only after re-checking that the session still belongs to `uid`. Returns false when the row is still
+ * there (offline, account changed, server error).
+ */
+async function deleteServerRow(uid: string, endpoint: string, isCurrent: StillCurrent): Promise<boolean> {
+  try {
+    await pushApi.deleteSubscription(endpoint, uid);
+    return true;
+  } catch (e) {
+    if (isMissingRpc(e)) {
+      if (!(await stillFor(uid, isCurrent))) return false;
+      return pushApi.deleteSubscriptionLegacy(endpoint).then(() => true, () => false);
+    }
+    return false;
+  }
+}
+
+/**
+ * Turns push off on this device for `uid` (only the account that asked). The local opt-out is stored as soon as the
+ * browser subscription is gone, independently of the server: if the server row can't be deleted now it is remembered
+ * and deleted on the next refresh, and nothing ever re-subscribes a device the user turned off.
+ */
 export async function disablePush(uid: PushAccount, isCurrent: StillCurrent = always): Promise<boolean> {
   if (!uid) return false;
   if (!(await stillFor(uid, isCurrent))) return false;
@@ -170,17 +195,26 @@ export async function disablePush(uid: PushAccount, isCurrent: StillCurrent = al
   } catch {
     /* no service worker: the server row is still removed below */
   }
-  if (endpoint) {
-    try {
-      await pushApi.deleteSubscription(endpoint, uid);
-    } catch (e) {
-      if (!isAccountChanged(e)) throw e;
-      return false;
-    }
-  }
+  // Opted out here from now on, whatever the server says.
   write(deviceKey(uid), null);
+  if (endpoint) write(pendingDeleteKey(uid), { endpoint });
   emit();
+  if (endpoint && (await deleteServerRow(uid, endpoint, isCurrent))) write(pendingDeleteKey(uid), null);
   return true;
+}
+
+/** Retries a pending server-row deletion for `uid` (after an offline or old-server turn-off). */
+export async function flushPendingDelete(uid: PushAccount, isCurrent: StillCurrent = always): Promise<void> {
+  if (!uid) return;
+  const pending = read<PushDevice>(pendingDeleteKey(uid));
+  if (!pending?.endpoint) return;
+  if (pushEnabledHere(uid)) {
+    // Turned on again since: the row is wanted now.
+    write(pendingDeleteKey(uid), null);
+    return;
+  }
+  if (!(await stillFor(uid, isCurrent))) return;
+  if (await deleteServerRow(uid, pending.endpoint, isCurrent)) write(pendingDeleteKey(uid), null);
 }
 
 /**
@@ -190,6 +224,7 @@ export async function disablePush(uid: PushAccount, isCurrent: StillCurrent = al
  * from the cached endpoint. Also refreshes cached prefs.
  */
 export async function refreshPushSubscription(uid: PushAccount, isCurrent: StillCurrent = always): Promise<void> {
+  await flushPendingDelete(uid, isCurrent).catch(() => undefined);
   const device = getPushDevice(uid);
   if (!uid || !device || pushSupport() !== 'available' || Notification.permission !== 'granted') return;
   const reg = await registration();

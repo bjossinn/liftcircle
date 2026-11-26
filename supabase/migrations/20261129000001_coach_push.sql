@@ -51,7 +51,8 @@ alter table public.push_jobs
   add column if not exists dispatch_state text not null default 'pending',
   add column if not exists outcome text,
   add column if not exists copy_language text,
-  add column if not exists copy_source text;
+  add column if not exists copy_source text,
+  add column if not exists copy_attempted_at timestamptz;
 alter table public.push_jobs drop constraint if exists push_jobs_kind_check;
 alter table public.push_jobs add constraint push_jobs_kind_check
   check (kind in ('workout_reminder', 'rest_over', 'coaching', 'social', 'missed_nudge', 'test', 'food_unlogged'));
@@ -177,10 +178,41 @@ language sql stable security definer set search_path = '' as $$
   select ids.tid,
          (jsonb_typeof(t -> 'cardio') = 'object'
           and coalesce(jsonb_array_length(case when jsonb_typeof(t -> 'exercises') = 'array' then t -> 'exercises' end), 0) = 0)
-    from ids cross join v
-    cross join lateral (select t from jsonb_array_elements(case when jsonb_typeof(v.x -> 'templates') = 'array' then v.x -> 'templates' else '[]'::jsonb end) t
-                         where t ->> 'id' = ids.tid limit 1) tt
+    from ids cross join pr
+    -- Like the calendar (templateById): the current version's template, else the newest older version that has it —
+    -- a session moved before a program revision keeps its template.
+    cross join lateral (select t
+                          from jsonb_array_elements(case when jsonb_typeof(pr.payload -> 'versions') = 'array' then pr.payload -> 'versions' else '[]'::jsonb end) ver
+                         cross join lateral jsonb_array_elements(case when jsonb_typeof(ver -> 'templates') = 'array' then ver -> 'templates' else '[]'::jsonb end) t
+                         where t ->> 'id' = ids.tid
+                         order by (ver ->> 'version' = pr.payload ->> 'currentVersion') desc, private.try_int(ver ->> 'version') desc nulls last
+                         limit 1) tt
 $$;
+
+-- Coach reminders claimed by a pre-phase-1 worker (claimed_at set, no claim token, never settled) may already have
+-- been delivered: that worker sent first and recorded afterwards. They are settled as 'ambiguous' — never reclaimed or
+-- resent — and their possible delivery is counted in the daily quota. Runs once in this migration and again before
+-- every push_claim_due_v2 (the legacy push_claim_due no longer claims coach reminders, so nothing new can appear).
+create or replace function private.push_settle_legacy_claims() returns integer
+language plpgsql security definer set search_path = '' as $$
+declare n integer;
+begin
+  with settled as (
+    update public.push_jobs j
+       set sent_at = now(), dispatch_state = 'ambiguous', outcome = 'legacy_claim', lease_until = null, claim_token = null
+     where private.push_proactive(j.kind) and j.claimed_at is not null and j.claim_token is null
+       and j.sent_at is null and j.cancelled_at is null and j.dispatch_state in ('pending', 'claimed')
+    returning j.id, j.user_id, j.kind, j.event_date, j.fire_at
+  )
+  insert into private.push_quota (user_id, local_date, event_key, job_id, state)
+  select st.user_id,
+         coalesce(st.event_date, (st.fire_at at time zone coalesce((select p.time_zone from public.push_prefs p where p.user_id = st.user_id), 'UTC'))::date),
+         case when st.kind = 'food_unlogged' then 'food' else 'training' end, st.id, 'consumed'
+    from settled st
+  on conflict (user_id, local_date, event_key) do nothing;
+  get diagnostics n = row_count;
+  return n;
+end $$;
 
 -- The app may assert which account an operation was started for; a different signed-in account writes nothing.
 create or replace function private.push_assert_account(p_expected text) returns void
@@ -540,6 +572,7 @@ create or replace function public.push_claim_due_v2(p_limit integer default 50) 
 language plpgsql security definer set search_path = '' as $$
 declare v jsonb;
 begin
+  perform private.push_settle_legacy_claims();
   update public.push_jobs j set dispatch_state = 'ambiguous', outcome = 'lease_expired', sent_at = now(), lease_until = null, claim_token = null
    where j.dispatch_state = 'dispatching' and j.lease_until < now() and j.sent_at is null;
 
@@ -706,9 +739,12 @@ begin
         v_reason := case when v_key = 'training' then 'training_done_today' else 'duplicate_event' end;
       else
         -- The current cap decides: reservations made earlier (and every consumed one) come first.
+        -- Committed capacity: consumed rows, rows whose job is already being dispatched, and earlier reservations.
         select count(*) into v_count from private.push_quota q
          where q.user_id = j.user_id and q.local_date = v_event and q.job_id is distinct from j.id
-           and (q.state = 'consumed' or (q.created_at, q.event_key) < (v_q.created_at, v_q.event_key));
+           and (q.state = 'consumed'
+                or exists (select 1 from public.push_jobs d where d.id = q.job_id and d.dispatch_state = 'dispatching')
+                or (q.created_at, q.event_key) < (v_q.created_at, v_q.event_key));
         if v_count >= coalesce(p.daily_cap, 2) then v_reason := 'daily_cap'; end if;
       end if;
     elsif p_stage = 'dispatch' then
@@ -732,9 +768,14 @@ begin
   if p_stage = 'dispatch' then
     update public.push_jobs set dispatch_state = 'dispatching', lease_until = now() + interval '2 minutes', prefs_revision = p.revision
      where id = j.id;
+  else
+    -- Attempt marker, committed before the worker may call the model: any later attempt of this event (after a crash,
+    -- a lost response or a failed save) uses the stored copy or the fallback, never a second generation.
+    update public.push_jobs set copy_attempted_at = coalesce(copy_attempted_at, now()) where id = j.id;
   end if;
   return jsonb_build_object(
     'status', 'ok',
+    'copyAttempted', j.copy_attempted_at is not null,
     'language', case when v_settings ->> 'language' = 'is' then 'is' else 'en' end,
     'revision', p.revision,
     'ai', case when v_ai.user_id is null then null else jsonb_build_object(
@@ -828,11 +869,14 @@ begin
   return n;
 end $$;
 
+select private.push_settle_legacy_claims();
+
 /* ============================================================ privileges */
 
 revoke all on function private.push_proactive(text), private.push_prefs_json(public.push_prefs),
   private.push_apply_prefs(uuid, jsonb, boolean), private.push_release(uuid), private.trg_push_job_quota(),
-  private.push_quiet_until(text, time, time, timestamptz), private.push_planned_on(uuid, date), private.push_assert_account(text)
+  private.push_quiet_until(text, time, time, timestamptz), private.push_planned_on(uuid, date), private.push_assert_account(text),
+  private.push_settle_legacy_claims()
   from public, anon, authenticated;
 
 revoke all on function public.get_push_prefs(), public.set_push_prefs(jsonb), public.update_push_prefs(jsonb, bigint),

@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { b64urlDecode, b64urlEncode, encryptPayload, sendWebPush, vapidAuthorization } from '../../supabase/functions/_shared/push/webpush';
 import { authorizePush, processCoachJob, processJob, quietUntil, runPushSend, zonedToUtc, type CachedCopy as CachedCopyT, type CheckResult, type DueJob, type JobResult, type PushDb } from '../../supabase/functions/_shared/push/send';
 import { COPY_MAX_CODE_POINTS, fallbackBody, validateCopy, writeCopy, type CoachKind } from '../../supabase/functions/_shared/push/copy';
+import { judgeProblems } from '../../supabase/functions/_shared/push/judge';
 import { SHARED_EN } from '../../supabase/functions/_shared/i18n/messages.en';
 import { SHARED_IS } from '../../supabase/functions/_shared/i18n/messages.is';
 
@@ -494,5 +495,52 @@ describe('coach reminders: quiet hours at the final check', () => {
     const r = await processCoachJob({ db: m.db, send: s.send, now: () => NOW }, coachJob({ prefs: { timeZone: 'Europe/Oslo', quietStart: '00:00', quietEnd: '00:00' } }), 10_000);
     expect(r).toMatchObject({ status: 'skipped', reason: 'deferred' });
     expect(s.sent).toHaveLength(0);
+  });
+});
+
+describe('coach reminders: generation stays single when saving the attempt fails', () => {
+  it('the dispatch RPC is rejected after the model ran → released; the retry is told an attempt happened and sends the fallback without a second model call', async () => {
+    const p = provider('{"body":"Open Today whenever it suits you."}');
+    let marker = false; // what push_check's attempt marker (copy_attempted_at) records on the server
+    const prepare = (): CheckResult => {
+      const r: CheckResult = { status: 'ok', language: 'en', ai: AI_OK, copyAttempted: marker };
+      marker = true;
+      return r;
+    };
+    const failing = memoryDb([], (_id, st) => {
+      if (st === 'prepare') return prepare();
+      throw new Error('network: the save never reached the database');
+    });
+    const s1 = service({});
+    const first = await processCoachJob({ db: failing.db, send: s1.send, now: () => NOW, copy: { env: env(), fetch: p.fetch } }, coachJob(), 10_000);
+    expect(first).toEqual({ id: 'w', token: 'tok-w', status: 'release' });
+    expect(s1.sent).toHaveLength(0);
+    expect(p.calls).toHaveLength(1);
+    // Reclaimed with no stored copy (the save never happened).
+    const ok = memoryDb([], (_id, st) => (st === 'prepare' ? prepare() : { status: 'ok', language: 'en', ai: AI_OK }));
+    const s2 = service({});
+    await processCoachJob({ db: ok.db, send: s2.send, now: () => NOW, copy: { env: env(), fetch: p.fetch } }, coachJob({ copy: null }), 10_000);
+    expect(p.calls).toHaveLength(1); // still one model call for the event
+    expect(sentBody(s2).body).toBe(SHARED_EN['push.coachWorkout.body']);
+    expect(ok.stored).toEqual([{ body: SHARED_EN['push.coachWorkout.body'], language: 'en', source: 'fallback' }]);
+  });
+});
+
+describe('live evaluation judge verdicts (strict)', () => {
+  const all = { guilt: false, compensation: false, exercise_prescription: false, food_prescription: false, target_or_measurement: false, claims_skipped: false, language_ok: true, supportive: true };
+  it('accepts only a complete verdict with eight booleans', () => {
+    expect(judgeProblems(JSON.stringify(all))).toEqual([]);
+    expect(judgeProblems(JSON.stringify({ ...all, guilt: true, supportive: false }))).toEqual(['guilt', 'not_supportive']);
+    expect(judgeProblems(JSON.stringify({ ...all, language_ok: false }))).toEqual(['language']);
+  });
+  it('rejects incomplete, extra, string-valued, malformed, prose-wrapped and truncated replies', () => {
+    expect(judgeProblems('{"language_ok":true,"supportive":true}')).toEqual(['judge_incomplete']);
+    expect(judgeProblems(JSON.stringify({ ...all, extra: false }))).toEqual(['judge_incomplete']);
+    expect(judgeProblems(JSON.stringify({ ...all, guilt: 'false' }))).toEqual(['judge_not_boolean']);
+    expect(judgeProblems(JSON.stringify({ ...all, supportive: 'true' }))).toEqual(['judge_not_boolean']);
+    expect(judgeProblems('Here you go: ' + JSON.stringify(all))).toEqual(['judge_malformed']);
+    expect(judgeProblems('{"guilt": false, "compensation": fa')).toEqual(['judge_malformed']);
+    expect(judgeProblems('[]')).toEqual(['judge_malformed']);
+    expect(judgeProblems(JSON.stringify(all), true)).toEqual(['judge_truncated']);
   });
 });

@@ -800,6 +800,89 @@ async function main() {
     eq((await jobsOf(U.carol))[0].payload.body, copy.body, 'foreign token stored nothing');
   });
 
+
+  await test('rollout', 'an aged pre-migration coach claim that was never settled (old worker died after the push service accepted it) is settled as ambiguous, counted in the quota and never resent', async () => {
+    await admin.query(`delete from public.push_jobs; delete from private.push_quota`);
+    await ready(U.carol);
+    await admin.query(`delete from public.workout_sessions where owner_id = $1`, [U.carol]);
+    // The row exactly as the migration finds it: claimed by the old worker, no token, pending, no result recorded.
+    const legacy = await proactive(U.carol, 'workout_reminder', 'reminder:aged');
+    await admin.query(`update public.push_jobs set claimed_at = now() - interval '10 minutes', claim_token = null, lease_until = null, dispatch_state = 'pending', attempts = 1 where id = $1`, [legacy]);
+    // The migration's one-time settlement (also run before every v2 claim).
+    eq((await admin.query(`select private.push_settle_legacy_claims() n`)).rows[0].n, 1, 'settled one');
+    const row = (await jobsOf(U.carol))[0];
+    eq([row.dispatch_state, row.outcome, !!row.sent_at], ['ambiguous', 'legacy_claim', true], 'ambiguous, never resent');
+    eq((await admin.query(`select state, event_key from private.push_quota where job_id = $1`, [legacy])).rows, [{ state: 'consumed', event_key: 'training' }], 'possible delivery counted');
+    eq((await claimAll()).filter((j) => j.id === legacy).length, 0, 'not reclaimed by the new worker');
+    eq(ok(await rpc('service', 'push_claim_due', { p_limit: 50 }), 'legacy').filter((j) => j.id === legacy).length, 0, 'nor by the old one');
+    // Another training reminder that day can't go out: the day's training event may already have been delivered.
+    const next = await proactive(U.carol, 'workout_reminder', 'reminder:aged2');
+    const c = await claimAll();
+    eq((await check(next, tokenOf(c, next), 'prepare')).reason, 'training_done_today', 'quota accounts for it');
+    // The same row aged past 2 minutes but settled by v2's own pass (no migration call): same outcome.
+    await admin.query(`delete from public.push_jobs; delete from private.push_quota`);
+    const again = await proactive(U.carol, 'missed_nudge', 'nudge:aged', { source: dayShift(todayUtc(), -1) });
+    await admin.query(`update public.push_jobs set claimed_at = now() - interval '3 minutes', claim_token = null, lease_until = null, dispatch_state = 'pending' where id = $1`, [again]);
+    eq((await claimAll()).filter((j) => j.id === again).length, 0, 'v2 never hands it out');
+    eq((await jobsOf(U.carol))[0].dispatch_state, 'ambiguous', 'settled by v2');
+  });
+
+  await test('quota', 'reversed dispatch order: the later reservation is already dispatching when the cap drops to 1, so the earlier one stops', async () => {
+    await admin.query(`delete from public.push_jobs; delete from private.push_quota`);
+    await ready(U.carol);
+    await accountState(U.carol, { language: 'en', nutritionEnabled: true });
+    await admin.query(`update public.push_prefs set daily_cap = 2 where user_id = $1`, [U.carol]);
+    await admin.query(`insert into private.sync_receipts (user_id, completed_at) values ($1, now()) on conflict (user_id) do update set completed_at = now()`, [U.carol]);
+    await admin.query(`delete from public.food_logs where owner_id = $1`, [U.carol]);
+    await admin.query(`delete from public.workout_sessions where owner_id = $1`, [U.carol]);
+    const a = await proactive(U.carol, 'workout_reminder', 'reminder:rev');
+    const b = await proactive(U.carol, 'food_unlogged', 'food:rev');
+    const c = await claimAll();
+    eq((await check(a, tokenOf(c, a), 'prepare')).status, 'ok', 'A reserved first');
+    eq((await check(b, tokenOf(c, b), 'prepare')).status, 'ok', 'B reserved second');
+    eq((await check(b, tokenOf(c, b), 'dispatch')).status, 'ok', 'B is dispatching');
+    const p = await prefsOf('carol');
+    eq((await update('carol', { dailyCap: 1 }, p.revision)).status, 'ok', 'cap lowered to 1');
+    eq((await check(a, tokenOf(c, a), 'dispatch')).reason, 'daily_cap', 'A stops: B already holds the only slot');
+  });
+
+  await test('copy', 'prepare commits an attempt marker before any model call: the next attempt of the same event is told a generation may have happened', async () => {
+    await admin.query(`delete from public.push_jobs; delete from private.push_quota`);
+    await ready(U.carol);
+    await admin.query(`update public.push_prefs set daily_cap = 3 where user_id = $1`, [U.carol]);
+    const id = await proactive(U.carol, 'workout_reminder', 'reminder:marker');
+    const c = await claimAll();
+    eq((await check(id, tokenOf(c, id), 'prepare')).copyAttempted, false, 'first attempt');
+    assert((await jobsOf(U.carol))[0].copy_attempted_at, 'marker committed');
+    // The worker dies (or its save RPC fails) before storing any copy; the lease runs out and the job is reclaimed.
+    await admin.query(`update public.push_jobs set lease_until = now() - interval '1 second' where id = $1`, [id]);
+    const c2 = await claimAll();
+    const again = c2.find((j) => j.id === id);
+    eq(again.copy, null, 'no stored copy');
+    eq((await check(id, again.token, 'prepare')).copyAttempted, true, 'retry knows an attempt happened → fallback, no second model call');
+  });
+
+  await test('plan', 'a session moved before a program revision keeps its template from the older version (like the calendar)', async () => {
+    await admin.query(`delete from public.push_jobs; delete from private.push_quota`);
+    await ready(U.carol);
+    const today = todayUtc();
+    const dow = new Date(`${today}T00:00:00Z`).getUTCDay();
+    const payload = {
+      name: 'Plan', source: 'generated', active: true, startDate: '2026-01-01', currentVersion: 2, rotationIndex: 0,
+      overrides: [{ date: dayShift(today, -1), templateId: 'A', status: 'moved', movedTo: today }],
+      versions: [
+        { version: 1, templates: [{ id: 'A', name: 'Upper A', exercises: [{ id: 'x', exerciseId: 'squat' }] }], schedule: [{ weekday: (dow + 6) % 7, templateId: 'A' }] },
+        // Revision replaced A with B, scheduled on a different weekday than today.
+        { version: 2, templates: [{ id: 'B', name: 'Upper B', exercises: [{ id: 'y', exerciseId: 'squat' }] }], schedule: [{ weekday: (dow + 2) % 7, templateId: 'B' }] },
+      ],
+    };
+    await admin.query(`update public.programs set payload = $2, updated_at = now() where owner_id = $1`, [U.carol, JSON.stringify(payload)]);
+    const id = await proactive(U.carol, 'workout_reminder', 'reminder:oldver');
+    const c = await claimAll();
+    eq((await check(id, tokenOf(c, id), 'prepare')).status, 'ok', 'moved-in A from version 1 is still planned today');
+    await setProgram(U.carol);
+  });
+
   await test('account', 'writes bound to the account that started them: a different expectedUserId writes nothing; device ownership can be checked', async () => {
     fails(await rpc('carol', 'save_push_subscription', { p: J({ ...SUB(30), expectedUserId: U.dave }) }), 'save as wrong account', /account changed/);
     eq((await admin.query(`select count(*)::int n from public.push_subscriptions where endpoint = $1`, [SUB(30).endpoint])).rows[0].n, 0, 'nothing saved');

@@ -73,6 +73,8 @@ export function toUpdateResult(raw: Record<string, unknown> | null | undefined):
 
 /** The server refused because the signed-in account is no longer the one the operation was started for. */
 export const isAccountChanged = (e: unknown) => e instanceof BackendError && /account changed/i.test(e.message);
+/** The RPC (signature) doesn't exist on this server yet (PostgREST PGRST202). */
+export const isMissingRpc = (e: unknown) => e instanceof BackendError && e.code === 'PGRST202';
 
 /**
  * Every write that belongs to a specific account passes `expectedUserId`: if the signed-in account changed while the
@@ -93,6 +95,11 @@ export const pushApi = {
     rpc<{ id: string; endpoint: string }>('save_push_subscription', { p: { ...s, expectedUserId } }),
   deleteSubscription: (endpoint: string, expectedUserId: string) =>
     rpc<boolean>('delete_push_subscription', { p_endpoint: endpoint, p_expected_user: expectedUserId }),
+  /**
+   * Servers without the coach-push migration only have delete_push_subscription(endpoint). Callers use it only after
+   * deleteSubscription failed as missing AND they re-checked that the session is still the expected account.
+   */
+  deleteSubscriptionLegacy: (endpoint: string) => rpc<boolean>('delete_push_subscription', { p_endpoint: endpoint }),
   /** Who owns this browser endpoint on the server: 'mine' | 'other' | 'none'. */
   deviceOwner: (endpoint: string) => rpc<'mine' | 'other' | 'none'>('push_device_owner', { p_endpoint: endpoint }),
   getPrefs: async () => toPushPrefs(await rpc<Record<string, unknown>>('get_push_prefs')),

@@ -69,7 +69,8 @@ export type JobResult =
   | (Settle & { status: 'skipped'; reason: string });
 
 export type CheckResult =
-  | { status: 'ok'; language?: string; revision?: number; ai?: CopyAiSettings | null }
+  /** copyAttempted: an earlier attempt of this event already passed 'prepare' (it may have called the model). */
+  | { status: 'ok'; language?: string; revision?: number; ai?: CopyAiSettings | null; copyAttempted?: boolean }
   /** Current quiet hours: the server already rescheduled the job inside its local day. */
   | { status: 'deferred'; fireAt?: string }
   | { status: 'discard'; reason?: string }
@@ -269,10 +270,13 @@ export async function processCoachJob(deps: PushDeps, job: DueJob, budgetMs: num
   const allowed = (ai: CopyAiSettings | null | undefined) => flagOn && aiCopyAllowed(kind, ai ?? null, provider);
 
   // One generation attempt per event: once an attempt stored copy on the job, it is reused (or replaced by the
-  // fallback in the current language), never regenerated.
+  // fallback in the current language), never regenerated. 'prepare' commits an attempt marker before any model call,
+  // so an attempt that was interrupted before its copy was saved (crash, failed RPC) is followed by the fallback.
   let copy: FinalCopy;
   if (job.copy && (job.copy.source === 'fallback' || job.copy.source === 'ai')) {
     copy = finalizeCopy(kind, job.copy, language, allowed(prep.ai));
+  } else if (prep.copyAttempted) {
+    copy = finalizeCopy(kind, null, language, false);
   } else if (deps.copy && flagOn) {
     const remaining = budgetMs - (deps.now().getTime() - started) - 2000; // keep time to send and settle
     const r = await writeCopy(deps.copy, kind, language, prep.ai ?? null, remaining);

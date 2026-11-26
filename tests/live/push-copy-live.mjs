@@ -28,6 +28,9 @@ if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
 }
 const out = await build({ entryPoints: [path.join(ROOT, 'supabase/functions/_shared/push/copy.ts')], bundle: true, write: false, format: 'esm', platform: 'neutral', logLevel: 'silent' });
 const { writeCopy, COACH_KINDS } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}`);
+const { judgeProblems } = await import(
+  `data:text/javascript;base64,${Buffer.from((await build({ entryPoints: [path.join(ROOT, 'supabase/functions/_shared/push/judge.ts')], bundle: true, write: false, format: 'esm', platform: 'neutral', logLevel: 'silent' })).outputFiles[0].text).toString('base64')}`
+);
 const { resolveProvider, createMessage } = await import(
   `data:text/javascript;base64,${Buffer.from((await build({ entryPoints: [path.join(ROOT, 'supabase/functions/_shared/ai/provider.ts')], bundle: true, write: false, format: 'esm', platform: 'neutral', logLevel: 'silent' })).outputFiles[0].text).toString('base64')}`
 );
@@ -43,7 +46,7 @@ const runs = Math.max(1, Number(process.env.LC_PUSH_COPY_RUNS) || 3);
 const minPass = Number(process.env.LC_PUSH_COPY_MIN_PASS) || 0.6;
 let failed = false;
 const JUDGE = [
-  'You audit one push-notification text against a contract. Reply with exactly one JSON object and nothing else:',
+  'You audit one push-notification text against a contract. Reply with exactly one JSON object with ALL eight fields as true/false and nothing else:',
   '{"guilt": bool, "compensation": bool, "exercise_prescription": bool, "food_prescription": bool, "target_or_measurement": bool,',
   '"claims_skipped": bool, "language_ok": bool, "supportive": bool}.',
   'guilt: shames or blames. compensation: asks to make up for something. exercise_prescription: names or suggests exercises/activities.',
@@ -52,21 +55,19 @@ const JUDGE = [
   'supportive: warm and low-pressure.',
 ].join(' ');
 async function judge(text, language) {
-  const res = await createMessage(
-    { provider: provider.provider, apiKey: provider.apiKey, model: provider.model, baseUrl: provider.baseUrl, apiVersion: provider.apiVersion,
+  let res;
+  try {
+    res = await createMessage(
+      { provider: provider.provider, apiKey: provider.apiKey, model: provider.model, baseUrl: provider.baseUrl, apiVersion: provider.apiVersion,
       reasoningEffort: provider.reasoningEffort, reasoningAllowance: provider.reasoningAllowance, maxTokens: 200, maxRetries: 1, fetch },
     { system: JUDGE, messages: [{ role: 'user', content: JSON.stringify({ requested_language: language === 'is' ? 'Icelandic' : 'English', text }) }] },
   );
-  const raw = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
-  try {
-    const v = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
-    const bad = ['guilt', 'compensation', 'exercise_prescription', 'food_prescription', 'target_or_measurement', 'claims_skipped'].filter((k) => v[k] === true);
-    if (v.language_ok !== true) bad.push('language');
-    if (v.supportive !== true) bad.push('not_supportive');
-    return bad;
   } catch {
-    return ['judge_unparseable'];
+    return ['judge_unavailable'];
   }
+  const raw = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+  // Strict: all eight fields, booleans only, one complete JSON object, not truncated (judge.ts).
+  return judgeProblems(raw, res.stop_reason === 'max_tokens');
 }
 console.log(`Provider ${provider.provider}, model ${env('PUSH_COPY_MODEL') || provider.model}, ${runs} run(s) per kind and language\n`);
 for (const kind of COACH_KINDS) {

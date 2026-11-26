@@ -12,12 +12,13 @@ const api = vi.hoisted(() => ({
   saveSubscription: vi.fn(async () => ({ id: 's', endpoint: 'https://push.example/1' })),
   deleteSubscription: vi.fn(async () => true),
   deviceOwner: vi.fn(async (): Promise<'mine' | 'other' | 'none'> => 'mine'),
+  deleteSubscriptionLegacy: vi.fn(async () => true),
   getPrefs: vi.fn(async () => ({ kinds: ['workout_reminder'], fixedReminderTime: null, timeZone: 'UTC', quietStart: '22:00', quietEnd: '07:00', dailyCap: 2, snoozeUntil: null, revision: 1, coachSupported: true })),
   setPrefs: vi.fn(async () => ({ kinds: ['workout_reminder'], fixedReminderTime: null, timeZone: 'UTC', quietStart: '22:00', quietEnd: '07:00', dailyCap: 2, snoozeUntil: null, revision: 1, coachSupported: true })),
 }));
 vi.mock('@/backend/push', async (orig) => ({ ...((await orig()) as object), pushApi: api }));
 
-import { deviceKey, disablePush, enablePush, listenForSubscriptionChanges, prefsKey, refreshPushSubscription } from '@/pwa/push';
+import { deviceKey, disablePush, enablePush, listenForSubscriptionChanges, pendingDeleteKey, prefsKey, refreshPushSubscription } from '@/pwa/push';
 import { BackendError } from '@/backend/syncRemote';
 
 const KEY = 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4';
@@ -32,6 +33,8 @@ beforeEach(() => {
   for (const f of Object.values(api)) f.mockClear();
   api.currentUserId.mockImplementation(async () => 'user-a');
   api.deviceOwner.mockImplementation(async () => 'mine');
+  api.deleteSubscription.mockImplementation(async () => true);
+  api.deleteSubscriptionLegacy.mockImplementation(async () => true);
   permission = 'granted';
   requestPermission.mockImplementation(async () => permission);
   SUB.unsubscribe.mockClear();
@@ -140,5 +143,57 @@ describe('service worker subscription change', () => {
     expect(localStorage.getItem(deviceKey('user-a'))).toContain('/new');
     stop();
     expect(swListener).toBeNull();
+  });
+});
+
+describe('turning push off survives an old server or no network', () => {
+  const missing = () => new BackendError('Server update required.', 'PGRST202', 404);
+
+  it('server without the migration: the account-bound delete is missing → the legacy delete runs after a session check; opted out for good', async () => {
+    localStorage.setItem(deviceKey('user-a'), JSON.stringify({ endpoint: SUB.endpoint }));
+    api.deleteSubscription.mockRejectedValue(missing());
+    expect(await disablePush('user-a')).toBe(true);
+    expect(SUB.unsubscribe).toHaveBeenCalled();
+    expect(api.deleteSubscriptionLegacy).toHaveBeenCalledWith(SUB.endpoint);
+    expect(localStorage.getItem(deviceKey('user-a'))).toBeNull();
+    expect(localStorage.getItem(pendingDeleteKey('user-a'))).toBeNull();
+    // A refresh afterwards never re-subscribes the device the user turned off.
+    await refreshPushSubscription('user-a');
+    expect(api.saveSubscription).not.toHaveBeenCalled();
+  });
+
+  it('the legacy fallback is not used when the session no longer belongs to the account that turned it off', async () => {
+    localStorage.setItem(deviceKey('user-a'), JSON.stringify({ endpoint: SUB.endpoint }));
+    api.deleteSubscription.mockRejectedValue(missing());
+    let calls = 0;
+    api.currentUserId.mockImplementation(async () => (++calls > 2 ? 'user-b' : 'user-a')); // switched during the unsubscribe
+    expect(await disablePush('user-a')).toBe(true);
+    expect(api.deleteSubscriptionLegacy).not.toHaveBeenCalled();
+    expect(localStorage.getItem(deviceKey('user-a'))).toBeNull(); // still opted out locally
+    expect(localStorage.getItem(pendingDeleteKey('user-a'))).toContain(SUB.endpoint); // cleanup kept for later
+  });
+
+  it('offline: opted out locally at once, the server row is deleted on a later refresh; nothing re-subscribes meanwhile', async () => {
+    localStorage.setItem(deviceKey('user-a'), JSON.stringify({ endpoint: SUB.endpoint }));
+    api.deleteSubscription.mockRejectedValue(new BackendError('offline', 'network'));
+    expect(await disablePush('user-a')).toBe(true);
+    expect(localStorage.getItem(deviceKey('user-a'))).toBeNull();
+    expect(localStorage.getItem(pendingDeleteKey('user-a'))).toContain(SUB.endpoint);
+    await refreshPushSubscription('user-a'); // still offline
+    expect(api.saveSubscription).not.toHaveBeenCalled();
+    expect(localStorage.getItem(pendingDeleteKey('user-a'))).toContain(SUB.endpoint);
+    api.deleteSubscription.mockResolvedValue(true); // back online
+    await refreshPushSubscription('user-a');
+    expect(api.deleteSubscription).toHaveBeenLastCalledWith(SUB.endpoint, 'user-a');
+    expect(localStorage.getItem(pendingDeleteKey('user-a'))).toBeNull();
+    expect(api.saveSubscription).not.toHaveBeenCalled();
+  });
+
+  it('turning push on again clears a pending deletion', async () => {
+    localStorage.setItem(pendingDeleteKey('user-a'), JSON.stringify({ endpoint: SUB.endpoint }));
+    expect(await enablePush('user-a', 'UTC')).toEqual({ ok: true });
+    expect(localStorage.getItem(pendingDeleteKey('user-a'))).toBeNull();
+    await refreshPushSubscription('user-a');
+    expect(api.deleteSubscription).not.toHaveBeenCalled();
   });
 });

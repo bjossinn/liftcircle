@@ -452,14 +452,17 @@ Migration `20261129000001_coach_push.sql` (additive), `_shared/push/copy.ts`, `_
   after a cycle with nothing pending/failing/in conflict) from the same local day and the last 24 h; otherwise skipped.
 * **Rollout**: the new worker claims with `push_claim_due_v2` (tokens). The legacy `push_claim_due` (what a
   pre-phase-1 worker calls between the migration and the function deploy) never hands out coach reminders and makes
-  tokenless claims, so that worker's tokenless results still settle them; claims made before the migration are
-  settled once by a tokenless result and never reclaimed (`tests/rls/push-run.mjs` "rollout").
+  tokenless claims, so that worker's tokenless results still settle them. Coach reminders an old worker claimed and
+  never settled (it may have died after the push service accepted them) are settled as `ambiguous` by
+  `private.push_settle_legacy_claims()` — once in the migration and before every v2 claim — and counted as consumed
+  quota; they are never reclaimed or resent (`tests/rls/push-run.mjs` "rollout").
 * **push-send**: rest/test/coaching/social jobs are claimed first and settled before any model call. Each coach
   reminder: `push_check(id, token, 'prepare')` (preferences, pause, expiry, the CURRENT synced plan — the day must
   still be scheduled in the active program after skipped/moved overrides — sessions, cardio activities, discomfort in
   the latest workout, demo accounts, quiet hours with the current settings, quota reservation) → copy →
   `push_check(…, 'dispatch', copy)` (stores the attempt's copy first, then everything again including quiet hours and
-  the CURRENT daily cap; marks it `dispatching`) → send → `push_finish` with the token. Quiet hours at either check
+  the CURRENT daily cap, where consumed and already-dispatching reservations count as committed; marks it
+  `dispatching`) → send → `push_finish` with the token. Quiet hours at either check
   reschedule the job inside its local day (`deferred`, reservation released) or discard it. A network error/timeout
   after dispatch is `ambiguous`: it consumes the reservation and is never resent; a crashed dispatch is settled the
   same way when its lease ends. The time budget is checked per job.
@@ -469,17 +472,22 @@ Migration `20261129000001_coach_push.sql` (additive), `_shared/push/copy.ts`, `_
 * **Account binding**: `save_push_subscription`, `delete_push_subscription(endpoint, expected_user)`,
   `set_push_prefs` and `update_push_prefs` take an optional `expectedUserId`; if the signed-in account changed while the
   app waited (permission prompt, service worker) the server writes nothing. `push_device_owner(endpoint)` lets an
-  account returning to a shared browser take its endpoint back (A → B → A).
+  account returning to a shared browser take its endpoint back (A → B → A). Turning push off is stored locally as soon
+  as the browser subscription is gone; if the server row can't be deleted (offline, or a server without the
+  account-bound delete, where the one-argument delete is used after re-checking the session) the deletion is kept
+  pending and retried on refresh, and the device is never re-subscribed meanwhile.
 * **Copy** (`copy.ts`): the model writes only `{ "body" }` (≤ 140 code points, plain text, requested language,
   always supportive; no guilt, compensation, prescriptions, targets, numbers or claims about skipping). It needs
   `PUSH_AI_COPY=on` (off by default until the live evaluation `node tests/live/push-copy-live.mjs` has been reviewed),
   the assistant enabled and not paused, consent for the configured provider and the Training (workout/missed) or
   Nutrition (food) scope; otherwise there is no model call. The flag also gates cached generated text and the final
-  dispatch. One attempt per event, stored on the job under the claim before the final check, so a retry reuses it and
-  never calls the model again; a language or consent change switches to the current-language fallback. 3 s total, no
+  dispatch. One attempt per event: `prepare` commits an attempt marker (`copy_attempted_at`) before any model call and
+  the copy is stored with the final check, so a retry reuses the stored copy or — if the attempt was interrupted before
+  it was saved — the fallback, and never calls the model again; a language or consent change switches to the current-language fallback. 3 s total, no
   retries; any failure or rejected output (guilt, prescriptions of exercises or food, targets, numbers, emoji, wrong
   language…) → the approved fallback (`push.coach*.body`). The live evaluation also judges each generated text
-  semantically against the contract. Chat history and the chat daily allowance are not touched; logs
+  semantically against the contract; a verdict counts only with all eight fields as booleans
+  (`_shared/push/judge.ts`). Chat history and the chat daily allowance are not touched; logs
   hold counts and token usage only.
 
 ## 8. Coaching

@@ -1363,6 +1363,8 @@ async function processCoachJob(deps, job, budgetMs, stats) {
   let copy;
   if (job.copy && (job.copy.source === "fallback" || job.copy.source === "ai")) {
     copy = finalizeCopy(kind, job.copy, language, allowed(prep.ai));
+  } else if (prep.copyAttempted) {
+    copy = finalizeCopy(kind, null, language, false);
   } else if (deps.copy && flagOn) {
     const remaining = budgetMs - (deps.now().getTime() - started) - 2e3;
     const r = await writeCopy(deps.copy, kind, language, prep.ai ?? null, remaining);
