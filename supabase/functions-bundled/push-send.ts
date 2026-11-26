@@ -152,9 +152,12 @@ var SHARED_EN = {
   "aiServer.error.emptyMessage": "Write a message first.",
   "aiServer.error.inProgress": "Still answering this message. It will appear in a moment.",
   "aiServer.error.invalidMessageId": "A valid message id is required.",
+  "aiServer.error.invalidReply": "The reply could not be checked. Please try again.",
   "aiServer.error.messageTooLong": "Messages can be at most {{max}} characters.",
   "aiServer.error.notConfigured": "The training assistant is not configured on this server.",
   "aiServer.error.paused": "The training assistant is paused. Resume it in training assistant settings.",
+  "aiServer.error.requestCancelled": "The reply was stopped.",
+  "aiServer.error.sharingChanged": "Your sharing settings changed, so this reply wasn\u2019t shown. Review your settings before trying again.",
   "aiServer.error.unknownAction": "Unknown action.",
   "aiServer.mealPlan.allExcludedNext": "Every day left in next week is one you asked to leave out.",
   "aiServer.mealPlan.allExcludedThis": "Every day left in this week is one you asked to leave out.",
@@ -457,9 +460,12 @@ var SHARED_IS = {
   "aiServer.error.emptyMessage": "Skrifa\xF0u skilabo\xF0 fyrst.",
   "aiServer.error.inProgress": "Enn er veri\xF0 a\xF0 svara \xFEessum skilabo\xF0um. Svari\xF0 birtist eftir augnablik.",
   "aiServer.error.invalidMessageId": "Ekki t\xF3kst a\xF0 senda skilabo\xF0in. Reyndu aftur.",
+  "aiServer.error.invalidReply": "Ekki t\xF3kst a\xF0 yfirfara svari\xF0. Reyndu aftur.",
   "aiServer.error.messageTooLong": "Skilabo\xF0 mega vera a\xF0 h\xE1marki {{max}} stafir.",
   "aiServer.error.notConfigured": "\xC6fingaa\xF0sto\xF0 er ekki tilt\xE6k eins og er.",
   "aiServer.error.paused": "\xC6fingaa\xF0sto\xF0 er \xED bi\xF0. Virkja\xF0u hana aftur \xED stillingum \xC6fingaa\xF0sto\xF0ar.",
+  "aiServer.error.requestCancelled": "H\xE6tt var vi\xF0 svari\xF0.",
+  "aiServer.error.sharingChanged": "Deilingarstillingarnar \xFE\xEDnar breyttust, svo svari\xF0 var ekki birt. Far\xF0u yfir stillingarnar \xE1\xF0ur en \xFE\xFA reynir aftur.",
   "aiServer.error.unknownAction": "\xD3\xFEekkt a\xF0ger\xF0.",
   "aiServer.mealPlan.allExcludedNext": "\xDE\xFA ba\xF0st um a\xF0 sleppa \xF6llum d\xF6gunum \xED n\xE6stu viku.",
   "aiServer.mealPlan.allExcludedThis": "\xDE\xFA ba\xF0st um a\xF0 sleppa \xF6llum d\xF6gunum sem eru eftir \xED \xFEessari viku.",
@@ -760,7 +766,9 @@ function toOpenAiRequest(req, opts) {
     messages: toOpenAiMessages(req.system, req.messages),
     max_completion_tokens: opts.maxTokens,
     ...opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {},
-    ...tools.length ? { tools, ...choice ? { tool_choice: choice } : {} } : {}
+    ...tools.length ? { tools, ...choice ? { tool_choice: choice } : {} } : {},
+    // Structured Outputs for the final text (item 10). Tool schemas stay non-strict (optional/nested parameters).
+    ...opts.responseFormat ? { response_format: { type: "json_schema", json_schema: { name: opts.responseFormat.name, strict: true, schema: opts.responseFormat.schema } } } : {}
   };
 }
 function fromOpenAiResponse(data) {
@@ -769,7 +777,8 @@ function fromOpenAiResponse(data) {
   if (!choice || !choice.message || typeof choice.message !== "object") return null;
   const msg = choice.message;
   const content = [];
-  const text = typeof msg.content === "string" ? msg.content : typeof msg.refusal === "string" ? msg.refusal : "";
+  const refusal = typeof msg.refusal === "string" && msg.refusal.trim() ? msg.refusal : null;
+  const text = typeof msg.content === "string" && msg.content ? msg.content : refusal ?? "";
   if (text.trim()) content.push({ type: "text", text });
   for (const raw of Array.isArray(msg.tool_calls) ? msg.tool_calls : []) {
     const c = raw;
@@ -786,12 +795,13 @@ function fromOpenAiResponse(data) {
   }
   const hasTools = content.some((b) => b.type === "tool_use");
   const fr = choice.finish_reason;
-  const stop_reason = hasTools && (fr === "tool_calls" || fr === "stop" || !fr) ? "tool_use" : fr === "length" ? "max_tokens" : "end_turn";
+  const stop_reason = hasTools && (fr === "tool_calls" || fr === "stop" || !fr) ? "tool_use" : fr === "length" ? "max_tokens" : refusal || fr === "content_filter" ? "refusal" : "end_turn";
   return {
     id: d?.id,
     model: d?.model,
     content,
     stop_reason,
+    ...refusal ? { refusal } : {},
     usage: { input_tokens: d?.usage?.prompt_tokens, output_tokens: d?.usage?.completion_tokens }
   };
 }
@@ -846,6 +856,13 @@ var AiUnavailableError = class extends Error {
   status;
   code = "ai_unavailable";
 };
+var AiCancelledError = class extends Error {
+  code = "request_cancelled";
+  constructor() {
+    super("The request was cancelled.");
+    this.name = "AiCancelledError";
+  }
+};
 var RETRYABLE = (s) => s === 429 || s === 408 || s >= 500;
 var MAX_RETRY_AFTER_MS = 2e4;
 function parseRetryAfter(v, now) {
@@ -864,23 +881,28 @@ async function createMessage(cfg, req) {
   const deadline = cfg.deadline ?? now() + timeoutMs * (maxRetries + 1) + 1e4;
   const openai = cfg.provider === "openai";
   const body = JSON.stringify(
-    openai ? toOpenAiRequest(req, { model: cfg.model, maxTokens: cfg.maxTokens + (cfg.reasoningAllowance ?? 0), reasoningEffort: cfg.reasoningEffort }) : {
+    openai ? toOpenAiRequest(req, { model: cfg.model, maxTokens: cfg.maxTokens + (cfg.reasoningAllowance ?? 0), reasoningEffort: cfg.reasoningEffort, responseFormat: req.responseFormat }) : {
       model: cfg.model,
       max_tokens: cfg.maxTokens,
       system: req.system,
       messages: req.messages,
       ...req.tools?.length ? { tools: req.tools } : {},
-      ...req.tools?.length && req.tool_choice ? { tool_choice: req.tool_choice } : {}
+      ...req.tools?.length && req.tool_choice ? { tool_choice: req.tool_choice } : {},
+      ...req.responseFormat ? { output_config: { format: { type: "json_schema", schema: req.responseFormat.schema } } } : {}
     }
   );
   const headers = openai ? { authorization: `Bearer ${cfg.apiKey}`, "content-type": "application/json" } : { "x-api-key": cfg.apiKey, "anthropic-version": cfg.apiVersion || DEFAULT_API_VERSION, "content-type": "application/json" };
   const url = openai ? `${(cfg.baseUrl ?? "https://api.openai.com").replace(/\/+$/, "")}/v1/chat/completions` : `${(cfg.baseUrl ?? "https://api.anthropic.com").replace(/\/+$/, "")}/v1/messages`;
+  const cancelled = () => cfg.signal?.aborted === true;
   let last = new AiUnavailableError("provider_down", "deadline");
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (cancelled()) throw new AiCancelledError();
     const remaining = deadline - now();
     if (remaining <= 1e3) throw last.kind === "deadline" ? last : new AiUnavailableError("provider_down", last.kind, last.status);
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), Math.min(timeoutMs, remaining));
+    const onCancel = () => ctl.abort();
+    cfg.signal?.addEventListener("abort", onCancel);
     let retryAfterMs = null;
     try {
       const res = await cfg.fetch(url, { method: "POST", headers, body, signal: ctl.signal });
@@ -889,9 +911,10 @@ async function createMessage(cfg, req) {
         try {
           data = await res.json();
         } catch {
+          if (cancelled()) throw new AiCancelledError();
           throw new AiUnavailableError("provider_down", "bad_response", res.status);
         }
-        const d = openai ? fromOpenAiResponse(data) : data;
+        const d = openai ? fromOpenAiResponse(data) : fromAnthropicResponse(data);
         if (!d || !Array.isArray(d.content)) throw new AiUnavailableError("provider_down", "bad_response", res.status);
         return d;
       }
@@ -902,6 +925,8 @@ async function createMessage(cfg, req) {
       last = new AiUnavailableError("provider_down", "http", res.status);
       retryAfterMs = parseRetryAfter(res.headers.get("retry-after"), now());
     } catch (e) {
+      if (e instanceof AiCancelledError) throw e;
+      if (cancelled()) throw new AiCancelledError();
       if (e instanceof AiUnavailableError) {
         if (e !== last) throw e;
       } else if (ctl.signal.aborted) {
@@ -911,14 +936,33 @@ async function createMessage(cfg, req) {
       }
     } finally {
       clearTimeout(timer);
+      cfg.signal?.removeEventListener("abort", onCancel);
     }
     if (attempt === maxRetries) break;
     const backoff = Math.round(800 * 2 ** attempt * (0.75 + random() * 0.5));
     const wait = Math.min(MAX_RETRY_AFTER_MS, Math.max(backoff, retryAfterMs ?? 0));
     if (now() + wait + 2e3 > deadline) break;
-    await sleep(wait);
+    await cancellableSleep(sleep, wait, cfg.signal);
+    if (cancelled()) throw new AiCancelledError();
   }
   throw last;
+}
+function cancellableSleep(sleep, ms, signal) {
+  if (!signal) return sleep(ms);
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    signal.addEventListener("abort", done);
+    sleep(ms).then(done, done);
+  });
+}
+function fromAnthropicResponse(data) {
+  const d = data;
+  if (!d || typeof d !== "object" || !Array.isArray(d.content)) return null;
+  return d.stop_reason === "refusal" ? { ...d, refusal: d.refusal ?? "refusal" } : d;
 }
 
 // supabase/functions/_shared/ai/consent.ts

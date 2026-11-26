@@ -637,7 +637,8 @@ async function answer(a: Answering): Promise<CoachResult> {
   // A malformed envelope with no valid server action: nothing checked to show. Settle as failed (refund, failed usage).
   if (envelopeFailure && !action && !(p && p.validationErrors.length === 0) && !fallbackFailure) {
     await fail();
-    return err(502, 'invalid_reply', tr.t('aiServer.error.invalidReply'), { reason: 'invalid_reply' });
+    // Error text follows the app language (like every other error), else the reply language.
+    return err(502, 'invalid_reply', sharedT(setting ?? lang).t('aiServer.error.invalidReply'), { reason: 'invalid_reply' });
   }
 
   // In-app links: ≤ 2 screen links and ≤ 3 recipe links whose path is in the app guide (param routes only with ids we
@@ -668,7 +669,7 @@ async function answer(a: Answering): Promise<CoachResult> {
   if (!sharingStillAllows(settings, fresh, prov.provider)) {
     deps.log?.('ai_sharing_changed', {});
     await fail();
-    return err(409, 'sharing_changed', tr.t('aiServer.error.sharingChanged'), { reason: 'sharing_changed' });
+    return err(409, 'sharing_changed', sharedT(setting ?? lang).t('aiServer.error.sharingChanged'), { reason: 'sharing_changed' });
   }
   phase('saving');
   const cost = estimateCostUsd(usage, deps.env('AI_PRICE_INPUT_PER_MTOK'), deps.env('AI_PRICE_OUTPUT_PER_MTOK'));

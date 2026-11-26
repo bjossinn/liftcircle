@@ -127,7 +127,7 @@ export async function recoverReply(
   if (opts.statusSupported && api.requestStatus) return pollUntilSettled(api, input.id, opts);
   try {
     const r = await sendWhileInProgress(() => api.send(input), { signal: opts.signal, ...(opts.sleep ? { sleep: opts.sleep } : {}) });
-    return { kind: 'finished', result: { duplicate: true, proposal: null, ...r } as SendResult };
+    return { kind: 'finished', result: { duplicate: false, proposal: null, ...r } as SendResult };
   } catch (e) {
     if (e instanceof SendCancelled) throw e;
     return { kind: 'unconfirmed' };
