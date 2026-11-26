@@ -389,15 +389,15 @@ describe('6. Icelandic summaries and dates', () => {
   });
   it('summaries in Icelandic', () => {
     const week = { kind: 'week_adjustment', sessions: [{ name: 'Full body A', date: '2026-10-31', plannedDate: '2026-10-30' }, { name: 'Full body B', date: '2026-11-01', plannedDate: '2026-11-01' }], skipped: [{ name: 'Full body C' }], warnings: [] } as unknown as WeekAdjustmentAction;
-    expect(summarizeWeekPlan(week, '2026-10-29', 1, 'is')).toBe('Svona lítur vikan út: **Full body A** færist á laugardaginn, **Full body B** verður áfram á sunnudaginn, **Full body C** fellur niður þessa viku. Ýttu á **Apply to this week** til að nota það.');
+    expect(summarizeWeekPlan(week, '2026-10-29', 1, 'is')).toBe('Svona verður vikan: **Full body A** færist á laugardaginn, **Full body B** verður áfram á sunnudaginn, **Full body C** fellur niður þessa viku. Ýttu á **Nota fyrir þessa viku** til að nota breytingarnar.');
     const meals = { kind: 'meal_plan', days: [{ date: '2026-11-02' }, { date: '2026-11-03' }, { date: '2026-11-04' }], warnings: [] } as unknown as MealPlanAction;
-    expect(summarizeMealPlan(meals, '2026-10-29', 1, 'is')).toBe('Hér er matarplan fyrir 3 daga (frá mán. 2. nóv. til mið. 4. nóv.) — ýttu á **Add to my meal plan** til að setja það inn í appið.');
-    expect(summarizeMealPlan({ ...meals, days: [{ date: '2026-10-30' }] } as unknown as MealPlanAction, '2026-10-29', 1, 'is')).toBe('Hér er matarplan fyrir 1 dag (á morgun) — ýttu á **Add to my meal plan** til að setja það inn í appið.');
-    expect(summarizeMealPlan({ ...meals, days: [{ date: '2026-10-30' }, { date: '2026-10-31' }] } as unknown as MealPlanAction, '2026-10-29', 1, 'is')).toMatch(/\(frá fös\. 30\. okt\. til lau\. 31\. okt\.\)/);
+    expect(summarizeMealPlan(meals, '2026-10-29', 1, 'is')).toBe('Hér er matseðill fyrir 3 daga (mán. 2. nóv. til mið. 4. nóv.). Ýttu á **Bæta við matseðilinn minn** til að vista hann í appinu.');
+    expect(summarizeMealPlan({ ...meals, days: [{ date: '2026-10-30' }] } as unknown as MealPlanAction, '2026-10-29', 1, 'is')).toBe('Hér er matseðill fyrir 1 dag (á morgun). Ýttu á **Bæta við matseðilinn minn** til að vista hann í appinu.');
+    expect(summarizeMealPlan({ ...meals, days: [{ date: '2026-10-30' }, { date: '2026-10-31' }] } as unknown as MealPlanAction, '2026-10-29', 1, 'is')).toMatch(/\(fös\. 30\. okt\. til lau\. 31\. okt\.\)/);
     const recipes = { kind: 'recipe_suggestions', id: 'x', recipes: [{}, {}] } as unknown as RecipeSuggestionsAction;
-    expect(summarizeRecipes(recipes, 'is')).toBe('Hér eru 2 uppskriftir sem passa — ýttu á eina til að opna hana.');
-    expect(summarizeProposal({ name: 'Styrkur', sessionsPerWeek: 3, target: 'apply', schedule: [], invalid: false }, 'is')).toBe('Ég hef sett saman **Styrkur** (3 æfingar á viku) — ýttu á **Add to my program — review** til að skoða það og bæta því við.');
-    expect(thanksLine(['training', 'nutrition'], 'is')).toBe('Takk — nú sé ég æfingarnar þínar og næringuna þína.');
+    expect(summarizeRecipes(recipes, 'is')).toBe('Hér eru 2 uppskriftir sem passa. Ýttu á uppskrift til að opna hana.');
+    expect(summarizeProposal({ name: 'Styrkur', sessionsPerWeek: 3, target: 'apply', schedule: [], invalid: false }, 'is')).toBe('Ég hef sett saman þessa tillögu: **Styrkur** (3 æfingar á viku). Ýttu á **Skoða áður en bætt er við æfingaáætlun** til að fara yfir hana.');
+    expect(thanksLine(['training', 'nutrition'], 'is')).toBe('Takk, nú hef ég aðgang að þessum gögnum: æfingar og næring.');
     expect(thanksLine(['training'], 'en')).toBe('Thanks — I can see your training now.');
   });
   it('handler: an Icelandic meal-plan request whose reply is replaced gets the Icelandic summary', async () => {
@@ -405,7 +405,7 @@ describe('6. Icelandic summaries and dates', () => {
     const p = provider([reply('Hér er planið: lax á mánudag …')]);
     const res = await handleAiCoach(deps(f.db, p.fetch), U, send('Búðu til matarplan fyrir næstu viku, án fisks', 14));
     const content = (res.body.reply as StoredMessage).content;
-    expect(content).toMatch(/^Hér er matarplan fyrir 7 daga \(frá mán\. 2\. nóv\. til sun\. 8\. nóv\.\)/);
+    expect(content).toMatch(/^Hér er matseðill fyrir 7 daga \(mán\. 2\. nóv\. til sun\. 8\. nóv\.\)/);
     // English request → English summary (unchanged)
     const en = await handleAiCoach(deps(f.db, provider([reply('Here: salmon Monday …')]).fetch), U, send('Make a meal plan for next week, no fish', 15));
     expect((en.body.reply as StoredMessage).content).toMatch(/^Here's your meal plan for Mon 2 Nov to Sun 8 Nov/);

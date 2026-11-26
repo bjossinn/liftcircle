@@ -22,6 +22,7 @@
  *  6. Everything selected is written in ONE local transaction together with its sync queue entries: if any
  *     write fails, nothing changes.
  */
+import { effectiveLanguage, getLanguage, t, type MessageKey, type Params } from '@/i18n';
 import { SYNCED_ENTITIES, type LiftDb, type SyncedEntity } from '@/db/db';
 import { saveRecordsAtomic, tableFor, type BulkWrite } from '@/db/repo';
 import type { AccountState, ActivityLog, Exercise, Measurement, Program, SyncFields, WorkoutSession } from '@/domain/types';
@@ -70,12 +71,27 @@ export function parseBackup(text: string): ValidatedBackup {
 /* ------------------------------------------------------------ import options */
 export type ExistingRule = 'keep' | 'replace';
 export type SingletonPart = 'settings' | 'profile' | 'nutrition' | 'favorites';
-export const SINGLETON_PARTS: { key: SingletonPart; label: string }[] = [
-  { key: 'settings', label: 'App settings (units, rest timer, sharing, notifications)' },
-  { key: 'profile', label: 'Private profile (name, age, height, goals, limitations, diet)' },
-  { key: 'nutrition', label: 'Nutrition targets' },
-  { key: 'favorites', label: 'Favourite exercises and recipes' },
+const singletonPart = (key: SingletonPart, labelKey: MessageKey) => ({
+  key,
+  /** Read on access, so it follows the current language. */
+  get label() {
+    return t(labelKey);
+  },
+});
+export const SINGLETON_PARTS: { readonly key: SingletonPart; readonly label: string }[] = [
+  singletonPart('settings', 'settings.backupSettings'),
+  singletonPart('profile', 'settings.backupProfile'),
+  singletonPart('nutrition', 'settings.backupNutrition'),
+  singletonPart('favorites', 'settings.backupFavorites'),
 ];
+
+/**
+ * A count sentence from the dictionary. The approved catalog English is written for counts other than one; English
+ * keeps its existing singular wording for exactly one (Icelandic copy is count-neutral, so no count === 1 there).
+ */
+export function countText(key: MessageKey, count: number, englishOne: string, params?: Params): string {
+  return count === 1 && getLanguage() === 'en' ? englishOne : t(key, { ...params, count });
+}
 
 export interface ImportOptions {
   /** Record types to import. */
@@ -202,7 +218,14 @@ async function buildPlan(db: LiftDb, backup: ValidatedBackup, opts: ImportOption
       const local = (await tableFor(db, entity).get(rec.id)) as Rec | undefined;
 
       if (entity === 'account_state') {
-        const b = rec as unknown as AccountState;
+        // Language (roadmap item 8): an old backup has none and keeps this device's language; an unknown future value
+        // is normalized to English instead of rejecting the backup.
+        const raw = rec as unknown as AccountState;
+        const localLang = (local as unknown as AccountState | undefined)?.settings?.language;
+        const bLang = raw.settings?.language as unknown;
+        const b: AccountState = raw.settings
+          ? { ...raw, settings: { ...raw.settings, language: bLang === undefined ? effectiveLanguage(localLang) : effectiveLanguage(bLang) } }
+          : raw;
         if (!local) {
           singleton = { onDevice: false, differs: { settings: true, profile: true, nutrition: true, favorites: true } };
           row.newCount++;
@@ -274,8 +297,13 @@ async function buildPlan(db: LiftDb, backup: ValidatedBackup, opts: ImportOption
       } else counts.skipped++;
     }
 
-    if (row.adjusted) row.notes.push(entity === 'sessions' ? `${row.adjusted} in-progress workout${row.adjusted === 1 ? '' : 's'} skipped because a workout is already in progress here.` : `${row.adjusted} program${row.adjusted === 1 ? '' : 's'} added as inactive because another program is active.`);
-    if (row.deletedHere) row.notes.push(`${row.deletedHere} deleted on this device, not restored.`);
+    if (row.adjusted)
+      row.notes.push(
+        entity === 'sessions'
+          ? countText('settings.backupActiveSkipped', row.adjusted, '1 in-progress workout skipped because a workout is already in progress here.')
+          : countText('settings.backupProgramsInactive', row.adjusted, '1 program added as inactive because another program is active.'),
+      );
+    if (row.deletedHere) row.notes.push(t('settings.backupDeletedSkipped', { count: row.deletedHere }));
     rows.push(row);
     if (take) {
       result.byEntity[entity] = counts;
@@ -303,6 +331,7 @@ async function referenceWarnings(db: LiftDb, backup: ValidatedBackup): Promise<s
   let unknownRecipes = 0;
   for (const mp of (backup.records.meal_plans ?? []) as unknown as { days: { items: { recipeId: string }[] }[] }[]) for (const d of mp.days) for (const it of d.items) if (!RECIPES_BY_ID.has(it.recipeId)) unknownRecipes++;
   const out: string[] = [];
+  // i18n: no approved Icelandic copy for these three reference warnings (see missing/g1b_settings.md).
   if (unknownEx.size) out.push(`${unknownEx.size} exercise${unknownEx.size === 1 ? ' isn’t' : 's aren’t'} in this app or the backup (probably deleted custom exercises). Those entries are imported and shown by their stored id.`);
   if (workoutsMissingProgram) out.push(`${workoutsMissingProgram} workout${workoutsMissingProgram === 1 ? ' belongs' : 's belong'} to a program that isn’t in the backup or on this device. The workouts are imported on their own.`);
   if (unknownRecipes) out.push(`${unknownRecipes} meal plan item${unknownRecipes === 1 ? '' : 's'} refer${unknownRecipes === 1 ? 's' : ''} to recipes this app doesn’t have.`);
@@ -338,7 +367,7 @@ export async function applyImport(db: LiftDb, backup: ValidatedBackup | Backup, 
     result = plan.result;
     return plan.writes;
   }, db);
-  if (!result) throw new BackupValidationError('The import didn’t run. Nothing was changed.');
+  if (!result) throw new BackupValidationError(t('settings.backupImportFailed'), [], 'import_failed');
   return result;
 }
 

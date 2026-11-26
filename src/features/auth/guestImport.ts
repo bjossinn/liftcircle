@@ -6,22 +6,29 @@
  */
 import { accountDbExists, ACCOUNT_ROW_ID, LiftDb, SYNCED_ENTITIES, type SyncedEntity } from '@/db/db';
 import { saveRecord, tableFor } from '@/db/repo';
+import { t, type MessageKey } from '@/i18n';
 
-export const ENTITY_LABELS: Record<SyncedEntity, string> = {
-  account_state: 'Settings & targets',
-  programs: 'Programs',
-  templates: 'Saved templates',
-  sessions: 'Workouts',
-  activities: 'Activities',
-  activity_templates: 'Activity templates',
-  measurements: 'Body measurements',
-  goals: 'Goals',
-  custom_exercises: 'Custom exercises',
-  custom_foods: 'Custom foods',
-  food_logs: 'Food log entries',
-  saved_meals: 'Saved meals',
-  meal_plans: 'Meal plans',
+const ENTITY_LABEL_KEYS: Record<SyncedEntity, MessageKey> = {
+  account_state: 'settings.entityAccount',
+  programs: 'settings.entityPrograms',
+  templates: 'settings.entityTemplates',
+  sessions: 'settings.entitySessions',
+  activities: 'settings.entityActivities',
+  activity_templates: 'settings.entityActivityTemplates',
+  measurements: 'settings.entityMeasurements',
+  goals: 'settings.entityGoals',
+  custom_exercises: 'settings.entityCustomExercises',
+  custom_foods: 'settings.entityCustomFoods',
+  food_logs: 'settings.entityFoodLogs',
+  saved_meals: 'settings.entitySavedMeals',
+  meal_plans: 'settings.entityMealPlans',
 };
+
+/** Display label of a record type in the current language (read on access, so it follows a language change). */
+export const ENTITY_LABELS = Object.defineProperties(
+  {},
+  Object.fromEntries((Object.keys(ENTITY_LABEL_KEYS) as SyncedEntity[]).map((e) => [e, { enumerable: true, get: () => t(ENTITY_LABEL_KEYS[e]) }])),
+) as Readonly<Record<SyncedEntity, string>>;
 
 export interface ImportRow {
   entity: SyncedEntity;

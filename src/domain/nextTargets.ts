@@ -4,10 +4,13 @@
  *
  * Exercises without a prescription (added freestyle), or without counted working sets and no discomfort flag in this
  * workout, get no line, the same as the in-workout progression card.
+ *
+ * Text is rendered in the display language from the engine's own result (never re-computed, never parsed).
  */
 import type { Exercise, Experience, ID, Settings, WorkoutSession } from './types';
-import { ACTION_LABELS, comparableHistory, effortCaveat, nextTargetText, type Suggestion } from './progression';
+import { actionLabel, comparableHistory, effortCaveat, nextTargetText, suggestionReasonText, type Suggestion } from './progression';
 import { suggestionFor } from './program/session';
+import { getLanguage, type Language } from '@/i18n';
 
 export interface NextTarget {
   exerciseId: ID;
@@ -17,6 +20,8 @@ export interface NextTarget {
   label: string;
   /** The engine's condition when effort wasn't logged ("…increase only if…"), or null. */
   caveat: string | null;
+  /** The engine's reason in the display language (complete sentence; increases end with one effort sentence). */
+  reason: string;
   suggestion: Suggestion;
 }
 
@@ -27,6 +32,8 @@ export function nextTargetsFor(
   byId: Map<ID, Exercise>,
   settings: Settings,
   experience?: Experience,
+  /** Display language for text/label/caveat/reason (default: the app's current language). Numbers never change. */
+  lang: Language = getLanguage(),
 ): Map<ID, NextTarget> {
   const out = new Map<ID, NextTarget>();
   // History through this workout: re-opening an older summary shows the target as it stood after that workout.
@@ -40,8 +47,16 @@ export function nextTargetsFor(
     // the "next" would be about an older workout).
     if (comparableHistory(through, se.exerciseId)[0]?.id !== se.id) continue;
     const { suggestion } = suggestionFor({ exerciseId: se.exerciseId, ...se.prescription }, ex, through, settings, experience);
-    const text = nextTargetText(suggestion, ex, unit);
-    if (text) out.set(se.exerciseId, { exerciseId: se.exerciseId, text, label: ACTION_LABELS[suggestion.action], caveat: effortCaveat(suggestion, se.prescription.targetRir), suggestion });
+    const text = nextTargetText(suggestion, ex, unit, lang);
+    if (text)
+      out.set(se.exerciseId, {
+        exerciseId: se.exerciseId,
+        text,
+        label: actionLabel(suggestion.action, lang),
+        caveat: effortCaveat(suggestion, se.prescription.targetRir, lang),
+        reason: suggestionReasonText(suggestion, lang),
+        suggestion,
+      });
   }
   return out;
 }

@@ -29,8 +29,8 @@ import { useApp } from '@/state/app';
 import { trackAiAction } from '@/analytics/analytics';
 import { uuid } from '@/lib/id';
 import {
-  AI_DRAFT_KEY, AI_HISTORY_CACHE_KEY, AI_MESSAGE_MAX, AI_PENDING_KEY, CHECKIN_REVIEW_TEXT, classifyAiError, isHardUnavailable, mergeConversation,
-  consentOutdated, providerLabel, settingsActive, SUGGESTED_QUESTIONS, upsertMessages, usageLine, WELCOME_CHIPS, type AiMode, type ClassifiedAiError, type PendingSend,
+  AI_DRAFT_KEY, AI_HISTORY_CACHE_KEY, AI_MESSAGE_MAX, AI_PENDING_KEY, checkinReviewText, classifyAiError, isHardUnavailable, mergeConversation, pendingErrorText,
+  consentOutdated, providerLabel, settingsActive, suggestedQuestions, upsertMessages, usageLine, welcomeChips, type AiMode, type ClassifiedAiError, type PendingSend,
 } from './ai/model';
 import { useActiveCoach, useAiBoot } from './ai/useAi';
 import { buildWelcome, localHour, recentRecord } from './ai/welcome';
@@ -39,7 +39,10 @@ import { MealPlanCard } from './ai/MealPlanCard';
 import { RecipeCards } from './ai/RecipeCards';
 import { SessionAdjustmentCard } from './ai/SessionAdjustmentCard';
 import { AiConsent } from './ai/AiConsent';
-import { AI_ATTACHED_REQUEST_KEY, loadAttachedRequest, prepareCoachRequest, takeCoachRequest, type CoachRequest } from './ai/workoutContext';
+import {
+  AI_ATTACHED_REQUEST_KEY, AI_DRAFT_GENERATED_KEY, loadAttachedRequest, prepareCoachRequest, rangesAfterTrim, stripGenerated, takeCoachRequest, trackDraftEdit,
+  type CoachRequest, type DraftProvenance, type TextRanges,
+} from './ai/workoutContext';
 import { syncBeforeAi } from './ai/syncBarrier';
 import { isCancelled, SendCancelled, sendWhileInProgress } from './ai/inProgress';
 import { Markdown } from './ai/markdown';
@@ -54,9 +57,10 @@ import type { LiftDb } from '@/db/db';
 import type { ActivityLog, CoachStyle, Exercise, ID, ISODate, Program, WeightUnit, WorkoutSession } from '@/domain/types';
 import { AiBadge, AiGuest, AiUnavailable, availabilityCopy, BackButton, ShareButton, ShareWithCoachDialog } from './ai/parts';
 import { EmptyChatArt } from '@/components/illustrations';
+import { useT, type MessageKey } from '@/i18n';
 
-/** Why a workout question can't be sent or retried while Training sharing is off. */
-const TRAINING_OFF_PENDING = 'Training sharing is off, so this workout question can’t be sent. Switch on Training in training assistant settings, or remove it.';
+/** Why a workout question can't be sent or retried while Training sharing is off (stored as this key). */
+const TRAINING_OFF_PENDING = 'ai.chat.trainingOffPending';
 
 /** This build's switched-on areas, so links to hidden screens (find a coach, the feed) don't render as buttons. */
 const appFeatures = (): GuideFeatures => ({ coachMarketplace: isFeatureEnabled('coachMarketplace'), socialFeed: isFeatureEnabled('socialFeed') });
@@ -84,11 +88,12 @@ export function EmbeddedAiChat({ switcher }: { switcher?: ReactNode }) {
 export default function AiChatPage() {
   const nav = useNavigate();
   const { boot, reload, setSettings, setUsage } = useAiBoot();
+  const { t } = useT();
 
   if (boot.phase === 'loading')
     return (
       <ChatShell>
-        <Spinner label="Loading training assistant" />
+        <Spinner label={t('ai.chat.loading')} />
       </ChatShell>
     );
   if (boot.phase === 'guest')
@@ -120,21 +125,21 @@ export default function AiChatPage() {
           <div className="size-12 rounded-2xl bg-surface-2 flex items-center justify-center text-accent">
             <Sparkles className="size-6" aria-hidden />
           </div>
-          <h2 className="text-base font-semibold">{reconsent ? 'Please review the training assistant again' : s && s.consentAt ? 'The training assistant is turned off' : 'Set up your training assistant'}</h2>
+          <h2 className="text-base font-semibold">{reconsent ? t('ai.chat.reviewAgain') : s && s.consentAt ? t('ai.unavailable.disabled.title') : t('ai.chat.setUp')}</h2>
           <p className="text-sm text-muted max-w-xs">
             {reconsent
-              ? `The training assistant now uses ${providerLabel(boot.availability)}. Check what would be sent and agree again before chatting.`
+              ? t('ai.chat.providerChanged', { provider: providerLabel(boot.availability) })
               : s && s.consentAt
-              ? 'Turn it back on to keep chatting. Your earlier conversation is still here until you clear it.'
-              : 'A short setup: check your details, choose what the training assistant may use, and agree to how it works.'}
+              ? t('ai.chat.turnBackOn')
+              : t('ai.chat.setupDescription')}
           </p>
           {s && s.consentAt && !reconsent ? (
             <Button variant="primary" onClick={() => nav('/coaching/ai/settings')}>
-              Open training assistant settings
+              {t('ai.chat.openSettings')}
             </Button>
           ) : (
             <Button variant="primary" onClick={() => nav('/coaching/ai/setup')}>
-              Set up training assistant
+              {t('ai.chat.setupButton')}
             </Button>
           )}
         </div>
@@ -146,13 +151,14 @@ export default function AiChatPage() {
 
 function ChatShell({ children, menu }: { children: ReactNode; menu?: ReactNode }) {
   const { embedded, switcher } = useContext(ChatChromeContext);
+  const { t } = useT();
   return (
     <div className={cx('flex flex-col', embedded ? 'min-h-[calc(100dvh-57px-env(safe-area-inset-bottom))]' : 'min-h-dvh')}>
       <header className="sticky top-0 z-30 bg-bg/95 backdrop-blur border-b border-line pt-safe">
         <div className={cx('mx-auto max-w-2xl flex items-center gap-1 min-h-14', embedded ? 'pl-4 pr-2' : 'px-2')}>
           {!embedded && <BackButton />}
           <div className={cx('flex-1 min-w-0 flex items-center gap-2', !embedded && 'px-1')}>
-            <h1 className="text-lg font-semibold truncate">{embedded ? 'Coach' : 'Training assistant'}</h1>
+            <h1 className="text-lg font-semibold truncate">{embedded ? t('nav.coach') : t('ai.title')}</h1>
             <AiBadge />
           </div>
           {menu}
@@ -177,6 +183,7 @@ function Chat({
   const nav = useNavigate();
   const { embedded } = useContext(ChatChromeContext);
   const toast = useToast();
+  const { t } = useT();
   const { db, online, account, auth } = useApp();
   const userId = auth.userId;
   // Sends in flight belong to this account and this screen: an account switch or leaving the chat cancels them (they
@@ -194,9 +201,15 @@ function Chat({
   const today = todayISO(account.settings.timeZone);
   const weekStart = account.settings.weekStart;
   const [history, setHistory] = useState<AiChatMessage[] | undefined>(undefined);
-  const [historyNote, setHistoryNote] = useState<string | null>(null);
+  const [historyNote, setHistoryNote] = useState<MessageKey | null>(null);
   const [pending, setPending] = useState<PendingSend | null>(null);
   const [draft, setDraft] = useState('');
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  // Which parts of the draft the app generated for a contextual request (removed if Training sharing is turned off).
+  const [provenance, setProvenance] = useState<DraftProvenance | null>(null);
+  const provenanceRef = useRef(provenance);
+  provenanceRef.current = provenance;
   const [loaded, setLoaded] = useState(false);
   const [sendError, setSendError] = useState<ClassifiedAiError | null>(null);
   const [proposals, setProposals] = useState<Record<string, ProgramProposal>>({});
@@ -212,26 +225,38 @@ function Chat({
   const offline = !online || (!availability.available && availability.reason === 'offline');
   const limitReached = !!usage && usage.limitRequests > 0 && usage.requests >= usage.limitRequests;
   const blocked = offline || providerDown || paused || limitReached;
+  const trainingOn = settings?.scopes.training === true;
+  const trainingRef = useRef(trainingOn);
+  trainingRef.current = trainingOn;
+  /** A message about a workout: it carries a workout request, or text the app generated from one. */
+  const isWorkoutQuestion = (p: PendingSend) => !!p.request || (p.generated?.length ?? 0) > 0;
 
   /* ---------------------------------------------------------- loading */
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [d, p, cache] = await Promise.all([
+      const [d, p, cache, prov] = await Promise.all([
         kvGet<string>(AI_DRAFT_KEY, db).catch(() => undefined),
         kvGet<PendingSend | null>(AI_PENDING_KEY, db).catch(() => undefined),
         kvGet<AiChatMessage[]>(AI_HISTORY_CACHE_KEY, db).catch(() => undefined),
+        kvGet<DraftProvenance | null>(AI_DRAFT_GENERATED_KEY, db).catch(() => undefined),
       ]);
       if (cancelled) return;
-      setDraft(typeof d === 'string' ? d : '');
+      const draftText = typeof d === 'string' ? d : '';
+      setDraft(draftText);
+      draftRef.current = draftText;
+      // Provenance is only valid for the exact draft it was recorded with (and this account).
+      const validProv = prov && prov.draft === draftText && Array.isArray(prov.generated) && (!prov.userId || prov.userId === userId) ? prov : null;
+      setProvenance(validProv);
+      provenanceRef.current = validProv;
       // A message left "sending" by a closed tab was never confirmed: offer Retry with the same id.
       // (A message written under another account is never offered here.)
       const mine = p && (!p.userId || p.userId === userId) ? p : null;
-      setPending(mine ? (mine.status === 'sending' ? { ...mine, status: 'failed', error: 'Not confirmed yet. Tap Retry to send it again.' } : mine) : null);
+      setPending(mine ? (mine.status === 'sending' ? { ...mine, status: 'failed', error: 'ai.chat.notConfirmed' } : mine) : null);
       setLoaded(true);
       if (!online) {
         setHistory(cache ?? []);
-        if (cache?.length) setHistoryNote('Showing your conversation as it was when you were last online.');
+        if (cache?.length) setHistoryNote('ai.chat.cachedHistory');
         return;
       }
       try {
@@ -247,7 +272,7 @@ function Chat({
       } catch (e) {
         if (cancelled) return;
         setHistory(cache ?? []);
-        setHistoryNote(cache?.length ? 'Couldn’t refresh your conversation; showing the last copy on this device.' : classifyAiError(e).message);
+        setHistoryNote(cache?.length ? 'ai.chat.refreshFailed' : classifyAiError(e).key);
       }
     })();
     return () => {
@@ -262,12 +287,29 @@ function Chat({
   }, [conversation.length, pending?.status]);
 
   /* ------------------------------------------------------------ draft */
-  const updateDraft = useCallback(
-    (text: string) => {
+  /** Replace the draft; `generated`: which parts of it the app generated (none: it's all the user's). */
+  const setDraftWith = useCallback(
+    (text: string, generated: TextRanges = [], sources: string[] = [], held = false) => {
       setDraft(text);
+      draftRef.current = text;
       void kvSet(AI_DRAFT_KEY, text, db).catch(() => undefined);
+      const prov: DraftProvenance | null = generated.length ? { draft: text, generated, sources, userId, ...(held ? { held: true } : {}) } : null;
+      if (prov || provenanceRef.current) void kvSet(AI_DRAFT_GENERATED_KEY, prov, db).catch(() => undefined);
+      setProvenance(prov);
+      provenanceRef.current = prov;
     },
-    [db],
+    [db, userId],
+  );
+  /** Programmatic replacement of the whole draft with text the user wrote (or chose). */
+  const updateDraft = useCallback((text: string) => setDraftWith(text), [setDraftWith]);
+  /** The user edited the draft: what they typed is theirs; generated parts they kept stay marked as generated. */
+  const editDraft = useCallback(
+    (text: string) => {
+      const prov = provenanceRef.current;
+      if (prov && prov.draft === draftRef.current) setDraftWith(text, trackDraftEdit(prov.draft, text, prov.generated, prov.sources), prov.sources, prov.held);
+      else setDraftWith(text);
+    },
+    [setDraftWith],
   );
 
   const persistPending = useCallback(
@@ -286,7 +328,7 @@ function Chat({
     const stillMine = () => !signal.aborted && owner.current === mine;
     setSendError(null);
     // A workout question (it names exercises and targets) is never sent while Training isn't shared.
-    if (p.request && !trainingRef.current) {
+    if (isWorkoutQuestion(p) && !trainingRef.current) {
       persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING });
       return;
     }
@@ -298,7 +340,7 @@ function Chat({
       // A workout attachment is rebuilt from the device right before each send (so a retry or a send after a reload
       // carries the latest sets), and only while Training is shared.
       const workout = p.request ? (await prepareCoachRequest(db, p.request, exerciseByIdRef.current))?.workout : undefined;
-      if (p.request && !trainingRef.current) {
+      if (isWorkoutQuestion(p) && !trainingRef.current) {
         persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING }); // switched off while syncing: never sent
         return;
       }
@@ -329,26 +371,33 @@ function Chat({
       if (isCancelled(e) || !stillMine()) return; // the pending copy stays in this account's storage: Retry later
       const c = classifyAiError(e);
       setSendError(c);
-      persistPending({ ...p, status: 'failed', error: c.message });
+      persistPending({ ...p, status: 'failed', error: c.key });
       if (c.kind === 'rate_limited' && c.usage) setUsage(c.usage);
       if (c.kind === 'paused' || c.kind === 'disabled' || c.kind === 'unavailable') void reload();
     }
   }
 
   const canCompose = loaded && !pending;
-  const canSend = canCompose && !blocked && draft.trim().length > 0;
+  // A draft with generated workout detail in it can't be sent while Training isn't shared (it stays on the device).
+  const draftHasGenerated = !!provenance && provenance.draft === draft && provenance.generated.length > 0;
+  const draftBlocked = draftHasGenerated && !trainingOn;
+  const canSend = canCompose && !blocked && !draftBlocked && draft.trim().length > 0;
 
   function submit(e?: FormEvent) {
     e?.preventDefault();
     if (!canSend) return;
-    // The attachment moves onto the pending message (stored on the device) until the send succeeds.
-    start(draft.trim(), 'chat', true, attachedActive?.req);
+    // The attachment moves onto the pending message (stored on the device) until the send succeeds, and so does the
+    // record of which parts of the text were generated.
+    const generated = draftHasGenerated ? rangesAfterTrim(draft, provenance!.generated) : [];
+    start(draft.trim(), 'chat', true, attachedActive?.req, generated);
     setAttachedReq(null);
   }
   /** `fromDraft`: the text came from the composer, so clear it (quick replies leave a typed draft alone). */
-  function start(text: string, mode: AiMode, fromDraft = mode === 'chat', request?: CoachRequest) {
+  function start(text: string, mode: AiMode, fromDraft = mode === 'chat', request?: CoachRequest, generated: TextRanges = []) {
     if (blocked) return;
-    const p: PendingSend = { id: uuid(), text, mode, status: 'sending', createdAt: new Date().toISOString(), userId, ...(request ? { request } : {}) };
+    const p: PendingSend = {
+      id: uuid(), text, mode, status: 'sending', createdAt: new Date().toISOString(), userId, ...(request ? { request } : {}), ...(generated.length ? { generated } : {}),
+    };
     if (fromDraft) updateDraft('');
     void run(p);
   }
@@ -360,16 +409,11 @@ function Chat({
    * why. Sent right away when possible; otherwise its text goes into the composer with the workout attached, and the
    * attachment is kept on this device until it's sent or removed.
    */
-  const trainingOn = settings?.scopes.training === true;
-  const trainingRef = useRef(trainingOn);
-  trainingRef.current = trainingOn;
   const { byId: exerciseById } = useExercises();
   const exerciseByIdRef = useRef(exerciseById);
   exerciseByIdRef.current = exerciseById;
   const [attached, setAttached] = useState<{ req: CoachRequest; name: string; finished: boolean } | null>(null);
   const [trainingOffNotice, setTrainingOffNotice] = useState(false);
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
   /** Set or clear the deferred attachment (state + device storage). */
   const setAttachedReq = useCallback(
     (req: CoachRequest | null) => {
@@ -400,28 +444,41 @@ function Chat({
       }
       const prepared = await prepareCoachRequest(db, req, exerciseById);
       if (!prepared || owner.current.userId !== userId) return;
-      if (!pending && !blocked) start(prepared.text, 'chat', false, req);
+      if (!pending && !blocked) start(prepared.text, 'chat', false, req, [[0, prepared.text.length]]);
       else {
-        updateDraft(prepared.text);
-        // The generated text is remembered with the attachment, so it can be removed again if sharing is turned off.
+        // The generated text goes after anything the user had already written, and is remembered as generated (with
+        // the attachment), so it can be removed again if sharing is turned off.
+        const before = draftRef.current.trim() ? `${draftRef.current}\n` : '';
+        const prov = provenanceRef.current && provenanceRef.current.draft === draftRef.current ? provenanceRef.current : null;
+        setDraftWith(`${before}${prepared.text}`, [...(before ? prov?.generated ?? [] : []), [before.length, before.length + prepared.text.length]], [...(prov?.sources ?? []), prepared.text]);
         setAttachedReq({ ...req, text: prepared.text });
       }
     })();
   }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps -- once, when ready
 
-  // Training sharing off (on open, or switched off while here): a waiting workout question goes completely — its
-  // attachment and the text that was written for it (that text names exercises and targets).
+  // Training sharing off (on open, or switched off while here): a waiting workout question goes — its attachment and
+  // the text the app generated for it (that text names exercises and targets). What the user wrote stays.
   useEffect(() => {
     if (!ready || trainingOn) return;
     let cancelled = false;
     void (async () => {
       const kept = await loadAttachedRequest(db, userId);
-      if (cancelled || !kept) return;
-      setAttachedReq(null);
       const d = draftRef.current;
-      // Its generated text is removed; a draft that no longer contains it verbatim was edited from it, so it goes too.
-      const next = kept.text && d.includes(kept.text) ? d.replace(kept.text, '').trim() : '';
-      if (next !== d) updateDraft(next);
+      const prov = provenanceRef.current && provenanceRef.current.draft === d && provenanceRef.current.generated.length ? provenanceRef.current : null;
+      if (cancelled || (!kept && !prov)) return;
+      if (kept) setAttachedReq(null);
+      if (prov?.held) {
+        // Already held back (see below): nothing to remove.
+      } else if (prov) {
+        // Exactly the generated parts go, even after edits and in either language.
+        setDraftWith(stripGenerated(d, prov.generated, prov.sources));
+      } else if (kept?.text && d.includes(kept.text)) {
+        setDraftWith(d.replace(kept.text, '').trim());
+      } else if (kept?.text && d.trim()) {
+        // Written by an older version without a record of what was generated, and edited since: it can't be split
+        // safely, so it's kept on the device (the user's own words aren't lost) but can't be sent while Training is off.
+        setDraftWith(d, [[0, d.length]], [kept.text], true);
+      }
       setTrainingOffNotice(true);
     })();
     return () => {
@@ -430,7 +487,7 @@ function Chat({
   }, [ready, trainingOn]); // eslint-disable-line react-hooks/exhaustive-deps -- db/userId are stable for this screen
 
   /** The unconfirmed message is a workout question and Training isn't shared: it can't be retried, only removed. */
-  const pendingBlocked = !!pending?.request && !trainingOn;
+  const pendingBlocked = !!pending && isWorkoutQuestion(pending) && !trainingOn;
   function retry() {
     if (!pending || blocked) return;
     if (pendingBlocked) {
@@ -446,7 +503,11 @@ function Chat({
   function editPending() {
     if (!pending) return;
     if (pendingBlocked) return removePending(); // its text names exercises and targets: never put back to send
-    updateDraft(draft ? `${draft}\n${pending.text}` : pending.text);
+    // Back into the composer after anything typed meanwhile, keeping the record of what was generated.
+    const before = draft ? `${draft}\n` : '';
+    const prov = draftHasGenerated ? provenance! : null;
+    const shifted: TextRanges = (pending.generated ?? []).map(([a, b]) => [a + before.length, b + before.length]);
+    setDraftWith(`${before}${pending.text}`, [...(prov?.generated ?? []), ...shifted], [...(prov?.sources ?? []), ...(shifted.length ? [pending.text] : [])]);
     // Its workout attachment comes back with the text (it lived on the pending message until now).
     if (pending.request && trainingOn) setAttachedReq({ ...pending.request, text: pending.text });
     persistPending(null);
@@ -459,7 +520,7 @@ function Chat({
     setBusy('pause');
     try {
       setSettings(await aiApi.saveSettings({ paused: next }));
-      toast.show(next ? 'Training assistant paused' : 'Training assistant resumed', { tone: 'success' });
+      toast.show(next ? t('ai.toast.paused') : t('ai.toast.resumed'), { tone: 'success' });
       setMenuOpen(false);
     } catch (e) {
       toast.show(classifyAiError(e).message, { tone: 'error' });
@@ -474,7 +535,7 @@ function Chat({
       setHistory([]);
       setProposals({});
       await kvSet(AI_HISTORY_CACHE_KEY, [], db).catch(() => undefined);
-      toast.show('Conversation cleared', { tone: 'success' });
+      toast.show(t('ai.history.cleared'), { tone: 'success' });
       setConfirmClear(false);
       setMenuOpen(false);
     } catch (e) {
@@ -485,7 +546,7 @@ function Chat({
   }
 
   const menu = (
-    <IconButton label="Training assistant menu" onClick={() => setMenuOpen(true)}>
+    <IconButton label={t('ai.chat.menu')} onClick={() => setMenuOpen(true)}>
       <MoreVertical className="size-5" />
     </IconButton>
   );
@@ -498,7 +559,7 @@ function Chat({
         {offline && (
           <Notice tone="warn" className="flex gap-2 items-start">
             <CloudOff className="size-4 mt-0.5 shrink-0" aria-hidden />
-            <span>You’re offline. Keep writing: your draft is saved on this device and you can send it when you’re back online.</span>
+            <span>{t('ai.chat.offline')}</span>
           </Notice>
         )}
         {!offline && providerDown && (
@@ -507,7 +568,7 @@ function Chat({
             <div className="flex-1">
               <p>{availabilityCopy('provider_down').body}</p>
               <Button size="sm" className="mt-2" onClick={() => void reload()}>
-                Check again
+                {t('ai.chat.checkAgain')}
               </Button>
             </div>
           </Notice>
@@ -515,25 +576,23 @@ function Chat({
         {paused && (
           <Notice tone="info" className="flex gap-2 items-center">
             <Pause className="size-4 shrink-0" aria-hidden />
-            <span className="flex-1">The training assistant is paused. It won’t read your data or reply until you resume.</span>
+            <span className="flex-1">{t('ai.chat.paused')}</span>
             <Button size="sm" variant="primary" loading={busy === 'pause'} onClick={() => void setPaused(false)}>
-              Resume
+              {t('ai.resume')}
             </Button>
           </Notice>
         )}
         {(limitReached || sendError?.kind === 'rate_limited') && (
-          <Notice tone="warn">
-            You’ve reached today’s training assistant limit{uLine ? ` (${uLine})` : ''}. It resets tomorrow: your message is kept.
-          </Notice>
+          <Notice tone="warn">{uLine ? t('ai.chat.dailyLimitUsage', { usage: uLine }) : t('ai.chat.dailyLimit')}</Notice>
         )}
-        {historyNote && <Notice>{historyNote}</Notice>}
+        {historyNote && <Notice>{t(historyNote)}</Notice>}
         {trainingOffNotice && (
           <Notice className="flex gap-2 items-start">
             <span className="flex-1" role="status">
-              Training sharing is off, so your question about that workout wasn’t sent. To ask about your workouts, switch on Training in training assistant settings.
+              {t('ai.chat.trainingOffNotice')}
             </span>
             <Button size="sm" onClick={() => nav('/coaching/ai/settings')}>
-              Settings
+              {t('settings.title')}
             </Button>
           </Notice>
         )}
@@ -542,7 +601,7 @@ function Chat({
       {/* conversation */}
       <div className="flex-1 px-3 py-3">
         {history === undefined ? (
-          <Spinner label="Loading conversation" />
+          <Spinner label={t('ai.chat.loadingConversation')} />
         ) : (
           <>
             {conversation.length === 0 && settings && (
@@ -563,8 +622,8 @@ function Chat({
                   weekStart={weekStart}
                 />
                 {canCompose && !blocked && (
-                  <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="Quick replies">
-                    {WELCOME_CHIPS.map((c) => (
+                  <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label={t('ai.chat.quickReplies')}>
+                    {welcomeChips().map((c) => (
                       <button
                         key={c}
                         type="button"
@@ -578,7 +637,7 @@ function Chat({
                 )}
               </>
             )}
-            <ol className="space-y-4" aria-label="Conversation">
+            <ol className="space-y-4" aria-label={t('ai.chat.conversation')}>
               {conversation.map((m) => (
                 <MessageItem
                   key={m.id}
@@ -604,15 +663,15 @@ function Chat({
       {/* composer (embedded: just above the tab bar) */}
       <div className={cx('sticky bg-bg/95 backdrop-blur border-t border-line px-3 pt-2', embedded ? 'bottom-[calc(57px+env(safe-area-inset-bottom))] z-30' : 'bottom-0 pb-safe')}>
         {canCompose && draft.trim() === '' && !blocked && (
-          <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1" role="group" aria-label="Suggested questions">
+          <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1" role="group" aria-label={t('ai.chat.suggestedQuestions')}>
             <button
               type="button"
-              onClick={() => start(CHECKIN_REVIEW_TEXT, 'checkin_review')}
+              onClick={() => start(checkinReviewText(), 'checkin_review')}
               className="shrink-0 min-h-10 px-3.5 rounded-full border border-accent/40 bg-accent-soft text-accent text-sm font-medium inline-flex items-center gap-1.5"
             >
-              <ClipboardCheck className="size-4" aria-hidden /> Check-in review
+              <ClipboardCheck className="size-4" aria-hidden /> {t('ai.chat.checkinReview')}
             </button>
-            {SUGGESTED_QUESTIONS.map((q) => (
+            {suggestedQuestions().map((q) => (
               <button
                 key={q}
                 type="button"
@@ -631,16 +690,16 @@ function Chat({
           <div className="flex items-center gap-2 pb-2">
             <span className="inline-flex items-center gap-1.5 min-h-8 rounded-full bg-surface-2 border border-line px-3 text-xs" data-testid="ai-attached-workout">
               <Dumbbell className="size-3.5 text-accent" aria-hidden />
-              {attachedActive.finished ? 'Workout attached' : 'Today’s workout attached'}: {attachedActive.name}
+              {t(attachedActive.finished ? 'ai.chat.workoutAttached' : 'ai.chat.todayWorkoutAttached', { name: attachedActive.name })}
             </span>
-            <IconButton size="sm" label="Remove attached workout" onClick={() => setAttachedReq(null)}>
+            <IconButton size="sm" label={t('ai.chat.removeWorkout')} onClick={() => setAttachedReq(null)}>
               <X className="size-4" />
             </IconButton>
           </div>
         )}
         <form onSubmit={submit} className="flex items-end gap-2">
           <label htmlFor="ai-composer" className="sr-only">
-            Message the training assistant
+            {t('ai.chat.composerLabel')}
           </label>
           <textarea
             id="ai-composer"
@@ -649,53 +708,57 @@ function Chat({
             maxLength={AI_MESSAGE_MAX}
             disabled={!loaded}
             rows={Math.min(6, Math.max(1, draft.split('\n').length))}
-            placeholder={pending ? 'Waiting for your last message…' : 'Ask your training assistant…'}
-            onChange={(e) => updateDraft(e.target.value)}
+            placeholder={pending ? t('ai.chat.waitingPlaceholder') : t('ai.chat.askPlaceholder')}
+            onChange={(e) => editDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit();
             }}
             aria-describedby="ai-composer-hint"
             className="flex-1 min-h-11 max-h-40 rounded-xl bg-field border border-line-input px-3 py-2.5 text-[16px] text-ink placeholder:text-faint focus:border-accent resize-none"
           />
-          <IconButton type="submit" label="Send" disabled={!canSend} className={cx(canSend && 'ember-fill')}>
+          <IconButton type="submit" label={t('ai.chat.send')} disabled={!canSend} className={cx(canSend && 'ember-fill')}>
             <SendHorizontal className="size-5" />
           </IconButton>
         </form>
         <p id="ai-composer-hint" className="text-[11px] text-faint mt-1 mb-1">
           {offline
-            ? 'Offline: draft saved on this device.'
+            ? t('ai.chat.offlineHint')
             : paused
-              ? 'Paused: resume to send.'
+              ? t('ai.chat.pausedHint')
               : pending?.status === 'failed'
-                ? 'Retry or edit your last message before sending another.'
-                : `AI replies are suggestions, not medical advice.${uLine ? ` ${uLine}.` : ''}`}
+                ? t('ai.chat.pendingHint')
+                : draftBlocked
+                  ? t('ai.chat.trainingOffPending')
+                  : uLine
+                    ? t('ai.chat.adviceUsageHint', { usage: uLine })
+                    : t('ai.chat.adviceHint')}
         </p>
       </div>
 
-      <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title="Training assistant">
+      <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title={t('ai.title')}>
         {uLine && <p className="text-sm text-muted mb-2">{uLine}</p>}
         <div className="-mx-5">
-          <ListRow left={<Settings2 className="size-5 text-muted" />} title="Settings" subtitle="Data access, notes, pause or turn off" onClick={() => nav('/coaching/ai/settings')} />
-          <ListRow left={<Sparkles className="size-5 text-muted" />} title="AI suggestions" subtitle="Suggested plan changes to review" onClick={() => nav('/coaching/ai/proposals')} />
+          <ListRow left={<Settings2 className="size-5 text-muted" />} title={t('settings.title')} subtitle={t('ai.chat.settingsMenuDescription')} onClick={() => nav('/coaching/ai/settings')} />
+          <ListRow left={<Sparkles className="size-5 text-muted" />} title={t('ai.proposals.title')} subtitle={t('ai.chat.proposalsMenuDescription')} onClick={() => nav('/coaching/ai/proposals')} />
           <ListRow
             left={paused ? <Play className="size-5 text-muted" /> : <Pause className="size-5 text-muted" />}
-            title={paused ? 'Resume training assistant' : 'Pause training assistant'}
-            subtitle={paused ? 'Start replying again' : 'Stop using your data and replying until you resume'}
+            title={paused ? t('ai.chat.resume') : t('ai.chat.pause')}
+            subtitle={paused ? t('ai.chat.resumeDescription') : t('ai.chat.pauseDescription')}
             onClick={() => (busy ? undefined : void setPaused(!paused))}
           />
-          <ListRow left={<Trash2 className="size-5 text-danger" />} title={<span className="text-danger">Clear history</span>} subtitle="Delete this conversation from your account" onClick={() => setConfirmClear(true)} />
+          <ListRow left={<Trash2 className="size-5 text-danger" />} title={<span className="text-danger">{t('ai.history.clear')}</span>} subtitle={t('ai.chat.clearMenuDescription')} onClick={() => setConfirmClear(true)} />
         </div>
       </Sheet>
 
       <ConfirmDialog
         open={confirmClear}
-        title="Clear AI conversation?"
+        title={t('ai.history.clearConfirm.title')}
         danger
-        confirmLabel="Clear history"
+        confirmLabel={t('ai.history.clear')}
         busy={busy === 'clear'}
         onCancel={() => setConfirmClear(false)}
         onConfirm={() => void clearHistory()}
-        body="This deletes your training assistant messages from your account and this device. Your training assistant notes, suggestions you applied, and your plan are not affected. It can’t be undone."
+        body={t('ai.chat.clearConfirmBody')}
       />
 
       {share && coach && <ShareWithCoachDialog key={share.key} open text={share.text} relationship={coach} onClose={() => setShare(null)} />}
@@ -719,17 +782,18 @@ function WelcomeMessage({
   weekStart: 0 | 1;
 }) {
   const { byId } = useExercises();
+  const { t } = useT();
   if (program === undefined || sessions === undefined) return null; // local data still loading (instant in practice)
   const style: CoachStyle = settings.coachStyle;
   const record = settings.scopes.training ? safeRecord(sessions, byId, unit, today) : null;
   const w = buildWelcome({ scopes: settings.scopes, goal, displayName, hour: localHour(timeZone), style, record, program, sessions, activities, today, weekStart });
   return (
-    <article aria-label="Training assistant welcome" className="max-w-[92%] mb-4">
+    <article aria-label={t('ai.chat.welcomeLabel')} className="max-w-[92%] mb-4">
       <div className="flex items-center gap-2 mb-1">
         <span className="size-6 rounded-full bg-surface-3 flex items-center justify-center text-info" aria-hidden>
           <Bot className="size-3.5" />
         </span>
-        <span className="text-sm font-semibold">Training assistant</span>
+        <span className="text-sm font-semibold">{t('ai.title')}</span>
         <AiBadge />
       </div>
       <div className="rounded-2xl rounded-tl-md bg-surface border border-line px-3.5 py-2.5 text-[15px] space-y-1.5">
@@ -739,7 +803,7 @@ function WelcomeMessage({
         ))}
         <p>{w.closing}</p>
       </div>
-      <p className="mt-1 text-[11px] text-faint">From your saved details · replies are AI suggestions, not medical advice. Plan changes only happen if you apply them.</p>
+      <p className="mt-1 text-[11px] text-faint">{t('ai.chat.welcomeDisclaimer')}</p>
     </article>
   );
 }
@@ -783,35 +847,37 @@ function MessageItem({
   workoutBlocked?: boolean;
 }) {
   const nav = useNavigate();
+  const { t } = useT();
   if (m.role === 'user') {
+    const reason = pendingErrorText(pending?.error);
     return (
       <li className="flex justify-end">
         <div className="max-w-[85%] flex flex-col items-end">
-          <span className="sr-only">You:</span>
+          <span className="sr-only">{t('ai.chat.you')}</span>
           <div className={cx('rounded-2xl rounded-br-md px-3.5 py-2.5 whitespace-pre-wrap break-words text-[15px]', pending?.status === 'failed' ? 'bg-surface-2 border border-danger/40' : 'bg-accent-soft border border-accent/30')}>
             {m.content}
           </div>
           {pending?.status === 'sending' && (
             <span className="text-xs text-muted mt-1" role="status">
-              Sending…
+              {t('ai.chat.sending')}
             </span>
           )}
           {pending?.status === 'failed' && workoutBlocked && (
             <div className="mt-1 flex flex-wrap items-center justify-end gap-1">
-              <span className="text-xs text-danger">Not sent: {TRAINING_OFF_PENDING}</span>
+              <span className="text-xs text-danger">{t('ai.chat.notSentReason', { reason: t(TRAINING_OFF_PENDING) })}</span>
               <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={onRemove}>
-                Remove
+                {t('ai.chat.remove')}
               </Button>
             </div>
           )}
           {pending?.status === 'failed' && !workoutBlocked && (
             <div className="mt-1 flex flex-wrap items-center justify-end gap-1">
-              <span className="text-xs text-danger">Not sent{pending.error ? `: ${pending.error}` : ''}</span>
+              <span className="text-xs text-danger">{reason ? t('ai.chat.notSentReason', { reason }) : t('ai.chat.notSent')}</span>
               <Button size="sm" variant="secondary" icon={<RotateCcw className="size-4" />} onClick={onRetry} disabled={retryDisabled}>
-                Retry
+                {t('ai.chat.retry')}
               </Button>
               <Button size="sm" variant="ghost" icon={<Pencil className="size-4" />} onClick={onEdit}>
-                Edit
+                {t('ai.chat.edit')}
               </Button>
             </div>
           )}
@@ -825,19 +891,19 @@ function MessageItem({
   const whyText = m.why ? extractOpenLinks(humanizeDates(m.why, week.today, week.weekStart, lang), appFeatures()).text : '';
   return (
     <li>
-      <article aria-label="Training assistant message" className="max-w-[92%]">
+      <article aria-label={t('ai.chat.messageLabel')} className="max-w-[92%]">
         <div className="flex items-center gap-2 mb-1">
           <span className="size-6 rounded-full bg-surface-3 flex items-center justify-center text-info" aria-hidden>
             <Bot className="size-3.5" />
           </span>
-          <span className="text-sm font-semibold">Training assistant</span>
+          <span className="text-sm font-semibold">{t('ai.title')}</span>
           <AiBadge />
         </div>
         <div className="rounded-2xl rounded-tl-md bg-surface border border-line px-3.5 py-2.5 text-[15px]" data-testid="ai-message-body">
           <Markdown text={body.text} />
         </div>
         {body.links.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-2" role="group" aria-label="Open in the app">
+          <div className="mt-1.5 flex flex-wrap gap-2" role="group" aria-label={t('ai.chat.openInApp')}>
             {body.links.map((l) => (
               <Button key={l.path} size="sm" variant="secondary" icon={<ArrowUpRight className="size-4" />} onClick={() => nav(l.path)}>
                 {l.label}
@@ -847,7 +913,7 @@ function MessageItem({
         )}
         {whyText && (
           <details className="mt-1.5 group">
-            <summary className="cursor-pointer select-none text-sm text-muted min-h-11 inline-flex items-center gap-1 hover:text-ink">Why this?</summary>
+            <summary className="cursor-pointer select-none text-sm text-muted min-h-11 inline-flex items-center gap-1 hover:text-ink">{t('ai.chat.why')}</summary>
             <Markdown text={whyText} className="text-sm text-muted px-1 pb-1" />
           </details>
         )}
@@ -859,7 +925,7 @@ function MessageItem({
         {m.recipes && <RecipeCards suggestions={m.recipes} />}
         {m.grounding && m.grounding.length > 0 && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-muted">Based on:</span>
+            <span className="text-xs text-muted">{t('ai.chat.basedOn')}</span>
             <ul className="contents">
               {m.grounding.map((g, i) => (
                 <li key={i}>
@@ -877,18 +943,18 @@ function MessageItem({
             <Sparkles className="size-5 text-accent shrink-0 mt-0.5" aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block font-semibold text-[15px]">
-                {proposal && !proposal.baseProgramId && proposal.target !== 'for_coach_review' ? 'Add to my program: review' : 'Suggested plan change: review'}
+                {proposal && !proposal.baseProgramId && proposal.target !== 'for_coach_review' ? t('ai.chat.addProgramReview') : t('ai.chat.changeProgramReview')}
               </span>
               <span className="block text-xs text-muted mt-0.5">
                 {proposal
                   ? `${proposal.program.name}${proposal.changeSummary[0] ? ` · ${proposal.changeSummary[0]}` : ''}`
-                  : 'An AI suggestion. Preview it, then add it to your program. Nothing changes until you do.'}
+                  : t('ai.chat.proposalPlaceholder')}
               </span>
             </span>
           </Link>
         )}
         <div className="mt-1 flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-[11px] text-faint">AI suggestion · general guidance, not medical advice</p>
+          <p className="text-[11px] text-faint">{t('ai.chat.messageDisclaimer')}</p>
           {coach && <ShareButton onClick={onShare} />}
         </div>
       </article>

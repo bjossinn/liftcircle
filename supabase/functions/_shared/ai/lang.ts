@@ -10,6 +10,9 @@ const IS_WORDS = new Set([
   'ég', 'eg', 'og', 'ekki', 'er', 'að', 'við', 'mig', 'mér', 'mer', 'takk', 'já', 'ja', 'nei', 'fyrir', 'viku', 'vikuna', 'næstu', 'þessa', 'hvað', 'hvernig',
   'get', 'vil', 'gerðu', 'prófaðu', 'núna', 'nuna', 'matarplan', 'æfing', 'æfingu', 'æfingar', 'í', 'á', 'um', 'með', 'án', 'eða', 'líka', 'mjög', 'svo',
   'hæ', 'halló', 'endilega', 'kannski', 'bara', 'ég', 'þú', 'þetta', 'það', 'dag', 'morgun', 'engar', 'enginn', 'engin', 'ekkert',
+  // Icelandic localization (item 8): question words and common request words without í/á/ð/þ/æ that alone show Icelandic.
+  'af', 'hverju', 'hvers', 'vegna', 'hvar', 'hver', 'hvenær', 'geturðu', 'getur', 'vantar', 'langar', 'mig', 'mín', 'minn', 'mitt', 'nei', 'nú', 'líka',
+  'uppskrift', 'uppskriftir', 'matseðil', 'matseðill', 'nema', 'eftir', 'næst', 'útskýrðu', 'hjálpina', 'kærlega', 'allt', 'lagi', 'ennþá', 'reyndu', 'aftur',
 ]);
 const EN_WORDS = new Set([
   // ("ok"/"okay" are left out: Icelanders say them too, so they decide nothing.)

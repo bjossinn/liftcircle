@@ -6,6 +6,7 @@ import { hasCompletedWork } from '@/domain/setValidation';
 import type { ActivityLog, ActivityType, ID, ISODate, PlanOverride, Program, SessionTemplate, WorkoutSession } from '@/domain/types';
 import { addDays, formatDate, rangeDays, startOfWeek, weekday } from '@/lib/dates';
 import { currentVersion, templateById } from './program';
+import { t } from '@/i18n';
 
 export type PlannedStatus = 'planned' | 'today' | 'done' | 'missed' | 'skipped' | 'moved';
 export interface PlannedSession {
@@ -275,9 +276,10 @@ export type WeekPlanResult =
   | { ok: true; program: Program; message: string; alreadyApplied?: boolean }
   | { ok: false; reason: 'stale' | 'expired' | 'week_changed'; message: string };
 
-export const WEEK_PLAN_STALE = 'Your plan changed since this suggestion, so it wasn’t applied. Ask the training assistant again.';
-export const WEEK_PLAN_EXPIRED = 'This suggestion was for another week.';
-export const WEEK_PLAN_CHANGED = 'Your week changed since this suggestion (a workout was logged or the schedule moved). Ask the training assistant again.';
+/** Week-plan refusal texts in the current language (display only; never stored). */
+export const weekPlanStaleText = () => t('aiCard.week.stale');
+export const weekPlanExpiredText = () => t('aiCard.week.expired');
+export const weekPlanChangedText = () => t('aiCard.week.changed');
 
 export function weekPlanState(p: Program | undefined, plan: WeekPlan, today: ISODate, weekStart: 0 | 1): WeekPlanState {
   if (p && p.overrides.some((o) => o.weekPlanId === plan.id)) return 'applied';
@@ -295,13 +297,13 @@ export function applyWeekPlan(
   activities?: ActivityLog[],
 ): WeekPlanResult {
   const state = weekPlanState(p, plan, today, weekStart);
-  if (state === 'applied') return { ok: true, program: p, message: 'Already applied to this week.', alreadyApplied: true };
-  if (state === 'expired') return { ok: false, reason: 'expired', message: WEEK_PLAN_EXPIRED };
-  if (state === 'stale') return { ok: false, reason: 'stale', message: WEEK_PLAN_STALE };
+  if (state === 'applied') return { ok: true, program: p, message: t('aiCard.week.alreadyApplied'), alreadyApplied: true };
+  if (state === 'expired') return { ok: false, reason: 'expired', message: weekPlanExpiredText() };
+  if (state === 'stale') return { ok: false, reason: 'stale', message: weekPlanStaleText() };
 
   const from = plan.weekStart;
   const to = addDays(from, 6);
-  const changed = { ok: false as const, reason: 'week_changed' as const, message: WEEK_PLAN_CHANGED };
+  const changed = { ok: false as const, reason: 'week_changed' as const, message: weekPlanChangedText() };
   const done = sessions.filter((s) => !s.deletedAt && s.status === 'completed' && hasCompletedWork(s) && s.date >= from && s.date <= to);
   if (done.length + plan.sessions.length > plan.targetSessions) return changed;
   const doneDates = new Set(done.map((s) => s.date));
@@ -338,7 +340,7 @@ export function applyWeekPlan(
   return {
     ok: true,
     program: { ...p, overrides, updatedAt: Date.now() },
-    message: `${names.length ? `This week: ${names.join(', ')}.` : 'No more sessions this week.'} Your usual schedule returns next week.`,
+    message: names.length ? t('aiCard.week.applied', { sessions: names.join(', ') }) : t('aiCard.week.noSessionsApplied'),
   };
 }
 

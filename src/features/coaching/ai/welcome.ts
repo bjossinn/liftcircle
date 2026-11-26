@@ -16,7 +16,8 @@ import { currentVersion } from '@/domain/program/program';
 import { plannedSessionsInRange } from '@/domain/program/schedule';
 import { detectRecords } from '@/domain/stats';
 import type { ActivityLog, CoachStyle, Exercise, Goal, ID, ISODate, Program, WeightUnit, WorkoutSession } from '@/domain/types';
-import { addDays, startOfWeek, weekday, WEEKDAY_SHORT } from '@/lib/dates';
+import { addDays, startOfWeek, weekday, weekdayShort } from '@/lib/dates';
+import { getLanguage, locale, t, tp, type MessageKey } from '@/i18n';
 
 export interface WelcomeInput {
   scopes: AiScopes;
@@ -41,7 +42,28 @@ export interface Welcome {
   closing: string;
 }
 
-const day = (d: ISODate) => WEEKDAY_SHORT[weekday(d)];
+const day = (d: ISODate) => weekdayShort(weekday(d));
+
+/** Goal label used inside a welcome sentence (lower case, like "lose fat" / "minnka fitu"). */
+const GOAL_KEY: Record<Goal, MessageKey> = {
+  general_fitness: 'onboarding.goal.fitness',
+  strength: 'onboarding.goal.strength',
+  endurance: 'onboarding.goal.endurance',
+  build_muscle: 'onboarding.goal.buildMuscle',
+  lose_fat: 'onboarding.goal.loseFat',
+};
+function goalText(goal: Goal): string {
+  // English keeps the nutrition goal labels it always used ("strength"); other languages use the goal choice labels.
+  const label = getLanguage() === 'en' ? GOAL_LABELS[goal] : t(GOAL_KEY[goal]);
+  return label.toLocaleLowerCase(locale());
+}
+
+const GREETING: Record<'morning' | 'afternoon' | 'evening' | 'hi', [MessageKey, MessageKey]> = {
+  morning: ['ai.welcome.morning', 'ai.welcome.morningNamed'],
+  afternoon: ['ai.welcome.afternoon', 'ai.welcome.afternoonNamed'],
+  evening: ['ai.welcome.evening', 'ai.welcome.eveningNamed'],
+  hi: ['ai.welcome.hi', 'ai.welcome.hiNamed'],
+};
 
 export function timeOfDay(hour: number | undefined): 'morning' | 'afternoon' | 'evening' | null {
   if (hour == null || !Number.isFinite(hour)) return null;
@@ -84,25 +106,30 @@ export function recentRecord(sessions: WorkoutSession[], byId: Map<ID, Exercise>
 
 export function buildWelcome(i: WelcomeInput): Welcome {
   const lines: string[] = [];
-  const goal = i.scopes.profile && i.goal ? GOAL_LABELS[i.goal] : null;
+  const goal = i.scopes.profile && i.goal ? goalText(i.goal) : null;
   const name = i.scopes.profile ? firstName(i.displayName) : null;
   const style = i.style ?? 'supportive';
-  const tod = timeOfDay(i.hour);
-  const greeting = `${tod ? `Good ${tod}` : 'Hi'}${name ? `, ${name}` : ''}.`;
+  const [plain, named] = GREETING[timeOfDay(i.hour) ?? 'hi'];
+  const greeting = name ? t(named, { name }) : t(plain);
   let today: string | null = null;
 
   if (!i.scopes.training) {
-    if (goal) lines.push(`Your goal: ${goal.toLowerCase()}.`);
-    lines.push('Training isn’t shared with me, so I can’t see your plan or workouts. You can share it in training assistant settings.');
+    if (goal) lines.push(t('ai.welcome.goal', { goal }));
+    lines.push(t('ai.welcome.trainingNotShared'));
   } else if (!i.program) {
-    lines.push(`${goal ? `Your goal: ${goal.toLowerCase()}. ` : ''}You don’t have an active plan yet. I can help you pick a starting point.`);
+    lines.push(`${goal ? `${t('ai.welcome.goal', { goal })} ` : ''}${t('ai.welcome.noPlan')}`);
   } else {
     const p = i.program;
     const v = currentVersion(p);
     const days = [...new Set(v.schedule.map((s) => s.weekday))].sort((a, b) => ((a - i.weekStart + 7) % 7) - ((b - i.weekStart + 7) % 7));
-    const coach = p.managedBy?.kind === 'coach' ? ` (managed by ${p.managedBy.coachName ? p.managedBy.coachName : 'your coach'})` : '';
+    const coachName = p.managedBy?.kind === 'coach' ? p.managedBy.coachName || null : undefined;
+    const coachSuffix = coachName === undefined ? '' : ` (${coachName ? t('ai.welcome.planCoach', { coachName }) : t('ai.welcome.planCoachGeneric')})`;
+    const goalLine = goal ? `${t('ai.welcome.goalShort', { goal })} ` : '';
+    const daysSuffix = days.length ? ` (${days.map((d) => weekdayShort(d)).join(', ')})` : '';
     lines.push(
-      `${goal ? `Goal: ${goal.toLowerCase()}. ` : ''}You’re on “${p.name}”${coach}: ${v.schedule.length} session${v.schedule.length === 1 ? '' : 's'} a week${days.length ? ` (${days.map((d) => WEEKDAY_SHORT[d]).join(', ')})` : ''}.`,
+      goalLine || coachSuffix || daysSuffix
+        ? tp('ai.welcome.planDetails', v.schedule.length, { goalLine, programName: p.name, coachSuffix, daysSuffix })
+        : tp('ai.welcome.plan', v.schedule.length, { programName: p.name }),
     );
     const from = startOfWeek(i.today, i.weekStart);
     const yesterday = addDays(i.today, -1);
@@ -117,34 +144,30 @@ export function buildWelcome(i: WelcomeInput): Welcome {
     const done = counted.filter((x) => x.status === 'done');
     const next = counted.find((x) => x.status === 'today' || x.status === 'planned');
     if (counted.length === 0) {
-      lines.push('No sessions are planned this week.');
+      lines.push(t('ai.welcome.noSessions'));
     } else if (done.length === counted.length) {
-      lines.push(`This week: all ${counted.length} planned session${counted.length === 1 ? '' : 's'} done.`);
+      lines.push(tp('ai.welcome.allDone', counted.length));
     } else {
-      const doneText = done.length ? `${done.length} of ${counted.length} done (${done.map((d) => `${d.template.name}, ${day(d.date)}`).join('; ')})` : `${counted.length} planned, none done yet`;
-      lines.push(`This week: ${doneText}.${next ? ` Next: ${next.template.name}, ${next.status === 'today' ? 'today' : day(next.date)}.` : ''}`);
+      const week = done.length
+        ? t('ai.welcome.weekProgress', { done: done.length, total: counted.length, sessions: done.map((d) => `${d.template.name}, ${day(d.date)}`).join('; ') })
+        : tp('ai.welcome.weekNone', counted.length);
+      // "today" as an inline phrase after a comma ("today" / "í dag").
+      const nextDay = next ? (next.status === 'today' ? t('format.relative.today').toLocaleLowerCase(locale()) : day(next.date)) : '';
+      lines.push(`${week}${next ? ` ${t('ai.welcome.next', { sessionName: next.template.name, day: nextDay })}` : ''}`);
     }
 
-    if (i.record) lines.push(`New record: ${i.record.label}.`);
+    if (i.record) lines.push(t('ai.welcome.record', { record: i.record.label }));
     const missed = range.find((x) => x.date === yesterday && x.status === 'missed');
-    if (missed) {
-      lines.push(
-        style === 'strict'
-          ? `${missed.template.name} was planned yesterday and is still open. Do it today: start with the first two exercises.`
-          : style === 'supportive'
-            ? `I noticed ${missed.template.name} didn’t happen yesterday. No stress. How are you feeling?`
-            : `${missed.template.name} didn’t happen yesterday. Everything okay? We can still fit it in this week.`,
-      );
-    }
+    if (missed) lines.push(t(`ai.welcome.missed.${style}`, { sessionName: missed.template.name }));
     const todays = range.filter((x) => x.date === i.today);
     const open = todays.find((x) => x.status === 'today');
-    if (open) today = `${open.template.name} today, ready to go?`;
-    else if (todays.some((x) => x.status === 'done')) today = 'Today’s session is done. Nice work.';
-    else if (!todays.some((x) => x.status === 'skipped')) today = 'Enjoy the rest day.';
+    if (open) today = t('ai.welcome.todayReady', { sessionName: open.template.name });
+    else if (todays.some((x) => x.status === 'done')) today = t('ai.welcome.todayDone');
+    else if (!todays.some((x) => x.status === 'skipped')) today = t('ai.welcome.restDay');
   }
   return {
     greeting,
     lines,
-    closing: today ?? 'How are you feeling today? Ask me about this week, an exercise swap or your progress.',
+    closing: today ?? t('ai.welcome.closing'),
   };
 }

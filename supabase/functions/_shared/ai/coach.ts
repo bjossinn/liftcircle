@@ -25,9 +25,15 @@ import { guideFeaturesFromEnv, validateOpenLinks } from './appGuide.ts';
 // @ts-ignore see above
 import { humanizeDates } from './humanDates.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
-import { replyLang, type Lang } from './lang.ts';
+import type { Lang } from './lang.ts';
 // @ts-ignore see above
-import { asksForMealPlan, buildMealPlanAction, mealPlanIntentFromText } from './meals.ts';
+import { replyLanguageLine, replyLangSource, requestLanguage, resolveReplyLang } from './replyLanguage.ts';
+// @ts-ignore see above
+import { listText, sharedT } from '../i18n/core.ts';
+// @ts-ignore see above
+import { asksForMealPlan, buildMealPlanAction, clarificationNote, mealPlanIntentFromText, requestClarification } from './meals.ts';
+// @ts-ignore see above
+import { classifyRequest } from './requestSignals.ts';
 // @ts-ignore see above
 import { mealPlanBlocker } from './dataStatus.ts';
 // @ts-ignore see above
@@ -83,10 +89,12 @@ export function consentedProvider(s: { consentAt?: string | null; consentVersion
 
 export async function handleAiCoach(deps: CoachDeps, uid: string, rawBody: unknown): Promise<CoachResult> {
   const body = (rawBody && typeof rawBody === 'object' ? rawBody : {}) as Record<string, unknown>;
-  if (!UUID_RE.test(uid)) return err(401, 'auth', 'You need to be signed in.');
+  // The app language (Settings.language) only picks the language of text; it never affects identity, scopes or sharing.
+  const { t } = sharedT(requestLanguage(body.language) ?? 'en');
+  if (!UUID_RE.test(uid)) return err(401, 'auth', t('aiServer.auth.signIn'));
   if (body.action === 'status') return status(deps, uid);
   if (body.action === 'send') return send(deps, uid, body);
-  return err(400, 'bad_request', 'Unknown action.');
+  return err(400, 'bad_request', t('aiServer.error.unknownAction'));
 }
 
 async function usageFor(deps: CoachDeps, uid: string) {
@@ -116,15 +124,16 @@ async function status(deps: CoachDeps, uid: string): Promise<CoachResult> {
   };
 }
 
-const SCOPE_IS: Record<string, string> = { profile: 'prófílinn þinn', training: 'æfingarnar þínar', measurements: 'mælingarnar þínar', nutrition: 'næringuna þína' };
-/** "Thanks — I can see your training now." in the reply language (exported for tests). */
+/**
+ * "Thanks — I can see your training now." in the reply language (exported for tests). `added` holds stable scope ids;
+ * the labels are display-only (stored grounding keeps its English labels for sharedFromGrounding).
+ */
 export function thanksLine(added: readonly string[], lang: Lang): string {
-  if (lang === 'is') {
-    const xs = added.map((k) => SCOPE_IS[k] ?? k);
-    const list = xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} og ${xs[xs.length - 1]}`;
-    return `Takk — nú sé ég ${list}.`;
-  }
-  return `Thanks — I can see your ${added.join(' and ')} now.`;
+  const tr = sharedT(lang);
+  const scopes = lang === 'en'
+    ? added.join(' and ')
+    : listText(added.map((k) => (tr.has(`aiServer.scope.${k}`) ? tr.t(`aiServer.scope.${k}` as never).toLocaleLowerCase('is-IS') : k)), lang);
+  return tr.t('aiServer.reply.sharingAcknowledged', { scopes });
 }
 
 function textOf(content: ContentBlock[]): string {
@@ -144,19 +153,22 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   const unsynced = Math.max(0, Math.min(1000, Math.round(Number(body.unsynced) || 0)));
   // A snapshot of the workout the message was sent from (contextual entry points); untrusted data, parsed and clamped.
   const workout = parseWorkoutContext(body.workout);
-  if (!UUID_RE.test(id)) return err(400, 'bad_request', 'A valid message id is required.');
-  if (!text) return err(400, 'bad_request', 'Write a message first.');
-  if (text.length > MAX_TEXT) return err(400, 'bad_request', `Messages can be at most ${MAX_TEXT} characters.`);
+  // App language (validated; anything else is ignored). Error text follows it; codes stay stable.
+  const setting = requestLanguage(body.language);
+  const { t } = sharedT(setting ?? 'en');
+  if (!UUID_RE.test(id)) return err(400, 'bad_request', t('aiServer.error.invalidMessageId'));
+  if (!text) return err(400, 'bad_request', t('aiServer.error.emptyMessage'));
+  if (text.length > MAX_TEXT) return err(400, 'bad_request', t('aiServer.error.messageTooLong', { max: MAX_TEXT }));
 
   const prov = resolveProvider(deps.env);
-  if (!prov) return err(503, 'ai_unavailable', 'The training assistant is not configured on this server.', { reason: 'not_configured' });
+  if (!prov) return err(503, 'ai_unavailable', t('aiServer.error.notConfigured'), { reason: 'not_configured' });
 
   const settings = await deps.db.getSettings(uid);
-  if (!settings?.enabled) return err(409, 'ai_disabled', 'The training assistant is turned off. Turn it on in training assistant settings.', { reason: 'disabled' });
-  if (settings.paused) return err(409, 'ai_paused', 'The training assistant is paused. Resume it in training assistant settings.', { reason: 'disabled' });
+  if (!settings?.enabled) return err(409, 'ai_disabled', t('aiServer.error.disabled'), { reason: 'disabled' });
+  if (settings.paused) return err(409, 'ai_paused', t('aiServer.error.paused'), { reason: 'disabled' });
   // The user agreed to send data to one specific provider; a provider switch on the server needs a fresh agreement.
   if (consentedProvider(settings) !== prov.provider)
-    return err(409, 'consent_required', `The training assistant now uses ${PROVIDER_NAMES[prov.provider]}. Review what’s sent and agree again in training assistant setup.`, {
+    return err(409, 'consent_required', t('aiServer.error.consentRequired', { provider: PROVIDER_NAMES[prov.provider] }), {
       reason: 'consent_required',
       provider: prov.provider,
     });
@@ -178,14 +190,16 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
       }
       if (begun.status !== 'started') {
         deps.log?.('ai_in_progress', {});
-        return err(409, 'in_progress', 'Still answering this message. It will appear in a moment.', { reason: 'in_progress' });
+        return err(409, 'in_progress', t('aiServer.error.inProgress'), { reason: 'in_progress' });
       }
       attempt = begun.attempt;
     } else await deps.db.checkAndCountUsage(uid, limit);
   } catch (e) {
     if ((e as { code?: string })?.code === 'PT429') {
       const usage = await usageFor(deps, uid).catch(() => null);
-      return err(429, 'rate_limited', (e as Error).message || 'You’ve reached today’s training assistant limit.', { reason: 'rate_limited', usage });
+      // The database's message is English prose: Icelandic gets the authored copy (never the raw PT429 text).
+      const message = setting === 'is' ? t('aiServer.error.dailyLimit') : (e as Error).message || t('aiServer.error.dailyLimit');
+      return err(429, 'rate_limited', message, { reason: 'rate_limited', usage });
     }
     throw e;
   }
@@ -210,7 +224,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
     return r;
   };
   try {
-    return await answer({ deps, uid, id, text, mode, unsynced, workout, prov, settings, tally, fail, recordOnce });
+    return await answer({ deps, uid, id, text, mode, unsynced, workout, prov, settings, tally, fail, recordOnce, setting });
   } catch (e) {
     await fail();
     throw e;
@@ -231,10 +245,12 @@ interface Answering {
   tally: { inputTokens: number; outputTokens: number };
   fail: () => Promise<void>;
   recordOnce: <T>(record: () => Promise<T>) => Promise<T>;
+  /** The request's validated app language (Settings.language), or null when it sent none. */
+  setting: Lang | null;
 }
 
 async function answer(a: Answering): Promise<CoachResult> {
-  const { deps, uid, id, text, mode, unsynced, workout, prov, settings, tally, fail, recordOnce } = a;
+  const { deps, uid, id, text, mode, unsynced, workout, prov, settings, tally, fail, recordOnce, setting } = a;
   const now = deps.now?.() ?? new Date();
   const started = Date.now();
   // Hidden product areas (coach marketplace, social feed) stay out of the app guide and its links.
@@ -246,6 +262,21 @@ async function answer(a: Answering): Promise<CoachResult> {
   // The user's own words for this request — for a short follow-up ("ok, try now") also the original request — so tools
   // and the meal-plan fallback keep the user's restrictions even when the model's tool input drops them.
   const requestText = ctx.followUp && ctx.openRequest ? `${ctx.openRequest.text}\n${text}` : text;
+  // Reply language (replyLanguage.ts): an explicit request in this message, else its clear language, else the app
+  // language the request carries, else earlier messages (newest first), else English. Tools write user-facing text in it.
+  const earlier = ctx.messages.filter((m) => m.role === 'user' && typeof m.content === 'string').map((m) => m.content as string).reverse();
+  const history = [ctx.openRequest?.text, ...earlier];
+  const toolLang = resolveReplyLang({ text, history, setting });
+  // Tell the model which language to answer in when the app sent its language or the user asked for one; requests from
+  // older apps keep the prompt as it was.
+  const langSource = replyLangSource({ text, setting });
+  const baseSystem = setting || langSource === 'asked' || langSource === 'refused' ? `${ctx.system}\n\n${replyLanguageLine(toolLang, langSource)}` : ctx.system;
+  // A meal-plan / recipe request the user has to settle first ("Vegan matseðill með kjúklingi", "2,5 máltíðir"): no plan or
+  // recipe cards are built for it (tools and the fallback refuse), and the model is told to ask instead.
+  const resumedPlan = ctx.followUp && ctx.openRequest?.intent === 'meal_plan';
+  const kind = classifyRequest(text);
+  const clarify = resumedPlan || kind === 'meal_plan' || kind === 'recipes' ? requestClarification(requestText) : null;
+  const system = clarify ? `${baseSystem}\n\nBefore any meal plan or recipes: ${clarificationNote(clarify)}` : baseSystem;
   const conversation: ApiMessage[] = [...ctx.messages];
   let usage = { inputTokens: 0, outputTokens: 0 };
   let reply = '';
@@ -275,7 +306,7 @@ async function answer(a: Answering): Promise<CoachResult> {
           deadline,
         },
         // Last round: tools stay declared (the history contains tool blocks) but may not be called.
-        { system: ctx.system, messages: conversation, tools: TOOL_DEFS, tool_choice: { type: last ? 'none' : 'auto' } },
+        { system, messages: conversation, tools: TOOL_DEFS, tool_choice: { type: last ? 'none' : 'auto' } },
       );
       usage = addUsage(usage, res.usage);
       tally.inputTokens = usage.inputTokens;
@@ -292,7 +323,7 @@ async function answer(a: Answering): Promise<CoachResult> {
       for (const tu of toolUses.slice(0, 4)) {
         const out = await runTool(tu.name, tu.input, {
           db: deps.db, facts: ctx.facts, catalog: ctx.catalog, state, week: ctx.week, trainingShared: ctx.trainingShared, messageId: id,
-          today: ctx.today, nutrition: ctx.nutrition, account: ctx.account, requestText, workout: ctx.workout,
+          today: ctx.today, nutrition: ctx.nutrition, account: ctx.account, requestText, userText: text, workout: ctx.workout, lang: toolLang,
         });
         results.push({ type: 'tool_result', tool_use_id: tu.id, content: out.content, ...(out.isError ? { is_error: true } : {}) });
       }
@@ -303,7 +334,9 @@ async function answer(a: Answering): Promise<CoachResult> {
     if (e instanceof AiUnavailableError) {
       deps.log?.('ai_provider_error', { provider: prov.provider, kind: e.kind, status: e.status ?? null, reason: e.reason, rounds });
       await fail();
-      return err(503, 'ai_unavailable', e.message, { reason: e.reason });
+      // i18n: no approved Icelandic copy for "unavailable right now" (provider_down) — it stays English (code is stable).
+      const message = e.reason === 'not_configured' && toolLang === 'is' ? sharedT('is').t('aiServer.error.notConfigured') : e.message;
+      return err(503, 'ai_unavailable', message, { reason: e.reason });
     }
     throw e;
   }
@@ -312,10 +345,9 @@ async function answer(a: Answering): Promise<CoachResult> {
   const split = splitWhy(reply);
   let why = split.why ? tidyReply(split.why) || null : null;
   reply = tidyReply(split.answer);
-  // Server-written text follows the user's language (1.0.3): this message, else the open request, else earlier user
-  // messages (newest first), else the model's own reply (it answers in the user's language); English by default.
-  const earlier = ctx.messages.filter((m) => m.role === 'user' && typeof m.content === 'string').map((m) => m.content as string).reverse();
-  const lang = replyLang(text, ctx.openRequest?.text, ...earlier, reply);
+  // Server-written text follows the same order; without an app language the model's own reply is the last hint.
+  const lang = resolveReplyLang({ text, history: [...history, reply], setting });
+  const tr = sharedT(lang);
   // Users never see ISO dates.
   reply = humanizeDates(reply, ctx.today, ctx.facts.weekStart, lang);
   if (why) why = humanizeDates(why, ctx.today, ctx.facts.weekStart, lang);
@@ -329,14 +361,22 @@ async function answer(a: Answering): Promise<CoachResult> {
   // built, the reply says so honestly instead of offering a plan that ignores what was asked.
   let replaced: string | null = null;
   let fallbackFailure: string | null = null;
-  const resumed = ctx.followUp && ctx.openRequest?.intent === 'meal_plan';
+  const resumed = resumedPlan;
   const wantsPlan = asksForMealPlan(text) || resumed;
-  if (wantsPlan && !state.mealPlan && !state.weekPlan && !mealPlanBlocker(ctx.nutrition)) {
+  // A request that needs the user's answer first gets no plan at all (the model was told to ask; see `clarify`).
+  if (wantsPlan && clarify) {
+    state.mealPlan = null;
+    state.recipes = null;
+    deps.log?.('ai_meal_plan_clarify', { kind: clarify.kind });
+  } else if (wantsPlan && !state.mealPlan && !state.weekPlan && !mealPlanBlocker(ctx.nutrition)) {
     const [recipes, ingredients] = await Promise.all([deps.db.getRecipes(), deps.db.getIngredients()]);
-    const built = buildMealPlanAction(mealPlanIntentFromText(requestText), { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id, recipes, ingredients, requestText });
+    const built = buildMealPlanAction(mealPlanIntentFromText(requestText), { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id, recipes, ingredients, requestText, lang });
     if (built.action) {
       state.mealPlan = built.action;
       replaced = 'meal_plan_fallback';
+    } else if (built.clarify) {
+      // e.g. "four days" when only three are left this week: ask, never a shorter or different plan.
+      deps.log?.('ai_meal_plan_clarify', { kind: built.clarify.kind });
     } else if (built.errors.length) {
       fallbackFailure = built.errors[0];
       deps.log?.('ai_reply_replaced', { reason: 'meal_plan_fallback_failed' });
@@ -355,7 +395,7 @@ async function answer(a: Answering): Promise<CoachResult> {
         ? [{ change: 'shorten', minutes: live.minutesLeft }]
         : from && focus ? alternativesFor(from, ctx.catalog, ctx.facts).slice(0, 8).map((c) => ({ change: 'swap', session_exercise_id: focus.id, to_exercise_id: c.id })) : [];
     for (const input of tries) {
-      const built = buildSessionAdjustment(input, { catalog: ctx.catalog, facts: ctx.facts, messageId: id, workout: live, trainingShared: ctx.trainingShared });
+      const built = buildSessionAdjustment(input, { catalog: ctx.catalog, facts: ctx.facts, messageId: id, workout: live, trainingShared: ctx.trainingShared, lang });
       if (built.action) {
         state.sessionAdjustment = built.action;
         deps.log?.('ai_session_adjustment_fallback', { change: built.action.change });
@@ -388,7 +428,7 @@ async function answer(a: Answering): Promise<CoachResult> {
       if (mealPlanConflict(reply, state.mealPlan, names)) replaced = 'meal_plan_conflict';
     } else if (proposalInfo && !proposalInfo.invalid && proposalConflict(reply, proposalInfo, ctx.today)) replaced = 'proposal_conflict';
   }
-  if (fallbackFailure) reply = lang === 'is' ? `Ég gat ekki búið til matarplan með því sem þú baðst um: ${fallbackFailure}` : `I couldn't build that meal plan with what you asked for: ${fallbackFailure}`;
+  if (fallbackFailure) reply = tr.t('aiServer.reply.mealPlanFailed', { reason: fallbackFailure });
   if (replaced) {
     reply =
       weekPlan ? summarizeWeekPlan(weekPlan, ctx.today, ctx.facts.weekStart, lang)
@@ -416,7 +456,7 @@ async function answer(a: Answering): Promise<CoachResult> {
           ? summarizeProposal(proposalInfo, lang)
           : state.recipes
             ? summarizeRecipes(state.recipes, lang)
-            : lang === 'is' ? 'Því miður náði ég ekki að setja saman svar. Prófaðu að spyrja aftur.' : 'Sorry — I couldn’t put together a reply. Please try asking again.';
+            : tr.t('aiServer.reply.empty');
   }
   reply = reply.slice(0, MAX_REPLY_CHARS);
   const cost = estimateCostUsd(usage, deps.env('AI_PRICE_INPUT_PER_MTOK'), deps.env('AI_PRICE_OUTPUT_PER_MTOK'));

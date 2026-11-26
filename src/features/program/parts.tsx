@@ -9,21 +9,91 @@ import {
 } from 'lucide-react';
 import { Badge, Button, Card, ChipGroup, ConfirmDialog, IconButton, Input, NumberInput, Segmented, Sheet, Textarea } from '@/components/ui';
 import { ExercisePicker } from '@/components/ExercisePicker';
-import { formatWeight } from '@/domain/units';
+import { displayWeight } from '@/domain/units';
 import { defaultPrescription, estimateSessionMinutes, WEEK_ORDER } from '@/domain/program/generator';
-import { currentRationale, exerciseCue, exerciseNote, prescriptionText, restText, RIR_PLAIN, SESSION_CALIBRATION_TIP, SESSION_WARMUP_TIP } from '@/domain/program/explain';
+import { currentRationale, exerciseCue, exerciseNote, prescriptionText, restText, rirPlain, sessionCalibrationTip, sessionWarmupTip } from '@/domain/program/explain';
+import { activityName, cardioNotesText, isGeneratedTemplateId, localizeGeneratedText, sessionDisplayName } from '@/domain/program/localize';
 import { isBeginner } from '@/domain/progression';
-import { WEEKDAY_SHORT } from '@/lib/dates';
+import { weekdayShort } from '@/lib/dates';
+import { rationaleLineText, versionReasonText as proposalReasonText } from '@/domain/program/proposals';
+import { EN, loadText, locale, t as translate, useT, type MessageKey, type Params } from '@/i18n';
 import type { Exercise, Experience, Goal, ID, Prescription, ProgramVersion, SessionTemplate, WeightUnit } from '@/domain/types';
-import { ACTIVITY_NAMES } from '@/domain/program/generator';
 
-export const KIND_LABEL: Record<SessionTemplate['kind'], string> = {
-  lifting: 'Strength',
-  cardio: 'Cardio',
-  walk: 'Walk',
-  mobility: 'Mobility',
-  conditioning: 'Conditioning',
+const KIND_KEYS: Record<SessionTemplate['kind'], MessageKey> = {
+  lifting: 'program.kind.strength',
+  cardio: 'program.kind.cardio',
+  walk: 'program.kind.walk',
+  mobility: 'program.kind.mobility',
+  conditioning: 'program.kind.conditioning',
 };
+/** Session kind labels, read in the current language. */
+export const KIND_LABEL: Record<SessionTemplate['kind'], string> = Object.defineProperties(
+  {} as Record<SessionTemplate['kind'], string>,
+  Object.fromEntries(Object.entries(KIND_KEYS).map(([k, key]) => [k, { enumerable: true, get: () => translate(key) }])),
+);
+
+const INTENSITY_KEYS: Record<NonNullable<SessionTemplate['cardio']>['intensity'], MessageKey> = {
+  easy: 'program.easy',
+  moderate: 'program.moderate',
+  hard: 'program.hard',
+};
+
+/* ------------------------------------------------- stored text → display */
+/** Stored plan text (session names, version reasons) is canonical English; it is localized only when shown. */
+const enText = (key: MessageKey, params?: Params) => translate(key, params, 'en');
+
+/** Full-string recognizer for an English template with {{placeholders}} (anchored; never a substring match). */
+function matchTemplate(key: MessageKey, text: string): Record<string, string> | null {
+  const names: string[] = [];
+  const source = EN[key]
+    .split(/(\{\{\w+\}\})/)
+    .map((part) => {
+      const m = /^\{\{(\w+)\}\}$/.exec(part);
+      if (!m) return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      names.push(m[1]);
+      return '(.+)';
+    })
+    .join('');
+  const m = new RegExp(`^${source}$`, 's').exec(text);
+  if (!m) return null;
+  return Object.fromEntries(names.map((n, i) => [n, m[i + 1]]));
+}
+
+/** Session name for display: manual "Session A" names and generated names are localized; custom names unchanged. */
+export function displaySessionName(t: Pick<SessionTemplate, 'id' | 'name' | 'nameEdited'>): string {
+  // A name the user typed (renamed, even to "Session A") is their text: shown verbatim.
+  if (t.nameEdited) return t.name;
+  if (t.id.startsWith('custom:')) {
+    const m = matchTemplate('onboarding.manualSessionName', t.name);
+    if (m && /^[A-Z]$/.test(m.letter)) return translate('onboarding.manualSessionName', { letter: m.letter });
+  }
+  return sessionDisplayName(t);
+}
+
+/** Plan text the onboarding/editor stores in English (manual-setup rationale/reason), else generated-text recognizer. */
+export function planTextForDisplay(text: string): string {
+  if (text === enText('onboarding.manualRationale')) return translate('onboarding.manualRationale');
+  if (text === enText('onboarding.manualReason')) return translate('onboarding.manualReason');
+  return localizeGeneratedText(text);
+}
+
+/** Edit reasons SessionCard stores on new versions (English), localized for display (e.g. in version history). */
+const REASON_KEYS: MessageKey[] = ['program.reordered', 'program.removed', 'program.editedExercise', 'program.swapped', 'program.added', 'program.renamed', 'program.edited'];
+export function versionReasonText(reason: string, templates: readonly SessionTemplate[] = []): string {
+  for (const key of REASON_KEYS) {
+    const params = matchTemplate(key, reason);
+    if (params) return translate(key, params.sessionName ? { ...params, sessionName: reasonSessionName(params.sessionName, templates) } : params);
+  }
+  // Coach/AI/progression/take-over reasons written by applyProposal (exact English), else generated-plan text.
+  const fromProposal = proposalReasonText(reason);
+  return fromProposal !== reason ? fromProposal : planTextForDisplay(reason);
+}
+
+/** A session name inside a stored reason: localized only when a generated, unrenamed session of the version has it. */
+function reasonSessionName(name: string, templates: readonly SessionTemplate[]): string {
+  const tpl = templates.find((x) => x.name === name && !x.nameEdited && isGeneratedTemplateId(x.id));
+  return tpl ? sessionDisplayName(tpl) : name;
+}
 
 export function KindIcon({ kind, className = 'size-4' }: { kind: SessionTemplate['kind']; className?: string }) {
   if (kind === 'walk' || kind === 'cardio') return <Footprints className={className} aria-hidden />;
@@ -33,9 +103,10 @@ export function KindIcon({ kind, className = 'size-4' }: { kind: SessionTemplate
 
 /** Weekly schedule overview ordered from the user's week start. */
 export function WeekStrip({ version, weekStart = 1, highlight }: { version: Pick<ProgramVersion, 'schedule' | 'templates'>; weekStart?: 0 | 1; highlight?: number }) {
+  const { t: tr } = useT();
   const order = weekStart === 1 ? WEEK_ORDER : [0, 1, 2, 3, 4, 5, 6];
   return (
-    <ol className="grid grid-cols-7 gap-1" aria-label="Weekly schedule">
+    <ol className="grid grid-cols-7 gap-1" aria-label={tr('program.schedule')}>
       {order.map((d) => {
         const slots = version.schedule.filter((s) => s.weekday === d);
         const names = slots.map((s) => version.templates.find((t) => t.id === s.templateId)).filter(Boolean) as SessionTemplate[];
@@ -45,15 +116,15 @@ export function WeekStrip({ version, weekStart = 1, highlight }: { version: Pick
             key={d}
             className={`rounded-xl border px-1 py-2 text-center min-h-16 flex flex-col items-center gap-1 ${hard ? 'border-accent/40 bg-accent-soft' : names.length ? 'border-line bg-surface-2' : 'border-line'} ${highlight === d ? 'ring-2 ring-accent' : ''}`}
           >
-            <span className="text-[11px] font-semibold text-muted">{WEEKDAY_SHORT[d]}</span>
+            <span className="text-[11px] font-semibold text-muted">{weekdayShort(d)}</span>
             {names.length ? (
               names.map((t, i) => (
                 <span key={i} className="text-[10px] leading-tight text-ink line-clamp-2">
-                  {t.name}
+                  {displaySessionName(t)}
                 </span>
               ))
             ) : (
-              <span className="text-[10px] text-faint">Rest</span>
+              <span className="text-[10px] text-faint">{tr('program.restDay')}</span>
             )}
           </li>
         );
@@ -64,9 +135,9 @@ export function WeekStrip({ version, weekStart = 1, highlight }: { version: Pick
 
 export function rxSummary(rx: Prescription, ex: Exercise | undefined, unit: WeightUnit): string {
   const parts = [prescriptionText(rx)];
-  if (rx.startLoadKg != null) parts.push(`start ${formatWeight(rx.startLoadKg, unit)}`);
-  else if (rx.calibrate) parts.push('calibrate');
-  if (ex?.unilateral && !rx.durationSec) parts.push('per side');
+  if (rx.startLoadKg != null) parts.push(translate('program.startLoad', { weight: loadText(displayWeight(rx.startLoadKg, unit), unit) }));
+  else if (rx.calibrate) parts.push(translate('program.calibrate'));
+  if (ex?.unilateral && !rx.durationSec) parts.push(translate('program.perSide'));
   return parts.join(' · ');
 }
 
@@ -94,6 +165,8 @@ interface SessionCardProps {
 /** One session with its exercises; optional editing controls. */
 export function SessionCard(props: SessionCardProps) {
   const { template: t, byId, catalog, unit, editable, onChange, days } = props;
+  const { t: tr } = useT();
+  const shownName = displaySessionName(t);
   const [open, setOpen] = useState(props.defaultOpen ?? true);
   const [editRx, setEditRx] = useState<Prescription | null>(null);
   const [swapFor, setSwapFor] = useState<Prescription | null>(null);
@@ -107,7 +180,9 @@ export function SessionCard(props: SessionCardProps) {
     onChange?.({ ...next, estimatedMinutes: estimateSessionMinutes(next, catalog) }, reason);
   };
   const setExercises = (exercises: Prescription[], reason: string) => commit({ ...t, exercises }, reason);
-  const nameOf = (id: ID) => byId.get(id)?.name ?? 'Unknown exercise';
+  const nameOf = (id: ID) => byId.get(id)?.name ?? tr('program.unknownExercise');
+  /** Stored reasons use the stored (English canonical) names; see versionReasonText for display. */
+  const storedNameOf = (id: ID) => byId.get(id)?.name ?? enText('program.unknownExercise');
 
   // Session-level tips replace the same sentence repeated on every exercise row.
   const anyCalibrate = t.exercises.some((rx) => rx.calibrate);
@@ -118,31 +193,31 @@ export function SessionCard(props: SessionCardProps) {
     if (j < 0 || j >= t.exercises.length) return;
     const list = [...t.exercises];
     [list[i], list[j]] = [list[j], list[i]];
-    setExercises(list, `Reordered ${t.name}`);
+    setExercises(list, enText('program.reordered', { sessionName: t.name }));
   };
 
   return (
-    <Card as="article" className="overflow-hidden" aria-label={t.name}>
+    <Card as="article" className="overflow-hidden" aria-label={shownName}>
       <div className="flex items-start gap-3 px-4 pt-3 pb-2">
         <div className="size-9 shrink-0 rounded-xl bg-surface-2 flex items-center justify-center text-accent mt-0.5">
           <KindIcon kind={t.kind} />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold leading-tight">{t.name}</h3>
+          <h3 className="font-semibold leading-tight">{shownName}</h3>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
             <Badge tone={t.kind === 'lifting' ? 'accent' : 'neutral'}>{KIND_LABEL[t.kind]}</Badge>
             <span className="inline-flex items-center gap-1">
-              <Clock className="size-3.5" aria-hidden /> ~{t.estimatedMinutes} min
+              <Clock className="size-3.5" aria-hidden /> {tr('program.estimatedTime', { minutes: t.estimatedMinutes })}
             </span>
             {days && days.length > 0 && (
               <span className="inline-flex items-center gap-1">
                 <CalendarDays className="size-3.5" aria-hidden />
-                {[...days].sort((a, b) => WEEK_ORDER.indexOf(a) - WEEK_ORDER.indexOf(b)).map((d) => WEEKDAY_SHORT[d]).join(', ')}
+                {[...days].sort((a, b) => WEEK_ORDER.indexOf(a) - WEEK_ORDER.indexOf(b)).map((d) => weekdayShort(d)).join(', ')}
               </span>
             )}
           </div>
         </div>
-        <IconButton label={open ? `Collapse ${t.name}` : `Expand ${t.name}`} onClick={() => setOpen(!open)} aria-expanded={open}>
+        <IconButton label={open ? tr('program.collapse', { sessionName: shownName }) : tr('program.expand', { sessionName: shownName })} onClick={() => setOpen(!open)} aria-expanded={open}>
           {open ? <ChevronUp className="size-5" /> : <ChevronDown className="size-5" />}
         </IconButton>
       </div>
@@ -152,12 +227,16 @@ export function SessionCard(props: SessionCardProps) {
           {t.cardio && (
             <div className="rounded-xl bg-surface-2 px-3 py-2.5 mb-2 text-sm">
               <div className="font-medium">
-                {ACTIVITY_NAMES[t.cardio.activity]} · {t.cardio.minutes} min · {t.cardio.intensity}
+                {tr('program.cardioLine', {
+                  activity: activityName(t.cardio.activity),
+                  minutes: t.cardio.minutes,
+                  intensity: tr(INTENSITY_KEYS[t.cardio.intensity]).toLocaleLowerCase(locale()),
+                })}
               </div>
-              {t.cardio.notes && <p className="text-muted text-xs mt-1">{t.cardio.notes}</p>}
+              {t.cardio.notes && <p className="text-muted text-xs mt-1">{cardioNotesText(t)}</p>}
               {editable && (
                 <Button size="sm" variant="ghost" className="mt-1 -ml-2" icon={<Pencil className="size-4" />} onClick={() => setEditCardio(true)}>
-                  Edit
+                  {tr('program.edit')}
                 </Button>
               )}
             </div>
@@ -176,8 +255,8 @@ export function SessionCard(props: SessionCardProps) {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-medium text-[15px]">{nameOf(rx.exerciseId)}</span>
-                          {rx.priority === 1 && <Badge tone="accent">Main</Badge>}
-                          {rx.priority === 3 && <Badge>Accessory</Badge>}
+                          {rx.priority === 1 && <Badge tone="accent">{tr('program.main')}</Badge>}
+                          {rx.priority === 3 && <Badge>{tr('program.accessory')}</Badge>}
                         </div>
                         <p className="text-xs text-muted mt-0.5 tabular">{rxSummary(rx, ex, unit)}</p>
                         {cue && <p className="text-xs text-faint mt-1">{cue}</p>}
@@ -186,19 +265,23 @@ export function SessionCard(props: SessionCardProps) {
                     </div>
                     {editable && (
                       <div className="flex flex-wrap gap-1 mt-1.5 pl-7">
-                        <Button size="sm" variant="ghost" icon={<Repeat className="size-4" />} onClick={() => setSwapFor(rx)} aria-label={`Swap ${nameOf(rx.exerciseId)}`}>
-                          Swap
+                        <Button size="sm" variant="ghost" icon={<Repeat className="size-4" />} onClick={() => setSwapFor(rx)} aria-label={tr('program.swapExercise', { exercise: nameOf(rx.exerciseId) })}>
+                          {tr('program.swap')}
                         </Button>
-                        <Button size="sm" variant="ghost" icon={<Pencil className="size-4" />} onClick={() => setEditRx(rx)} aria-label={`Edit sets and reps for ${nameOf(rx.exerciseId)}`}>
-                          Edit
+                        <Button size="sm" variant="ghost" icon={<Pencil className="size-4" />} onClick={() => setEditRx(rx)} aria-label={tr('program.editPrescription', { exercise: nameOf(rx.exerciseId) })}>
+                          {tr('program.edit')}
                         </Button>
-                        <IconButton size="sm" label={`Move ${nameOf(rx.exerciseId)} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+                        <IconButton size="sm" label={tr('program.moveUp', { exercise: nameOf(rx.exerciseId) })} disabled={i === 0} onClick={() => move(i, -1)}>
                           <ArrowUp className="size-4" />
                         </IconButton>
-                        <IconButton size="sm" label={`Move ${nameOf(rx.exerciseId)} down`} disabled={i === t.exercises.length - 1} onClick={() => move(i, 1)}>
+                        <IconButton size="sm" label={tr('program.moveDown', { exercise: nameOf(rx.exerciseId) })} disabled={i === t.exercises.length - 1} onClick={() => move(i, 1)}>
                           <ArrowDown className="size-4" />
                         </IconButton>
-                        <IconButton size="sm" label={`Remove ${nameOf(rx.exerciseId)}`} onClick={() => setExercises(t.exercises.filter((x) => x.id !== rx.id), `Removed ${nameOf(rx.exerciseId)}`)}>
+                        <IconButton
+                          size="sm"
+                          label={tr('program.remove', { exercise: nameOf(rx.exerciseId) })}
+                          onClick={() => setExercises(t.exercises.filter((x) => x.id !== rx.id), enText('program.removed', { exercise: storedNameOf(rx.exerciseId) }))}
+                        >
                           <Trash2 className="size-4" />
                         </IconButton>
                       </div>
@@ -210,16 +293,16 @@ export function SessionCard(props: SessionCardProps) {
           )}
           {(anyCalibrate || anyGenericWarmup) && (
             <ul className="mt-1 flex flex-col gap-1 text-xs text-muted">
-              {anyGenericWarmup && <li>{SESSION_WARMUP_TIP}</li>}
-              {anyCalibrate && <li>{SESSION_CALIBRATION_TIP}</li>}
+              {anyGenericWarmup && <li>{sessionWarmupTip()}</li>}
+              {anyCalibrate && <li>{sessionCalibrationTip()}</li>}
             </ul>
           )}
-          {t.kind === 'lifting' && t.exercises.length === 0 && <p className="text-sm text-muted py-3">No exercises yet. Add the ones you want to train in this session.</p>}
+          {t.kind === 'lifting' && t.exercises.length === 0 && <p className="text-sm text-muted py-3">{tr('program.empty')}</p>}
 
           {t.trimmedExerciseIds && t.trimmedExerciseIds.length > 0 && (
             <p className="text-xs text-muted mt-2">
-              Trimmed to fit your time: {t.trimmedExerciseIds.map(nameOf).join(', ')}.
-              {editable && ' Add them back with “Add exercise” if you have time.'}
+              {tr('program.trimmed', { exercises: t.trimmedExerciseIds.map(nameOf).join(', ') })}
+              {editable && ` ${tr('program.trimmedHelp')}`}
             </p>
           )}
 
@@ -227,30 +310,30 @@ export function SessionCard(props: SessionCardProps) {
             <div className="flex flex-wrap gap-2 mt-3">
               {(t.kind === 'lifting' || t.exercises.length > 0) && (
                 <Button size="sm" icon={<Plus className="size-4" />} onClick={() => setAdding(true)}>
-                  Add exercise
+                  {tr('program.addExercise')}
                 </Button>
               )}
               <Button size="sm" variant="ghost" icon={<Pencil className="size-4" />} onClick={() => setRenaming(true)}>
-                Rename
+                {tr('program.rename')}
               </Button>
               {props.onDaysChange && (
                 <Button size="sm" variant="ghost" icon={<CalendarDays className="size-4" />} onClick={() => setEditDays(true)}>
-                  Days
+                  {tr('program.days')}
                 </Button>
               )}
               {props.onRegenerate && (
-                <Button size="sm" variant="ghost" icon={<RefreshCw className="size-4" />} onClick={props.onRegenerate} aria-label={`Shuffle exercises in ${t.name}`}>
-                  Shuffle exercises
+                <Button size="sm" variant="ghost" icon={<RefreshCw className="size-4" />} onClick={props.onRegenerate} aria-label={tr('program.shuffleSession', { sessionName: shownName })}>
+                  {tr('program.shuffle')}
                 </Button>
               )}
               {props.onDuplicate && (
                 <Button size="sm" variant="ghost" icon={<Copy className="size-4" />} onClick={props.onDuplicate}>
-                  Save to library
+                  {tr('program.saveLibrary')}
                 </Button>
               )}
               {props.onDelete && (
                 <Button size="sm" variant="ghost" className="text-danger" icon={<Trash2 className="size-4" />} onClick={() => setConfirmDelete(true)}>
-                  Delete
+                  {tr('program.delete')}
                 </Button>
               )}
             </div>
@@ -267,7 +350,7 @@ export function SessionCard(props: SessionCardProps) {
         onSave={(next) => {
           setExercises(
             t.exercises.map((x) => (x.id === next.id ? next : x)),
-            `Edited ${nameOf(next.exerciseId)} in ${t.name}`,
+            enText('program.editedExercise', { exercise: storedNameOf(next.exerciseId), sessionName: t.name }),
           );
           setEditRx(null);
         }}
@@ -275,14 +358,14 @@ export function SessionCard(props: SessionCardProps) {
       <ExercisePicker
         open={!!swapFor}
         onClose={() => setSwapFor(null)}
-        title={swapFor ? `Swap ${nameOf(swapFor.exerciseId)}` : 'Swap exercise'}
+        title={swapFor ? tr('program.swapExercise', { exercise: nameOf(swapFor.exerciseId) }) : tr('program.swapTitle')}
         suggestIds={swapFor ? [...new Set([...swapFor.alternatives, ...(byId.get(swapFor.exerciseId)?.substitutions ?? [])])] : []}
         excludeIds={t.exercises.map((x) => x.exerciseId)}
         onlyIds={props.pickerOnlyIds}
         onlyNote={props.pickerOnlyNote}
         onPick={(ex) => {
           if (!swapFor) return;
-          const old = nameOf(swapFor.exerciseId);
+          const old = storedNameOf(swapFor.exerciseId);
           const timed = ex.tracking === 'duration' || ex.tracking === 'distance_time';
           const next: Prescription = {
             ...swapFor,
@@ -296,7 +379,7 @@ export function SessionCard(props: SessionCardProps) {
           };
           setExercises(
             t.exercises.map((x) => (x.id === swapFor.id ? next : x)),
-            `Swapped ${old} for ${ex.name}`,
+            enText('program.swapped', { from: old, to: ex.name }),
           );
           setSwapFor(null);
         }}
@@ -304,29 +387,39 @@ export function SessionCard(props: SessionCardProps) {
       <ExercisePicker
         open={adding}
         onClose={() => setAdding(false)}
-        title={`Add to ${t.name}`}
+        title={tr('program.addTo', { sessionName: shownName })}
         excludeIds={t.exercises.map((x) => x.exerciseId)}
         onlyIds={props.pickerOnlyIds}
         onlyNote={props.pickerOnlyNote}
         onPick={(ex) => {
           const slotId = `${t.id}:x${Date.now().toString(36)}`;
-          setExercises([...t.exercises, defaultPrescription(ex, slotId, props.experience, props.goal, t.exercises.length === 0 ? 1 : 2)], `Added ${ex.name} to ${t.name}`);
+          setExercises([...t.exercises, defaultPrescription(ex, slotId, props.experience, props.goal, t.exercises.length === 0 ? 1 : 2)], enText('program.added', { exercise: ex.name, sessionName: t.name }));
           setAdding(false);
         }}
       />
-      <RenameSheet open={renaming} value={t.name} title="Rename session" onClose={() => setRenaming(false)} onSave={(name) => { commit({ ...t, name }, `Renamed ${t.name} to ${name}`); setRenaming(false); }} />
+      <RenameSheet
+        open={renaming}
+        value={t.name}
+        title={tr('program.renameTitle')}
+        onClose={() => setRenaming(false)}
+        onSave={(name) => {
+          // The typed name is the user's text: mark it so it is never shown as (localized) generated text.
+          commit({ ...t, name, nameEdited: true }, enText('program.renamed', { from: t.name, to: name }));
+          setRenaming(false);
+        }}
+      />
       {props.onDaysChange && (
-        <DaysSheet open={editDays} days={days ?? []} title={`Days for ${t.name}`} onClose={() => setEditDays(false)} onSave={(d) => { props.onDaysChange!(d); setEditDays(false); }} />
+        <DaysSheet open={editDays} days={days ?? []} title={tr('program.daysFor', { sessionName: shownName })} onClose={() => setEditDays(false)} onSave={(d) => { props.onDaysChange!(d); setEditDays(false); }} />
       )}
       {t.cardio && (
-        <CardioSheet open={editCardio} template={t} onClose={() => setEditCardio(false)} onSave={(cardio) => { commit({ ...t, cardio }, `Edited ${t.name}`); setEditCardio(false); }} />
+        <CardioSheet open={editCardio} template={t} onClose={() => setEditCardio(false)} onSave={(cardio) => { commit({ ...t, cardio: cardio.notes !== t.cardio!.notes ? { ...cardio, notesEdited: true } : cardio }, enText('program.edited', { sessionName: t.name })); setEditCardio(false); }} />
       )}
       {props.onDelete && (
         <ConfirmDialog
           open={confirmDelete}
-          title={`Delete ${t.name}?`}
-          body="It’s removed from your program (a new version is saved, so you can restore it). Completed workouts stay in your history."
-          confirmLabel="Delete session"
+          title={tr('program.deleteTitle', { sessionName: shownName })}
+          body={tr('program.deleteBody')}
+          confirmLabel={tr('program.deleteSession')}
           danger
           onCancel={() => setConfirmDelete(false)}
           onConfirm={() => {
@@ -340,58 +433,60 @@ export function SessionCard(props: SessionCardProps) {
 }
 
 export function PrescriptionSheet({ open, rx, ex, onClose, onSave }: { open: boolean; rx: Prescription | null; ex?: Exercise; onClose: () => void; onSave: (rx: Prescription) => void }) {
+  const { t: tr } = useT();
   return (
-    <Sheet open={open} onClose={onClose} title={ex ? ex.name : 'Edit exercise'}>
+    <Sheet open={open} onClose={onClose} title={ex ? ex.name : tr('program.editExercise')}>
       {rx && <PrescriptionForm key={rx.id + rx.exerciseId} rx={rx} ex={ex} onCancel={onClose} onSave={onSave} />}
     </Sheet>
   );
 }
 
 function PrescriptionForm({ rx, ex, onSave, onCancel }: { rx: Prescription; ex?: Exercise; onSave: (rx: Prescription) => void; onCancel: () => void }) {
+  const { t: tr } = useT();
   const [d, setD] = useState<Prescription>(rx);
   const timed = d.durationSec != null || ex?.tracking === 'duration';
   const errors: string[] = [];
-  if (d.sets < 1 || d.sets > 10) errors.push('Sets must be between 1 and 10.');
-  if (!timed && (d.repMin < 1 || d.repMax < d.repMin || d.repMax > 50)) errors.push('Rep range must be 1–50 with the top at least the bottom.');
-  if (timed && (!d.durationSec || d.durationSec < 5 || d.durationSec > 3600)) errors.push('Duration must be 5–3600 seconds.');
-  if (d.restSec < 0 || d.restSec > 600) errors.push('Rest must be 0–600 seconds.');
+  if (d.sets < 1 || d.sets > 10) errors.push(tr('program.validation.sets'));
+  if (!timed && (d.repMin < 1 || d.repMax < d.repMin || d.repMax > 50)) errors.push(tr('program.validation.reps'));
+  if (timed && (!d.durationSec || d.durationSec < 5 || d.durationSec > 3600)) errors.push(tr('program.validation.seconds'));
+  if (d.restSec < 0 || d.restSec > 600) errors.push(tr('program.validation.rest'));
   return (
     <form
       className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!errors.length) onSave(d);
+        if (!errors.length) onSave(d.notes !== rx.notes ? { ...d, notesEdited: true } : d);
       }}
     >
       <div className="grid grid-cols-2 gap-3">
-        <NumberInput label="Working sets" decimals={false} min={1} max={10} value={d.sets} onChange={(v) => setD({ ...d, sets: v ?? 1 })} />
-        <NumberInput label="Rest (seconds)" decimals={false} min={0} max={600} value={d.restSec} onChange={(v) => setD({ ...d, restSec: v ?? 0 })} hint={restText(d.restSec)} />
+        <NumberInput label={tr('program.workingSets')} decimals={false} min={1} max={10} value={d.sets} onChange={(v) => setD({ ...d, sets: v ?? 1 })} />
+        <NumberInput label={tr('program.restSeconds')} decimals={false} min={0} max={600} value={d.restSec} onChange={(v) => setD({ ...d, restSec: v ?? 0 })} hint={restText(d.restSec)} />
         {timed ? (
-          <NumberInput label="Seconds per set" decimals={false} min={5} max={3600} value={d.durationSec ?? 30} onChange={(v) => setD({ ...d, durationSec: v ?? 30 })} />
+          <NumberInput label={tr('program.secondsPerSet')} decimals={false} min={5} max={3600} value={d.durationSec ?? 30} onChange={(v) => setD({ ...d, durationSec: v ?? 30 })} />
         ) : (
           <>
-            <NumberInput label="Reps: bottom" decimals={false} min={1} max={50} value={d.repMin} onChange={(v) => setD({ ...d, repMin: v ?? 1 })} />
-            <NumberInput label="Reps: top" decimals={false} min={1} max={50} value={d.repMax} onChange={(v) => setD({ ...d, repMax: v ?? d.repMin })} />
+            <NumberInput label={tr('program.repsMin')} decimals={false} min={1} max={50} value={d.repMin} onChange={(v) => setD({ ...d, repMin: v ?? 1 })} />
+            <NumberInput label={tr('program.repsMax')} decimals={false} min={1} max={50} value={d.repMax} onChange={(v) => setD({ ...d, repMax: v ?? d.repMin })} />
           </>
         )}
-        <NumberInput label="Target RIR" decimals={false} min={0} max={5} value={d.targetRir} onChange={(v) => setD({ ...d, targetRir: v ?? 2 })} />
+        <NumberInput label={tr('program.targetRir')} decimals={false} min={0} max={5} value={d.targetRir} onChange={(v) => setD({ ...d, targetRir: v ?? 2 })} />
       </div>
-      <p className="text-xs text-muted">{RIR_PLAIN}</p>
+      <p className="text-xs text-muted">{rirPlain()}</p>
       <div>
-        <span className="text-sm font-medium block mb-1.5">Role in the session</span>
+        <span className="text-sm font-medium block mb-1.5">{tr('program.role')}</span>
         <Segmented
-          label="Priority"
+          label={tr('program.priority')}
           value={d.priority}
           onChange={(v) => setD({ ...d, priority: v })}
           options={[
-            { value: 1, label: 'Main' },
-            { value: 2, label: 'Secondary' },
-            { value: 3, label: 'Accessory' },
+            { value: 1, label: tr('program.main') },
+            { value: 2, label: tr('program.secondary') },
+            { value: 3, label: tr('program.accessory') },
           ]}
         />
-        <p className="text-xs text-muted mt-1">Accessories are the first to go when a session runs over your time.</p>
+        <p className="text-xs text-muted mt-1">{tr('program.accessoryHelp')}</p>
       </div>
-      <Textarea label="Notes (optional)" value={d.notes ?? ''} maxLength={300} onChange={(e) => setD({ ...d, notes: e.target.value || undefined })} />
+      <Textarea label={tr('program.notesOptional')} value={d.notes ?? ''} maxLength={300} onChange={(e) => setD({ ...d, notes: e.target.value || undefined })} />
       {errors.length > 0 && (
         <ul className="text-xs text-danger" role="alert">
           {errors.map((e) => (
@@ -401,10 +496,10 @@ function PrescriptionForm({ rx, ex, onSave, onCancel }: { rx: Prescription; ex?:
       )}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>
-          Cancel
+          {tr('program.cancel')}
         </Button>
         <Button type="submit" variant="primary" disabled={errors.length > 0}>
-          Save
+          {tr('program.save')}
         </Button>
       </div>
     </form>
@@ -419,9 +514,10 @@ export function RenameSheet({ open, value, title, onClose, onSave }: { open: boo
   );
 }
 function RenameForm({ value, onSave, onCancel }: { value: string; onSave: (v: string) => void; onCancel: () => void }) {
+  const { t: tr } = useT();
   const [v, setV] = useState(value);
   const trimmed = v.trim();
-  const error = !trimmed ? 'Enter a name.' : trimmed.length > 60 ? 'Keep it under 60 characters.' : null;
+  const error = !trimmed ? tr('program.validation.nameRequired') : trimmed.length > 60 ? tr('program.validation.nameLength') : null;
   return (
     <form
       className="flex flex-col gap-4"
@@ -430,13 +526,13 @@ function RenameForm({ value, onSave, onCancel }: { value: string; onSave: (v: st
         if (!error) onSave(trimmed);
       }}
     >
-      <Input label="Name" value={v} autoFocus maxLength={80} onChange={(e) => setV(e.target.value)} error={v !== value ? error : null} />
+      <Input label={tr('program.name')} value={v} autoFocus maxLength={80} onChange={(e) => setV(e.target.value)} error={v !== value ? error : null} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>
-          Cancel
+          {tr('program.cancel')}
         </Button>
         <Button type="submit" variant="primary" disabled={!!error}>
-          Save
+          {tr('program.save')}
         </Button>
       </div>
     </form>
@@ -451,17 +547,18 @@ export function DaysSheet({ open, days, title, onClose, onSave }: { open: boolea
   );
 }
 function DaysForm({ days, onSave, onCancel }: { days: number[]; onSave: (d: number[]) => void; onCancel: () => void }) {
+  const { t: tr } = useT();
   const [d, setD] = useState<number[]>(days);
   return (
     <div className="flex flex-col gap-4">
-      <ChipGroup label="Weekdays" values={d} onChange={setD} options={WEEK_ORDER.map((w) => ({ value: w, label: WEEKDAY_SHORT[w] }))} />
-      <p className="text-xs text-muted">Leave all unselected to keep this session in the program without a fixed day.</p>
+      <ChipGroup label={tr('program.weekdays')} values={d} onChange={setD} options={WEEK_ORDER.map((w) => ({ value: w, label: weekdayShort(w) }))} />
+      <p className="text-xs text-muted">{tr('program.weekdaysHelp')}</p>
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>
-          Cancel
+          {tr('program.cancel')}
         </Button>
         <Button variant="primary" onClick={() => onSave(d)}>
-          Save
+          {tr('program.save')}
         </Button>
       </div>
     </div>
@@ -469,38 +566,48 @@ function DaysForm({ days, onSave, onCancel }: { days: number[]; onSave: (d: numb
 }
 
 function CardioSheet({ open, template, onClose, onSave }: { open: boolean; template: SessionTemplate; onClose: () => void; onSave: (c: NonNullable<SessionTemplate['cardio']>) => void }) {
+  const { t: tr } = useT();
   return (
-    <Sheet open={open} onClose={onClose} title={`Edit ${template.name}`}>
+    <Sheet open={open} onClose={onClose} title={tr('program.editSession', { sessionName: displaySessionName(template) })}>
       {open && template.cardio && <CardioForm cardio={template.cardio} onSave={onSave} onCancel={onClose} />}
     </Sheet>
   );
 }
 function CardioForm({ cardio, onSave, onCancel }: { cardio: NonNullable<SessionTemplate['cardio']>; onSave: (c: NonNullable<SessionTemplate['cardio']>) => void; onCancel: () => void }) {
+  const { t: tr } = useT();
   const [c, setC] = useState(cardio);
   const bad = !c.minutes || c.minutes < 5 || c.minutes > 600;
   return (
     <div className="flex flex-col gap-4">
-      <NumberInput label="Minutes" decimals={false} min={5} max={600} value={c.minutes} onChange={(v) => setC({ ...c, minutes: v ?? 5 })} error={bad ? 'Choose 5–600 minutes.' : null} />
+      <NumberInput
+        label={tr('program.minutes')}
+        decimals={false}
+        min={5}
+        max={600}
+        value={c.minutes}
+        onChange={(v) => setC({ ...c, minutes: v ?? 5 })}
+        error={bad ? tr('program.validation.minutes') : null}
+      />
       <div>
-        <span className="text-sm font-medium block mb-1.5">Effort</span>
+        <span className="text-sm font-medium block mb-1.5">{tr('program.effort')}</span>
         <Segmented
-          label="Effort"
+          label={tr('program.effort')}
           value={c.intensity}
           onChange={(v) => setC({ ...c, intensity: v })}
           options={[
-            { value: 'easy', label: 'Easy' },
-            { value: 'moderate', label: 'Moderate' },
-            { value: 'hard', label: 'Hard' },
+            { value: 'easy', label: tr(INTENSITY_KEYS.easy) },
+            { value: 'moderate', label: tr(INTENSITY_KEYS.moderate) },
+            { value: 'hard', label: tr(INTENSITY_KEYS.hard) },
           ]}
         />
       </div>
-      <Textarea label="Notes" value={c.notes} maxLength={300} onChange={(e) => setC({ ...c, notes: e.target.value })} />
+      <Textarea label={tr('program.notes')} value={c.notes} maxLength={300} onChange={(e) => setC({ ...c, notes: e.target.value })} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>
-          Cancel
+          {tr('program.cancel')}
         </Button>
         <Button variant="primary" disabled={bad} onClick={() => onSave(c)}>
-          Save
+          {tr('program.save')}
         </Button>
       </div>
     </div>
@@ -509,7 +616,8 @@ function CardioForm({ cardio, onSave, onCancel }: { cardio: NonNullable<SessionT
 
 /** One-line reading guide for prescriptions, shown once above the session list. */
 export function PlanLegend() {
-  return <p className="text-xs text-muted px-1 -mt-1 mb-2">Sets × reps · RIR = reps left in the tank at the end of each set · rest between sets. Times include warm-up and rest.</p>;
+  const { t: tr } = useT();
+  return <p className="text-xs text-muted px-1 -mt-1 mb-2">{tr('program.legend')}</p>;
 }
 
 /**
@@ -517,6 +625,7 @@ export function PlanLegend() {
  * trade-offs/safety notes there are, so warnings are never hidden without a visible signal.
  */
 export function WhyItFits({ version, defaultOpen = false, experience }: { version: Pick<ProgramVersion, 'rationale' | 'warnings'>; defaultOpen?: boolean; experience?: Experience }) {
+  const { t: tr, tp } = useT();
   const [open, setOpen] = useState(defaultOpen);
   const n = version.warnings.length;
   return (
@@ -524,12 +633,10 @@ export function WhyItFits({ version, defaultOpen = false, experience }: { versio
       <button type="button" className="flex w-full items-center justify-between gap-2 min-h-11 px-1 text-left" aria-expanded={open} aria-controls="why-body" onClick={() => setOpen(!open)}>
         <span className="flex flex-wrap items-center gap-2">
           <h2 id="why-title" className="text-[13px] font-semibold uppercase tracking-wide text-muted">
-            Why this plan?
+            {tr('program.why')}
           </h2>
           {n > 0 && (
-            <Badge tone="warn">
-              {n} {n === 1 ? 'note' : 'notes'} to check
-            </Badge>
+            <Badge tone="warn">{tp('program.notesCount', n)}</Badge>
           )}
         </span>
         {open ? <ChevronUp className="size-4 text-muted" aria-hidden /> : <ChevronDown className="size-4 text-muted" aria-hidden />}
@@ -540,14 +647,14 @@ export function WhyItFits({ version, defaultOpen = false, experience }: { versio
             <div className="flex flex-col gap-2 mb-3">
               {version.warnings.map((w) => (
                 <div key={w} className="rounded-xl border border-warn/30 bg-warn-soft px-3.5 py-2.5 text-sm">
-                  {w}
+                  {planTextForDisplay(w)}
                 </div>
               ))}
             </div>
           )}
           <Card className="px-4 py-3">
             <ul className="flex flex-col gap-2 text-sm list-disc pl-4 marker:text-accent">
-              {currentRationale(version.rationale, isBeginner(experience)).map((r) => (
+              {currentRationale(version.rationale, isBeginner(experience)).map((line) => rationaleLineText(planTextForDisplay(line))).map((r) => (
                 <li key={r}>{r}</li>
               ))}
             </ul>

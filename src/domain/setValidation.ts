@@ -28,28 +28,41 @@
  * Incomplete (draft) sets are allowed to be empty/partial — they are never counted.
  */
 import type { Exercise, ID, LoggedSet, WorkoutSession } from './types';
-import { validateLoggedSet } from '../../supabase/functions/_shared/training/sets';
+import {
+  validateLoggedSet as validateLoggedSetShared,
+  type SetValidationOptions,
+  type SetValidationResult,
+} from '../../supabase/functions/_shared/training/sets';
+import { getLanguage, t } from '../i18n';
 
 // The per-set rules live in the shared training module so the ai-coach function counts sets exactly like the app.
 export * from '../../supabase/functions/_shared/training/sets';
+
+/**
+ * The shared set rules, with error messages in the app's current language (unless `opts.lang` is given). The result
+ * (ok / which fields failed) never depends on the language.
+ */
+export function validateLoggedSet(set: LoggedSet, ex: Parameters<typeof validateLoggedSetShared>[1], opts: SetValidationOptions = {}): SetValidationResult {
+  return validateLoggedSetShared(set, ex, { ...opts, lang: opts.lang ?? getLanguage() });
+}
 
 const present = (v: number | null | undefined): v is number => v != null;
 
 /** Problems with a session record (empty array = fine). Used for import and historical edits. */
 export function validateSessionRecord(session: WorkoutSession, exById: Map<ID, Exercise>): string[] {
   const issues: string[] = [];
-  if (!session || typeof session !== 'object') return ['Not a workout session.'];
-  if (!Array.isArray(session.exercises)) return ['Session has no exercise list.'];
+  if (!session || typeof session !== 'object') return [t('workout.validation.notSession')];
+  if (!Array.isArray(session.exercises)) return [t('workout.validation.noExerciseList')];
   session.exercises.forEach((se, i) => {
     if (!se || !Array.isArray(se.sets)) {
-      issues.push(`Exercise ${i + 1}: missing sets.`);
+      issues.push(t('workout.validation.missingSets', { index: i + 1 }));
       return;
     }
     const ex = exById.get(se.exerciseId);
-    const name = ex?.name ?? se.exerciseId ?? `Exercise ${i + 1}`;
+    const name = ex?.name ?? se.exerciseId ?? t('workout.validation.exerciseIndex', { index: i + 1 });
     se.sets.forEach((st, j) => {
       const r = validateLoggedSet(st, ex, { mode: 'record' });
-      if (!r.ok) issues.push(`${name}, set ${j + 1}: ${r.errors.join(' ')}`);
+      if (!r.ok) issues.push(t('workout.validation.setErrors', { exercise: name, index: j + 1, errors: r.errors.join(' ') }));
     });
   });
   return issues;

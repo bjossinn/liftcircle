@@ -5,7 +5,8 @@ import { Activity, Apple, CalendarClock, Check, ChevronRight, Dumbbell, Flame, P
 import { useApp } from '@/state/app';
 import { Badge, Button, Card, ConfirmDialog, Page, ProgressBar, SectionTitle, Spinner } from '@/components/ui';
 import { TopActions } from '@/app/TopActions';
-import { addDays, formatDate, formatMinutes, startOfWeek, todayISO, weekday, WEEKDAY_SHORT } from '@/lib/dates';
+import { addDays, formatDate, formatMinutes, startOfWeek, todayISO, weekday, weekdayShort } from '@/lib/dates';
+import { t as translate, useT } from '@/i18n';
 import { useActiveProgram, useAllActivities, useAllSessions, useStarters } from '@/features/train/hooks';
 import { nextPlannedSession, plannedSessionsInRange, rescheduleMissed, skipPlanned, type PlannedSession } from '@/domain/program/schedule';
 import { saveRecord } from '@/db/repo';
@@ -19,9 +20,9 @@ import { plannedWeekStreak } from '@/domain/program/streak';
 
 /** A friendly greeting for the time of day (device clock). */
 export function greeting(hour = new Date().getHours()): string {
-  if (hour >= 5 && hour < 12) return 'Good morning';
-  if (hour >= 12 && hour < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (hour >= 5 && hour < 12) return translate('today.morning');
+  if (hour >= 12 && hour < 18) return translate('today.afternoon');
+  return translate('today.evening');
 }
 
 export default function TodayPage() {
@@ -37,6 +38,7 @@ export default function TodayPage() {
   const toast = useToast();
   const [missedAction, setMissedAction] = useState<PlannedSession | null>(null);
   const { byId } = useExercises();
+  const { t, tp } = useT();
 
   const weekFrom = startOfWeek(today, settings.weekStart);
   const weekTo = addDays(weekFrom, 6);
@@ -75,41 +77,41 @@ export default function TodayPage() {
   const nutritionOn = settings.nutritionEnabled && account.nutrition.mode !== 'none';
 
   return (
-    <Page title={name ? `${greeting()}, ${name}` : greeting()} actions={<TopActions />}>
+    <Page title={name ? t('today.greetingName', { greeting: greeting(), name }) : greeting()} actions={<TopActions />}>
       <div className="-mt-1 mb-4 flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm text-muted">{formatDate(today, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
           <p className="text-[15px] font-medium mt-0.5">
             {active
-              ? 'You’re mid-workout. Pick up where you left off.'
+              ? t('today.midWorkout')
               : next?.date === today
-                ? `Today’s focus: ${next.template.name}`
+                ? t('today.focus', { name: next.template.name })
                 : program
-                  ? 'Rest day. Recovery counts too.'
+                  ? t('today.restDay')
                   : isNew
-                    ? 'Let’s get you started.'
-                    : 'Ready when you are.'}
+                    ? t('today.letsStart')
+                    : t('today.ready')}
           </p>
         </div>
         {streak > 0 && (
-          <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-streak-soft text-streak px-2.5 min-h-8 text-sm font-semibold" title="Weeks in a row with every planned session done">
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-streak-soft text-streak px-2.5 min-h-8 text-sm font-semibold" title={t('today.streakHint')}>
             <Flame className="size-4 flame" aria-hidden />
-            {streak}-week streak
+            {tp('today.streak', streak)}
           </span>
         )}
       </div>
 
       {isNew && !active && (
         <Card className="p-5 space-y-3" tint="accent">
-          <BrandMoment title={`Welcome to ${BRAND.name}`} />
-          <p className="text-[15px]">Let’s set up your training. Answer a few questions for a starting program that fits your days, equipment and time, or start logging straight away.</p>
+          <BrandMoment title={t('today.welcome', { brand: BRAND.name })} />
+          <p className="text-[15px]">{t('today.setupBody')}</p>
           <div className="flex flex-col gap-2">
             <Button variant="primary" size="lg" onClick={() => nav('/onboarding')}>
-              Set up my plan
+              {t('today.setup')}
             </Button>
-            <Button onClick={() => void empty()}>Start an empty workout</Button>
+            <Button onClick={() => void empty()}>{t('today.emptyWorkout')}</Button>
             <Button variant="ghost" onClick={() => nav('/train/activity/new')}>
-              Log a walk, run or other activity
+              {t('today.logOther')}
             </Button>
           </div>
         </Card>
@@ -120,17 +122,17 @@ export default function TodayPage() {
           <Play className="size-5 text-accent" aria-hidden />
           <div className="flex-1 min-w-0">
             <div className="font-semibold truncate">{active.name}</div>
-            <div className="text-xs text-muted">Workout in progress</div>
+            <div className="text-xs text-muted">{t('today.inProgress')}</div>
           </div>
           <Button variant="primary" onClick={() => nav(`/train/session/${active.id}`)}>
-            Continue workout
+            {t('today.continue')}
           </Button>
         </Card>
       )}
 
       {!active && program && (
         <>
-          <SectionTitle>{next?.date === today ? 'Today’s session' : 'Next session'}</SectionTitle>
+          <SectionTitle>{next?.date === today ? t('today.todaysSession') : t('today.nextSession')}</SectionTitle>
           {next ? (
             <Card className="p-4" tint="accent">
               <div className="flex items-start gap-3">
@@ -140,15 +142,18 @@ export default function TodayPage() {
                 <div className="flex-1 min-w-0">
                   <div className="text-lg font-semibold leading-tight">{next.template.name}</div>
                   <div className="text-sm text-muted mt-0.5">
-                    {next.date === today ? 'Today' : next.date === addDays(today, 1) ? 'Tomorrow' : formatDate(next.date)} · about {next.template.estimatedMinutes} min
-                    {next.template.exercises.length > 0 && ` · ${next.template.exercises.length} exercises`}
+                    {t('today.sessionMeta', {
+                      date: next.date === today ? t('format.relative.today') : next.date === addDays(today, 1) ? t('today.tomorrow') : formatDate(next.date),
+                      minutes: next.template.estimatedMinutes,
+                    })}
+                    {next.template.exercises.length > 0 && ` · ${tp('today.exerciseCount', next.template.exercises.length)}`}
                   </div>
-                  {next.movedFrom && <Badge className="mt-1">Moved from {formatDate(next.movedFrom)}</Badge>}
+                  {next.movedFrom && <Badge className="mt-1">{t('today.movedFrom', { date: formatDate(next.movedFrom) })}</Badge>}
                   <PlanOwnerBadge program={program} className="mt-1" />
                 </div>
               </div>
               {next.template.exercises.length > 0 && (
-                <p className="text-xs text-muted mt-3 line-clamp-2">{next.template.exercises.map((e) => byId.get(e.exerciseId)?.name ?? 'Exercise').join(' · ')}</p>
+                <p className="text-xs text-muted mt-3 line-clamp-2">{next.template.exercises.map((e) => byId.get(e.exerciseId)?.name ?? t('today.exerciseFallback')).join(' · ')}</p>
               )}
               <Button
                 variant="primary"
@@ -158,17 +163,17 @@ export default function TodayPage() {
                 icon={<Play className="size-5" />}
                 onClick={() => void startTemplate(next.template, { program, plannedDate: next.date })}
               >
-                {next.template.kind === 'lifting' || next.template.exercises.length > 0 ? 'Start workout' : 'Log this activity'}
+                {next.template.kind === 'lifting' || next.template.exercises.length > 0 ? t('today.startWorkout') : t('today.logThisActivity')}
               </Button>
               {next.date !== today && (
-                <p className="text-xs text-muted mt-2 text-center">You can start it early. It’ll count for this planned session.</p>
+                <p className="text-xs text-muted mt-2 text-center">{t('today.startEarly')}</p>
               )}
             </Card>
           ) : (
             <Card className="p-4 text-sm text-muted">
-              Nothing planned right now.{' '}
+              {t('today.nothingPlanned')}{' '}
               <Link className="text-accent" to="/train/program">
-                Review your program
+                {t('today.reviewProgram')}
               </Link>
             </Card>
           )}
@@ -177,13 +182,13 @@ export default function TodayPage() {
 
       {!active && !program && !isNew && (
         <>
-          <SectionTitle>Start</SectionTitle>
+          <SectionTitle>{t('common.start')}</SectionTitle>
           <Card className="p-4 space-y-2">
             <Button variant="primary" size="lg" block icon={<Play className="size-5" />} onClick={() => void empty()}>
-              Start a workout
+              {t('today.startWorkoutAlt')}
             </Button>
             <Button block onClick={() => nav('/onboarding')}>
-              Get a suggested program
+              {t('today.suggestProgram')}
             </Button>
           </Card>
         </>
@@ -193,7 +198,7 @@ export default function TodayPage() {
         <Card className="p-4 mt-3 border-warn/40">
           <div className="flex items-center gap-2 text-sm font-medium">
             <CalendarClock className="size-4 text-warn" aria-hidden />
-            Missed {plan.missed.length === 1 ? 'session' : 'sessions'}
+            {tp('today.missed', plan.missed.length)}
           </div>
           <ul className="mt-2 space-y-2">
             {plan.missed.map((m) => (
@@ -202,7 +207,7 @@ export default function TodayPage() {
                   {m.template.name} · {formatDate(m.date)}
                 </span>
                 <Button size="sm" onClick={() => setMissedAction(m)}>
-                  Options
+                  {t('today.options')}
                 </Button>
               </li>
             ))}
@@ -210,15 +215,15 @@ export default function TodayPage() {
         </Card>
       )}
 
-      <SectionTitle>This week</SectionTitle>
+      <SectionTitle>{t('today.thisWeek')}</SectionTitle>
       <Card className="p-4" tint="streak">
-        <div className="grid grid-cols-7 gap-1" role="list" aria-label="Days this week">
+        <div className="grid grid-cols-7 gap-1" role="list" aria-label={t('today.weekDays')}>
           {Array.from({ length: 7 }, (_, i) => addDays(weekFrom, i)).map((d) => {
             const done = activeDays.has(d);
             const planned = plan?.week.some((p) => p.date === d && p.status !== 'skipped' && p.status !== 'moved');
             return (
-              <div key={d} role="listitem" className="flex flex-col items-center gap-1" aria-label={`${formatDate(d, { weekday: 'long' })}: ${done ? 'active' : planned ? 'planned' : 'rest'}`}>
-                <span className={clsx('text-[11px]', d === today ? 'text-accent font-semibold' : 'text-muted')}>{WEEKDAY_SHORT[weekday(d)].slice(0, 2)}</span>
+              <div key={d} role="listitem" className="flex flex-col items-center gap-1" aria-label={t(done ? 'today.dayActive' : planned ? 'today.dayPlanned' : 'today.dayRest', { date: formatDate(d, { weekday: 'long' }) })}>
+                <span className={clsx('text-[11px]', d === today ? 'text-accent font-semibold' : 'text-muted')}>{weekdayShort(weekday(d)).slice(0, 2)}</span>
                 <span
                   className={clsx(
                     'size-9 rounded-full flex items-center justify-center text-xs',
@@ -233,16 +238,16 @@ export default function TodayPage() {
           })}
         </div>
         <div className="grid grid-cols-3 gap-3 mt-4">
-          <Mini label="Workouts" value={String(weekSessions.length)} />
-          <Mini label="Activities" value={String(weekActs.length)} />
-          <Mini label="Active time" value={formatMinutes(weekMinutes * 60)} />
+          <Mini label={t('today.workouts')} value={String(weekSessions.length)} />
+          <Mini label={t('today.activities')} value={String(weekActs.length)} />
+          <Mini label={t('today.activeTime')} value={formatMinutes(weekMinutes * 60)} />
         </div>
         {plannedThisWeek.length > 0 && (
           <div className="mt-4 space-y-1.5">
             <p className="text-sm">
-              You completed {doneThisWeek} of {plannedThisWeek.length} planned lifting session{plannedThisWeek.length === 1 ? '' : 's'} this week.
+              {t('today.weekCompleted', { done: doneThisWeek, planned: plannedThisWeek.length })}
             </p>
-            <ProgressBar value={doneThisWeek} max={plannedThisWeek.length} label="Planned sessions completed this week" />
+            <ProgressBar value={doneThisWeek} max={plannedThisWeek.length} label={t('today.weekCompletedAria')} />
           </div>
         )}
       </Card>
@@ -250,19 +255,19 @@ export default function TodayPage() {
       {/* Nutrition isn't a tab: with it on, today's protein/macros card; either way a quick action into /nutrition. */}
       <NutritionTodayCard />
 
-      <SectionTitle>Quick actions</SectionTitle>
+      <SectionTitle>{t('today.quickActions')}</SectionTitle>
       <div className="grid grid-cols-2 gap-2">
-        <QuickLink to="/nutrition" icon={<Apple className="size-5" />} label={nutritionOn ? 'Nutrition' : 'Track protein'} />
-        <QuickLink to="/train/activity/new" icon={<Plus className="size-5" />} label="Log activity" />
-        <QuickLink to="/train/intervals" icon={<Timer className="size-5" />} label="Interval timer" />
-        <QuickLink to="/progress" icon={<Activity className="size-5" />} label="Log bodyweight" />
+        <QuickLink to="/nutrition" icon={<Apple className="size-5" />} label={nutritionOn ? t('today.nutrition') : t('today.protein')} />
+        <QuickLink to="/train/activity/new" icon={<Plus className="size-5" />} label={t('today.logActivity')} />
+        <QuickLink to="/train/intervals" icon={<Timer className="size-5" />} label={t('today.intervalTimer')} />
+        <QuickLink to="/progress" icon={<Activity className="size-5" />} label={t('today.logBodyweight')} />
       </div>
 
       <ConfirmDialog
         open={!!missedAction}
-        title={missedAction ? `Missed: ${missedAction.template.name}` : ''}
-        body="Move it to the next suitable free day, or skip it and carry on with the plan. We won’t cram it into tomorrow if that would mean back-to-back hard days."
-        confirmLabel="Reschedule"
+        title={missedAction ? t('today.missedTitle', { name: missedAction.template.name }) : ''}
+        body={t('today.missedBody')}
+        confirmLabel={t('today.reschedule')}
         onCancel={() => setMissedAction(null)}
         onConfirm={async () => {
           if (!missedAction || !program || !sessions) return;
@@ -278,11 +283,11 @@ export default function TodayPage() {
           onClick={async () => {
             if (!missedAction || !program) return;
             await saveRecord('programs', skipPlanned(program, missedAction.date, missedAction.template.id), db);
-            toast.show('Skipped: your plan continues as scheduled.');
+            toast.show(t('today.skipped'));
             setMissedAction(null);
           }}
         >
-          Skip it instead
+          {t('today.skipInstead')}
         </Button>
       </ConfirmDialog>
     </Page>

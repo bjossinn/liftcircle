@@ -14,6 +14,7 @@ import { coachingApi } from '@/backend/coaching';
 import type { CoachingRelationship, CoachProfile } from '@/backend/coachingContract';
 import { isFeatureEnabled } from '@/config/featureFlags';
 import { useApp } from '@/state/app';
+import { useT } from '@/i18n';
 
 export interface CoachContext {
   marketplace: boolean;
@@ -167,18 +168,19 @@ const pill = 'flex-1 inline-flex items-center justify-center gap-1.5 min-h-10 ro
  * account couldn't be loaded yet; a small Retry button sits next to the Coaching entry.
  */
 export function CoachSwitcher({ current, unread = 0, onRetry }: { current: 'ai' | 'human'; unread?: number; onRetry?: () => void }) {
+  const { t, tp } = useT();
   return (
     <div className="flex items-center gap-1">
-      <nav aria-label="Coach channels" className="flex-1 flex p-1 gap-1 rounded-xl bg-surface-2 border border-line">
+      <nav aria-label={t('ai.channels.label')} className="flex-1 flex p-1 gap-1 rounded-xl bg-surface-2 border border-line">
         <Link to="/coach" aria-current={current === 'ai' ? 'page' : undefined} className={clsx(pill, current === 'ai' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink')}>
           <Bot className="size-4" aria-hidden />
-          Training assistant
+          {t('ai.title')}
         </Link>
         <Link to="/coaching" aria-current={current === 'human' ? 'page' : undefined} className={clsx(pill, current === 'human' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink')}>
           <HeartHandshake className="size-4" aria-hidden />
-          Coaching
+          {t('ai.channels.human')}
           {unread > 0 && (
-            <span className="ml-0.5 min-w-5 h-5 px-1 rounded-full bg-ember text-accent-ink text-[11px] leading-5 tabular" aria-label={`${unread} unread`}>
+            <span className="ml-0.5 min-w-5 h-5 px-1 rounded-full bg-ember text-accent-ink text-[11px] leading-5 tabular" aria-label={tp('ai.channels.unread', unread)}>
               {unread}
             </span>
           )}
@@ -188,8 +190,8 @@ export function CoachSwitcher({ current, unread = 0, onRetry }: { current: 'ai' 
         <button
           type="button"
           onClick={onRetry}
-          aria-label="Retry loading coaching"
-          title="Couldn’t check your coaching. Retry"
+          aria-label={t('ai.channels.retry')}
+          title={t('ai.channels.retryHint')}
           className="shrink-0 size-11 inline-flex items-center justify-center rounded-xl text-muted hover:text-ink hover:bg-surface-2"
         >
           <RotateCcw className="size-4" aria-hidden />

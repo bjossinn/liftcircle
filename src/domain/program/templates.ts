@@ -9,6 +9,7 @@
  * These splits are product defaults (widely used, easy to follow), not claims of an optimal program.
  */
 import type { ID, MovementPattern, MuscleGroup, SplitKey } from '@/domain/types';
+import { getLanguage, t, type Language } from '@/i18n';
 
 export type { SplitKey };
 
@@ -34,6 +35,10 @@ export interface DayDef {
   slots: SlotDef[];
 }
 
+/**
+ * Labels, names and descriptions here are canonical English (they end up in stored plans and match the `en`
+ * dictionary). Display them through `splitLabel` / `splitDescription` below or `localizeGeneratedText` (./localize).
+ */
 export interface SplitDef {
   key: SplitKey;
   label: string;
@@ -230,6 +235,12 @@ export const SPLITS: Record<SplitKey, SplitDef> = {
   ppl6: { key: 'ppl6', label: 'Push / Pull / Legs ×2', description: 'Push, pull and legs repeated twice a week. High frequency and volume for experienced lifters.', days: [PUSH_A, PULL_A, LEGS_A, PUSH_B, PULL_B, LEGS_B] },
   es: { key: 'es', label: 'Supporting strength', description: 'Short full-body strength sessions that support your main activity (legs, hips, trunk and posture).', days: [ES_A, ES_B] },
 };
+
+/** Split label in the display language ("Full-body A/B" / "Allur líkaminn A/B"). */
+export const splitLabel = (key: SplitKey, language: Language = getLanguage()): string => t(`program.split.${key}.label`, undefined, language);
+/** Split description in the display language. */
+export const splitDescription = (key: SplitKey, language: Language = getLanguage()): string =>
+  t(`program.split.${key}.description`, undefined, language);
 
 /** Mobility flow used on easy days. */
 export const MOBILITY_PREFER: ID[] = ['worlds-greatest-stretch', 'cat-cow', 'thoracic-rotation', 'bird-dog', 'dead-bug', 'glute-bridge'];

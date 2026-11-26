@@ -7,7 +7,11 @@ export const BRAND = {
   shortName: 'Hard Earned',
   /** The wordmark is set in capitals (Barlow Semi Condensed 700, the .wordmark class). */
   wordmark: 'HARD EARNED',
-  /** Primary line: brand moments only (welcome, install page, About). */
+  /**
+   * Primary line: brand moments only (welcome, install page, About). The in-app line is localized (`brand.tagline`,
+   * `brand.description` in src/i18n); these English values feed the static web manifest (vite.config.ts), so this
+   * file stays free of app imports.
+   */
   tagline: 'Your work, made visible.',
   description: 'Track workouts and weight. Build a record of the work you put in.',
   /** Dark (flagship) canvas: PWA theme and background colour. */

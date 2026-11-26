@@ -11,8 +11,10 @@
 
 /** The requested marker, anywhere. */
 const TAG = /\[\[\s*why\s*\]\]|<why>/i;
-/** Fallback: a "Why this?" heading or bold label at the start of a line. */
-const HEADING = /(?:^|\n)[ \t]*(?:#{1,4}[ \t]*why(?: this)?\??:?|\*\*why(?: this)?\??:?\*\*:?)[ \t]*(?=\n|$)/i;
+/** Fallback: a "Why this?" heading or bold label at the start of a line — English, or the Icelandic "Af hverju?",
+ *  "Af hverju þetta?", "Hvers vegna?" and "Rökstuðningur" (the approved vocabulary, isLexicon.ts postprocessing). */
+const WHY_WORDS = '(?:why(?: this)?|af hverju(?: þetta)?|hvers vegna|rökstuðningur)';
+const HEADING = new RegExp(`(?:^|\\n)[ \\t]*(?:#{1,4}[ \\t]*${WHY_WORDS}\\??:?|\\*\\*${WHY_WORDS}\\??:?\\*\\*:?)[ \\t]*(?=\\n|$)`, 'iu');
 const CLOSERS = /\[\[\s*\/\s*why\s*\]\]|<\/why>/gi;
 const WHY_MAX = 1500;
 

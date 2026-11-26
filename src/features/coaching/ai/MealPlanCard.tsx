@@ -13,7 +13,8 @@ import { useApp } from '@/state/app';
 import { trackAiAction } from '@/analytics/analytics';
 import { kvGet, kvSet, newRecord, saveRecord } from '@/db/repo';
 import { formatDate, todayISO } from '@/lib/dates';
-import { displayMacro, MEAL_LABELS } from '@/domain/nutrition/recipes';
+import { displayMacro, mealLabel } from '@/domain/nutrition/recipes';
+import { numberText, useT } from '@/i18n';
 import { extraText, type PlanDay } from '@/domain/nutrition/mealplan';
 import {
   applyMealPlanSuggestion, isMealPlanApplied, previewMealPlan, undoMealPlanSuggestion, type MealPlanApplyMode, type MealPlanSuggestion,
@@ -25,6 +26,7 @@ import { prefsFromAccount, useWeekPlan } from '@/features/nutrition/shared';
 const undoKey = (id: string) => `ai-mealplan-undo:${id}`;
 
 export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
+  const { t, tp, language } = useT();
   const nav = useNavigate();
   const toast = useToast();
   const { account, db } = useApp();
@@ -46,18 +48,18 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
     try {
       const r = applyMealPlanSuggestion(existing, s, overlaps ? mode : 'replace', prefs);
       if (!r) {
-        toast.show('Those days already have meals. Nothing to add.', { tone: 'info' });
+        toast.show(t('aiCard.mealPlan.nothingToAdd'), { tone: 'info' });
         return;
       }
       if (!r.alreadyApplied) {
         await saveRecord('meal_plans', existing ? ({ ...existing, ...r.plan } as MealPlan) : newRecord(r.plan), db);
         await kvSet(undoKey(s.id), r.snapshot, db).catch(() => undefined);
         void trackAiAction(db, 'meal_plan', 'applied');
-        toast.show(`Added to your meal plan (${r.touched.length} day${r.touched.length === 1 ? '' : 's'})`, { tone: 'success' });
+        toast.show(tp('aiCard.mealPlan.addedDays', r.touched.length), { tone: 'success' });
       }
       then?.();
     } catch {
-      toast.show('Could not save the plan. Please try again.', { tone: 'error' });
+      toast.show(t('aiCard.mealPlan.saveError'), { tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -69,23 +71,23 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
       const snapshot = (await kvGet<PlanDay[]>(undoKey(s.id), db).catch(() => undefined)) ?? [];
       await saveRecord('meal_plans', undoMealPlanSuggestion(existing, s.id, snapshot), db);
       void trackAiAction(db, 'meal_plan', 'reverted');
-      toast.show('Meal plan put back as it was.');
+      toast.show(t('aiCard.mealPlan.restored'));
     } catch {
-      toast.show('Could not undo. Please try again.', { tone: 'error' });
+      toast.show(t('aiCard.mealPlan.undoError'), { tone: 'error' });
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <section aria-label="Suggested meal plan" className="mt-2 rounded-2xl border border-accent/40 bg-accent-soft px-3.5 py-3">
+    <section aria-label={t('aiCard.mealPlan.title')} className="mt-2 rounded-2xl border border-accent/40 bg-accent-soft px-3.5 py-3">
       <div className="flex items-center gap-2 mb-1.5">
         <Salad className="size-5 text-accent shrink-0" aria-hidden />
-        <h3 className="font-semibold text-[15px] flex-1">Meal plan · {d(s.weekStart)} – {d(s.weekEnd)}</h3>
-        {applied && <Badge tone="info">Added</Badge>}
+        <h3 className="font-semibold text-[15px] flex-1">{t('aiCard.mealPlan.dateRange', { fromDate: d(s.weekStart), toDate: d(s.weekEnd) })}</h3>
+        {applied && <Badge tone="info">{t('aiCard.mealPlan.added')}</Badge>}
       </div>
       {s.summary && <p className="text-sm mb-1.5">{s.summary}</p>}
-      <ul className="space-y-2" aria-label="Days">
+      <ul className="space-y-2" aria-label={t('aiCard.mealPlan.days')}>
         {preview.days.map((day, i) => {
           const st = preview.status.days[i];
           const ok = st.state === 'on_target' && st.kcalState !== 'low' && st.kcalState !== 'high';
@@ -94,17 +96,22 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
               <div className="flex items-baseline justify-between gap-2">
                 <span className="font-semibold">{d(day.date)}</span>
                 <span className={ok ? 'text-success text-xs' : 'text-muted text-xs'} data-testid="ai-mealplan-totals">
-                  <strong>{displayMacro(st.totals.protein, 'protein')} g</strong> protein{st.proteinTarget != null ? ` / ${st.proteinTarget} g` : ''} · {displayMacro(st.totals.kcal, 'kcal')} kcal
-                  {st.kcalTarget != null ? ` / ${st.kcalTarget}` : ''}
-                  {st.proteinTarget != null && (ok ? ' ✓' : st.state === 'short' ? ` · ${st.proteinGap} g short` : '')}
+                  <strong>
+                    {st.proteinTarget != null
+                      ? t('aiCard.mealPlan.proteinTarget', { protein: displayMacro(st.totals.protein, 'protein'), target: st.proteinTarget })
+                      : t('aiCard.mealPlan.protein', { protein: displayMacro(st.totals.protein, 'protein') })}
+                  </strong>
+                  {` · ${numberText(displayMacro(st.totals.kcal, 'kcal'))} kcal`}
+                  {st.kcalTarget != null ? ` / ${numberText(st.kcalTarget)}` : ''}
+                  {st.proteinTarget != null && (ok ? ' ✓' : st.state === 'short' ? ` · ${t('aiCard.mealPlan.proteinGap', { grams: st.proteinGap ?? 0 })}` : '')}
                 </span>
               </div>
               <ul className="text-xs text-muted">
                 {day.items.map((it) => (
                   <li key={it.id}>
-                    {MEAL_LABELS[it.slot]}: {RECIPES_BY_ID.get(it.recipeId)?.name ?? 'Recipe'}
-                    {it.servings !== 1 ? ` ×${it.servings}` : ''}
-                    {it.extras?.[0] ? ` + ${extraText(it.extras[0])}` : ''}
+                    {mealLabel(it.slot, language)}: {RECIPES_BY_ID.get(it.recipeId)?.name ?? t('aiCard.mealPlan.recipeFallback')}
+                    {it.servings !== 1 ? ` ×${numberText(it.servings)}` : ''}
+                    {it.extras?.[0] ? ` + ${extraText(it.extras[0], undefined, language)}` : ''}
                   </li>
                 ))}
               </ul>
@@ -117,17 +124,17 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
           {w}
         </p>
       ))}
-      {noTargets && <p className="text-xs text-muted mt-1.5">No protein target is set in the app right now, so totals aren’t compared with a target.</p>}
+      {noTargets && <p className="text-xs text-muted mt-1.5">{t('aiCard.mealPlan.noTarget')}</p>}
       <div className="mt-2 space-y-2">
         {expired ? (
-          <p className="text-xs text-faint">This plan’s week is over.</p>
+          <p className="text-xs text-faint">{t('aiCard.mealPlan.expired')}</p>
         ) : applied ? (
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="secondary" onClick={() => nav(`/nutrition/plan?week=${s.weekStart}`)}>
-              Open meal plan
+              {t('aiCard.mealPlan.open')}
             </Button>
             <Button size="sm" variant="ghost" icon={<Undo2 className="size-4" />} loading={busy} onClick={() => void undo()}>
-              Undo
+              {t('aiCard.undo')}
             </Button>
           </div>
         ) : (
@@ -135,28 +142,28 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
             {overlaps && (
               <Segmented<MealPlanApplyMode>
                 size="sm"
-                label="How to add it"
+                label={t('aiCard.mealPlan.modeLabel')}
                 value={mode}
                 onChange={setMode}
                 options={[
-                  { value: 'replace', label: 'Replace these days' },
-                  { value: 'empty', label: 'Only empty days' },
+                  { value: 'replace', label: t('aiCard.mealPlan.replace') },
+                  { value: 'empty', label: t('aiCard.mealPlan.emptyOnly') },
                 ]}
               />
             )}
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="primary" loading={busy} disabled={existing === undefined} onClick={() => void apply()}>
-                Add to my meal plan
+                {t('aiCard.mealPlan.add')}
               </Button>
               {/* Adds the plan, then opens it to edit. (It used to say "Customize first", which read as a draft, but the
                   meal plan screen has no draft mode, so the label now says what happens; Undo stays on this card.) */}
               <Button size="sm" variant="secondary" disabled={busy || existing === undefined} onClick={() => void apply(() => nav(`/nutrition/plan?week=${s.weekStart}`))}>
-                Add and edit
+                {t('aiCard.mealPlan.addEdit')}
               </Button>
             </div>
           </>
         )}
-        {!account.settings.nutritionEnabled && !applied && <Notice tone="info">Nutrition features are off in Settings. The plan is saved, but turn them on to see it under Nutrition (Profile → Nutrition).</Notice>}
+        {!account.settings.nutritionEnabled && !applied && <Notice tone="info">{t('aiCard.mealPlan.disabled')}</Notice>}
       </div>
     </section>
   );

@@ -12,6 +12,7 @@ import {
 import { useExercises } from '@/data/catalog';
 import { newRecord, saveRecord } from '@/db/repo';
 import { useApp } from '@/state/app';
+import { t, useT } from '@/i18n';
 
 const keys = <T extends string>(o: Record<T, string>) => Object.keys(o) as [T, ...T[]];
 
@@ -24,18 +25,19 @@ const LOADS = keys(LOAD_LABELS);
 
 export const customExerciseSchema = z
   .object({
-    name: z.string().trim().min(2, 'Use at least 2 characters.').max(60, 'Keep the name to 60 characters or fewer.'),
+    // Messages are resolved when validation runs, so they follow the current language.
+    name: z.string().trim().min(2, { error: () => t('workout.custom.minName') }).max(60, { error: () => t('workout.custom.maxName') }),
     category: z.enum(CATEGORIES),
     pattern: z.enum(PATTERNS),
-    primaryMuscles: z.array(z.enum(MUSCLES)).min(1, 'Pick at least one primary muscle.'),
+    primaryMuscles: z.array(z.enum(MUSCLES)).min(1, { error: () => t('workout.custom.pickPrimary') }),
     equipment: z.array(z.enum(EQUIPMENT)),
     tracking: z.enum(TRACKINGS),
     load: z.enum(LOADS),
     implements: z.union([z.literal(1), z.literal(2)]),
     unilateral: z.boolean(),
-    notes: z.string().trim().max(1000, 'Keep notes under 1000 characters.'),
+    notes: z.string().trim().max(1000, { error: () => t('workout.custom.maxNotes') }),
   })
-  .refine((v) => LOADS_FOR_TRACKING[v.tracking].includes(v.load), { path: ['load'], message: 'This load type doesn’t fit the tracking type.' });
+  .refine((v) => LOADS_FOR_TRACKING[v.tracking].includes(v.load), { path: ['load'], error: () => t('workout.custom.invalidLoad') });
 
 export type CustomExerciseInput = z.input<typeof customExerciseSchema>;
 type Errors = Partial<Record<keyof CustomExerciseInput | 'form', string>>;
@@ -85,8 +87,9 @@ export function CustomExerciseForm({
   defaultName?: string;
   onSaved?: (ex: CustomExercise) => void;
 }) {
+  const { t } = useT();
   return (
-    <Sheet open={open} onClose={onClose} title={initial ? 'Edit exercise' : 'New custom exercise'}>
+    <Sheet open={open} onClose={onClose} title={initial ? t('workout.custom.edit') : t('workout.custom.new')}>
       <FormBody initial={initial} defaultName={defaultName} onCancel={onClose} onSaved={onSaved} />
     </Sheet>
   );
@@ -94,6 +97,7 @@ export function CustomExerciseForm({
 
 function FormBody({ initial, defaultName, onCancel, onSaved }: { initial?: CustomExercise; defaultName?: string; onCancel: () => void; onSaved?: (ex: CustomExercise) => void }) {
   const { db } = useApp();
+  const { t, language } = useT();
   const toast = useToast();
   const { list } = useExercises();
   const [v, setV] = useState<CustomExerciseInput>(() => initialValues(initial, defaultName));
@@ -115,8 +119,8 @@ function FormBody({ initial, defaultName, onCancel, onSaved }: { initial?: Custo
         pattern: v.pattern, equipment: v.equipment.length ? v.equipment : ['bodyweight'], difficulty: 1, tracking: v.tracking, load: v.load,
         implements: v.load === 'per_hand' ? v.implements : undefined, unilateral: v.unilateral, stresses: [], setup: '', execution: '',
         cues: [], mistakes: [], substitutions: [],
-      }),
-    [v],
+      }, language),
+    [v, language],
   );
 
   async function submit(e: FormEvent) {
@@ -134,7 +138,7 @@ function FormBody({ initial, defaultName, onCancel, onSaved }: { initial?: Custo
     const d = parsed.data;
     const norm = normalizeText(d.name);
     if (list.some((x) => x.id !== initial?.id && normalizeText(x.name) === norm)) {
-      setErrors({ name: 'An exercise with this name already exists.' });
+      setErrors({ name: t('workout.custom.duplicateName') });
       return;
     }
     const equipment: Equipment[] = d.equipment.length ? d.equipment : ['bodyweight'];
@@ -163,11 +167,13 @@ function FormBody({ initial, defaultName, onCancel, onSaved }: { initial?: Custo
         };
         rec = await saveRecord('custom_exercises', newRecord(base) as CustomExercise, db);
       }
-      toast.show(initial ? 'Exercise updated' : 'Custom exercise created', { tone: 'success' });
+      toast.show(initial ? t('workout.custom.updated') : t('workout.custom.created'), { tone: 'success' });
       onSaved?.(rec);
       onCancel();
     } catch (err) {
-      setErrors({ form: err instanceof Error ? err.message : 'Could not save the exercise.' });
+      // A raw IndexedDB/backend message can't be translated: show the friendly copy (details stay in the console).
+      console.error(err);
+      setErrors({ form: t('workout.custom.saveFailed') });
     } finally {
       setSaving(false);
     }
@@ -175,11 +181,11 @@ function FormBody({ initial, defaultName, onCancel, onSaved }: { initial?: Custo
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-      <Input label="Name" value={v.name} maxLength={60} onChange={(e) => set('name', e.target.value)} error={errors.name} placeholder="e.g. Landmine press" autoComplete="off" required />
+      <Input label={t('workout.custom.name')} value={v.name} maxLength={60} onChange={(e) => set('name', e.target.value)} error={errors.name} placeholder={t('workout.custom.nameExample')} autoComplete="off" required />
 
       <div className="grid grid-cols-2 gap-3">
         <Select
-          label="Movement"
+          label={t('workout.custom.movement')}
           value={v.pattern}
           onChange={(e) => {
             const p = e.target.value as MovementPattern;
@@ -192,7 +198,7 @@ function FormBody({ initial, defaultName, onCancel, onSaved }: { initial?: Custo
             </option>
           ))}
         </Select>
-        <Select label="Category" value={v.category} onChange={(e) => set('category', e.target.value as ExerciseCategory)}>
+        <Select label={t('workout.custom.category')} value={v.category} onChange={(e) => set('category', e.target.value as ExerciseCategory)}>
           {CATEGORIES.map((c) => (
             <option key={c} value={c}>
               {CATEGORY_LABELS[c]}
@@ -203,9 +209,9 @@ function FormBody({ initial, defaultName, onCancel, onSaved }: { initial?: Custo
 
       <div className="flex flex-col gap-2">
         <span id={muscleLabelId} className="text-sm font-medium">
-          Primary muscles
+          {t('workout.custom.primaryMuscles')}
         </span>
-        <ChipGroup label="Primary muscles" values={v.primaryMuscles} onChange={(m) => set('primaryMuscles', m)} options={MUSCLES.map((m) => ({ value: m, label: MUSCLE_LABELS[m] }))} />
+        <ChipGroup label={t('workout.custom.primaryMuscles')} values={v.primaryMuscles} onChange={(m) => set('primaryMuscles', m)} options={MUSCLES.map((m) => ({ value: m, label: MUSCLE_LABELS[m] }))} />
         {errors.primaryMuscles && (
           <p className="text-xs text-danger" role="alert">
             {errors.primaryMuscles}
@@ -215,33 +221,33 @@ function FormBody({ initial, defaultName, onCancel, onSaved }: { initial?: Custo
 
       <div className="flex flex-col gap-2">
         <span id={equipmentLabelId} className="text-sm font-medium">
-          Equipment
+          {t('workout.custom.equipment')}
         </span>
         <ChipGroup
-          label="Equipment"
+          label={t('workout.custom.equipment')}
           values={v.equipment}
           onChange={(eq) => set('equipment', eq.filter((x) => x !== 'bodyweight'))}
           options={EQUIPMENT.filter((q) => q !== 'bodyweight').map((q) => ({ value: q, label: EQUIPMENT_LABELS[q] }))}
         />
-        <p className="text-xs text-muted">Leave empty for bodyweight-only exercises.</p>
+        <p className="text-xs text-muted">{t('workout.custom.emptyEquipment')}</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <Select
-          label="Tracking"
+          label={t('workout.custom.tracking')}
           value={v.tracking}
           onChange={(e) => {
-            const t = e.target.value as TrackingType;
-            setV((cur) => ({ ...cur, tracking: t, load: LOADS_FOR_TRACKING[t].includes(cur.load) ? cur.load : LOADS_FOR_TRACKING[t][0] }));
+            const x = e.target.value as TrackingType;
+            setV((cur) => ({ ...cur, tracking: x, load: LOADS_FOR_TRACKING[x].includes(cur.load) ? cur.load : LOADS_FOR_TRACKING[x][0] }));
           }}
         >
-          {TRACKINGS.map((t) => (
-            <option key={t} value={t}>
-              {TRACKING_LABELS[t]}
+          {TRACKINGS.map((x) => (
+            <option key={x} value={x}>
+              {TRACKING_LABELS[x]}
             </option>
           ))}
         </Select>
-        <Select label="Load means" value={v.load} onChange={(e) => set('load', e.target.value as LoadConvention)} error={errors.load} disabled={allowedLoads.length < 2}>
+        <Select label={t('workout.custom.loadMeans')} value={v.load} onChange={(e) => set('load', e.target.value as LoadConvention)} error={errors.load} disabled={allowedLoads.length < 2}>
           {allowedLoads.map((l) => (
             <option key={l} value={l}>
               {LOAD_LABELS[l]}
@@ -251,33 +257,33 @@ function FormBody({ initial, defaultName, onCancel, onSaved }: { initial?: Custo
       </div>
 
       {v.load === 'per_hand' && (
-        <Field label="Implements used">
+        <Field label={t('workout.custom.implements')}>
           <Segmented
-            label="Implements used"
+            label={t('workout.custom.implements')}
             value={v.implements}
             onChange={(n) => set('implements', n)}
             options={[
-              { value: 1, label: 'One (single hand)' },
-              { value: 2, label: 'Two (one per hand)' },
+              { value: 1, label: t('workout.custom.oneImplement') },
+              { value: 2, label: t('workout.custom.twoImplements') },
             ]}
           />
         </Field>
       )}
 
-      <Toggle label="Unilateral" description="Each side is trained separately; reps are counted per side." checked={v.unilateral} onChange={(b) => set('unilateral', b)} />
+      <Toggle label={t('workout.custom.unilateral')} description={t('workout.custom.unilateralHint')} checked={v.unilateral} onChange={(b) => set('unilateral', b)} />
 
       {preview && <Notice>{preview}</Notice>}
 
-      <Textarea label="Notes" hint="Setup, cues or anything you want to remember." value={v.notes} maxLength={1000} onChange={(e) => set('notes', e.target.value)} error={errors.notes} />
+      <Textarea label={t('workout.custom.notes')} hint={t('workout.custom.notesHint')} value={v.notes} maxLength={1000} onChange={(e) => set('notes', e.target.value)} error={errors.notes} />
 
       {errors.form && <Notice tone="danger">{errors.form}</Notice>}
 
       <div className="sticky bottom-0 -mx-5 px-5 pt-3 pb-safe bg-surface border-t border-line flex gap-2 justify-end">
         <Button variant="ghost" onClick={onCancel}>
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" loading={saving}>
-          {initial ? 'Save changes' : 'Create exercise'}
+          {initial ? t('workout.custom.saveChanges') : t('workout.custom.create')}
         </Button>
       </div>
     </form>

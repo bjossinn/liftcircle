@@ -21,6 +21,7 @@
  */
 import { z } from 'zod';
 import { ACCOUNT_ROW_ID, SYNCED_ENTITIES, type SyncedEntity } from '@/db/db';
+import { t } from '@/i18n';
 
 export const BACKUP_FORMAT = 'liftcircle-backup';
 export const BACKUP_VERSION = 1;
@@ -29,14 +30,28 @@ export const MAX_RECORDS_PER_ENTITY = 50_000;
 export const MAX_RECORDS_TOTAL = 200_000;
 const MAX_ISSUES_SHOWN = 8;
 
+/**
+ * Why a backup can't be imported. A typed code instead of inspecting the (localized) message text: the UI decides from
+ * `statesNothingChanged` whether the message already says that nothing was changed/imported.
+ */
+export type BackupErrorCode = 'too_large' | 'empty' | 'incomplete' | 'invalid_json' | 'unrecognized' | 'newer' | 'damaged' | 'invalid_records' | 'import_failed' | 'other';
+const SAYS_NOTHING_CHANGED: ReadonlySet<BackupErrorCode> = new Set(['incomplete', 'newer', 'invalid_records', 'import_failed']);
+
 /** An error whose message is meant for the person importing (kept as-is through storage helpers). */
 export class BackupValidationError extends Error {
   readonly userFacing = true;
   constructor(
     message: string,
     readonly issues: string[] = [],
+    readonly code: BackupErrorCode = 'other',
   ) {
+    // The issue lines are technical validation details (record paths, schema messages) and are shown as they are.
+    // i18n: no approved Icelandic copy for the "…and N more" overflow line.
     super(issues.length ? `${message}\n${issues.slice(0, MAX_ISSUES_SHOWN).map((i) => `• ${i}`).join('\n')}${issues.length > MAX_ISSUES_SHOWN ? `\n…and ${issues.length - MAX_ISSUES_SHOWN} more` : ''}` : message);
+  }
+  /** True when the message itself already tells the person that nothing was changed or imported. */
+  get statesNothingChanged(): boolean {
+    return SAYS_NOTHING_CHANGED.has(this.code);
   }
 }
 
@@ -272,6 +287,9 @@ const accountState = z.looseObject({
     theme: opt(str(16)),
     weekStart: opt(z.number().int().min(0).max(6)),
     timeZone: opt(str(64)),
+    // Optional (roadmap item 8). Old backups have none; an unknown value is accepted here and normalized to 'en' on
+    // restore (backup.ts) rather than rejecting otherwise valid data.
+    language: opt(str(16)),
     rest: opt(z.looseObject({ defaultSec: opt(nonNeg(3600)) })),
     workout: opt(z.looseObject({ defaultSets: opt(nonNeg(100)), plateIncrementKg: opt(nonNeg(100)), plateIncrementLb: opt(nonNeg(200)) })),
     notifications: opt(z.looseObject({})),
@@ -393,30 +411,30 @@ function safeJsonParse(textIn: string): unknown {
 
 /* ---------------------------------------------------------------- entry points */
 export function parseBackupText(textIn: string): ValidatedBackup {
-  if (textIn.length > MAX_BACKUP_BYTES) throw new BackupValidationError('This file is too large to be a Hard Earned backup.');
+  if (textIn.length > MAX_BACKUP_BYTES) throw new BackupValidationError(t('validation.backupTooLarge'), [], 'too_large');
   const trimmed = textIn.trim();
-  if (!trimmed) throw new BackupValidationError('This file is empty.');
+  if (!trimmed) throw new BackupValidationError(t('validation.backupEmpty'), [], 'empty');
   let json: unknown;
   try {
     json = safeJsonParse(trimmed);
   } catch (e) {
     const msg = e instanceof Error ? e.message : '';
     const truncated = trimmed.startsWith('{') && (/end of (json )?input|unterminated|unexpected end/i.test(msg) || !trimmed.endsWith('}'));
-    throw new BackupValidationError(truncated ? 'This backup file looks incomplete (it may have been cut off while downloading or copying). Nothing was imported.' : 'This file isn’t valid JSON, so it can’t be a Hard Earned backup.');
+    throw new BackupValidationError(truncated ? t('validation.backupIncomplete') : t('validation.backupInvalidJson'), [], truncated ? 'incomplete' : 'invalid_json');
   }
   return validateBackupObject(json);
 }
 
 export function validateBackupObject(json: unknown): ValidatedBackup {
   const head = z.looseObject({ format: z.literal(BACKUP_FORMAT) }).safeParse(json);
-  if (!head.success) throw new BackupValidationError('This doesn’t look like a Hard Earned backup file.');
+  if (!head.success) throw new BackupValidationError(t('validation.backupUnrecognized'), [], 'unrecognized');
   const v = (json as { version?: unknown }).version;
   if (typeof v === 'number' && Number.isInteger(v) && v > BACKUP_VERSION) {
-    throw new BackupValidationError(`This backup was made by a newer version of the app (backup format ${v}; this app reads up to ${BACKUP_VERSION}). Update the app and try again. Nothing was imported.`);
+    throw new BackupValidationError(t('validation.backupNewer', { version: v, supportedVersion: BACKUP_VERSION }), [], 'newer');
   }
   const env = envelope.safeParse(json);
   if (!env.success) {
-    throw new BackupValidationError('This backup file is damaged or incomplete.', env.error.issues.slice(0, 5).map((i) => `${pathText(i.path) || 'file'}: ${i.message}`));
+    throw new BackupValidationError(t('validation.backupDamaged'), env.error.issues.slice(0, 5).map((i) => `${pathText(i.path) || 'file'}: ${i.message}`), 'damaged');
   }
   const issues: string[] = [];
   const records: ValidatedBackup['records'] = {};
@@ -452,7 +470,7 @@ export function validateBackupObject(json: unknown): ValidatedBackup {
     records[entity] = ok;
   }
   if (total > MAX_RECORDS_TOTAL) issues.push(`The file has ${total} records; the limit is ${MAX_RECORDS_TOTAL}.`);
-  if (issues.length) throw new BackupValidationError('This backup can’t be imported because some records are invalid. Nothing was imported.', issues);
+  if (issues.length) throw new BackupValidationError(t('validation.backupInvalidRecords'), issues, 'invalid_records');
   return {
     format: BACKUP_FORMAT,
     version: env.data.version,

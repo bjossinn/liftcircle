@@ -6,6 +6,8 @@
  * humanDate gives phrases that read after a verb: "í dag", "á morgun", "á laugardaginn", "á lau. 31. okt.".
  */
 import type { Lang } from './lang.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { listText } from '../i18n/core.ts';
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WD_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -39,8 +41,14 @@ export function humanDate(iso: string, today?: string | null, weekStart: 0 | 1 =
   return lang === 'is' ? `á ${shortDate(iso, lang)}` : shortDate(iso);
 }
 
-/** "Fri 30 and Sat 31 Oct" / "Fri 31 Oct and Sat 1 Nov". */
-export function datePair(a: string, b: string): string {
+/** "Fri 30 and Sat 31 Oct" / "Fri 31 Oct and Sat 1 Nov"; Icelandic "fös. 30. og lau. 31. okt." (display labels, not phrases). */
+export function datePair(a: string, b: string, lang: Lang = 'en'): string {
+  if (lang === 'is') {
+    if (!ISO.test(a) || !ISO.test(b)) return listText([a, b], 'is');
+    const pa = parts(a);
+    const pb = parts(b);
+    return listText([pa.mon === pb.mon ? `${WD_IS[pa.wd]} ${pa.day}.` : shortDate(a, 'is'), shortDate(b, 'is')], 'is');
+  }
   if (!ISO.test(a) || !ISO.test(b)) return `${a} and ${b}`;
   const pa = parts(a);
   const pb = parts(b);

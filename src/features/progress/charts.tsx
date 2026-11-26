@@ -6,6 +6,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { TooltipPayloadEntry } from 'recharts';
 import { formatDate } from '@/lib/dates';
+import { numberText, t, useT } from '@/i18n';
 import type { ISODate } from '@/domain/types';
 
 export interface ChartColors {
@@ -70,7 +71,9 @@ export const axisProps = (c: ChartColors) => ({
 });
 
 export const shortDate = (d: ISODate) => formatDate(d, { day: 'numeric', month: 'short' });
-export const weekLabel = (d: ISODate) => `Week of ${formatDate(d, { day: 'numeric', month: 'short' })}`;
+export const weekLabel = (d: ISODate) => t('progress.weekOf', { date: formatDate(d, { day: 'numeric', month: 'short' }) });
+/** Locale number for axis ticks, table cells and tooltips (62.5 → "62,5" in Icelandic). */
+export const num = (v: number, maxDecimals = 2) => numberText(v, maxDecimals);
 
 /** Accessible chart figure: visible summary caption + optional data table. */
 export function ChartFigure({ title, summary, table, children, height = 200 }: {
@@ -80,6 +83,7 @@ export function ChartFigure({ title, summary, table, children, height = 200 }: {
   children: ReactNode;
   height?: number;
 }) {
+  const { t } = useT();
   return (
     <figure className="m-0">
       <figcaption className="text-sm font-medium px-1 mb-1">{title}</figcaption>
@@ -89,7 +93,7 @@ export function ChartFigure({ title, summary, table, children, height = 200 }: {
       <p className="text-xs text-muted px-1 mt-1">{summary}</p>
       {table && table.rows.length > 0 && (
         <details className="mt-1 px-1">
-          <summary className="text-xs text-accent cursor-pointer min-h-11 inline-flex items-center">Show data table</summary>
+          <summary className="text-xs text-accent cursor-pointer min-h-11 inline-flex items-center">{t('progress.showDataTable')}</summary>
           <div className="overflow-x-auto max-h-64 overflow-y-auto mt-1 rounded-lg border border-line">
             <table className="w-full text-xs tabular">
               <thead className="bg-surface-2 sticky top-0">
@@ -106,7 +110,7 @@ export function ChartFigure({ title, summary, table, children, height = 200 }: {
                   <tr key={i} className="border-t border-line">
                     {r.map((cell, j) => (
                       <td key={j} className="px-2 py-1.5">
-                        {cell}
+                        {typeof cell === 'number' ? num(cell) : cell}
                       </td>
                     ))}
                   </tr>
@@ -142,7 +146,7 @@ export function ChartTip({ active, payload, label, labelFmt, valueFmt }: {
             <div key={i} className="flex items-center gap-2 text-muted">
               <span className="inline-block size-2 rounded-full" style={{ background: p.color ?? (p.payload as { fill?: string } | undefined)?.fill }} aria-hidden />
               <span>{name}:</span>
-              <span className="text-ink tabular">{valueFmt ? valueFmt(v, name) : String(p.value)}</span>
+              <span className="text-ink tabular">{valueFmt ? valueFmt(v, name) : typeof p.value === 'number' ? num(p.value) : String(p.value)}</span>
             </div>
           );
         })}

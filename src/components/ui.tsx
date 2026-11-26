@@ -9,6 +9,7 @@ import {
   type SelectHTMLAttributes, type TextareaHTMLAttributes,
 } from 'react';
 import { AlertTriangle, Check, Loader2, RefreshCw, X } from 'lucide-react';
+import { useT, type Language } from '@/i18n';
 
 export { clsx as cx };
 
@@ -189,9 +190,21 @@ export function NumberInput({
   const auto = useId();
   const iid = id ?? auto;
   const ref = useRef<HTMLInputElement>(null);
+  const { language } = useT();
   // Keep the raw string while typing so "2." or "2," aren't clobbered.
-  const raw = useRef<string>(value == null ? '' : String(value));
-  if (ref.current && document.activeElement !== ref.current) raw.current = value == null ? '' : String(value);
+  const raw = useRef<string>(numberInputText(value, language));
+  if (ref.current && document.activeElement !== ref.current) raw.current = numberInputText(value, language);
+  // The field is uncontrolled, so a language switch does not re-render its text: when it still shows the saved value
+  // (unfocused, not edited), rewrite it with the new decimal separator. A draft (focused or edited) is left alone.
+  const shownLanguage = useRef(language);
+  useEffect(() => {
+    const prev = shownLanguage.current;
+    if (prev === language) return;
+    shownLanguage.current = language;
+    const input = ref.current;
+    if (!input || document.activeElement === input) return;
+    if (input.value === numberInputText(value, prev)) input.value = numberInputText(value, language);
+  }, [language, value]);
   const el = (
     <div className={clsx('relative', className)}>
       <input
@@ -204,7 +217,7 @@ export function NumberInput({
         placeholder={placeholder}
         aria-invalid={!!error || undefined}
         className={clsx(inputBase, 'tabular text-center', suffix && 'pr-10', inputClassName)}
-        defaultValue={value == null ? '' : String(value)}
+        defaultValue={numberInputText(value, language)}
         key={value == null ? 'empty' : String(value)}
         onFocus={(e) => e.currentTarget.select()}
         onKeyDown={(e) => {
@@ -218,14 +231,14 @@ export function NumberInput({
           if (s === '') return onChange(null);
           let n = Number(s);
           if (!isFinite(n)) {
-            e.currentTarget.value = value == null ? '' : String(value);
+            e.currentTarget.value = numberInputText(value, language);
             return;
           }
           if (!decimals) n = Math.round(n);
           if (min != null) n = Math.max(min, n);
           if (max != null) n = Math.min(max, n);
           if (n !== value) onChange(n);
-          else e.currentTarget.value = String(n);
+          else e.currentTarget.value = numberInputText(n, language);
         }}
         data-step={step}
       />
@@ -238,6 +251,13 @@ export function NumberInput({
       {el}
     </Field>
   );
+}
+
+/** The stored number as editable text: Icelandic shows a decimal comma (62,5); the stored value is unchanged. */
+function numberInputText(value: number | null | undefined, language: Language): string {
+  if (value == null) return '';
+  const text = String(value);
+  return language === 'is' ? text.replace('.', ',') : text;
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: ReactNode; hint?: ReactNode; error?: string | null }>(
@@ -348,11 +368,12 @@ export function ChipGroup<T extends string | number>({ values, onChange, options
 }
 
 /* --------------------------------------------------------------- States */
-export function Spinner({ label = 'Loading' }: { label?: string }) {
+export function Spinner({ label }: { label?: string }) {
+  const { t } = useT();
   return (
     <div role="status" className="flex items-center justify-center gap-2 py-10 text-muted">
       <Loader2 className="size-5 animate-spin" aria-hidden />
-      <span className="text-sm">{label}…</span>
+      <span className="text-sm">{label ?? t('common.loading')}…</span>
     </div>
   );
 }
@@ -369,15 +390,16 @@ export function EmptyState({ icon, illustration, title, body, action }: { icon?:
   );
 }
 
-export function ErrorState({ title = 'Something went wrong', message, onRetry }: { title?: string; message?: string; onRetry?: () => void }) {
+export function ErrorState({ title, message, onRetry }: { title?: string; message?: string; onRetry?: () => void }) {
+  const { t } = useT();
   return (
     <div role="alert" className="flex flex-col items-center text-center px-6 py-8 gap-3">
       <AlertTriangle className="size-6 text-danger" aria-hidden />
-      <h3 className="text-base font-semibold">{title}</h3>
+      <h3 className="text-base font-semibold">{title ?? t('common.error')}</h3>
       {message && <p className="text-sm text-muted max-w-xs">{message}</p>}
       {onRetry && (
         <Button onClick={onRetry} icon={<RefreshCw className="size-4" />}>
-          Try again
+          {t('common.retry')}
         </Button>
       )}
     </div>
@@ -423,6 +445,7 @@ export function Sheet({ open, onClose, title, children, footer, wide }: { open: 
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const kb = useKeyboardInset(open);
+  const { t: tr } = useT();
   // Ignore insets too small to be a keyboard (browser toolbars collapsing etc.).
   const inset = kb > 80 ? kb : 0;
   // Keep the content for the closing slide-down (styles.css → dialog.sheet), then unmount it.
@@ -465,7 +488,7 @@ export function Sheet({ open, onClose, title, children, footer, wide }: { open: 
             <h2 id={titleId} className="font-display text-lg font-bold min-w-0 break-words">
               {title}
             </h2>
-            <IconButton label="Close" onClick={onClose} size="sm" className="shrink-0">
+            <IconButton label={tr('common.close')} onClick={onClose} size="sm" className="shrink-0">
               <X className="size-5" />
             </IconButton>
           </div>
@@ -486,7 +509,8 @@ export function Sheet({ open, onClose, title, children, footer, wide }: { open: 
   );
 }
 
-export function ConfirmDialog({ open, title, body, confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger, onConfirm, onCancel, busy, children }: { open: boolean; title: string; body?: ReactNode; confirmLabel?: string; cancelLabel?: string; danger?: boolean; onConfirm: () => void; onCancel: () => void; busy?: boolean; children?: ReactNode }) {
+export function ConfirmDialog({ open, title, body, confirmLabel, cancelLabel, danger, onConfirm, onCancel, busy, children }: { open: boolean; title: string; body?: ReactNode; confirmLabel?: string; cancelLabel?: string; danger?: boolean; onConfirm: () => void; onCancel: () => void; busy?: boolean; children?: ReactNode }) {
+  const { t } = useT();
   return (
     <Sheet
       open={open}
@@ -495,10 +519,10 @@ export function ConfirmDialog({ open, title, body, confirmLabel = 'Confirm', can
       footer={
         <>
           <Button variant="ghost" onClick={onCancel}>
-            {cancelLabel}
+            {cancelLabel ?? t('common.cancel')}
           </Button>
           <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={busy}>
-            {confirmLabel}
+            {confirmLabel ?? t('common.confirm')}
           </Button>
         </>
       }

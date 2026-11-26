@@ -13,9 +13,10 @@ import { useToast } from '@/components/toast';
 import { saveRecord } from '@/db/repo';
 import { trackAiAction } from '@/analytics/analytics';
 import type { LiftDb } from '@/db/db';
-import { applyWeekPlan, revertWeekPlan, weekPlanState, WEEK_PLAN_EXPIRED, WEEK_PLAN_STALE, type WeekPlan } from '@/domain/program/schedule';
+import { applyWeekPlan, revertWeekPlan, weekPlanState, type WeekPlan } from '@/domain/program/schedule';
 import type { ActivityLog, ISODate, Program, WorkoutSession } from '@/domain/types';
 import { formatDate } from '@/lib/dates';
+import { useT } from '@/i18n';
 import { humanizeDates } from '../../../../supabase/functions/_shared/ai/humanDates';
 
 export function WeekPlanCard({
@@ -29,6 +30,7 @@ export function WeekPlanCard({
   weekStart: 0 | 1;
   db: LiftDb;
 }) {
+  const { t } = useT();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const state = weekPlanState(program ?? undefined, plan, today, weekStart);
@@ -59,18 +61,18 @@ export function WeekPlanCard({
     try {
       await saveRecord('programs', revertWeekPlan(program, plan.id), db);
       void trackAiAction(db, 'week_plan', 'reverted');
-      toast.show('Back to your usual schedule for this week.');
+      toast.show(t('aiCard.week.restored'));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <section aria-label="This week’s plan" className="mt-2 rounded-2xl border border-accent/40 bg-accent-soft px-3.5 py-3">
+    <section aria-label={t('aiCard.week.title')} className="mt-2 rounded-2xl border border-accent/40 bg-accent-soft px-3.5 py-3">
       <div className="flex items-center gap-2 mb-1.5">
         <CalendarCheck className="size-5 text-accent shrink-0" aria-hidden />
-        <h3 className="font-semibold text-[15px] flex-1">This week only</h3>
-        {state === 'applied' && <Badge tone="info">Applied</Badge>}
+        <h3 className="font-semibold text-[15px] flex-1">{t('aiCard.week.onlyThisWeek')}</h3>
+        {state === 'applied' && <Badge tone="info">{t('ai.proposal.status.accepted')}</Badge>}
       </div>
       <ol className="text-sm space-y-0.5 list-decimal pl-5">
         {plan.sessions.map((s) => (
@@ -79,11 +81,11 @@ export function WeekPlanCard({
           </li>
         ))}
       </ol>
-      {plan.sessions.length === 0 && <p className="text-sm">No more sessions this week.</p>}
+      {plan.sessions.length === 0 && <p className="text-sm">{t('aiCard.week.noneLeft')}</p>}
       {plan.completed.length > 0 && (
-        <p className="text-xs text-muted mt-1.5">Counted as done: {plan.completed.map((c) => `${c.name} (${d(c.date)})`).join(', ')}</p>
+        <p className="text-xs text-muted mt-1.5">{t('aiCard.week.done', { sessions: plan.completed.map((c) => `${c.name} (${d(c.date)})`).join(', ') })}</p>
       )}
-      {plan.skipped.length > 0 && <p className="text-xs text-muted mt-0.5">Skipped this week: {plan.skipped.map((s) => s.name).join(', ')}</p>}
+      {plan.skipped.length > 0 && <p className="text-xs text-muted mt-0.5">{t('aiCard.week.skipped', { sessions: plan.skipped.map((s) => s.name).join(', ') })}</p>}
       {plan.adjustments.length > 0 && (
         <ul className="text-xs text-muted mt-1 list-disc pl-4">
           {plan.adjustments.map((a, i) => (
@@ -97,21 +99,22 @@ export function WeekPlanCard({
         </p>
       ))}
       <p className="text-xs text-muted mt-1.5">
-        Your plan itself doesn’t change. The usual schedule returns next week.{coach ? ' Only the days change; your coach’s sessions stay as they are.' : ''}
+        {t('aiCard.week.planUnchanged')}
+        {coach ? ` ${t('aiCard.week.coachUnchanged')}` : ''}
       </p>
       <div className="mt-2">
         {state === 'available' && (
           <Button size="sm" variant="primary" loading={busy} disabled={!program || !sessions} onClick={() => void apply()}>
-            Apply to this week
+            {t('aiCard.week.apply')}
           </Button>
         )}
         {state === 'applied' && (
           <Button size="sm" variant="ghost" icon={<Undo2 className="size-4" />} loading={busy} onClick={() => void undo()}>
-            Undo
+            {t('aiCard.undo')}
           </Button>
         )}
-        {state === 'stale' && <Notice tone="warn">{WEEK_PLAN_STALE}</Notice>}
-        {state === 'expired' && <p className="text-xs text-faint">{WEEK_PLAN_EXPIRED}</p>}
+        {state === 'stale' && <Notice tone="warn">{t('aiCard.week.stale')}</Notice>}
+        {state === 'expired' && <p className="text-xs text-faint">{t('aiCard.week.expired')}</p>}
       </div>
     </section>
   );

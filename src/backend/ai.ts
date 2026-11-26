@@ -16,6 +16,7 @@ import type { AiApi, AiAvailability, AiMessage, AiSettings, AiUsage, ProgramProp
 import type { SessionAdjustmentAction, WorkoutContext } from '../../supabase/functions/_shared/ai/workout';
 import { backendConfigured, requireSupabase } from './supabase';
 import { BackendError, toBackendError } from './syncRemote';
+import { getLanguage } from '@/i18n';
 
 type Unavailable = Extract<AiAvailability, { available: false }>['reason'];
 
@@ -238,7 +239,7 @@ export const aiApi: AiApi = {
     if (!backendConfigured) return { available: false, reason: 'backend_missing' };
     if (isOffline()) return { available: false, reason: 'offline' };
     try {
-      const r = await invoke<{ available: boolean; reason?: Unavailable; usage?: AiUsage; provider?: unknown; providerName?: unknown; consentCurrent?: unknown }>({ action: 'status' });
+      const r = await invoke<{ available: boolean; reason?: Unavailable; usage?: AiUsage; provider?: unknown; providerName?: unknown; consentCurrent?: unknown }>({ action: 'status', language: getLanguage() });
       if (r.available)
         return {
           available: true,
@@ -286,6 +287,8 @@ export const aiApi: AiApi = {
   async send(input: { id: ID; text: string; mode?: 'chat' | 'checkin_review'; unsynced?: number; workout?: WorkoutContext }) {
     const r = await invoke<{ reply: Record<string, unknown>; proposal?: Record<string, unknown> | null }>({
       action: 'send',
+      // The app language: server-written text (summaries, warnings, errors) and the fallback reply language follow it.
+      language: getLanguage(),
       id: input.id,
       text: input.text,
       mode: input.mode ?? 'chat',

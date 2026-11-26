@@ -24,6 +24,8 @@ import type { Experience, ID, TrainingExercise, TrainingSession, TrainingSession
 import { formatWeight, fromKg, kgToLb, lbToKg, round, toKg, trimNum } from './units.ts';
 // @ts-ignore see above
 import { hasRecordedLoad, isCountableSet } from './sets.ts';
+// @ts-ignore see above
+import { numberText, sharedT, type Language, type Params, type SharedKey } from '../i18n/core.ts';
 
 type Exercise = TrainingExercise;
 type LoggedSet = TrainingSet;
@@ -52,6 +54,26 @@ export interface Suggestion {
    * so the suggestion is based on reps and load only and the UI asks for a quick effort confirmation.
    */
   effortBasis?: EffortBasis;
+  /**
+   * Locale-neutral form of `reason` (a message key plus the engine's own numbers), so every surface can render the
+   * same suggestion in the user's language without re-deriving it or parsing the English `reason`. See
+   * suggestionReasonText(). `reason` stays the English text (server grounding, older callers).
+   */
+  reasonCode?: SuggestionReason;
+}
+
+/** Complete-sentence reason keys in the shared dictionary (progression.reason.*). */
+export type ProgressionReasonKey = Extract<SharedKey, `progression.reason.${string}`>;
+
+export interface SuggestionReason {
+  key: ProgressionReasonKey;
+  /** Plain numbers (repMin, repMax, sets, rir, seconds, nextSeconds, sessions). */
+  params?: Record<string, number>;
+  /** Loads named in the sentence, in kg; formatted in `unit` and the display language at render time. */
+  loadsKg?: { load?: number; nextLoad?: number };
+  unit?: WeightUnit;
+  /** Target RIR for the effort sentence that follows an increase. */
+  rir?: number;
 }
 
 export interface ProgressionRx {
@@ -231,19 +253,21 @@ export function suggestNext(
       durationSec: rx.durationSec,
       alternativeIds: ex.substitutions.slice(0, 4),
       hint: 'alternatives',
+      reasonCode: { key: 'progression.reason.discomfort' },
       reason: 'You flagged discomfort recently, so we won’t suggest an increase. Keep it comfortable, use less load, or try an alternative exercise. If pain persists, consider a qualified professional.',
     };
   }
 
   if (!h.length) {
     if (ex.tracking === 'duration' || ex.tracking === 'distance_time')
-      return { action: 'calibrate', loadKg: null, ...range, durationSec: rx.durationSec, reason: 'First time: do what feels comfortable and log it. We’ll build from there.' };
+      return { action: 'calibrate', loadKg: null, ...range, durationSec: rx.durationSec, reasonCode: { key: 'progression.reason.firstTime' }, reason: 'First time: do what feels comfortable and log it. We’ll build from there.' };
     if (ex.tracking === 'reps')
-      return { action: 'calibrate', loadKg: null, ...range, reason: `First time: stop each set with about ${rx.targetRir} reps left in the tank and log your reps. We’ll build from there.` };
+      return { action: 'calibrate', loadKg: null, ...range, reasonCode: { key: 'progression.reason.firstReps', params: { rir: rx.targetRir } }, reason: `First time: stop each set with about ${rx.targetRir} reps left in the tank and log your reps. We’ll build from there.` };
     return {
       action: 'calibrate',
       loadKg: null,
       ...range,
+      reasonCode: { key: 'progression.reason.firstLoad', params: { repMin: rx.repMin, repMax: rx.repMax, rir: rx.targetRir } },
       reason: `No known load yet: start light and add small jumps until a set of ${rx.repMin}–${rx.repMax} feels like about ${rx.targetRir} reps left in the tank. Log that as your starting load.`,
     };
   }
@@ -259,6 +283,7 @@ export function suggestNext(
       ...range,
       durationSec: rx.durationSec,
       hint: 'reduce_workload',
+      reasonCode: { key: 'progression.reason.decline', params: { sessions: DECLINE_SESSIONS } },
       reason: `Performance has dipped over your last ${DECLINE_SESSIONS} sessions. Consider sleep, stress and food, or reduce workload for a week (for example one fewer set or a slightly lighter load).`,
     };
   }
@@ -272,7 +297,7 @@ export function suggestNext(
     case 'bodyweight_plus': {
       const weighted = ex.tracking === 'bodyweight_plus';
       if (!weighted && (lastLoad == null || lastLoad <= 0)) {
-        return { action: 'calibrate', loadKg: null, ...range, reason: 'No load logged last time. Pick a weight that leaves about 2–3 reps in the tank and log it.' };
+        return { action: 'calibrate', loadKg: null, ...range, reasonCode: { key: 'progression.reason.missingLoad' }, reason: 'No load logged last time. Pick a weight that leaves about 2–3 reps in the tank and log it.' };
       }
       const L = lastLoad ?? 0;
       const top0 = allTop(h0, rx, L, ex);
@@ -286,20 +311,32 @@ export function suggestNext(
           ...range,
           targetReps: rx.repMin,
           effortBasis,
+          reasonCode: {
+            key: L > 0
+              ? needed === 1 ? 'progression.reason.increaseLoadedBeginner' : 'progression.reason.increaseLoadedStandard'
+              : needed === 1 ? 'progression.reason.increaseUnloadedBeginner' : 'progression.reason.increaseUnloadedStandard',
+            params: { repMax: rx.repMax, sets: rx.sets, repMin: rx.repMin },
+            loadsKg: L > 0 ? { load: L, nextLoad: next } : { nextLoad: next },
+            unit,
+            rir: rx.targetRir,
+          },
           reason: `You reached ${rx.repMax} reps on all ${rx.sets} sets${L > 0 ? ` at ${fmt(L)}` : ''} ${sessionsText(needed)}${effortText(effortBasis, rx)}. Try ${weighted && L === 0 ? `adding ${fmt(next)}` : fmt(next)} and aim for ${rx.repMin} reps, then build back up.`,
         };
       }
       if (top0)
-        return { action: 'hold', loadKg: L, ...range, targetReps: rx.repMax, reason: 'Top of the range on every set. Repeat this load once more to confirm, then we’ll suggest an increase.' };
+        return { action: 'hold', loadKg: L, ...range, targetReps: rx.repMax, reasonCode: { key: 'progression.reason.confirmTop' }, reason: 'Top of the range on every set. Repeat this load once more to confirm, then we’ll suggest an increase.' };
       if (allSetsDone && minReps >= rx.repMin)
         return {
           action: 'add_reps',
           loadKg: L,
           ...range,
           targetReps: Math.min(rx.repMax, minReps + 1),
+          reasonCode: L > 0
+            ? { key: 'progression.reason.addRepsLoaded', params: { repMax: rx.repMax }, loadsKg: { load: L }, unit }
+            : { key: 'progression.reason.addRepsSameLoad', params: { repMax: rx.repMax } },
           reason: `Same load${L > 0 ? ` (${fmt(L)})` : ''}; aim for one more rep on your lowest sets until every set reaches ${rx.repMax}.`,
         };
-      return { action: 'hold', loadKg: L, ...range, targetReps: rx.repMin, reason: `Hold the load and aim for at least ${rx.repMin} reps on all ${rx.sets} sets.` };
+      return { action: 'hold', loadKg: L, ...range, targetReps: rx.repMin, reasonCode: { key: 'progression.reason.holdLoad', params: { repMin: rx.repMin, sets: rx.sets } }, reason: `Hold the load and aim for at least ${rx.repMin} reps on all ${rx.sets} sets.` };
     }
 
     case 'reps': {
@@ -313,6 +350,7 @@ export function suggestNext(
           targetReps: rx.repMax,
           hint: 'harder_variation',
           alternativeIds: ex.substitutions.slice(0, 4),
+          reasonCode: { key: 'progression.reason.harderVariation', params: { repMax: rx.repMax } },
           reason: `You’ve reached ${rx.repMax} reps on every set twice. Ready for a harder variation or a little added load, or keep adding reps if you prefer.`,
         };
       return {
@@ -320,13 +358,14 @@ export function suggestNext(
         loadKg: null,
         ...range,
         targetReps: Math.min(rx.repMax, Math.max(rx.repMin, minReps + 1)),
+        reasonCode: { key: 'progression.reason.addReps', params: { repMax: rx.repMax } },
         reason: `Aim for one more rep on your lowest sets until every set reaches ${rx.repMax}.`,
       };
     }
 
     case 'assisted': {
       if (lastLoad == null)
-        return { action: 'calibrate', loadKg: null, ...range, reason: 'Log the assistance you use. Enough that sets end with about 2–3 reps left in the tank.' };
+        return { action: 'calibrate', loadKg: null, ...range, reasonCode: { key: 'progression.reason.logAssistance' }, reason: 'Log the assistance you use. Enough that sets end with about 2–3 reps left in the tank.' };
       const L = lastLoad;
       const top0 = allTop(h0, rx, L, ex, true);
       const top1 = h[1] ? allTop(h[1], rx, L, ex, true) : false;
@@ -342,6 +381,7 @@ export function suggestNext(
             hint: 'unassisted',
             effortBasis,
             alternativeIds: ex.substitutions.slice(0, 4),
+            reasonCode: { key: 'progression.reason.unassisted' },
             reason: 'You’ve outgrown the assistance. Try the unassisted version (or the lightest band) and aim for the bottom of the range.',
           };
         return {
@@ -350,12 +390,19 @@ export function suggestNext(
           ...range,
           targetReps: rx.repMin,
           effortBasis,
+          reasonCode: {
+            key: needed === 1 ? 'progression.reason.reduceAssistanceBeginner' : 'progression.reason.reduceAssistanceStandard',
+            params: { repMin: rx.repMin },
+            loadsKg: { load: L, nextLoad: next },
+            unit,
+            rir: rx.targetRir,
+          },
           reason: `Top of the range ${needed === 1 ? 'in your last session (beginner rule)' : 'twice'} with ${fmt(L)} assistance${effortText(effortBasis, rx)}. Use less assistance (${fmt(next)}) and aim for ${rx.repMin} reps. Less help is progress.`,
         };
       }
       if (allSetsDone && minReps >= rx.repMin)
-        return { action: 'add_reps', loadKg: L, ...range, targetReps: Math.min(rx.repMax, minReps + 1), reason: `Same assistance; aim for one more rep on your lowest sets until every set reaches ${rx.repMax}.` };
-      return { action: 'hold', loadKg: L, ...range, targetReps: rx.repMin, reason: `Keep the same assistance and aim for ${rx.repMin} reps on every set.` };
+        return { action: 'add_reps', loadKg: L, ...range, targetReps: Math.min(rx.repMax, minReps + 1), reasonCode: { key: 'progression.reason.assistedAddReps', params: { repMax: rx.repMax } }, reason: `Same assistance; aim for one more rep on your lowest sets until every set reaches ${rx.repMax}.` };
+      return { action: 'hold', loadKg: L, ...range, targetReps: rx.repMin, reasonCode: { key: 'progression.reason.assistedHold', params: { repMin: rx.repMin } }, reason: `Keep the same assistance and aim for ${rx.repMin} reps on every set.` };
     }
 
     case 'duration':
@@ -368,9 +415,9 @@ export function suggestNext(
       const done1 = h[1] ? workingSets(h[1], ex).length >= rx.sets : false;
       if (allSetsDone && done1) {
         const next = Math.round((avgDist * 1.1) / 10) * 10;
-        return { action: 'increase_distance', loadKg: lastLoad, ...range, distanceM: Math.max(next, avgDist + 10), reason: 'Completed twice: add about 10 % distance while keeping the same comfortable effort.' };
+        return { action: 'increase_distance', loadKg: lastLoad, ...range, distanceM: Math.max(next, avgDist + 10), reasonCode: { key: 'progression.reason.increaseDistance' }, reason: 'Completed twice: add about 10 % distance while keeping the same comfortable effort.' };
       }
-      return { action: 'hold', loadKg: lastLoad, ...range, distanceM: Math.round(avgDist), reason: 'Keep the same distance until it feels comfortable on every set.' };
+      return { action: 'hold', loadKg: lastLoad, ...range, distanceM: Math.round(avgDist), reasonCode: { key: 'progression.reason.holdDistance' }, reason: 'Keep the same distance until it feels comfortable on every set.' };
     }
   }
 }
@@ -398,9 +445,9 @@ function durationRule(h: SessionExercise[], rx: ProgressionRx, action: 'increase
   const range = { repMin: rx.repMin, repMax: rx.repMax };
   if (target > 0 && reached(h[0]) && h[1] && reached(h[1])) {
     const step = Math.max(5, Math.round((target * 0.1) / 5) * 5);
-    return { action, loadKg: null, ...range, durationSec: target + step, reason: `You held ${target} s on every set twice. Try ${target + step} s.` };
+    return { action, loadKg: null, ...range, durationSec: target + step, reasonCode: { key: 'progression.reason.increaseDuration', params: { seconds: target, nextSeconds: target + step } }, reason: `You held ${target} s on every set twice. Try ${target + step} s.` };
   }
-  return { action: 'hold', loadKg: null, ...range, durationSec: target || undefined, reason: target ? `Aim for ${target} s on every set with good form.` : 'Keep logging your times. We’ll build from there.' };
+  return { action: 'hold', loadKg: null, ...range, durationSec: target || undefined, reasonCode: target ? { key: 'progression.reason.holdDuration', params: { seconds: target } } : { key: 'progression.reason.logDuration' }, reason: target ? `Aim for ${target} s on every set with good form.` : 'Keep logging your times. We’ll build from there.' };
 }
 
 /**
@@ -429,7 +476,7 @@ export function lastPerformed<E extends SessionExercise>(history: readonly E[], 
   return history.find((e) => workingSets(e, ex).length > 0);
 }
 
-/** Short label for UI chips. */
+/** Short label for UI chips (English; actionLabel() gives the display language). */
 export const ACTION_LABELS: Record<SuggestionAction, string> = {
   increase_load: 'Increase load',
   hold: 'Hold',
@@ -441,6 +488,11 @@ export const ACTION_LABELS: Record<SuggestionAction, string> = {
   review_recovery: 'Review recovery',
   discomfort_hold: 'No increase',
 };
+
+/** Short action label in `lang` ("Increase load" / "Auka þyngd"). */
+export function actionLabel(action: SuggestionAction, lang: Language = 'en'): string {
+  return lang === 'en' ? ACTION_LABELS[action] : sharedT(lang).t(`progression.action.${action}`);
+}
 
 /* ------------------------------------------------------------------ shared helpers for every surface */
 
@@ -458,11 +510,10 @@ export function plateIncrementKg(ex: Pick<Exercise, 'equipment' | 'tracking' | '
   return v != null && Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
-/** UI languages the progression strings exist in (the app is English-only today; add a key here to translate). */
-export type ProgressionLang = 'en';
+/** UI languages the progression strings exist in (the shared dictionary's languages). */
+export type ProgressionLang = Language;
 
-/** Every user-facing progression string outside the per-suggestion reasons, in one place. */
-export const PROGRESSION_STRINGS: Record<ProgressionLang, {
+interface ProgressionStrings {
   next: (target: string) => string;
   reps: (n: number) => string;
   seconds: (n: number) => string;
@@ -473,7 +524,13 @@ export const PROGRESSION_STRINGS: Record<ProgressionLang, {
   calibrate: string;
   effortCaveat: (targetRir: number) => string;
   rule: (beginner: boolean) => string;
-}> = {
+}
+
+/**
+ * Every user-facing progression string outside the per-suggestion reasons. English is kept verbatim (server grounding
+ * and existing English output); other languages come from the shared dictionary (progression.*).
+ */
+export const PROGRESSION_STRINGS: Record<ProgressionLang, ProgressionStrings> = {
   en: {
     next: (target) => `Next: ${target}`,
     reps: (n) => `${n} reps`,
@@ -489,16 +546,62 @@ export const PROGRESSION_STRINGS: Record<ProgressionLang, {
         ? 'Progression: because you’re new to lifting (or returning), one good session is enough. When you reach the top of the rep range on every set at the target effort (if you don’t log effort, we ask you to confirm it first), we suggest the smallest practical load increase and you start again near the bottom of the range. If you change your experience level to intermediate or advanced, the app waits for two such sessions in a row.'
         : 'Progression uses double progression: when you reach the top of the rep range on every set at the target effort in two sessions (if you don’t log effort, we ask you to confirm it first), we suggest the smallest practical load increase and you start again near the bottom of the range.',
   },
+  is: dictionaryStrings('is'),
 };
+
+/** The same strings from the shared dictionary (complete sentences, Intl.PluralRules count forms). */
+function dictionaryStrings(lang: Language): ProgressionStrings {
+  const T = sharedT(lang);
+  return {
+    next: (target) => T.t('progression.next', { target }),
+    reps: (n) => T.tp('progression.reps', n),
+    seconds: (n) => T.t('progression.seconds', { seconds: n }),
+    metres: (n) => T.t('progression.metres', { metres: n }),
+    assistance: (w) => T.t('progression.assistance', { load: w }),
+    added: (w) => T.t('progression.addedLoad', { load: w }),
+    bodyweight: T.t('progression.bodyweight'),
+    calibrate: T.t('progression.calibrate'),
+    effortCaveat: (rir) => T.t('progression.effortCaveat', { rir }),
+    rule: (beginner) => T.t(beginner ? 'progression.rule.beginner' : 'progression.rule.standard'),
+  };
+}
 
 /**
  * A load in the user's unit for progression text. Loads on the increment grid show exactly, with up to 2 decimals
  * (61.25 kg, not 61.3 kg); anything else (e.g. a kg load shown in lb) is rounded to 1 decimal like other weights.
  */
-export function formatLoad(kg: number, unit: WeightUnit): string {
+export function formatLoad(kg: number, unit: WeightUnit, lang: Language = 'en'): string {
   const v = fromKg(kg, unit);
   const two = round(v, 2);
-  return Math.abs(two - v) < 1e-6 ? `${trimNum(two)} ${unit}` : formatWeight(kg, unit);
+  if (Math.abs(two - v) < 1e-6) return lang === 'en' ? `${trimNum(two)} ${unit}` : `${numberText(two, lang)} ${unit}`;
+  return formatWeight(kg, unit, undefined, lang);
+}
+
+const EFFORT_KEYS = { recorded: 'progression.effort.recorded', partial: 'progression.effort.partial', not_recorded: 'progression.effort.notRecorded' } as const;
+/** Reasons whose English text carries the effort wording; their translations are followed by one effort sentence. */
+const EFFORT_REASONS = new Set<ProgressionReasonKey>([
+  'progression.reason.increaseLoadedBeginner', 'progression.reason.increaseLoadedStandard',
+  'progression.reason.increaseUnloadedBeginner', 'progression.reason.increaseUnloadedStandard',
+  'progression.reason.reduceAssistanceBeginner', 'progression.reason.reduceAssistanceStandard',
+]);
+
+/**
+ * The suggestion's reason in `lang`. English returns the engine's `reason` unchanged. Other languages render the
+ * engine's locale-neutral reasonCode as one complete sentence (loads formatted for the language: 61,25 kg) and, for
+ * an increase, exactly one effort sentence (progression.effort.*) chosen by the engine's effortBasis. Never parses
+ * the English text; a suggestion without a code (built outside the engine) falls back to its `reason`.
+ */
+export function suggestionReasonText(s: Pick<Suggestion, 'reason' | 'reasonCode' | 'effortBasis'>, lang: Language = 'en'): string {
+  const code = s.reasonCode;
+  if (lang === 'en' || !code) return s.reason;
+  const T = sharedT(lang);
+  const unit = code.unit ?? 'kg';
+  const params: Params = { ...code.params };
+  if (code.loadsKg?.load != null) params.load = formatLoad(code.loadsKg.load, unit, lang);
+  if (code.loadsKg?.nextLoad != null) params.nextLoad = formatLoad(code.loadsKg.nextLoad, unit, lang);
+  const text = T.t(code.key, params);
+  if (!EFFORT_REASONS.has(code.key) || !s.effortBasis) return text;
+  return `${text} ${T.t(EFFORT_KEYS[s.effortBasis], { rir: code.rir ?? 0 })}`;
 }
 
 /**
@@ -527,15 +630,15 @@ export function nextTargetLabel(s: Suggestion, ex: Pick<Exercise, 'tracking' | '
   switch (ex.tracking) {
     case 'weight_reps': {
       if (s.loadKg == null || !(s.loadKg > 0)) return reps != null ? t.reps(reps) : null;
-      return reps != null ? `${formatLoad(s.loadKg, unit)} × ${t.reps(reps)}` : formatLoad(s.loadKg, unit);
+      return reps != null ? `${formatLoad(s.loadKg, unit, lang)} × ${t.reps(reps)}` : formatLoad(s.loadKg, unit, lang);
     }
     case 'bodyweight_plus': {
-      const load = s.loadKg != null && s.loadKg > 0 ? t.added(formatLoad(s.loadKg, unit)) : t.bodyweight;
+      const load = s.loadKg != null && s.loadKg > 0 ? t.added(formatLoad(s.loadKg, unit, lang)) : t.bodyweight;
       return reps != null ? `${load} × ${t.reps(reps)}` : load;
     }
     case 'assisted': {
       if (s.loadKg == null) return reps != null ? t.reps(reps) : null;
-      const load = s.loadKg > 0 ? t.assistance(formatLoad(s.loadKg, unit)) : t.bodyweight;
+      const load = s.loadKg > 0 ? t.assistance(formatLoad(s.loadKg, unit, lang)) : t.bodyweight;
       return reps != null ? `${load} × ${t.reps(reps)}` : load;
     }
     case 'reps':

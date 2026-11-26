@@ -5,6 +5,8 @@
  * Pure; no Deno / npm imports.
  */
 import type { TrackingType, TrainingExercise, TrainingSet } from './types.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { sharedT, type Language, type SharedKey } from '../i18n/core.ts';
 
 /** The two exercise fields the set rules look at. */
 type ExLike = Pick<TrainingExercise, 'tracking' | 'load'>;
@@ -17,6 +19,8 @@ export interface SetValidationOptions {
   mode?: SetValidationMode;
   /** Validate as if completed (used before completing a set). Defaults to set.completed. */
   asCompleted?: boolean;
+  /** Language of the error messages (default English, so server callers are unchanged). Never affects the result. */
+  lang?: Language;
 }
 
 export interface SetValidationResult {
@@ -64,6 +68,9 @@ export function setFieldsFor(ex: ExLike | undefined): SetField[] {
   }
 }
 
+const translators: Partial<Record<Language, ReturnType<typeof sharedT>>> = {};
+const translator = (lang: Language) => (translators[lang] ??= sharedT(lang));
+
 const present = (v: number | null | undefined): v is number => v != null;
 const badNumber = (v: number | null | undefined) => present(v) && (typeof v !== 'number' || !Number.isFinite(v) || v < 0);
 
@@ -79,21 +86,22 @@ export function validateLoggedSet(set: TrainingSet, ex: ExLike | undefined, opts
   const mode = opts.mode ?? 'record';
   const completed = opts.asCompleted ?? !!set.completed;
   const fieldErrors: Partial<Record<SetField, string>> = {};
-  const fail = (f: SetField, msg: string) => {
-    if (!fieldErrors[f]) fieldErrors[f] = msg;
+  const lang = opts.lang ?? 'en';
+  const fail = (f: SetField, key: SharedKey) => {
+    if (!fieldErrors[f]) fieldErrors[f] = translator(lang).t(key);
   };
 
   // Always: numbers must be finite and non-negative (drafts included).
-  if (badNumber(set.weightKg)) fail('weight', 'Weight must be zero or more.');
-  if (badNumber(set.reps)) fail('reps', 'Reps must be zero or more.');
-  if (badNumber(set.durationSec)) fail('duration', 'Time must be zero or more.');
-  if (badNumber(set.distanceM)) fail('distance', 'Distance must be zero or more.');
-  if (present(set.rir) && (!Number.isFinite(set.rir) || set.rir < 0 || set.rir > 10)) fail('rir', 'RIR must be between 0 and 10.');
-  if (present(set.rpe) && (!Number.isFinite(set.rpe) || set.rpe < 1 || set.rpe > 10)) fail('rpe', 'RPE must be between 1 and 10.');
-  if (present(set.weightKg) && set.weightKg > SET_LIMITS.maxWeightKg) fail('weight', 'That weight looks too high.');
-  if (present(set.reps) && set.reps > SET_LIMITS.maxReps) fail('reps', 'That rep count looks too high.');
-  if (present(set.durationSec) && set.durationSec > SET_LIMITS.maxDurationSec) fail('duration', 'That time looks too long.');
-  if (present(set.distanceM) && set.distanceM > SET_LIMITS.maxDistanceM) fail('distance', 'That distance looks too long.');
+  if (badNumber(set.weightKg)) fail('weight', 'workout.validation.weightNonnegative');
+  if (badNumber(set.reps)) fail('reps', 'workout.validation.repsNonnegative');
+  if (badNumber(set.durationSec)) fail('duration', 'workout.validation.timeNonnegative');
+  if (badNumber(set.distanceM)) fail('distance', 'workout.validation.distanceNonnegative');
+  if (present(set.rir) && (!Number.isFinite(set.rir) || set.rir < 0 || set.rir > 10)) fail('rir', 'workout.validation.rirRange');
+  if (present(set.rpe) && (!Number.isFinite(set.rpe) || set.rpe < 1 || set.rpe > 10)) fail('rpe', 'workout.validation.rpeRange');
+  if (present(set.weightKg) && set.weightKg > SET_LIMITS.maxWeightKg) fail('weight', 'workout.validation.weightHigh');
+  if (present(set.reps) && set.reps > SET_LIMITS.maxReps) fail('reps', 'workout.validation.repsHigh');
+  if (present(set.durationSec) && set.durationSec > SET_LIMITS.maxDurationSec) fail('duration', 'workout.validation.timeLong');
+  if (present(set.distanceM) && set.distanceM > SET_LIMITS.maxDistanceM) fail('distance', 'workout.validation.distanceLong');
 
   if (completed) {
     const tracking: TrackingType | undefined = ex?.tracking;
@@ -103,26 +111,26 @@ export function validateLoggedSet(set: TrainingSet, ex: ExLike | undefined, opts
 
     if (!tracking) {
       // Unknown exercise (e.g. deleted custom one): require at least one positive measure.
-      if (!pos(set.reps) && !pos(set.durationSec) && !pos(set.distanceM)) fail('reps', 'Enter reps, time or distance.');
-      else if (present(set.reps) && !fieldErrors.reps && set.reps > 0 && !Number.isInteger(set.reps)) fail('reps', 'Reps must be a whole number.');
+      if (!pos(set.reps) && !pos(set.durationSec) && !pos(set.distanceM)) fail('reps', 'workout.validation.enterPerformance');
+      else if (present(set.reps) && !fieldErrors.reps && set.reps > 0 && !Number.isInteger(set.reps)) fail('reps', 'workout.validation.wholeReps');
     } else if (isRepTracking(tracking)) {
       if (!fieldErrors.reps && !posInt(set.reps)) {
-        fail('reps', present(set.reps) && set.reps > 0 ? 'Reps must be a whole number.' : 'Enter at least 1 rep.');
+        fail('reps', present(set.reps) && set.reps > 0 ? 'workout.validation.wholeReps' : 'workout.validation.oneRep');
       }
     } else if (tracking === 'duration') {
-      if (!fieldErrors.duration && !pos(set.durationSec)) fail('duration', 'Enter a time above 0.');
+      if (!fieldErrors.duration && !pos(set.durationSec)) fail('duration', 'workout.validation.positiveTime');
     } else if (tracking === 'distance_time') {
       if (!fieldErrors.distance && !fieldErrors.duration && !pos(set.distanceM) && !pos(set.durationSec)) {
-        fail('distance', 'Enter a distance or a time.');
+        fail('distance', 'workout.validation.distanceOrTime');
       }
     }
 
     // Load requirement (strict logging only; history/import accept "load not recorded").
     if (ex && mode === 'log' && working && usesLoad(ex) && !fieldErrors.weight) {
       if (zeroLoadValid(ex.tracking)) {
-        if (!present(set.weightKg)) fail('weight', ex.tracking === 'assisted' ? 'Enter the assistance (0 for none).' : 'Enter the added weight (0 for none).');
+        if (!present(set.weightKg)) fail('weight', ex.tracking === 'assisted' ? 'workout.validation.enterAssistance' : 'workout.validation.enterAddedWeight');
       } else if (!present(set.weightKg) || set.weightKg <= 0) {
-        fail('weight', 'Enter the weight used.');
+        fail('weight', 'workout.validation.enterWeight');
       }
     }
   }

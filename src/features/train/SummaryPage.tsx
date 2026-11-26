@@ -6,7 +6,7 @@ import { useApp } from '@/state/app';
 import { alive } from '@/db/repo';
 import { Badge, Button, Card, EmptyState, Page, SectionTitle, Spinner, Stat } from '@/components/ui';
 import { useExercises } from '@/data/catalog';
-import { detectRecords, summarizeSession, VOLUME_CONVENTION_SHORT } from '@/domain/stats';
+import { detectRecords, summarizeSession, volumeConventionShort } from '@/domain/stats';
 import { nextTargetsFor } from '@/domain/nextTargets';
 import { isValidCompletedSet } from '@/domain/setValidation';
 import { formatDistance, round, fromKg } from '@/domain/units';
@@ -16,6 +16,7 @@ import { SharePreview } from '@/features/social/SharePreview';
 import { formatLoggedSet } from '@/features/exercises/useExerciseData';
 import { celebrateOnce } from '@/components/celebrate';
 import { openCoachWith } from '@/features/coaching/ai/workoutContext';
+import { numberText, useT } from '@/i18n';
 
 /** Only a workout finished in the last few minutes gets the brief celebration; reopening an old summary stays calm. */
 const JUST_FINISHED_MS = 5 * 60 * 1000;
@@ -31,6 +32,7 @@ function WorkoutSummary({ id }: { id: string }) {
   // "Explain" next to a next target opens the training assistant with this workout attached (signed-in accounts only).
   const aiEntry = backendConfigured && auth.status === 'signed_in';
   const nav = useNavigate();
+  const { t, language } = useT();
   const unit = account.settings.units.weight;
   const { byId } = useExercises();
   const session = useLiveQuery(async () => (await db.sessions.get(id)) ?? null, [db, id]);
@@ -40,11 +42,11 @@ function WorkoutSummary({ id }: { id: string }) {
     const others = history.filter((s) => s.id !== session.id && s.startedAt < session.startedAt);
     return {
       summary: summarizeSession(session, byId),
-      records: detectRecords(session, others, byId, unit),
+      records: detectRecords(session, others, byId, unit, language),
       // The progression engine's next target per exercise (the only place next loads come from).
-      next: nextTargetsFor(session, history, byId, account.settings, account.profile.experience),
+      next: nextTargetsFor(session, history, byId, account.settings, account.profile.experience, language),
     };
-  }, [session, history, byId, unit, account.settings, account.profile.experience]);
+  }, [session, history, byId, unit, account.settings, account.profile.experience, language]);
   const celebrations = account.settings.workout.celebrations !== false;
   const recordCount = data?.records.length ?? -1;
   useEffect(() => {
@@ -53,39 +55,39 @@ function WorkoutSummary({ id }: { id: string }) {
   }, [celebrations, recordCount, session?.id, session?.endedAt]);
 
   if (session === undefined || history === undefined) return <Spinner />;
-  if (!session || session.deletedAt) return <EmptyState title="Workout not found" action={<Button onClick={() => nav('/')}>Home</Button>} />;
+  if (!session || session.deletedAt) return <EmptyState title={t('workout.notFound')} action={<Button onClick={() => nav('/')}>{t('summary.home')}</Button>} />;
   if (!data) return <Spinner />;
   const { summary, records, next } = data;
   const vol = summary.volume;
-  const recordsForShare = records.map((r) => ({ exercise: byId.get(r.exerciseId)?.name ?? 'Exercise', label: r.label }));
+  const recordsForShare = records.map((r) => ({ exercise: byId.get(r.exerciseId)?.name ?? t('workout.exerciseFallback'), label: r.label }));
 
   return (
-    <Page title="Workout complete">
+    <Page title={t('summary.complete')}>
       <Card className="p-5" tint="accent">
         <div className="flex items-center gap-2 text-accent">
           <CheckCircle2 className="size-5" aria-hidden />
           <span className="font-semibold">{session.name}</span>
         </div>
         <p className="text-sm text-muted mt-0.5">{formatDate(session.date, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-        <p className="font-display text-lg font-bold mt-2">{records.length > 0 ? 'Workout saved. New records in this one.' : 'Workout saved. Every set adds up.'}</p>
+        <p className="font-display text-lg font-bold mt-2">{records.length > 0 ? t('summary.savedWithRecords') : t('summary.saved')}</p>
         <div className="grid grid-cols-3 gap-3 mt-4">
-          <Stat label="Duration" value={formatDuration(summary.durationSec)} />
-          <Stat label="Working sets" value={summary.workingSets} sub={summary.warmupSets ? `+${summary.warmupSets} warm-up` : undefined} />
-          <Stat label="Exercises" value={summary.exercisesDone} />
+          <Stat label={t('summary.duration')} value={formatDuration(summary.durationSec)} />
+          <Stat label={t('summary.workingSets')} value={summary.workingSets} sub={summary.warmupSets ? t('summary.warmupCount', { count: summary.warmupSets }) : undefined} />
+          <Stat label={t('summary.exercises')} value={summary.exercisesDone} />
         </div>
         {(vol.freeWeightKg > 0 || vol.machineKg > 0 || vol.addedBodyweightKg > 0) && (
           <div className="mt-4 text-sm space-y-0.5">
-            {vol.freeWeightKg > 0 && <div>Free-weight volume: <span className="tabular font-medium">{fmtVol(vol.freeWeightKg, unit)}</span></div>}
-            {vol.machineKg > 0 && <div>Machine/cable volume: <span className="tabular font-medium">{fmtVol(vol.machineKg, unit)}</span></div>}
-            {vol.addedBodyweightKg > 0 && <div>Added load (bodyweight moves): <span className="tabular font-medium">{fmtVol(vol.addedBodyweightKg, unit)}</span></div>}
-            <p className="text-xs text-faint">{VOLUME_CONVENTION_SHORT} Machine and free-weight volume aren’t comparable, so they’re shown separately.</p>
+            {vol.freeWeightKg > 0 && <div>{withValue(t('summary.freeWeightVolume', { volume: SLOT }), fmtVol(vol.freeWeightKg, unit))}</div>}
+            {vol.machineKg > 0 && <div>{withValue(t('summary.machineVolume', { volume: SLOT }), fmtVol(vol.machineKg, unit))}</div>}
+            {vol.addedBodyweightKg > 0 && <div>{withValue(t('summary.addedBodyweightVolume', { volume: SLOT }), fmtVol(vol.addedBodyweightKg, unit))}</div>}
+            <p className="text-xs text-faint">{volumeConventionShort(language)} {t('summary.volumeNotComparable')}</p>
           </div>
         )}
       </Card>
 
       {records.length > 0 && (
         <>
-          <SectionTitle>New records</SectionTitle>
+          <SectionTitle>{t('summary.newRecords')}</SectionTitle>
           <Card className="p-4 space-y-2" tint="celebrate">
             {records.map((r, i) => (
               <div key={i} className="flex items-center gap-3">
@@ -102,7 +104,7 @@ function WorkoutSummary({ id }: { id: string }) {
         </>
       )}
 
-      <SectionTitle>What you did</SectionTitle>
+      <SectionTitle>{t('summary.whatYouDid')}</SectionTitle>
       <Card className="divide-y divide-line">
         {session.exercises.map((se) => {
           const ex = byId.get(se.exerciseId);
@@ -111,13 +113,15 @@ function WorkoutSummary({ id }: { id: string }) {
             <div key={se.id} className="px-4 py-3">
               <div className="flex items-center gap-2">
                 <Dumbbell className="size-4 text-muted" aria-hidden />
-                <span className="font-medium text-sm">{ex?.name ?? 'Exercise'}</span>
-                {se.discomfort && <Badge tone="warn">Discomfort</Badge>}
+                <span className="font-medium text-sm">{ex?.name ?? t('workout.exerciseFallback')}</span>
+                {se.discomfort && <Badge tone="warn">{t('summary.discomfort')}</Badge>}
               </div>
               <p className="text-xs text-muted mt-1">
                 {se.sets.length === 0
-                  ? 'No sets completed.'
-                  : ex ? se.sets.map((s) => `${s.type === 'warmup' ? 'W ' : ''}${formatLoggedSet(s, ex, unit, account.settings.units.distance)}${isValidCompletedSet(s, ex) ? '' : ' (not counted)'}`).join(' · ') : `${se.sets.length} sets`}
+                  ? t('summary.noCompletedSets')
+                  : ex
+                    ? se.sets.map((s) => `${s.type === 'warmup' ? `${t('workout.warmupMarker')} ` : ''}${formatLoggedSet(s, ex, unit, account.settings.units.distance, language)}${isValidCompletedSet(s, ex) ? '' : ` ${t('summary.notCounted')}`}`).join(' · ')
+                    : t('summary.setCount', { count: se.sets.length })}
               </p>
               {target && (
                 <div className="text-xs mt-1" data-testid="next-target">
@@ -129,12 +133,12 @@ function WorkoutSummary({ id }: { id: string }) {
                       <button
                         type="button"
                         className="ml-auto inline-flex items-center gap-1 min-h-8 px-2 rounded-lg text-accent font-medium hover:bg-surface-2"
-                        aria-label={`Explain the next target for ${ex?.name ?? 'this exercise'}`}
+                        aria-label={t('summary.explainTarget', { exercise: ex?.name ?? t('summary.thisExercise') })}
                         onClick={() =>
                           void openCoachWith(db, nav, { intent: 'explain', sessionId: session.id, focusId: se.id, shownTarget: `${target.text} (${target.label})`, userId: auth.userId })
                         }
                       >
-                        <CircleHelp className="size-3.5" aria-hidden /> Explain
+                        <CircleHelp className="size-3.5" aria-hidden /> {t('summary.explain')}
                       </button>
                     )}
                   </p>
@@ -146,19 +150,19 @@ function WorkoutSummary({ id }: { id: string }) {
         })}
       </Card>
 
-      <SectionTitle>Share</SectionTitle>
+      <SectionTitle>{t('summary.share')}</SectionTitle>
       <SharePreview session={session} records={recordsForShare} />
 
       <div className="flex flex-col gap-2 mt-6">
         <Button variant="primary" size="lg" onClick={() => nav('/', { replace: true })}>
-          Done
+          {t('summary.done')}
         </Button>
         <div className="grid grid-cols-2 gap-2">
           <Button icon={<Clock className="size-4" />} onClick={() => nav(`/train/history/${session.id}`)}>
-            Edit workout
+            {t('summary.editWorkout')}
           </Button>
           <Button icon={<Layers className="size-4" />} onClick={() => nav(`/train/history/${session.id}?saveTemplate=1`)}>
-            Save as template
+            {t('summary.saveTemplate')}
           </Button>
         </div>
       </div>
@@ -166,20 +170,35 @@ function WorkoutSummary({ id }: { id: string }) {
   );
 }
 
+const SLOT = '\u0000';
+/** A sentence with its value emphasized (the sentence is translated whole; the value goes where its slot is). */
+function withValue(sentence: string, value: string) {
+  const [before, after = ''] = sentence.split(SLOT);
+  return (
+    <>
+      {before}
+      <span className="tabular font-medium">{value}</span>
+      {after}
+    </>
+  );
+}
+
+/** Whole-unit volume with digit grouping ("12,345 kg" / "12.345 kg"); the unit never changes with the language. */
 function fmtVol(kg: number, unit: 'kg' | 'lb') {
-  return `${round(fromKg(kg, unit), 0).toLocaleString('en-GB')} ${unit}`;
+  return `${numberText(round(fromKg(kg, unit), 0), 0, true)} ${unit}`;
 }
 
 function ActivitySummary({ id }: { id: string }) {
   const { db, account } = useApp();
   const nav = useNavigate();
+  const { t } = useT();
   const units = account.settings.units;
   const a = useLiveQuery(async () => (await db.activities.get(id)) ?? null, [db, id]);
   if (a === undefined) return <Spinner />;
-  if (!a || a.deletedAt) return <EmptyState title="Activity not found" action={<Button onClick={() => nav('/')}>Home</Button>} />;
+  if (!a || a.deletedAt) return <EmptyState title={t('summary.activityNotFound')} action={<Button onClick={() => nav('/')}>{t('summary.home')}</Button>} />;
   const pace = paceOrSpeed(a, units.distance);
   return (
-    <Page title="Activity saved">
+    <Page title={t('summary.activitySaved')}>
       <Card className="p-5">
         <div className="flex items-center gap-2 text-accent">
           <CheckCircle2 className="size-5" aria-hidden />
@@ -187,24 +206,24 @@ function ActivitySummary({ id }: { id: string }) {
         </div>
         <p className="text-sm text-muted mt-0.5">{formatDate(a.date, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
         <div className="grid grid-cols-3 gap-3 mt-4">
-          <Stat label="Time" value={formatMinutes(a.durationSec)} />
-          {a.distanceM != null && <Stat label="Distance" value={formatDistance(a.distanceM, units.distance)} />}
-          {pace && <Stat label={pace.kind === 'pace' ? 'Pace' : 'Speed'} value={pace.text} />}
+          <Stat label={t('summary.time')} value={formatMinutes(a.durationSec)} />
+          {a.distanceM != null && <Stat label={t('summary.distance')} value={formatDistance(a.distanceM, units.distance)} />}
+          {pace && <Stat label={pace.kind === 'pace' ? t('summary.pace') : t('summary.speed')} value={pace.text} />}
         </div>
         {a.energyKcal != null && (
           <p className="text-xs text-muted mt-3">
-            Energy: about {Math.round(a.energyKcal)} kcal ({a.energySource === 'device' ? 'from your device' : a.energySource === 'user' ? 'your estimate' : 'approximate calculation'}). Treat as a rough estimate.
+            {t(a.energySource === 'device' ? 'summary.energyFromDevice' : a.energySource === 'user' ? 'summary.energyFromUser' : 'summary.energyCalculated', { kcal: Math.round(a.energyKcal) })}
           </p>
         )}
       </Card>
-      <SectionTitle>Share</SectionTitle>
+      <SectionTitle>{t('summary.share')}</SectionTitle>
       <SharePreview activity={a} />
       <div className="flex flex-col gap-2 mt-6">
         <Button variant="primary" size="lg" onClick={() => nav('/', { replace: true })}>
-          Done
+          {t('summary.done')}
         </Button>
         <Button icon={<Repeat className="size-4" />} onClick={() => nav(`/train/activity/${a.id}`)}>
-          Edit activity
+          {t('summary.editActivity')}
         </Button>
       </div>
     </Page>

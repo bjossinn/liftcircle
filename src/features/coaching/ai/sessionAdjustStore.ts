@@ -7,13 +7,23 @@
 import type { LiftDb } from '@/db/db';
 import { kvGet, kvSet, saveRecord } from '@/db/repo';
 import type { Exercise, ID, WorkoutSession } from '@/domain/types';
-import { applySessionAdjustment, revertSessionAdjustment, type SessionAdjustmentUndo } from '@/domain/sessionAdjust';
+import { adjustmentLineItems, adjustmentLineText, applySessionAdjustment, revertSessionAdjustment, type AdjustmentLine, type SessionAdjustmentUndo } from '@/domain/sessionAdjust';
+import { t } from '@/i18n';
 import type { SessionAdjustmentAction } from '../../../../supabase/functions/_shared/ai/workout';
 
 export const AI_SESSION_ADJUST_KEY = 'ai-session-adjustments';
 const KEEP_MS = 2 * 24 * 60 * 60 * 1000;
 
-export type AdjustRecord = SessionAdjustmentUndo & { revertedAt?: number; summary: string[] };
+/**
+ * `lines` is the change as data (shown in the current language); `summary` is the text shown when it was applied,
+ * kept for records written before `lines` existed (shown as stored).
+ */
+export type AdjustRecord = SessionAdjustmentUndo & { revertedAt?: number; summary: string[]; lines?: AdjustmentLine[] };
+
+/** The change lines of an applied record, for the logger's banner, in the current language. */
+export function adjustRecordLines(rec: AdjustRecord): string[] {
+  return Array.isArray(rec.lines) ? rec.lines.map(adjustmentLineText) : Array.isArray(rec.summary) ? rec.summary : [];
+}
 export type AdjustRecords = Record<string, AdjustRecord>;
 
 export async function loadAdjustRecords(db: LiftDb): Promise<AdjustRecords> {
@@ -37,11 +47,11 @@ export async function applyAdjustment(db: LiftDb, action: SessionAdjustmentActio
   const prev = recs[action.id];
   if (prev && !prev.revertedAt) return { ok: true };
   const session = await db.sessions.get(action.sessionId);
-  if (!session) return { ok: false, reason: 'This workout is no longer on this device.' };
+  if (!session) return { ok: false, reason: t('sessionAdjustment.missingSession') };
   const res = applySessionAdjustment(session, action, byId);
   if (!res.ok) return res;
   await saveRecord('sessions', res.session, db);
-  await saveRecords(db, { ...recs, [action.id]: { ...res.undo, summary } });
+  await saveRecords(db, { ...recs, [action.id]: { ...res.undo, summary, lines: adjustmentLineItems(action) } });
   return { ok: true };
 }
 
@@ -66,11 +76,11 @@ export async function revertAdjustment(
       }
       return r.session;
     });
-    if (!ran && !failure) failure = 'This workout is already finished, so it can’t be undone here.';
-    if (!saved && !failure) failure = 'Couldn’t save that change on this device.';
+    if (!ran && !failure) failure = t('sessionAdjustment.finishedCannotUndoShort');
+    if (!saved && !failure) failure = t('sessionAdjustment.saveFailed');
   } else {
     const session = await db.sessions.get(rec.sessionId);
-    const r = session ? revertSessionAdjustment(session, rec) : ({ ok: false, reason: 'This workout is no longer on this device.' } as const);
+    const r = session ? revertSessionAdjustment(session, rec) : ({ ok: false, reason: t('sessionAdjustment.missingSession') } as const);
     if (!r.ok) failure = r.reason;
     else await saveRecord('sessions', r.session, db);
   }

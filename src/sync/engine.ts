@@ -19,6 +19,7 @@ import { syncRemote, toBackendError } from '@/backend/syncRemote';
 import { uuid } from '@/lib/id';
 import { supabase } from '@/backend/supabase';
 import { BackendError } from '@/backend/syncRemote';
+import { t } from '@/i18n';
 
 export type SyncPhase = 'disabled' | 'idle' | 'syncing' | 'offline' | 'paused_auth' | 'error';
 export interface SyncStatus {
@@ -213,7 +214,7 @@ async function pushOne(db: LiftDb, op: OutboxOp) {
   const sb = supabase();
   if (sb) {
     const { data } = await sb.auth.getSession();
-    if (data.session?.user.id !== op.accountId) throw new BackendError('Signed in as a different account', 'auth', 401);
+    if (data.session?.user.id !== op.accountId) throw new BackendError(t('sync.differentAccount'), 'auth', 401);
   }
   const sentHashes = [...(op.sentHashes ?? []).filter((h) => h !== hash), hash].slice(-5);
   await db.outbox.update(op.seq!, { sentHashes });

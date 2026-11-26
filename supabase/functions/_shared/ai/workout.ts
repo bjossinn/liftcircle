@@ -9,6 +9,8 @@
  * remaining sets for TODAY ONLY. The app previews it and, only when the user taps Apply, changes the live session on
  * the device. The saved plan (program template) is never touched; Undo restores what was removed.
  */
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { listText, sharedT, type Language } from '../i18n/core.ts';
 
 export type WorkoutIntent = 'shorten' | 'swap' | 'explain';
 export const WORKOUT_INTENTS: readonly WorkoutIntent[] = ['shorten', 'swap', 'explain'];
@@ -261,19 +263,15 @@ export function workoutInstruction(ctx: WorkoutContext): string {
   return `${base} The user asked to explain a recommendation. Explain in plain words why the app suggests it, using the "Next targets" lines and the logged sets (effort, reps against the target range, discomfort). Quote the app's numbers exactly; never invent a different next weight. Don't change anything and don't call propose_session_adjustment.`;
 }
 
-/** One-line description of a session adjustment (fallback reply text and summaries). */
-export function describeSessionAdjustment(a: Pick<SessionAdjustmentAction, 'change' | 'swap' | 'removeSets' | 'dropExercises' | 'minutes' | 'estimatedMinutes'>, lang: 'en' | 'is' = 'en'): string {
-  if (a.change === 'swap' && a.swap) {
-    return lang === 'is'
-      ? `Í dag: ${a.swap.toName} í stað ${a.swap.fromName}. Ýttu á „Apply to today's workout“ til að breyta æfingunni í dag. Planið breytist ekki.`
-      : `For today: ${a.swap.toName} instead of ${a.swap.fromName}. Tap Apply to today's workout to make the swap. Your plan stays the same.`;
-  }
+/** One-line description of a session adjustment (fallback reply text and summaries), in the reply language. */
+export function describeSessionAdjustment(a: Pick<SessionAdjustmentAction, 'change' | 'swap' | 'removeSets' | 'dropExercises' | 'minutes' | 'estimatedMinutes'>, lang: Language = 'en'): string {
+  const { t, tp } = sharedT(lang);
+  if (a.change === 'swap' && a.swap) return t('aiServer.session.swapSummary', { fromName: a.swap.fromName, toName: a.swap.toName });
   const sets = a.removeSets.reduce((n, r) => n + r.count, 0);
   const bits: string[] = [];
-  if (a.dropExercises.length) bits.push(lang === 'is' ? `sleppa ${a.dropExercises.map((d) => d.name).join(', ')}` : `skip ${a.dropExercises.map((d) => d.name).join(', ')}`);
-  if (sets) bits.push(lang === 'is' ? `${sets} færri sett` : `${sets} fewer set${sets === 1 ? '' : 's'}`);
-  const est = a.estimatedMinutes != null ? (lang === 'is' ? ` (um ${a.estimatedMinutes} mín. eftir)` : ` (about ${a.estimatedMinutes} min left)`) : '';
-  return lang === 'is'
-    ? `Styttri æfing í dag: ${bits.join(' og ') || 'engar breytingar'}${est}. Ýttu á „Apply to today's workout“. Planið breytist ekki.`
-    : `A shorter workout for today: ${bits.join(' and ') || 'no changes'}${est}. Tap Apply to today's workout to use it. Your plan stays the same.`;
+  if (a.dropExercises.length) bits.push(t('aiServer.session.skipExercises', { names: a.dropExercises.map((d) => d.name).join(', ') }));
+  if (sets) bits.push(tp('aiServer.session.fewerSets', sets));
+  const estimate = a.estimatedMinutes != null ? t('aiServer.session.estimate', { minutes: a.estimatedMinutes }) : '';
+  const changes = bits.length ? (lang === 'is' ? listText(bits, 'is') : bits.join(' and ')) : t('aiServer.session.noChanges');
+  return t('aiServer.session.shortenSummary', { changes, estimate });
 }

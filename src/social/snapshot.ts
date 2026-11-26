@@ -124,7 +124,8 @@ export function buildActivitySnapshot(
   const snap: WorkoutSnapshot = { title: label, kind: 'activity', date: a.date, activity: { type: a.type, label } };
   if (fields.duration && a.durationSec > 0) snap.durationSec = Math.round(a.durationSec);
   if (fields.volume && a.distanceM && a.distanceM > 0) {
-    snap.activity!.distance = formatDistance(a.distanceM, ctx.distanceUnit);
+    // Shared snapshot text is stored and shown to other people: keep its canonical English number form.
+    snap.activity!.distance = formatDistance(a.distanceM, ctx.distanceUnit, 2, 'en');
     if (fields.duration && a.durationSec > 0) {
       if (SPEED_TYPES.includes(a.type)) {
         const v = speedPerHour(a.distanceM, a.durationSec, ctx.distanceUnit);

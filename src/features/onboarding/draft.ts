@@ -9,6 +9,7 @@ import type { AccountState, ActivityType, Allergen, DietTag, Equipment, Goal, On
 import { isSplitKey, splitKeyOfVersion } from '@/domain/program/splits';
 import { deviceLocale, unitsForLocale } from '@/domain/units';
 import { defaultAccountState } from '@/state/defaults';
+import { hasKey, t, type MessageKey } from '@/i18n';
 
 export const DRAFT_KEY = 'onboarding-draft';
 
@@ -194,17 +195,29 @@ export function questionNumber(step: StepKey): number | null {
   return i < 0 ? null : i + 1;
 }
 
-export const STEP_TITLES: Record<StepKey, string> = {
-  welcome: 'Welcome',
-  goal: 'What’s your main goal?',
-  experience: 'How much have you lifted before?',
-  days: 'Which days can you train?',
-  duration: 'How long is a workout?',
-  location: 'Where do you train?',
-  limits: 'Anything to be careful with?',
-  result: 'Your plan',
-  manual: 'Your own program',
+const STEP_TITLE_KEYS: Record<StepKey, MessageKey> = {
+  welcome: 'onboarding.title.welcome',
+  goal: 'onboarding.title.goal',
+  experience: 'onboarding.title.experience',
+  days: 'onboarding.title.days',
+  duration: 'onboarding.title.duration',
+  location: 'onboarding.title.location',
+  limits: 'onboarding.title.limits',
+  result: 'onboarding.title.result',
+  manual: 'onboarding.title.manual',
 };
+/** Step heading in the current language. */
+export const stepTitle = (step: StepKey): string => t(STEP_TITLE_KEYS[step]);
+
+/** A record whose values are read in the current language each time (keys stay stable enum values). */
+function localizedRecord<K extends string>(keys: Record<K, MessageKey>): Record<K, string> {
+  const out = {} as Record<K, string>;
+  for (const k of Object.keys(keys) as K[]) Object.defineProperty(out, k, { enumerable: true, get: () => t(keys[k]) });
+  return out;
+}
+
+/** Step headings (read in the current language). Prefer `stepTitle(step)`. */
+export const STEP_TITLES: Record<StepKey, string> = localizedRecord(STEP_TITLE_KEYS);
 
 export const isUnder18 = (a: Pick<OnboardingAnswers, 'age'>) => a.age != null && a.age < 18;
 
@@ -216,22 +229,34 @@ const goalSchema = z.object({
   goal: z.enum(GOALS),
   endurance: z.object({ activity: z.enum(ENDURANCE_ACTIVITIES) }).partial().optional(),
 });
+// Messages are message keys; issuesToErrors turns them (or a generic fallback for the issue type) into copy, never
+// passing raw Zod text through to the UI.
 const daysSchema = z.object({
-  availableWeekdays: z.array(z.number().int().min(0).max(6)).min(1, 'Pick at least one day.'),
+  availableWeekdays: z.array(z.number().int().min(0).max(6)).min(1, 'onboarding.validation.pickDay'),
 });
 const durationSchema = z.object({
-  sessionMinutes: z.number().int().min(20, 'At least 20 minutes.').max(180, 'Up to 180 minutes.'),
+  sessionMinutes: z.number().int().min(20, 'onboarding.validation.minMinutes').max(180, 'onboarding.validation.maxMinutes'),
 });
 const manualSchema = z.object({
-  sessions: z.number().int().min(1).max(7),
+  sessions: z.number().int('onboarding.validation.manualCount').min(1, 'onboarding.validation.manualCount').max(7, 'onboarding.validation.manualCount'),
   days: z.array(z.number().int().min(0).max(6)),
 });
+
+/** The message for one issue: its explicit key, else a generic number/option message by issue type. */
+function issueMessage(i: z.core.$ZodIssue): string {
+  if (hasKey(i.message)) return t(i.message);
+  const numeric =
+    (i.code === 'invalid_type' && (i.expected === 'number' || i.expected === 'int')) ||
+    i.code === 'not_multiple_of' ||
+    ((i.code === 'too_small' || i.code === 'too_big') && (i.origin === 'number' || i.origin === 'int'));
+  return t(numeric ? 'onboarding.validation.invalidNumber' : 'onboarding.validation.invalidOption');
+}
 
 function issuesToErrors(issues: z.core.$ZodIssue[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const i of issues) {
     const key = i.path.join('.');
-    if (!out[key]) out[key] = i.message;
+    if (!out[key]) out[key] = issueMessage(i);
   }
   return out;
 }
@@ -256,25 +281,25 @@ export function validateStep(step: StepKey, d: Draft): Record<string, string> {
   }
 }
 
-export const DIET_TAG_LABELS: Record<DietTag, string> = {
-  vegetarian: 'Vegetarian',
-  vegan: 'Vegan',
-  pescatarian: 'Pescatarian',
-  dairy_free: 'Dairy-free',
-  gluten_free: 'Gluten-free',
-  high_protein: 'High protein',
-};
-export const ALLERGEN_LABELS: Record<Allergen, string> = {
-  milk: 'Milk',
-  egg: 'Egg',
-  fish: 'Fish',
-  shellfish: 'Shellfish',
-  tree_nuts: 'Tree nuts',
-  peanuts: 'Peanuts',
-  wheat: 'Wheat',
-  gluten: 'Gluten',
-  soy: 'Soy',
-  sesame: 'Sesame',
-  mustard: 'Mustard',
-  celery: 'Celery',
-};
+export const DIET_TAG_LABELS: Record<DietTag, string> = localizedRecord({
+  vegetarian: 'onboarding.diet.vegetarian',
+  vegan: 'onboarding.diet.vegan',
+  pescatarian: 'onboarding.diet.pescatarian',
+  dairy_free: 'onboarding.diet.dairy_free',
+  gluten_free: 'onboarding.diet.gluten_free',
+  high_protein: 'onboarding.diet.high_protein',
+});
+export const ALLERGEN_LABELS: Record<Allergen, string> = localizedRecord({
+  milk: 'onboarding.allergen.milk',
+  egg: 'onboarding.allergen.egg',
+  fish: 'onboarding.allergen.fish',
+  shellfish: 'onboarding.allergen.shellfish',
+  tree_nuts: 'onboarding.allergen.tree_nuts',
+  peanuts: 'onboarding.allergen.peanuts',
+  wheat: 'onboarding.allergen.wheat',
+  gluten: 'onboarding.allergen.gluten',
+  soy: 'onboarding.allergen.soy',
+  sesame: 'onboarding.allergen.sesame',
+  mustard: 'onboarding.allergen.mustard',
+  celery: 'onboarding.allergen.celery',
+});

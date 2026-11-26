@@ -10,6 +10,8 @@ import { catalog } from './catalog.ts';
 import { LEFT_OUT, proteinFitSwaps } from './proteins.ts';
 // @ts-ignore see above
 export * from './proteins.ts';
+// @ts-ignore see above
+import { numberText, sharedT, type Language } from '../i18n/core.ts';
 
 const round = (n: number, decimals = 2) => {
   const f = 10 ** decimals;
@@ -45,6 +47,23 @@ export const DIET_TAG_LABELS: Record<DietTag, string> = {
 };
 export const MEAL_LABELS: Record<MealSlot, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' };
 export const MEAL_ORDER: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+/* Display labels in a language (the constants above stay the English/canonical ones). Unknown values show as given. */
+/** "Breakfast" / "Morgunmatur". */
+export function mealLabel(slot: MealSlot, lang: Language = 'en'): string {
+  const tr = sharedT(lang);
+  return tr.has(`aiCard.meal.${slot}`) ? tr.t(`aiCard.meal.${slot}` as never) : MEAL_LABELS[slot] ?? slot;
+}
+/** "Tree nuts" / "Trjáhnetur" — a standalone label (never append it to "án"; see describeConstraints). */
+export function allergenLabel(a: Allergen, lang: Language = 'en'): string {
+  const tr = sharedT(lang);
+  return tr.has(`aiServer.allergen.${a}`) ? tr.t(`aiServer.allergen.${a}` as never) : ALLERGEN_LABELS[a] ?? a;
+}
+/** "Dairy-free" / "Án mjólkurvara". */
+export function dietTagLabel(tag: DietTag, lang: Language = 'en'): string {
+  const tr = sharedT(lang);
+  return tr.has(`aiServer.diet.${tag}`) ? tr.t(`aiServer.diet.${tag}` as never) : DIET_TAG_LABELS[tag] ?? tag;
+}
 
 /* ----------------------------------------------------------------- macros */
 export const ZERO_MACROS: Macros = { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 };
@@ -187,17 +206,22 @@ export function formatFraction(n: number): string {
   return whole === 0 ? best[1] : `${whole}${best[1]}`;
 }
 
-export function formatGrams(g: number): string {
-  if (g >= 1000) return `${round(g / 1000, 2)} kg`;
-  if (g >= 100) return `${Math.round(g / 5) * 5} g`;
-  if (g >= 10) return `${Math.round(g)} g`;
-  return `${round(g, 1)} g`;
+export function formatGrams(g: number, lang: Language = 'en'): string {
+  const n = (v: number) => (lang === 'en' ? String(v) : numberText(v, lang));
+  if (g >= 1000) return `${n(round(g / 1000, 2))} kg`;
+  if (g >= 100) return `${n(Math.round(g / 5) * 5)} g`;
+  if (g >= 10) return `${n(Math.round(g))} g`;
+  return `${n(round(g, 1))} g`;
 }
 
 const LIQUIDS = new Set(['milk', 'oat-drink', 'soy-drink', 'vegetable-stock', 'lemon-juice']);
 
-/** A household-measure description of an amount, or null when none fits. */
-export function friendlyAmount(ing: Ingredient, grams: number): string | null {
+/**
+ * A household-measure description of an amount, or null when none fits. Icelandic: counted pieces ("2 egg", "2 stk.")
+ * and cans ("1 dós") only — other household measures have no approved Icelandic copy yet, so they give null and the
+ * caller shows grams (i18n: no approved Icelandic copy for slice/tsp/tbsp/cup).
+ */
+export function friendlyAmount(ing: Ingredient, grams: number, lang: Language = 'en'): string | null {
   const u = ing.units ?? {};
   const piece = catalog().pieceLabels[ing.id];
   if (u.piece && piece) {
@@ -205,8 +229,19 @@ export function friendlyAmount(ing: Ingredient, grams: number): string | null {
     if (n >= 0.2) {
       const r = n >= 3 ? Math.round(n) : Math.round(n * 2) / 2;
       const nn = r === 0 ? 0.5 : r;
+      if (lang !== 'en') {
+        const tr = sharedT(lang);
+        return ing.id === 'egg' ? tr.tp('aiCard.quantity.egg', nn, { count: formatFraction(nn) }) : tr.t('aiCard.quantity.pieces', { count: formatFraction(nn) });
+      }
       return `${formatFraction(nn)} ${nn > 1 ? piece[1] : piece[0]}`;
     }
+  }
+  if (lang !== 'en') {
+    if (u.can && grams >= u.can * 0.4) {
+      const n = Math.round((grams / u.can) * 2) / 2;
+      return sharedT(lang).tp('aiCard.quantity.can', n, { count: formatFraction(n) });
+    }
+    return LIQUIDS.has(ing.id) && grams >= 50 ? `${Math.round(grams / 10) * 10} ml` : null;
   }
   if (u.slice) {
     const n = Math.max(0.5, Math.round((grams / u.slice) * 2) / 2);

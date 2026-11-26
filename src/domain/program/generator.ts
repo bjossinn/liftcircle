@@ -10,6 +10,7 @@ import type {
   Prescription, ProgramVersion, ScheduleSlot, SessionTemplate,
 } from '@/domain/types';
 import { toUTCms, WEEKDAY_SHORT } from '@/lib/dates';
+import { t, tp, type Language, type MessageKey, type Params, type PluralKey } from '@/i18n';
 import {
   CONDITIONING_PREFER, COVERAGE_GROUPS, MAJOR_MUSCLES, MOBILITY_PREFER, SPLITS, type DayDef, type Priority, type SlotDef, type SplitDef,
   type SplitKey,
@@ -27,10 +28,21 @@ export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const ENDURANCE_TYPES: ActivityType[] = ['run', 'cycle', 'swim', 'row', 'hike', 'walk'];
 const CARDIO_TYPES: ActivityType[] = ['run', 'cycle', 'swim', 'row', 'hike', 'sport', 'class'];
 const MOBILITY_TYPES: ActivityType[] = ['yoga', 'mobility', 'stretch'];
+/** English activity names (canonical; stored plans use them). Display: `activityName()` in ./localize. */
 export const ACTIVITY_NAMES: Record<ActivityType, string> = {
   walk: 'Walk', run: 'Run', cycle: 'Ride', hike: 'Hike', swim: 'Swim', row: 'Row', sport: 'Sport', class: 'Fitness class', yoga: 'Yoga',
   mobility: 'Mobility', stretch: 'Stretching', custom: 'Activity',
 };
+
+/*
+ * Generated plan text is STORED in canonical English, rendered from the `en` dictionary by message key, so stored data
+ * never depends on the UI language. Screens localize it at render time with `localizeGeneratedText` (./localize),
+ * which recognises exactly these messages (and the identical historical English).
+ */
+const E = (key: MessageKey, params?: Params): string => t(key, params, 'en');
+const EP = (base: PluralKey, count: number, params?: Params): string => tp(base, count, params, 'en');
+/** Complete activity name variant by enum ("Easy ride"), never "Easy" + a lower-cased noun. */
+const activityVariant = (activity: ActivityType, variant: 'easy' | 'long' | 'steady'): string => E(`program.activity.${activity}.${variant}`);
 
 /* ================================================================ context */
 interface Ctx {
@@ -192,10 +204,8 @@ function warmupText(ex: Exercise, priority: Priority, calibrate: boolean): strin
   let text: string;
   if (ex.tracking === 'duration' || ex.category === 'core') text = X.WARMUP_NONE;
   else if (priority === 1 && ex.tracking === 'weight_reps')
-    text = usesBarbell(ex)
-      ? 'Ramp up first: empty bar × 8–10, then about 50 % × 5 and 75 % × 3 of your working weight.'
-      : 'Ramp up first: one lighter set of about 8 reps at roughly half your working weight.';
-  else if (priority === 1) text = 'Ramp up with one easier set of about 5 reps before your working sets.';
+    text = usesBarbell(ex) ? E('program.generator.warmupBarbell') : E('program.generator.warmupHalf');
+  else if (priority === 1) text = E('program.generator.warmupEasy');
   else if (priority === 2) text = X.WARMUP_SECONDARY;
   else text = X.WARMUP_ACCESSORY;
   if (calibrate)
@@ -227,7 +237,7 @@ function prescribe(ex: Exercise, slot: Pick<SlotDef, 'priority' | 'key'>, ctx: C
     rx.notes = X.CALIBRATION_NOTE;
   } else if (ex.tracking === 'bodyweight_plus' && !hasKnown) {
     // When to add load is the progression engine's call (it shows on the workout and its summary), not a fixed note.
-    rx.notes = 'Start with bodyweight only. The app suggests added load when your sets show you’re ready.';
+    rx.notes = E('program.generator.bodyweightStart');
   }
   return rx;
 }
@@ -374,12 +384,12 @@ function walkTemplate(ctx: Ctx): SessionTemplate {
   const minutes = Math.min(ctx.budget, 30);
   return {
     id: 'act:walk',
-    name: 'Easy walk',
-    focus: 'Recovery & everyday movement',
+    name: E('program.generator.easyWalk'),
+    focus: E('program.generator.recoveryMovement'),
     kind: 'walk',
     exercises: [],
     estimatedMinutes: minutes,
-    cardio: { activity: 'walk', minutes, intensity: 'easy', notes: 'Easy pace: you could hold a conversation. Any walk counts, split it up if you like.' },
+    cardio: { activity: 'walk', minutes, intensity: 'easy', notes: E('program.generator.walkNotes') },
   };
 }
 
@@ -388,8 +398,8 @@ function cardioTemplate(ctx: Ctx, activity: ActivityType): SessionTemplate {
   const intensity = activity === 'sport' || activity === 'class' ? 'moderate' : 'easy';
   return {
     id: 'act:cardio',
-    name: `Easy ${ACTIVITY_NAMES[activity].toLowerCase()}`,
-    focus: 'Easy cardio',
+    name: activityVariant(activity, 'easy'),
+    focus: E('program.generator.easyCardio'),
     kind: 'cardio',
     exercises: [],
     estimatedMinutes: minutes,
@@ -397,7 +407,7 @@ function cardioTemplate(ctx: Ctx, activity: ActivityType): SessionTemplate {
       activity,
       minutes,
       intensity,
-      notes: intensity === 'easy' ? 'Keep it easy: you should be able to talk in full sentences.' : 'Enjoy it, but keep the effort moderate on the day before a lifting session.',
+      notes: intensity === 'easy' ? E('program.generator.easyCardioNotes') : E('program.generator.moderateCardioNotes'),
     },
   };
 }
@@ -407,12 +417,12 @@ function mobilityTemplate(ctx: Ctx, variant: number, activity?: ActivityType): S
   if (activity && activity !== 'mobility') {
     return {
       id: 'act:mobility',
-      name: activity === 'yoga' ? 'Easy yoga' : 'Stretching',
-      focus: 'Mobility & recovery',
+      name: activity === 'yoga' ? E('program.generator.easyYoga') : E('program.generator.stretching'),
+      focus: E('program.generator.mobilityRecovery'),
       kind: 'mobility',
       exercises: [],
       estimatedMinutes: minutes,
-      cardio: { activity, minutes, intensity: 'easy', notes: 'Gentle and comfortable: no forcing end ranges.' },
+      cardio: { activity, minutes, intensity: 'easy', notes: E('program.generator.gentleNotes') },
     };
   }
   const slot: SlotDef = { key: 'mob', label: 'Mobility', patterns: ['mobility'], fallbackPatterns: ['trunk'], priority: 3, prefer: MOBILITY_PREFER };
@@ -425,12 +435,12 @@ function mobilityTemplate(ctx: Ctx, variant: number, activity?: ActivityType): S
   if (!chosen.length) {
     return {
       id: 'act:mobility',
-      name: 'Mobility',
-      focus: 'Mobility & recovery',
+      name: E('program.generator.mobility'),
+      focus: E('program.generator.mobilityRecovery'),
       kind: 'mobility',
       exercises: [],
       estimatedMinutes: minutes,
-      cardio: { activity: 'mobility', minutes, intensity: 'easy', notes: 'Gentle full-body mobility: move through comfortable ranges.' },
+      cardio: { activity: 'mobility', minutes, intensity: 'easy', notes: E('program.generator.mobilityNotes') },
     };
   }
   const exercises: Prescription[] = chosen.map((ex, i) => ({
@@ -442,13 +452,13 @@ function mobilityTemplate(ctx: Ctx, variant: number, activity?: ActivityType): S
     durationSec: ex.tracking === 'duration' ? 30 : undefined,
     targetRir: 3,
     restSec: 20,
-    warmup: 'Move slowly and stay in a comfortable range.',
+    warmup: E('program.generator.mobilityWarmup'),
     priority: 3,
     alternatives: pool.filter((p) => p.id !== ex.id).map((p) => p.id).slice(0, 3),
   }));
   for (const rx of exercises) if (rx.durationSec === undefined) delete rx.durationSec;
-  const t: SessionTemplate = { id: 'act:mobility', name: 'Mobility', focus: 'Mobility & recovery', kind: 'mobility', exercises, estimatedMinutes: 0 };
-  return { ...t, estimatedMinutes: estimateWith(t, ctx.byId) };
+  const tpl: SessionTemplate = { id: 'act:mobility', name: E('program.generator.mobility'), focus: E('program.generator.mobilityRecovery'), kind: 'mobility', exercises, estimatedMinutes: 0 };
+  return { ...tpl, estimatedMinutes: estimateWith(tpl, ctx.byId) };
 }
 
 function conditioningTemplate(ctx: Ctx, variant: number): SessionTemplate | null {
@@ -466,12 +476,14 @@ function conditioningTemplate(ctx: Ctx, variant: number): SessionTemplate | null
     ...(ex.tracking === 'reps' ? {} : { durationSec: 40 }),
     targetRir: 3,
     restSec: 80,
-    warmup: i === 0 ? 'Start with 3–5 minutes of easy movement, then build up gradually.' : 'Keep the effort moderate. Challenging but controlled.',
+    warmup: i === 0 ? E('program.generator.conditioningWarmup') : E('program.generator.conditioningEffort'),
     priority: 3,
     alternatives: ranked.filter((r) => r.id !== ex.id).map((r) => r.id).slice(0, 3),
   }));
-  const t: SessionTemplate = { id: 'act:conditioning', name: 'Conditioning intervals', focus: 'Conditioning', kind: 'conditioning', exercises, estimatedMinutes: 0 };
-  return fitToBudget({ ...t, estimatedMinutes: estimateWith(t, ctx.byId) }, Math.min(ctx.budget, 30), ctx.byId);
+  const tpl: SessionTemplate = {
+    id: 'act:conditioning', name: E('program.generator.conditioningIntervals'), focus: E('program.generator.conditioning'), kind: 'conditioning', exercises, estimatedMinutes: 0,
+  };
+  return fitToBudget({ ...tpl, estimatedMinutes: estimateWith(tpl, ctx.byId) }, Math.min(ctx.budget, 30), ctx.byId);
 }
 
 function enduranceActivity(a: OnboardingAnswers): ActivityType {
@@ -481,21 +493,22 @@ function enduranceActivity(a: OnboardingAnswers): ActivityType {
 function enduranceTemplates(ctx: Ctx, count: number): SessionTemplate[] {
   const a = ctx.a;
   const activity = enduranceActivity(a);
-  const label = ACTIVITY_NAMES[activity];
   const recent = a.endurance?.recentMinutes;
   const dist = a.endurance?.recentDistanceKm;
   const base = clamp(Math.round(recent ?? 20), 10, ctx.budget);
-  const distText = dist ? ` (around ${Math.round(dist * 10) / 10} km is a good guide)` : '';
+  const distance = dist ? Math.round(dist * 10) / 10 : 0;
   const easyNotes = recent
-    ? `Easy, conversational effort for about ${base} min${distText}. When it feels comfortable, add about 5–10 % next week; hold steady every 4th week.`
+    ? dist
+      ? E('program.generator.enduranceMinutesDistance', { minutes: base, distance })
+      : E('program.generator.enduranceMinutes', { minutes: base })
     : dist
-      ? `Easy, conversational effort covering about ${Math.round(dist * 10) / 10} km. Log your time so the plan can build from it.`
-      : 'Calibration: go easy for about 20 minutes at a pace where you can talk. Log time and distance. We’ll build from there.';
+      ? E('program.generator.enduranceDistance', { distance })
+      : E('program.generator.enduranceCalibration');
   const out: SessionTemplate[] = [];
   const easy: SessionTemplate = {
     id: 'end:easy',
-    name: `Easy ${label.toLowerCase()}`,
-    focus: 'Endurance: easy',
+    name: activityVariant(activity, 'easy'),
+    focus: E('program.generator.enduranceEasy'),
     kind: 'cardio',
     exercises: [],
     estimatedMinutes: base,
@@ -506,23 +519,23 @@ function enduranceTemplates(ctx: Ctx, count: number): SessionTemplate[] {
     const longMin = Math.min(ctx.budget, Math.max(base + 5, Math.round((base * 1.25) / 5) * 5));
     out.push({
       id: 'end:long',
-      name: `Longer ${label.toLowerCase()}`,
-      focus: 'Endurance: longer easy',
+      name: activityVariant(activity, 'long'),
+      focus: E('program.generator.enduranceLong'),
       kind: 'cardio',
       exercises: [],
       estimatedMinutes: longMin,
-      cardio: { activity, minutes: longMin, intensity: 'easy', notes: 'Same easy effort, a little longer. Slow down if you can’t talk comfortably.' },
+      cardio: { activity, minutes: longMin, intensity: 'easy', notes: E('program.generator.enduranceLongNotes') },
     });
   }
   if (count >= 3 && !ctx.beginner) {
     out.push({
       id: 'end:steady',
-      name: `Steady ${label.toLowerCase()}`,
-      focus: 'Endurance: steady',
+      name: activityVariant(activity, 'steady'),
+      focus: E('program.generator.enduranceSteady'),
       kind: 'cardio',
       exercises: [],
       estimatedMinutes: base,
-      cardio: { activity, minutes: base, intensity: 'moderate', notes: 'After 10 easy minutes, hold a steady “comfortably hard” effort, then ease off for the last 5.' },
+      cardio: { activity, minutes: base, intensity: 'moderate', notes: E('program.generator.enduranceSteadyNotes') },
     });
   }
   return out;
@@ -626,22 +639,21 @@ export function chooseSplit(a: OnboardingAnswers, variant = 0, availableCount = 
   const beginner = isBeginner(a.experience);
   const requested = clamp(Math.round(a.liftingDaysPerWeek), 0, 6);
   if (requested > availableCount) {
-    warnings.push(`You asked for ${requested} lifting days but marked ${availableCount} available day${availableCount === 1 ? '' : 's'}, so the plan uses ${availableCount}.`);
+    warnings.push(EP('program.rationale.liftingAvailability', availableCount, { requested, available: availableCount }));
   }
   const lifting = effectiveLiftingDays(a, availableCount);
   const capped = Math.min(requested, availableCount);
   if (a.goal === 'endurance') {
     if (capped > 2)
-      warnings.push(`With an endurance-first goal we suggest 2 supporting strength sessions rather than ${capped}, so your key sessions stay fresh. You can add more sessions in your program.`);
-    if (lifting === 0) warnings.push('One or two short strength sessions a week can support your endurance training. Add one any time.');
+      warnings.push(E('program.rationale.enduranceStrengthCap', { count: capped }));
+    if (lifting === 0) warnings.push(E('program.rationale.enduranceNoStrength'));
   } else if (lifting === 0) {
-    warnings.push('This plan has no lifting days. Strength training about twice a week is a common recommendation for general health. You can add it later.');
+    warnings.push(E('program.rationale.noLifting'));
   } else if (lifting === 5 && beginner) {
-    warnings.push('For someone newer or returning to lifting, 4 days (upper/lower) is usually easier to recover from. We built the 5-day plan you chose. Consider 4 days if you feel run down.');
+    warnings.push(E('program.rationale.beginnerFiveDays'));
   } else if (lifting >= 6) {
-    if (beginner)
-      warnings.push('Six lifting days is a lot when you’re new or returning. 3–4 days usually gives similar progress with more recovery. We kept your choice; you can lower it any time.');
-    else if (a.experience === 'intermediate') warnings.push('Six lifting days needs good sleep and recovery. If sessions start to feel flat, drop to 4–5 days.');
+    if (beginner) warnings.push(E('program.rationale.beginnerSixDays'));
+    else if (a.experience === 'intermediate') warnings.push(E('program.rationale.intermediateSixDays'));
   }
   const resolution = resolveSplit(a, lifting);
   if (resolution.adjustment) warnings.unshift(resolution.adjustment.message);
@@ -660,7 +672,7 @@ export function generateProgram(answers: OnboardingAnswers, catalog: Exercise[],
   let total = clamp(Math.round(answers.totalDaysPerWeek || lifting || 1), 1, 7);
   if (total < lifting) total = lifting;
   if (total > avail.length) {
-    warnings.push(`You wanted ${total} active days but marked ${avail.length} available, so the plan uses ${avail.length}.`);
+    warnings.push(EP('program.rationale.activeAvailability', avail.length, { requested: total, available: avail.length }));
     total = avail.length;
   }
 
@@ -719,71 +731,89 @@ export function generateProgram(answers: OnboardingAnswers, catalog: Exercise[],
   }
   schedule.sort((x, y) => WEEK_ORDER.indexOf(x.weekday) - WEEK_ORDER.indexOf(y.weekday));
 
-  /* ---- rationale */
-  const goalLine = `Built to help you ${X.GOAL_TEXT[answers.goal]}${answers.secondaryGoal && answers.secondaryGoal !== answers.goal ? ` (with ${X.GOAL_TEXT[answers.secondaryGoal]} as a secondary goal)` : ''}, for someone ${X.EXPERIENCE_TEXT[answers.experience]}.`;
-  rationale.push(goalLine);
+  /* ---- rationale (canonical English; see E/EP above) */
+  const secondary = answers.secondaryGoal && answers.secondaryGoal !== answers.goal ? answers.secondaryGoal : null;
+  rationale.push(
+    secondary
+      ? E('program.rationale.goalSecondary', { goal: X.GOAL_TEXT[answers.goal], secondaryGoal: X.GOAL_TEXT[secondary], experience: X.EXPERIENCE_TEXT[answers.experience] })
+      : E('program.rationale.goal', { goal: X.GOAL_TEXT[answers.goal], experience: X.EXPERIENCE_TEXT[answers.experience] }),
+  );
   if (choice.split && answers.goal !== 'endurance') {
-    const days = `${lifting} lifting day${lifting === 1 ? '' : 's'} a week`;
     const others = choice.resolution.options.length > 1;
     const why = choice.resolution.explicit && !choice.resolution.recommended
-      ? `You chose this structure for ${days}.`
-      : `This is our recommended product default for ${days}${others ? ': you can choose another structure' : ''}.`;
-    rationale.push(`${choice.split.label}: ${choice.split.description} ${why}`);
+      ? EP('program.rationale.chosenStructure', lifting)
+      : EP(others ? 'program.rationale.recommendedStructureOptions' : 'program.rationale.recommendedStructure', lifting);
+    rationale.push(E('program.rationale.splitRationale', { splitLabel: choice.split.label, splitDescription: choice.split.description, why }));
   }
   if (answers.goal === 'endurance') {
-    const act = ACTIVITY_NAMES[enduranceActivity(answers)].toLowerCase();
+    const activity = ACTIVITY_NAMES[enduranceActivity(answers)].toLowerCase();
     const endCount = extraDays.length;
+    const recentMinutes = answers.endurance?.recentMinutes;
     rationale.push(
       endCount
-        ? `Built around your ${act}: ${endCount} session${endCount === 1 ? '' : 's'} a week, ${answers.endurance?.recentMinutes ? `starting from your recent comfortable ${answers.endurance.recentMinutes} minutes` : 'starting with a gentle calibration session'} and progressing gradually.`
-        : `There were no free days left for ${act} sessions. Reduce lifting days or add available days to make room.`,
+        ? recentMinutes
+          ? EP('program.rationale.enduranceRecent', endCount, { activity, minutes: recentMinutes })
+          : EP('program.rationale.enduranceCalibrate', endCount, { activity })
+        : E('program.rationale.noEnduranceDays', { activity }),
     );
-    if (choice.split) rationale.push(`${lifting} supporting strength session${lifting === 1 ? '' : 's'} (${choice.split.label}): ${choice.split.description}`);
+    if (choice.split) rationale.push(EP('program.rationale.supportingStrength', lifting, { splitLabel: choice.split.label, splitDescription: choice.split.description }));
   }
   if (liftDays.length) {
-    rationale.push(`Lifting on ${X.weekdaysText(liftDays)}${extraDays.length ? `; ${answers.goal === 'endurance' ? 'endurance sessions' : 'easier days'} on ${X.weekdaysText(extraDays)}` : ''}: only days you said you’re available.`);
+    const liftingDays = X.weekdaysText(liftDays, 'en');
+    rationale.push(
+      extraDays.length
+        ? E(answers.goal === 'endurance' ? 'program.rationale.scheduleEndurance' : 'program.rationale.scheduleEasy', { liftingDays, otherDays: X.weekdaysText(extraDays, 'en') })
+        : E('program.rationale.scheduleLifting', { liftingDays }),
+    );
   } else if (extraDays.length) {
-    rationale.push(`Sessions on ${X.weekdaysText(extraDays)}: only days you said you’re available.`);
+    rationale.push(E('program.rationale.scheduleActivity', { days: X.weekdaysText(extraDays, 'en') }));
   }
   if (extraDays.length && liftDays.length && answers.goal !== 'endurance') {
-    rationale.push(`You wanted ${total} active days: ${liftDays.length} are lifting days and ${extraDays.length} ${extraDays.length === 1 ? 'is an easier day' : 'are easier days'} (${X.listText([...new Set(extraKinds)])}), so hard sessions stay spaced out.`);
+    rationale.push(
+      EP('program.rationale.activeDistribution', extraDays.length, {
+        total,
+        liftingDays: liftDays.length,
+        easyDays: extraDays.length,
+        activities: X.listText([...new Set(extraKinds)], 'en'),
+      }),
+    );
   }
   const eq = [...ctx.equipment].filter((e) => e !== 'bodyweight');
   rationale.push(
     eq.length >= ALL_EQUIPMENT.length - 1
-      ? 'You have a full gym, so exercises use standard gym equipment. Main lifts favour free weights you can progress in small steps.'
+      ? E('program.rationale.fullGym')
       : eq.length
-        ? `Every exercise uses only equipment you have (${X.listText(eq.map((e) => X.EQUIPMENT_TEXT[e]))}) or your bodyweight.`
-        : 'Every exercise uses only your bodyweight. No equipment needed.',
+        ? E('program.rationale.availableEquipment', { equipment: X.listText(eq.map((e) => X.EQUIPMENT_TEXT[e]), 'en') })
+        : E('program.rationale.bodyweightOnly'),
   );
-  const lift = templates.filter((t) => t.kind === 'lifting');
+  const lift = templates.filter((tpl) => tpl.kind === 'lifting');
   if (lift.length) {
-    const mins = lift.map((t) => t.estimatedMinutes);
+    const mins = lift.map((tpl) => tpl.estimatedMinutes);
     const lo = Math.min(...mins);
     const hi = Math.max(...mins);
-    rationale.push(`Sessions are planned to fit your ${ctx.budget} minutes (estimated ${lo === hi ? `${lo}` : `${lo}–${hi}`} min). ${X.DURATION_RATIONALE}`);
-    rationale.push(X.repsRationale(answers.goal, answers.experience));
-    rationale.push(X.effortRationale(answers.experience));
-    const anyCal = lift.some((t) => t.exercises.some((e) => e.calibrate));
-    const anyKnown = lift.some((t) => t.exercises.some((e) => e.startLoadKg != null));
+    rationale.push(E('program.rationale.duration', { minutes: ctx.budget, estimate: lo === hi ? `${lo}` : `${lo}–${hi}`, durationExplanation: X.DURATION_RATIONALE }));
+    rationale.push(X.repsRationale(answers.goal, answers.experience, 'en'));
+    rationale.push(X.effortRationale(answers.experience, 'en'));
+    const anyCal = lift.some((tpl) => tpl.exercises.some((e) => e.calibrate));
+    const anyKnown = lift.some((tpl) => tpl.exercises.some((e) => e.startLoadKg != null));
     if (anyCal) rationale.push(X.CALIBRATION_RATIONALE);
-    if (anyKnown) rationale.push('Lifts where you told us a comfortable load start from that load.');
+    if (anyKnown) rationale.push(E('program.rationale.knownLoad'));
 
     // coverage across the week
     const patterns = new Set<MovementPattern>();
-    for (const t of lift) for (const rx of t.exercises) {
+    for (const tpl of lift) for (const rx of tpl.exercises) {
       const ex = ctx.byId.get(rx.exerciseId);
       if (ex) patterns.add(ex.pattern);
     }
     const covered = COVERAGE_GROUPS.filter((g) => g.patterns.some((p) => patterns.has(p)));
     const missing = COVERAGE_GROUPS.filter((g) => !g.patterns.some((p) => patterns.has(p)));
-    if (covered.length) rationale.push(`Across the week you practise: ${X.listText(covered.map((g) => g.label))}.`);
+    if (covered.length) rationale.push(E('program.rationale.movementCoverage', { patterns: X.listText(covered.map((g) => g.label), 'en') }));
     for (const g of missing) {
-      const trimmedOnly = lift.some((t) => (t.trimmedExerciseIds ?? []).some((id) => g.patterns.includes(ctx.byId.get(id)?.pattern as MovementPattern)));
+      const trimmedOnly = lift.some((tpl) => (tpl.trimmedExerciseIds ?? []).some((id) => g.patterns.includes(ctx.byId.get(id)?.pattern as MovementPattern)));
       warnings.push(
         trimmedOnly
-          ? `No ${g.label} work this week. It was trimmed to fit ${ctx.budget}-minute sessions. Longer sessions or one more day would bring it back.`
-          : `No ${g.label} exercise fits your equipment, exclusions and the areas you asked us to go easy on${g.key === 'vpull' ? ' (a pull-up bar or a band would add one)' : ''}. Add or swap one in your program if you can.`,
+          ? E('program.rationale.trimmedPattern', { pattern: g.label, minutes: ctx.budget })
+          : E(g.key === 'vpull' ? 'program.rationale.missingVerticalPull' : 'program.rationale.missingPattern', { pattern: g.label }),
       );
     }
 
@@ -791,24 +821,31 @@ export function generateProgram(answers: OnboardingAnswers, catalog: Exercise[],
     const freq = MAJOR_MUSCLES.map((m) => ({
       m,
       n: schedule.filter((s) => {
-        const t = templates.find((x) => x.id === s.templateId);
-        return t?.kind === 'lifting' && t.exercises.some((rx) => ctx.byId.get(rx.exerciseId)?.primaryMuscles.some((pm) => m.muscles.includes(pm)));
+        const tpl = templates.find((x) => x.id === s.templateId);
+        return tpl?.kind === 'lifting' && tpl.exercises.some((rx) => ctx.byId.get(rx.exerciseId)?.primaryMuscles.some((pm) => m.muscles.includes(pm)));
       }).length,
     }));
     if (liftDays.length === 1) {
-      rationale.push('With one lifting day each major muscle group is trained once a week. A solid start. A second day would allow the commonly recommended twice-weekly practice.');
+      rationale.push(E('program.rationale.oneDayFrequency'));
     } else {
       const once = freq.filter((f) => f.n < 2);
-      if (!once.length) rationale.push(`Each major muscle group is trained about ${Math.min(...freq.map((f) => f.n))}× or more a week.`);
-      else warnings.push(`Compromise: ${X.listText(once.map((f) => f.m.label.toLowerCase()))} ${once.length === 1 ? 'is' : 'are'} trained ${once.every((f) => f.n === 0) ? 'less than once' : 'about once'} a week in this plan${choice.split?.key === 'es' ? ' to keep the focus on your main activity' : ''}.`);
+      if (!once.length) rationale.push(E('program.rationale.muscleFrequency', { count: Math.min(...freq.map((f) => f.n)) }));
+      else {
+        const zero = once.every((f) => f.n === 0);
+        const endurance = choice.split?.key === 'es';
+        const base = zero
+          ? endurance ? 'program.rationale.muscleCompromiseZeroEndurance' : 'program.rationale.muscleCompromiseZero'
+          : endurance ? 'program.rationale.muscleCompromiseOnceEndurance' : 'program.rationale.muscleCompromiseOnce';
+        warnings.push(EP(base, once.length, { muscles: X.listText(once.map((f) => f.m.label.toLowerCase()), 'en') }));
+      }
     }
 
     // time budget
-    const trimmedAny = lift.filter((t) => t.trimmedExerciseIds?.length);
+    const trimmedAny = lift.filter((tpl) => tpl.trimmedExerciseIds?.length);
     if (trimmedAny.length)
-      warnings.push(`To fit ${ctx.budget} minutes we removed some lower-priority accessories (${X.listText(trimmedAny.map((t) => t.name))}). They’re listed with each session if you have extra time.`);
-    const over = lift.filter((t) => t.estimatedMinutes > ctx.budget);
-    if (over.length) warnings.push(`${X.listText(over.map((t) => t.name))} may run a little over ${ctx.budget} minutes even after trimming. Shorten rests slightly or drop a set.`);
+      warnings.push(E('program.rationale.accessoriesTrimmed', { minutes: ctx.budget, sessions: X.listText(trimmedAny.map((tpl) => tpl.name), 'en') }));
+    const over = lift.filter((tpl) => tpl.estimatedMinutes > ctx.budget);
+    if (over.length) warnings.push(E('program.rationale.overBudget', { sessions: X.listText(over.map((tpl) => tpl.name), 'en'), minutes: ctx.budget }));
   }
 
   // back-to-back lifting
@@ -816,33 +853,29 @@ export function generateProgram(answers: OnboardingAnswers, catalog: Exercise[],
   if (pairs.length && ctx.beginner) {
     const pref = new Set(answers.preferredLiftingWeekdays);
     const byChoice = pairs.every(([x, y]) => pref.has(x) && pref.has(y));
-    const pairText = X.listText(pairs.map(([x, y]) => `${WEEKDAY_SHORT[x]}–${WEEKDAY_SHORT[y]}`));
-    warnings.push(
-      byChoice
-        ? `Your preferred days put lifting back-to-back (${pairText}). That’s fine, but newer lifters usually recover better with a rest day between. You can move a session in your program.`
-        : `Your available days make back-to-back lifting unavoidable (${pairText}). Keep the second day conservative and stop sets with 3 reps in reserve.`,
-    );
+    const days = X.listText(pairs.map(([x, y]) => `${WEEKDAY_SHORT[x]}–${WEEKDAY_SHORT[y]}`), 'en');
+    warnings.push(E(byChoice ? 'program.rationale.consecutiveChosen' : 'program.rationale.consecutiveUnavoidable', { days }));
   } else if (pairs.length && fullBody) {
-    warnings.push('Some full-body sessions are on back-to-back days. Keep effort conservative on the second day.');
+    warnings.push(E('program.rationale.consecutiveFullBody'));
   }
 
-  if (answers.limitations.length) rationale.push(X.limitationRationale(answers.limitations));
-  if (answers.excludedExerciseIds.length) rationale.push(`${answers.excludedExerciseIds.length} exercise${answers.excludedExerciseIds.length === 1 ? '' : 's'} you excluded ${answers.excludedExerciseIds.length === 1 ? 'is' : 'are'} never selected.`);
-  const enjoyedIn = [...ctx.enjoyed].filter((id) => templates.some((t) => t.exercises.some((rx) => rx.exerciseId === id)));
-  if (enjoyedIn.length) rationale.push(`Includes exercises you enjoy: ${X.listText(enjoyedIn.map((id) => ctx.byId.get(id)?.name ?? id))}.`);
-  if (answers.goal === 'lose_fat') rationale.push('Lifting helps you keep muscle while losing fat; walking and everyday movement add to energy use without competing with recovery.');
+  if (answers.limitations.length) rationale.push(X.limitationRationale(answers.limitations, 'en'));
+  if (answers.excludedExerciseIds.length) rationale.push(EP('program.rationale.excluded', answers.excludedExerciseIds.length));
+  const enjoyedIn = [...ctx.enjoyed].filter((id) => templates.some((tpl) => tpl.exercises.some((rx) => rx.exerciseId === id)));
+  if (enjoyedIn.length) rationale.push(E('program.rationale.enjoyed', { exercises: X.listText(enjoyedIn.map((id) => ctx.byId.get(id)?.name ?? id), 'en') }));
+  if (answers.goal === 'lose_fat') rationale.push(E('program.rationale.fatLoss'));
 
   const weeks = ctx.beginner ? 6 : 8;
   const reviewWeek = weeks;
-  rationale.push(X.blockRationale(weeks, reviewWeek));
-  if (lift.length) rationale.push(X.progressionRationale(ctx.beginner));
-  if (answers.limitations.length) warnings.push('If an exercise causes pain, stop it and flag discomfort. We’ll hold its progression and suggest alternatives. This app doesn’t diagnose injuries.');
+  rationale.push(X.blockRationale(weeks, reviewWeek, 'en'));
+  if (lift.length) rationale.push(X.progressionRationale(ctx.beginner, 'en'));
+  if (answers.limitations.length) warnings.push(E('program.rationale.pain'));
 
   return {
     version: 1,
     // Derived from the start date (not the clock) so generation stays deterministic; createProgram stamps the real time.
     createdAt: toUTCms(opts.startDate),
-    reason: variant ? `Generated from onboarding (exercises shuffled ${variant}×)` : 'Generated from onboarding',
+    reason: variant ? E('program.rationale.generatedShuffled', { count: variant }) : E('program.rationale.generated'),
     templates,
     schedule,
     weeks,
@@ -865,7 +898,7 @@ export function regenerateTemplates(version: ProgramVersion, templateIds: ID[], 
     if (rebuilt !== t) names.push(t.name);
     return rebuilt;
   });
-  return { ...version, templates, reason: names.length ? `Regenerated ${X.listText(names)}` : version.reason };
+  return { ...version, templates, reason: names.length ? E('program.rationale.regenerated', { sessions: X.listText(names, 'en') }) : version.reason };
 }
 
 function rebuildTemplate(t: SessionTemplate, ctx: Ctx, variant: number, weekUsed: Set<ID>): SessionTemplate {
@@ -874,9 +907,9 @@ function rebuildTemplate(t: SessionTemplate, ctx: Ctx, variant: number, weekUsed
   const day = split?.days.find((d) => d.key === dayKey);
   if (split && day) {
     const { template } = buildLiftingTemplate(day, split, ctx, variant, weekUsed, t.name);
-    return { ...template, focus: t.focus };
+    return { ...template, focus: t.focus, ...(t.nameEdited ? { nameEdited: true as const } : {}) };
   }
-  if (t.id === 'act:mobility' && t.exercises.length) return { ...mobilityTemplate(ctx, variant), name: t.name };
+  if (t.id === 'act:mobility' && t.exercises.length) return { ...mobilityTemplate(ctx, variant), name: t.name, ...(t.nameEdited ? { nameEdited: true as const } : {}) };
   if (t.id === 'act:conditioning') return conditioningTemplate(ctx, variant) ?? t;
   if (t.kind !== 'lifting' || !t.exercises.length) return t;
   // Custom / manual session: swap each exercise for another that does the same job.
@@ -898,17 +931,21 @@ function rebuildTemplate(t: SessionTemplate, ctx: Ctx, variant: number, weekUsed
   return { ...next, estimatedMinutes: estimateWith(next, ctx.byId) };
 }
 
-/** Human-friendly program name for a generated version. */
-export function suggestProgramName(answers: OnboardingAnswers | null, version: ProgramVersion): string {
-  if (answers?.goal === 'endurance') return `${ACTIVITY_NAMES[enduranceActivity(answers)]} plan + strength`;
-  const key = version.templates.find((t) => t.kind === 'lifting')?.id.split(':')[0] as SplitKey | undefined;
-  if (key && SPLITS[key]) return SPLITS[key].label;
-  return version.templates.length ? 'Activity plan' : 'My program';
+/**
+ * Human-friendly program name for a generated version. Canonical English by default (what's stored when the user
+ * keeps it); pass the UI language to prefill a visible, editable name field. Display a stored name with
+ * `programDisplayName` (./localize).
+ */
+export function suggestProgramName(answers: OnboardingAnswers | null, version: ProgramVersion, language: Language = 'en'): string {
+  if (answers?.goal === 'endurance') return t('program.rationale.endurancePlanName', { activity: t(`program.activity.${enduranceActivity(answers)}`, undefined, language) }, language);
+  const key = version.templates.find((tpl) => tpl.kind === 'lifting')?.id.split(':')[0] as SplitKey | undefined;
+  if (key && SPLITS[key]) return t(`program.split.${key}.label`, undefined, language);
+  return t(version.templates.length ? 'program.rationale.activityPlan' : 'program.rationale.myProgram', undefined, language);
 }
 
 /** Blank lifting session for manual routines / custom splits. */
 export function emptyTemplate(id: ID, name: string): SessionTemplate {
-  return { id, name, focus: 'Custom', kind: 'lifting', exercises: [], estimatedMinutes: 0 };
+  return { id, name, focus: E('program.rationale.custom'), kind: 'lifting', exercises: [], estimatedMinutes: 0 };
 }
 
 /** A sensible default prescription when the user adds an exercise by hand. */

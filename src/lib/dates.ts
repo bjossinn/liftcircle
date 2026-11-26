@@ -1,4 +1,5 @@
 import type { ISODate } from '@/domain/types';
+import { getLanguage, localeFor, t, tp, type Language } from '@/i18n';
 
 /** The device's IANA time zone, falling back to UTC. */
 export function deviceTimeZone(): string {
@@ -54,11 +55,52 @@ export function rangeDays(from: ISODate, to: ISODate): ISODate[] {
   for (let d = from; d <= to; d = addDays(d, 1)) out.push(d);
   return out;
 }
+/** English weekday names (0 = Sunday). Internal/legacy use only — UI uses weekdayShort/weekdayLong (localized). */
 export const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const WEEKDAY_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const WD_KEY = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
 
-export function formatDate(d: ISODate, opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' }): string {
-  return new Intl.DateTimeFormat('en-GB', { ...opts, timeZone: 'UTC' }).format(new Date(toUTCms(d)));
+/** Localized short weekday label (0 = Sunday): "Mon" / "mán.". */
+export function weekdayShort(i: number, language: Language = getLanguage()): string {
+  return t(`format.weekdayShort.${WD_KEY[((i % 7) + 7) % 7]}`, undefined, language);
+}
+/** Localized weekday name (0 = Sunday): "Monday" / "mánudagur". */
+export function weekdayLong(i: number, language: Language = getLanguage()): string {
+  return t(`format.weekday.${WD_KEY[((i % 7) + 7) % 7]}`, undefined, language);
+}
+/** "on Monday" / "á mánudaginn" (a phrase; don't add another preposition). */
+export function weekdayOn(i: number, language: Language = getLanguage()): string {
+  return t(`format.weekdayOn.${WD_KEY[((i % 7) + 7) % 7]}`, undefined, language);
+}
+/** "on Mondays" / "á mánudögum" (recurring). */
+export function weekdayRecurring(i: number, language: Language = getLanguage()): string {
+  return t(`format.weekdayRecurring.${WD_KEY[((i % 7) + 7) % 7]}`, undefined, language);
+}
+
+/**
+ * A calendar date in the app language. Formatted on the UTC calendar date so the device time zone can't move it
+ * ("Thu 26 Nov" / "fim., 26. nóv.").
+ */
+export function formatDate(d: ISODate, opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' }, language: Language = getLanguage()): string {
+  return new Intl.DateTimeFormat(localeFor(language), { ...opts, timeZone: 'UTC' }).format(new Date(toUTCms(d)));
+}
+
+/**
+ * Standalone relative label for a calendar date: "Today" / "Í dag", "Yesterday" / "Í gær", "Tomorrow" / "Á morgun",
+ * the day before yesterday / after tomorrow; otherwise null (callers show formatDate).
+ */
+export function relativeDayLabel(d: ISODate, today: ISODate, language: Language = getLanguage()): string | null {
+  const diff = diffDays(d, today);
+  if (diff === 0) return t('format.relative.today', undefined, language);
+  if (diff === -1) return t('format.relative.yesterday', undefined, language);
+  if (diff === 1) return t('format.relative.tomorrow', undefined, language);
+  if (diff === -2) return t('format.relative.dayBeforeYesterday', undefined, language);
+  if (diff === 2) return t('format.relative.dayAfterTomorrow', undefined, language);
+  return null;
+}
+/** "3 days ago" / "fyrir 3 dögum", "in 2 days" / "eftir 2 daga" (Icelandic plural rules). */
+export function daysAgoText(days: number, language: Language = getLanguage()): string {
+  return days >= 0 ? tp('format.daysAgo', days, undefined, language) : tp('format.inDays', -days, undefined, language);
 }
 
 export function formatDuration(sec: number): string {
@@ -69,8 +111,9 @@ export function formatDuration(sec: number): string {
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
   return `${m}:${String(r).padStart(2, '0')}`;
 }
-export function formatMinutes(sec: number): string {
+/** "45 min" / "45 mín.", "1 h 5 min" / "1 klst. 5 mín." (a timer stays formatDuration's "1:05:00"). */
+export function formatMinutes(sec: number, language: Language = getLanguage()): string {
   const m = Math.round(sec / 60);
-  if (m < 60) return `${m} min`;
-  return `${Math.floor(m / 60)} h ${m % 60} min`;
+  if (m < 60) return t('format.minutes', { count: m }, language);
+  return t('format.hoursMinutes', { hours: Math.floor(m / 60), minutes: m % 60 }, language);
 }

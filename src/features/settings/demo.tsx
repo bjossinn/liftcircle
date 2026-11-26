@@ -14,6 +14,7 @@ import { buildSessionFromTemplate } from '@/domain/program/session';
 import type { ActivityLog, Measurement, OnboardingAnswers, WorkoutSession, FoodLogEntry, SyncFields } from '@/domain/types';
 import { addDays, todayISO, weekday, deviceTimeZone, toUTCms } from '@/lib/dates';
 import { Button } from '@/components/ui';
+import { useT } from '@/i18n';
 
 const DEMO_ANSWERS: OnboardingAnswers = {
   displayName: 'Demo',
@@ -157,13 +158,14 @@ export async function exitDemo() {
 
 export function DemoBanner() {
   const { db } = useApp();
+  const { t } = useT();
   if (!db.isDemo) return null;
   return (
     <div role="status" className="flex items-center gap-2 bg-info/15 border-b border-info/30 px-4 py-2 text-sm">
       <FlaskConical className="size-4 text-info shrink-0" aria-hidden />
-      <span className="flex-1">Demo data: sample records, not a real person.</span>
+      <span className="flex-1">{t('settings.demoNotice')}</span>
       <Button size="sm" variant="ghost" onClick={() => void exitDemo()}>
-        Exit demo
+        {t('settings.exitDemo')}
       </Button>
     </div>
   );

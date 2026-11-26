@@ -12,61 +12,66 @@ import type { AiAvailability, AiScopes, AiSettings } from '@/backend/coachingCon
 import type { CoachStyle } from '@/domain/types';
 import { kvSet } from '@/db/repo';
 import { useApp } from '@/state/app';
-import { AI_HISTORY_CACHE_KEY, AI_NOTES_MAX, classifyAiError, isHardUnavailable, providerLabel, usageLine } from './ai/model';
+import { dateTimeText, numberText, useT } from '@/i18n';
+import { AI_HISTORY_CACHE_KEY, AI_NOTES_MAX, classifyAiError, isHardUnavailable, providerName, usageLine } from './ai/model';
 import { useAiBoot } from './ai/useAi';
 import { AiGuest, AiUnavailable, BackButton, CoachStylePicker, DataExplainer, RetentionExplainer, ScopeToggles } from './ai/parts';
 
 export default function AiSettingsPage() {
   const nav = useNavigate();
   const { boot, reload, setSettings } = useAiBoot();
+  const { t } = useT();
   const back = <BackButton />;
+  const title = t('ai.settings.title');
 
   if (boot.phase === 'loading')
     return (
-      <Page title="Training assistant settings" back={back}>
-        <Spinner label="Loading settings" />
+      <Page title={title} back={back}>
+        <Spinner label={t('ai.settings.loading')} />
       </Page>
     );
   if (boot.phase === 'guest')
     return (
-      <Page title="Training assistant settings" back={back}>
+      <Page title={title} back={back}>
         <AiGuest />
       </Page>
     );
   const a = boot.availability;
   if (isHardUnavailable(a) || (!a.available && a.reason === 'offline'))
     return (
-      <Page title="Training assistant settings" back={back}>
+      <Page title={title} back={back}>
         <AiUnavailable reason={(a as Extract<AiAvailability, { available: false }>).reason} onRetry={() => void reload()} />
       </Page>
     );
   if (boot.settings === undefined)
     return (
-      <Page title="Training assistant settings" back={back}>
-        <ErrorState title="Couldn’t load your training assistant settings" message={boot.settingsError} onRetry={() => void reload()} />
+      <Page title={title} back={back}>
+        <ErrorState title={t('ai.settings.loadError')} message={boot.settingsError} onRetry={() => void reload()} />
       </Page>
     );
   if (boot.settings === null)
     return (
-      <Page title="Training assistant settings" back={back}>
+      <Page title={title} back={back}>
         <div className="flex flex-col items-center text-center px-6 py-10 gap-3">
           <Sparkles className="size-8 text-accent" aria-hidden />
-          <h2 className="text-base font-semibold">You haven’t set up the training assistant</h2>
-          <p className="text-sm text-muted max-w-xs">It’s optional. Set it up to choose what it may use and agree to how it works.</p>
+          <h2 className="text-base font-semibold">{t('ai.settings.notSetUp.title')}</h2>
+          <p className="text-sm text-muted max-w-xs">{t('ai.settings.notSetUp.body')}</p>
           <Button variant="primary" onClick={() => nav('/coaching/ai/setup')}>
-            Set up training assistant
+            {t('ai.settings.setup')}
           </Button>
         </div>
       </Page>
     );
 
-  return <SettingsBody provider={providerLabel(boot.availability)} settings={boot.settings} usage={usageLine(boot.usage)} tokens={boot.usage ? boot.usage.inputTokens + boot.usage.outputTokens : null} setSettings={setSettings} back={back} />;
+  return <SettingsBody provider={providerName(boot.availability)} settings={boot.settings} usage={usageLine(boot.usage)} tokens={boot.usage ? boot.usage.inputTokens + boot.usage.outputTokens : null} setSettings={setSettings} back={back} />;
 }
 
-function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: { provider: string; settings: AiSettings; usage: string | null; tokens: number | null; setSettings: (s: AiSettings) => void; back: ReactNode }) {
+function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: { provider: string | undefined; settings: AiSettings; usage: string | null; tokens: number | null; setSettings: (s: AiSettings) => void; back: ReactNode }) {
   const nav = useNavigate();
   const toast = useToast();
-  const { db } = useApp();
+  const { db, account } = useApp();
+  const { t } = useT();
+  const timeZone = account.settings.timeZone;
   const [scopes, setScopes] = useState<AiScopes>(settings.scopes);
   const [notes, setNotes] = useState(settings.profileNotes ?? '');
   const [style, setStyle] = useState<CoachStyle>(settings.coachStyle);
@@ -94,7 +99,7 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
   async function changeScopes(next: AiScopes) {
     const prev = scopes;
     setScopes(next);
-    const ok = await save({ scopes: next }, 'scopes', 'Data access updated');
+    const ok = await save({ scopes: next }, 'scopes', t('ai.settings.accessUpdated'));
     if (!ok) setScopes(prev);
   }
 
@@ -102,7 +107,7 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
     if (next === style) return;
     const prev = style;
     setStyle(next);
-    const ok = await save({ coachStyle: next }, 'style', 'Assistant style updated');
+    const ok = await save({ coachStyle: next }, 'style', t('ai.settings.styleUpdated'));
     if (!ok) setStyle(prev);
   }
 
@@ -111,7 +116,7 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
     try {
       await aiApi.clearHistory();
       await kvSet(AI_HISTORY_CACHE_KEY, [], db).catch(() => undefined);
-      toast.show('Conversation cleared', { tone: 'success' });
+      toast.show(t('ai.history.cleared'), { tone: 'success' });
       setConfirm(null);
     } catch (e) {
       toast.show(classifyAiError(e).message, { tone: 'error' });
@@ -124,158 +129,153 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
   const notesDirty = notes !== (settings.profileNotes ?? '');
 
   return (
-    <Page title="Training assistant settings" back={back}>
+    <Page title={t('ai.settings.title')} back={back}>
       <Card className="p-4">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold flex-1">Training assistant</h2>
-          <Badge tone={state === 'on' ? 'accent' : state === 'paused' ? 'warn' : 'neutral'}>{state === 'on' ? 'On' : state === 'paused' ? 'Paused' : 'Off'}</Badge>
+          <h2 className="font-semibold flex-1">{t('ai.title')}</h2>
+          <Badge tone={state === 'on' ? 'accent' : state === 'paused' ? 'warn' : 'neutral'}>{t(`ai.settings.${state}`)}</Badge>
         </div>
-        <p className="text-sm text-muted mt-1">
-          {state === 'on'
-            ? 'It replies when you ask and uses only the data you allow below.'
-            : state === 'paused'
-              ? 'Paused: it won’t read your data or reply until you resume. Your conversation and notes are kept.'
-              : 'Off: it won’t read your data or reply. Your conversation and notes are kept until you clear them.'}
-        </p>
+        <p className="text-sm text-muted mt-1">{t(state === 'on' ? 'ai.settings.onDescription' : state === 'paused' ? 'ai.settings.pausedDescription' : 'ai.settings.offDescription')}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {state === 'on' && (
-            <Button icon={<Pause className="size-4" />} loading={busy === 'state'} onClick={() => void save({ paused: true }, 'state', 'Training assistant paused')}>
-              Pause
+            <Button icon={<Pause className="size-4" />} loading={busy === 'state'} onClick={() => void save({ paused: true }, 'state', t('ai.toast.paused'))}>
+              {t('ai.pause')}
             </Button>
           )}
           {state === 'paused' && (
-            <Button variant="primary" icon={<Play className="size-4" />} loading={busy === 'state'} onClick={() => void save({ paused: false }, 'state', 'Training assistant resumed')}>
-              Resume
+            <Button variant="primary" icon={<Play className="size-4" />} loading={busy === 'state'} onClick={() => void save({ paused: false }, 'state', t('ai.toast.resumed'))}>
+              {t('ai.resume')}
             </Button>
           )}
           {state !== 'off' && (
             <Button variant="outline" icon={<Power className="size-4" />} onClick={() => setConfirm('off')}>
-              Turn off
+              {t('ai.turnOff')}
             </Button>
           )}
           {state === 'off' &&
             (settings.consentAt ? (
-              <Button variant="primary" icon={<Power className="size-4" />} loading={busy === 'state'} onClick={() => void save({ enabled: true, paused: false }, 'state', 'Training assistant is on')}>
-                Turn on
+              <Button variant="primary" icon={<Power className="size-4" />} loading={busy === 'state'} onClick={() => void save({ enabled: true, paused: false }, 'state', t('ai.toast.enabled'))}>
+                {t('ai.turnOn')}
               </Button>
             ) : (
               <Button variant="primary" onClick={() => nav('/coaching/ai/setup')}>
-                Set up training assistant
+                {t('ai.settings.setup')}
               </Button>
             ))}
           {state !== 'off' && (
             <Button variant="ghost" icon={<MessageCircle className="size-4" />} onClick={() => nav('/coach')}>
-              Open chat
+              {t('ai.openChat')}
             </Button>
           )}
         </div>
-        {settings.consentAt && <p className="text-xs text-faint mt-3">You agreed on {new Date(settings.consentAt).toLocaleDateString()}.</p>}
+        {settings.consentAt && (
+          <p className="text-xs text-faint mt-3">
+            {t('ai.settings.consentDate', { date: dateTimeText(Date.parse(settings.consentAt), timeZone, { day: 'numeric', month: 'long', year: 'numeric' }) })}
+          </p>
+        )}
       </Card>
 
-      <SectionTitle id="ai-style">Assistant style</SectionTitle>
+      <SectionTitle id="ai-style">{t('ai.style.label')}</SectionTitle>
       <Card className="p-4" aria-labelledby="ai-style">
         <CoachStylePicker value={style} onChange={(n) => void changeStyle(n)} disabled={busy === 'style'} />
-        <p className="text-xs text-muted mt-2">Used in chat and for the cheers in the workout logger.</p>
+        <p className="text-xs text-muted mt-2">{t('ai.settings.styleUsage')}</p>
       </Card>
 
-      <SectionTitle id="ai-scopes">Data it may use</SectionTitle>
+      <SectionTitle id="ai-scopes">{t('ai.settings.dataHeading')}</SectionTitle>
       <Card className="px-4 py-1" aria-labelledby="ai-scopes">
         <ScopeToggles value={scopes} onChange={(n) => void changeScopes(n)} disabled={busy === 'scopes'} />
       </Card>
       <p className="text-xs text-muted px-1 mt-2">
-        Switching a category off stops it being used from your next message, and earlier conversation that included it won’t be sent again as context.
-        Messages already stored stay in your history until you clear it.
-        {settings.scopesChangedAt ? ` Last changed ${new Date(settings.scopesChangedAt).toLocaleString()}.` : ''}
+        {t('ai.settings.revocation')} {t('ai.settings.storedHistory')}
+        {settings.scopesChangedAt ? ` ${t('ai.settings.scopesChanged', { dateTime: dateTimeText(Date.parse(settings.scopesChangedAt), timeZone) })}` : ''}
       </p>
 
-      <SectionTitle id="ai-notes">Training assistant notes</SectionTitle>
+      <SectionTitle id="ai-notes">{t('ai.notes.heading')}</SectionTitle>
       <Card className="p-4 space-y-3">
-        <p className="text-sm text-muted">
-          These notes are the only thing the training assistant remembers about you apart from your conversation. Only you can change them. The AI never edits them.
-        </p>
-        <Textarea label="Notes" value={notes} maxLength={AI_NOTES_MAX} onChange={(e) => setNotes(e.target.value)} hint={`${notes.length} / ${AI_NOTES_MAX}`} />
+        <p className="text-sm text-muted">{t('ai.notes.description')}</p>
+        <Textarea label={t('ai.notes.label')} value={notes} maxLength={AI_NOTES_MAX} onChange={(e) => setNotes(e.target.value)} hint={`${notes.length} / ${AI_NOTES_MAX}`} />
         <div className="flex gap-2 flex-wrap">
-          <Button variant="primary" disabled={!notesDirty} loading={busy === 'notes'} onClick={() => void save({ profileNotes: notes }, 'notes', 'Notes saved')}>
-            Save notes
+          <Button variant="primary" disabled={!notesDirty} loading={busy === 'notes'} onClick={() => void save({ profileNotes: notes }, 'notes', t('ai.notes.saved'))}>
+            {t('ai.notes.save')}
           </Button>
           {notesDirty && (
             <Button variant="ghost" onClick={() => setNotes(settings.profileNotes ?? '')}>
-              Undo changes
+              {t('ai.notes.undo')}
             </Button>
           )}
           <Button variant="danger" icon={<Trash2 className="size-4" />} disabled={!settings.profileNotes} onClick={() => setConfirm('notes')}>
-            Clear notes
+            {t('ai.notes.clear')}
           </Button>
         </div>
       </Card>
 
-      <SectionTitle>Usage today</SectionTitle>
+      <SectionTitle>{t('ai.usage.heading')}</SectionTitle>
       <Card className="p-4">
         {usage ? (
           <>
             <p className="text-sm">{usage}</p>
-            {tokens != null && <p className="text-xs text-muted mt-1">{tokens.toLocaleString()} tokens processed today.</p>}
-            <p className="text-xs text-muted mt-1">There’s a daily limit per person so the service stays available for everyone.</p>
+            {tokens != null && <p className="text-xs text-muted mt-1">{t('ai.usage.tokens', { count: numberText(tokens, 0, true) })}</p>}
+            <p className="text-xs text-muted mt-1">{t('ai.usage.limitReason')}</p>
           </>
         ) : (
-          <p className="text-sm text-muted">No usage information is available right now.</p>
+          <p className="text-sm text-muted">{t('ai.usage.unavailable')}</p>
         )}
       </Card>
 
-      <SectionTitle>Conversation</SectionTitle>
+      <SectionTitle>{t('ai.history.title')}</SectionTitle>
       <Card className="p-4">
-        <p className="text-sm text-muted">Clearing deletes your training assistant messages from your account and this device. Notes and applied plan changes are kept.</p>
+        <p className="text-sm text-muted">{t('ai.history.clearDescription')}</p>
         <Button className="mt-3" variant="danger" icon={<Trash2 className="size-4" />} onClick={() => setConfirm('history')}>
-          Clear history
+          {t('ai.history.clear')}
         </Button>
       </Card>
 
-      <SectionTitle>Your data</SectionTitle>
+      <SectionTitle>{t('ai.data.heading')}</SectionTitle>
       <Card className="p-4 space-y-3">
         <DataExplainer provider={provider} />
         <RetentionExplainer provider={provider} />
       </Card>
 
       {state !== 'off' && (
-        <Notice className="mt-4">The training assistant gives general fitness guidance, not medical advice. For pain, injuries or health conditions, talk to a health professional.</Notice>
+        <Notice className="mt-4">{t('ai.medicalNotice')}</Notice>
       )}
 
       <ConfirmDialog
         open={confirm === 'off'}
-        title="Turn off the training assistant?"
-        confirmLabel="Turn off"
+        title={t('ai.settings.offConfirm.title')}
+        confirmLabel={t('ai.turnOff')}
         danger
         busy={busy === 'state'}
         onCancel={() => setConfirm(null)}
         onConfirm={async () => {
-          if (await save({ enabled: false }, 'state', 'Training assistant turned off')) setConfirm(null);
+          if (await save({ enabled: false }, 'state', t('ai.toast.disabled'))) setConfirm(null);
         }}
-        body="It stops reading your data and replying. Your conversation and notes stay in your account until you clear them, and you can turn it back on later."
+        body={t('ai.settings.offConfirm.body')}
       />
       <ConfirmDialog
         open={confirm === 'notes'}
-        title="Clear training assistant notes?"
-        confirmLabel="Clear notes"
+        title={t('ai.notes.clearConfirm.title')}
+        confirmLabel={t('ai.notes.clear')}
         danger
         busy={busy === 'clearNotes'}
         onCancel={() => setConfirm(null)}
         onConfirm={async () => {
-          if (await save({ profileNotes: '' }, 'clearNotes', 'Notes cleared')) {
+          if (await save({ profileNotes: '' }, 'clearNotes', t('ai.notes.cleared'))) {
             setNotes('');
             setConfirm(null);
           }
         }}
-        body="The training assistant won’t use them any more. Your profile and plan aren’t affected."
+        body={t('ai.notes.clearConfirm.body')}
       />
       <ConfirmDialog
         open={confirm === 'history'}
-        title="Clear AI conversation?"
-        confirmLabel="Clear history"
+        title={t('ai.history.clearConfirm.title')}
+        confirmLabel={t('ai.history.clear')}
         danger
         busy={busy === 'history'}
         onCancel={() => setConfirm(null)}
         onConfirm={() => void clearHistory()}
-        body="This deletes your training assistant messages from your account and this device. It can’t be undone."
+        body={t('ai.history.clearConfirm.body')}
       />
     </Page>
   );

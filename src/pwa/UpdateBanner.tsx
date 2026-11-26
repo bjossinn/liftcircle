@@ -5,6 +5,7 @@ import { applyUpdate, pwaState, reloadPage, subscribePwa } from './update';
 import { useApp } from '@/state/app';
 import { Button } from '@/components/ui';
 import { useToast } from '@/components/toast';
+import { t as translate, useT } from '@/i18n';
 
 let snapshot = pwaState();
 const subscribe = (cb: () => void) =>
@@ -17,6 +18,7 @@ export function UpdateBanner() {
   const state = useSyncExternalStore(subscribe, () => snapshot);
   const { db } = useApp();
   const toast = useToast();
+  const { t } = useT();
   // Same definition of "active workout" as the Resume bar (deleted sessions don't block updates).
   const activeCount = useLiveQuery(() => db.sessions.where('status').equals('active').filter((s) => !s.deletedAt).count(), [db]);
   const busy = (activeCount ?? 0) > 0;
@@ -26,7 +28,7 @@ export function UpdateBanner() {
     if (state.checkSeq) setDismissed(false);
   }, [state.checkSeq]);
   useEffect(() => {
-    if (state.offlineReady) toast.show('Ready to work offline', { tone: 'success' });
+    if (state.offlineReady) toast.show(translate('sync.offlineReady'), { tone: 'success' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.offlineReady]);
   // A new version took control (e.g. updated from another tab): reload once no workout is open here.
@@ -39,7 +41,7 @@ export function UpdateBanner() {
     return (
       <div role="status" className="flex items-center gap-3 bg-accent-soft border-b border-accent/30 px-4 py-2 text-sm">
         <RefreshCw className="size-4 text-accent shrink-0" aria-hidden />
-        <span className="flex-1">Hard Earned was updated. It will reload when you finish this workout.</span>
+        <span className="flex-1">{t('sync.updatedAfterWorkout')}</span>
       </div>
     );
   }
@@ -47,14 +49,14 @@ export function UpdateBanner() {
   return (
     <div role="status" className="flex items-center gap-3 bg-accent-soft border-b border-accent/30 px-4 py-2 text-sm">
       <RefreshCw className="size-4 text-accent shrink-0" aria-hidden />
-      <span className="flex-1">Update available.{busy && ' You can install it after you finish your workout.'}</span>
+      <span className="flex-1">{busy ? t('sync.updateAfterWorkout') : t('sync.updateAvailable')}</span>
       {!busy ? (
         <Button size="sm" variant="primary" onClick={() => applyUpdate()}>
-          Update
+          {t('sync.update')}
         </Button>
       ) : null}
       <Button size="sm" variant="ghost" onClick={() => setDismissed(true)}>
-        Later
+        {t('sync.later')}
       </Button>
     </div>
   );

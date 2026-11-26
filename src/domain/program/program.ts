@@ -4,6 +4,7 @@
  */
 import type { ID, ISODate, OnboardingAnswers, Program, ProgramVersion, SessionTemplate } from '@/domain/types';
 import { uuid } from '@/lib/id';
+import { t } from '@/i18n';
 
 export function createProgram(answers: OnboardingAnswers | null, version: ProgramVersion, startDate: ISODate, name: string, source: 'generated' | 'manual'): Program {
   const now = Date.now();
@@ -51,11 +52,11 @@ export function templateById(p: Program, id: ID): SessionTemplate | undefined {
   return undefined;
 }
 
-/** Restore an old version by appending a copy of it as the newest version. */
+/** Restore an old version by appending a copy of it as the newest version (reason stored in English; display via localizeGeneratedText). */
 export function restoreVersion(p: Program, versionNumber: number): Program {
   const old = p.versions.find((v) => v.version === versionNumber);
   if (!old) return p;
-  return withNewVersion(p, { ...old, reason: `Restored version ${versionNumber}` });
+  return withNewVersion(p, { ...old, reason: t('program.restoredVersion', { version: versionNumber }, 'en') });
 }
 
 /** Which week of the block a date falls in (1-based, capped at the block length + 1). */

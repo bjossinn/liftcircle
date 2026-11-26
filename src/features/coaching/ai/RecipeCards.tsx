@@ -16,7 +16,8 @@ import { useToast } from '@/components/toast';
 import { useApp } from '@/state/app';
 import { newRecord, saveRecord } from '@/db/repo';
 import { addDays, formatDate, startOfWeek, todayISO } from '@/lib/dates';
-import { LEFT_OUT, MEAL_LABELS, MEAL_ORDER, type Swap } from '@/domain/nutrition/recipes';
+import { LEFT_OUT, MEAL_ORDER, mealLabel, type Swap } from '@/domain/nutrition/recipes';
+import { listText, t as tr, useT } from '@/i18n';
 import { addPlanItem, removePlanItem, updatePlanItem } from '@/domain/nutrition/mealplan';
 import { INGREDIENTS_BY_ID } from '@/data/ingredients';
 import type { RecipeSuggestions } from '@/domain/nutrition/aiActions';
@@ -27,11 +28,12 @@ import { recipeLink } from '@/features/nutrition/recipeLink';
 type Recipe = RecipeSuggestions['recipes'][number];
 
 const ingName = (id: string) => (INGREDIENTS_BY_ID.get(id)?.name ?? id).replace(/\s*\(.*\)\s*$/, '');
-/** "Without blueberries · Strawberries instead of raspberries" (empty when the recipe is shown as written). */
+/** "Without blueberries · Strawberries instead of raspberries" / "Sleppt: … · Skipt út: … → …" (empty when the recipe
+ *  is shown as written). Ingredient names are catalog content and stay as they are; only the frame is localized. */
 export function changesText(r: Pick<Recipe, 'omit' | 'swaps'>): string {
   const parts = [
-    ...(r.omit?.length ? [`Without ${r.omit.map((x) => ingName(x).toLowerCase()).join(' and ')}`] : []),
-    ...(r.swaps ?? []).map((s) => `${ingName(s.to)} instead of ${ingName(s.from).toLowerCase()}`),
+    ...(r.omit?.length ? [tr('aiCard.recipe.omitted', { ingredients: listText(r.omit.map((x) => ingName(x).toLowerCase())) })] : []),
+    ...(r.swaps ?? []).map((s) => tr('aiCard.recipe.swap', { to: ingName(s.to), from: ingName(s.from).toLowerCase() })),
   ];
   return parts.join(' · ');
 }
@@ -46,9 +48,10 @@ export function recipeHref(r: Pick<Recipe, 'id' | 'omit' | 'swaps'>): string {
 }
 
 export function RecipeCards({ suggestions }: { suggestions: RecipeSuggestions }) {
+  const { t } = useT();
   const [planFor, setPlanFor] = useState<Recipe | null>(null);
   return (
-    <section aria-label="Suggested recipes" className="mt-2 space-y-2">
+    <section aria-label={t('aiCard.recipes.title')} className="mt-2 space-y-2">
       {suggestions.recipes.map((r) => (
         <RecipeCard key={r.id} r={r} onPlan={() => setPlanFor(r)} />
       ))}
@@ -58,6 +61,7 @@ export function RecipeCards({ suggestions }: { suggestions: RecipeSuggestions })
 }
 
 function RecipeCard({ r, onPlan }: { r: Recipe; onPlan: () => void }) {
+  const { t, language } = useT();
   const { account, updateAccount } = useApp();
   const toast = useToast();
   const fav = account.favorites.recipes.includes(r.id);
@@ -67,9 +71,9 @@ function RecipeCard({ r, onPlan }: { r: Recipe; onPlan: () => void }) {
         const cur = a.favorites.recipes;
         return { ...a, favorites: { ...a.favorites, recipes: cur.includes(r.id) ? cur.filter((x) => x !== r.id) : [...cur, r.id] } };
       });
-      toast.show(fav ? 'Removed from favourites' : 'Saved to favourites', { tone: 'success' });
+      toast.show(fav ? t('aiCard.recipe.favRemoved') : t('aiCard.recipe.favSaved'), { tone: 'success' });
     } catch {
-      toast.show('Could not update favourites.', { tone: 'error' });
+      toast.show(t('aiCard.recipe.favError'), { tone: 'error' });
     }
   }
   return (
@@ -77,22 +81,22 @@ function RecipeCard({ r, onPlan }: { r: Recipe; onPlan: () => void }) {
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="font-semibold text-[15px] min-w-0 break-words">{r.name}</h3>
         <span className="text-xs text-muted shrink-0">
-          {MEAL_LABELS[r.meal]} · {r.totalMinutes} min
+          {t('aiCard.recipe.time', { meal: mealLabel(r.meal, language), minutes: r.totalMinutes })}
         </span>
       </div>
       <p className="text-xs text-muted mt-0.5">
-        <strong className="text-ink">{Math.round(r.perServing.protein_g)} g protein</strong> per serving
+        {t('aiCard.recipe.proteinServing', { protein: Math.round(r.perServing.protein_g) })}
       </p>
       {changesText(r) && <p className="text-xs text-muted mt-0.5" data-testid="ai-recipe-changes">{changesText(r)}</p>}
       <div className="mt-2 flex flex-wrap gap-1.5">
         <Link to={recipeHref(r)} className="inline-flex items-center min-h-9 px-3 rounded-xl border border-line text-sm font-medium hover:bg-surface-2">
-          Open
+          {t('aiCard.recipe.open')}
         </Link>
         <Button size="sm" variant="ghost" icon={<CalendarPlus className="size-4" />} onClick={onPlan}>
-          Add to plan…
+          {t('aiCard.recipe.addToPlan')}
         </Button>
         <Button size="sm" variant="ghost" aria-pressed={fav} icon={<Star className={fav ? 'size-4 fill-current text-accent' : 'size-4'} />} onClick={() => void toggleFav()}>
-          {fav ? 'Saved' : 'Save'}
+          {fav ? t('aiCard.recipe.saved') : t('aiCard.recipe.save')}
         </Button>
       </div>
     </article>
@@ -100,6 +104,7 @@ function RecipeCard({ r, onPlan }: { r: Recipe; onPlan: () => void }) {
 }
 
 function AddToPlanSheet({ r, onClose }: { r: Recipe; onClose: () => void }) {
+  const { t, language } = useT();
   const { account, db } = useApp();
   const toast = useToast();
   const today = todayISO(account.settings.timeZone);
@@ -122,17 +127,17 @@ function AddToPlanSheet({ r, onClose }: { r: Recipe; onClose: () => void }) {
       if (added && swaps.length) next = updatePlanItem(next, date, added.id, { swaps });
       const saved = await saveRecord('meal_plans', plan ? ({ ...plan, ...next } as MealPlan) : newRecord(next), db);
       onClose();
-      toast.show(`${r.name} added to ${formatDate(date, { weekday: 'long' })}`, {
+      toast.show(t('aiCard.recipe.addedToDay', { recipe: r.name, day: formatDate(date, { weekday: 'long' }) }), {
         tone: 'success',
         action: added
           ? {
-              label: 'Undo',
+              label: t('aiCard.undo'),
               onClick: () => void saveRecord('meal_plans', removePlanItem(saved, date, added.id), db).catch(() => undefined),
             }
           : undefined,
       });
     } catch {
-      toast.show('Could not add it to your plan.', { tone: 'error' });
+      toast.show(t('aiCard.recipe.addError'), { tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -142,26 +147,26 @@ function AddToPlanSheet({ r, onClose }: { r: Recipe; onClose: () => void }) {
     <Sheet
       open
       onClose={onClose}
-      title={`Add ${r.name} to your plan`}
+      title={t('aiCard.recipe.addTitle', { recipe: r.name })}
       footer={
         <Button variant="primary" className="w-full" loading={busy} disabled={plan === undefined || !dates.length} onClick={() => void add()}>
-          Add to plan
+          {t('aiCard.recipe.add')}
         </Button>
       }
     >
       <div className="space-y-3">
         {dates.length ? (
-          <Select label="Day" value={date} onChange={(e) => setDate(e.target.value)}>
+          <Select label={t('aiCard.recipe.day')} value={date} onChange={(e) => setDate(e.target.value)}>
             {dates.map((x) => (
               <option key={x} value={x}>
-                {x === today ? 'Today' : formatDate(x, { weekday: 'long', day: 'numeric', month: 'short' })}
+                {x === today ? t('aiCard.recipe.today') : formatDate(x, { weekday: 'long', day: 'numeric', month: 'short' })}
               </option>
             ))}
           </Select>
         ) : (
-          <p className="text-sm text-muted">This week is over.</p>
+          <p className="text-sm text-muted">{t('aiCard.recipe.weekOver')}</p>
         )}
-        <Segmented<MealSlot> label="Meal" value={slot} onChange={setSlot} options={MEAL_ORDER.map((m) => ({ value: m, label: MEAL_LABELS[m] }))} />
+        <Segmented<MealSlot> label={t('aiCard.recipe.meal')} value={slot} onChange={setSlot} options={MEAL_ORDER.map((m) => ({ value: m, label: mealLabel(m, language) }))} />
       </div>
     </Sheet>
   );

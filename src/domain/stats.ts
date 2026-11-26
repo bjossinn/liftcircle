@@ -24,6 +24,7 @@ import type {
 } from './types';
 import { addDays, diffDays, rangeDays, startOfWeek } from '@/lib/dates';
 import { formatWeight, fromKg, round, trimNum } from './units';
+import { getLanguage, numberText, t, tp, type Language, type MessageKey } from '@/i18n';
 import { hasRecordedLoad, isCountableSet, isValidCompletedSet } from './setValidation';
 
 export const VOLUME_CONVENTIONS: string[] = [
@@ -38,6 +39,19 @@ export const VOLUME_CONVENTIONS: string[] = [
 /** Single-string form of the conventions (e.g. for share snapshots). */
 export const CONVENTIONS = VOLUME_CONVENTIONS.join(' ');
 export const VOLUME_CONVENTION_SHORT = 'Working sets only; per-hand dumbbells ×2; unilateral ×2 (both sides).';
+
+const CONVENTION_KEYS: MessageKey[] = [
+  'summary.statsRule.warmups', 'summary.statsRule.volume', 'summary.statsRule.unilateral', 'summary.statsRule.separateLoads',
+  'summary.statsRule.noLoadVolume', 'summary.statsRule.e1rm', 'summary.statsRule.muscleSets',
+];
+/** VOLUME_CONVENTIONS in the display language (default: the current language). */
+export function volumeConventions(lang: Language = getLanguage()): string[] {
+  return CONVENTION_KEYS.map((k) => t(k, undefined, lang));
+}
+/** VOLUME_CONVENTION_SHORT in the display language. */
+export function volumeConventionShort(lang: Language = getLanguage()): string {
+  return t('summary.statsRule.shortVolume', undefined, lang);
+}
 
 /* ------------------------------------------------------------------ sets */
 export function isWarmup(set: LoggedSet): boolean {
@@ -173,14 +187,24 @@ export interface RecordHit {
   value: number;
   label: string;
 }
-export const RECORD_KIND_LABELS: Record<RecordKind, string> = {
-  heaviest: 'Heaviest working set',
-  e1rm: 'Best estimated 1RM (Epley)',
-  reps_at_weight: 'Most reps at a weight',
-  most_reps: 'Most reps in a set',
-  longest_duration: 'Longest duration',
-  least_assistance: 'Least assistance',
+const RECORD_KIND_KEYS: Record<RecordKind, MessageKey> = {
+  heaviest: 'summary.record.heaviest',
+  e1rm: 'summary.record.e1rm',
+  reps_at_weight: 'summary.record.repsAtWeight',
+  most_reps: 'summary.record.mostReps',
+  longest_duration: 'summary.record.longest',
+  least_assistance: 'summary.record.leastAssistance',
 };
+/** Record kind label in `lang` (default: the current language). */
+export function recordKindLabel(kind: RecordKind, lang: Language = getLanguage()): string {
+  return t(RECORD_KIND_KEYS[kind], undefined, lang);
+}
+/** Record kind labels; each lookup reads the current language (same English as before when the UI is English). */
+export const RECORD_KIND_LABELS: Record<RecordKind, string> = (() => {
+  const o = {} as Record<RecordKind, string>;
+  for (const k of Object.keys(RECORD_KIND_KEYS) as RecordKind[]) Object.defineProperty(o, k, { enumerable: true, get: () => recordKindLabel(k) });
+  return Object.freeze(o);
+})();
 
 interface Bests {
   heaviest?: number;
@@ -253,17 +277,22 @@ function setsOf(sessions: WorkoutSession[], exerciseId: ID): LoggedSet[] {
   return out;
 }
 
-const fmtSec = (sec: number) => {
+const fmtSec = (sec: number, lang: Language) => {
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
-  return m > 0 ? `${m}:${String(s).padStart(2, '0')} min` : `${s} s`;
+  if (lang === 'en') return m > 0 ? `${m}:${String(s).padStart(2, '0')} min` : `${s} s`;
+  // Other languages: a minute value keeps the timer form (m:ss); seconds use the dictionary's unit.
+  return m > 0 ? `${m}:${String(s).padStart(2, '0')}` : t('format.seconds', { count: s }, lang);
 };
+/** Estimated 1RM in the user's unit, 1 decimal ("82.5 kg" / "82,5 kg"). */
+const e1rmText = (kg: number, unit: WeightUnit, lang: Language) =>
+  lang === 'en' ? `${trimNum(fromKg(kg, unit), 1)} ${unit}` : `${numberText(round(fromKg(kg, unit), 1), 1, false, lang)} ${unit}`;
 
 /**
  * Records set in `s` compared with the user's other completed sessions.
  * A record needs earlier history for the same exercise: a first-ever session sets a baseline, not a record.
  */
-export function detectRecords(s: WorkoutSession, history: WorkoutSession[], byId: Map<ID, Exercise>, unit: WeightUnit): RecordHit[] {
+export function detectRecords(s: WorkoutSession, history: WorkoutSession[], byId: Map<ID, Exercise>, unit: WeightUnit, lang: Language = getLanguage()): RecordHit[] {
   const others = completedSessions(history).filter((h) => h.id !== s.id);
   const hits: RecordHit[] = [];
   const seen = new Set<ID>();
@@ -276,13 +305,21 @@ export function detectRecords(s: WorkoutSession, history: WorkoutSession[], byId
     if (prevSets.length === 0) continue;
     const cur = bestsFor(setsOf([s], ex.id), ex);
     const prev = bestsFor(prevSets, ex);
-    const name = ex.name;
+    // The catalog/custom name is content: it goes into the sentence unchanged.
+    const exercise = ex.name;
+    const weight = (kg: number, entered?: LoggedSet['entered']) => formatWeight(kg, unit, entered, lang);
     if (cur.heaviest != null && prev.heaviest != null && cur.heaviest > prev.heaviest + 1e-9) {
       const reps = cur.heaviestSet?.reps;
-      hits.push({ exerciseId: ex.id, kind: 'heaviest', value: cur.heaviest, label: `${name}: heaviest set ${formatWeight(cur.heaviest, unit, cur.heaviestSet?.entered)}${reps ? ` × ${reps}` : ''}` });
+      const load = weight(cur.heaviest, cur.heaviestSet?.entered);
+      hits.push({
+        exerciseId: ex.id,
+        kind: 'heaviest',
+        value: cur.heaviest,
+        label: reps ? t('summary.recordLine.heaviestReps', { exercise, load, reps }, lang) : t('summary.recordLine.heaviest', { exercise, load }, lang),
+      });
     }
     if (cur.e1rm != null && prev.e1rm != null && cur.e1rm > prev.e1rm + 1e-9) {
-      hits.push({ exerciseId: ex.id, kind: 'e1rm', value: cur.e1rm, label: `${name}: best estimated 1RM ${trimNum(fromKg(cur.e1rm, unit), 1)} ${unit} (Epley)` });
+      hits.push({ exerciseId: ex.id, kind: 'e1rm', value: cur.e1rm, label: t('summary.recordLine.e1rm', { exercise, load: e1rmText(cur.e1rm, unit, lang) }, lang) });
     }
     // Most reps at a weight used before (heavier new weights are already covered by "heaviest").
     let bestRepsHit: { k: number; reps: number } | null = null;
@@ -295,21 +332,24 @@ export function detectRecords(s: WorkoutSession, history: WorkoutSession[], byId
         exerciseId: ex.id,
         kind: 'reps_at_weight',
         value: bestRepsHit.reps,
-        label: `${name}: ${bestRepsHit.reps} reps at ${formatWeight(bestRepsHit.k, unit, cur.entered.get(bestRepsHit.k))}`,
+        label: tp('summary.recordLine.repsAtWeight', bestRepsHit.reps, { exercise, reps: bestRepsHit.reps, load: weight(bestRepsHit.k, cur.entered.get(bestRepsHit.k)) }, lang),
       });
     }
     if (cur.mostReps != null && prev.mostReps != null && cur.mostReps > prev.mostReps && ex.tracking !== 'assisted') {
-      hits.push({ exerciseId: ex.id, kind: 'most_reps', value: cur.mostReps, label: `${name}: ${cur.mostReps} reps in a set` });
+      hits.push({ exerciseId: ex.id, kind: 'most_reps', value: cur.mostReps, label: tp('summary.recordLine.mostReps', cur.mostReps, { exercise, reps: cur.mostReps }, lang) });
     }
     if (cur.longest != null && prev.longest != null && cur.longest > prev.longest) {
-      hits.push({ exerciseId: ex.id, kind: 'longest_duration', value: cur.longest, label: `${name}: longest ${fmtSec(cur.longest)}` });
+      hits.push({ exerciseId: ex.id, kind: 'longest_duration', value: cur.longest, label: t('summary.recordLine.longest', { exercise, duration: fmtSec(cur.longest, lang) }, lang) });
     }
     if (cur.leastAssist != null && prev.leastAssist != null && cur.leastAssist < prev.leastAssist - 1e-9) {
       hits.push({
         exerciseId: ex.id,
         kind: 'least_assistance',
         value: cur.leastAssist,
-        label: `${name}: least assistance ${cur.leastAssist === 0 ? 'none' : formatWeight(cur.leastAssist, unit, cur.leastAssistSet?.entered)}`,
+        label:
+          cur.leastAssist === 0
+            ? t('summary.recordLine.noAssistance', { exercise }, lang)
+            : t('summary.recordLine.leastAssistance', { exercise, load: weight(cur.leastAssist, cur.leastAssistSet?.entered) }, lang),
       });
     }
   }
@@ -329,7 +369,8 @@ export interface PersonalRecord {
  * All-time bests for one exercise across completed sessions, with the date each was first reached.
  * Recomputed from current records, so corrections to old sessions are reflected immediately.
  */
-export function personalRecords(sessions: WorkoutSession[], ex: Exercise, unit: WeightUnit): PersonalRecord[] {
+export function personalRecords(sessions: WorkoutSession[], ex: Exercise, unit: WeightUnit, lang: Language = getLanguage()): PersonalRecord[] {
+  const weight = (kg: number, entered?: LoggedSet['entered']) => formatWeight(kg, unit, entered, lang);
   const list = completedSessions(sessions)
     .filter((s) => s.exercises.some((se) => se.exerciseId === ex.id))
     .sort((a, b) => (a.date === b.date ? a.startedAt - b.startedAt : a.date < b.date ? -1 : 1));
@@ -342,15 +383,30 @@ export function personalRecords(sessions: WorkoutSession[], ex: Exercise, unit: 
   };
   for (const s of list) {
     const b = bestsFor(setsOf([s], ex.id), ex);
-    consider('heaviest', b.heaviest, (a, c) => a > c + 1e-9, s, b.heaviest != null ? `${formatWeight(b.heaviest, unit, b.heaviestSet?.entered)}${b.heaviestSet?.reps ? ` × ${b.heaviestSet.reps}` : ''}` : '');
-    consider('e1rm', b.e1rm, (a, c) => a > c + 1e-9, s, b.e1rm != null ? `${trimNum(fromKg(b.e1rm, unit), 1)} ${unit} (estimated, Epley)` : '');
-    if (ex.tracking !== 'assisted') consider('most_reps', b.mostReps, (a, c) => a > c, s, `${b.mostReps} reps`);
-    consider('longest_duration', b.longest, (a, c) => a > c, s, b.longest != null ? fmtSec(b.longest) : '');
-    consider('least_assistance', b.leastAssist, (a, c) => a < c - 1e-9, s, b.leastAssist === 0 ? 'No assistance' : b.leastAssist != null ? `${formatWeight(b.leastAssist, unit, b.leastAssistSet?.entered)} assistance` : '');
+    consider('heaviest', b.heaviest, (a, c) => a > c + 1e-9, s, b.heaviest != null ? `${weight(b.heaviest, b.heaviestSet?.entered)}${b.heaviestSet?.reps ? ` × ${b.heaviestSet.reps}` : ''}` : '');
+    // English keeps "(estimated, Epley)"; other languages show the value (the record kind label says Epley).
+    // i18n: no approved Icelandic copy for "{{load}} (estimated, Epley)"
+    consider('e1rm', b.e1rm, (a, c) => a > c + 1e-9, s, b.e1rm != null ? (lang === 'en' ? `${e1rmText(b.e1rm, unit, lang)} (estimated, Epley)` : e1rmText(b.e1rm, unit, lang)) : '');
+    if (ex.tracking !== 'assisted' && b.mostReps != null) consider('most_reps', b.mostReps, (a, c) => a > c, s, tp('progression.reps', b.mostReps, undefined, lang));
+    consider('longest_duration', b.longest, (a, c) => a > c, s, b.longest != null ? fmtSec(b.longest, lang) : '');
+    consider(
+      'least_assistance',
+      b.leastAssist,
+      (a, c) => a < c - 1e-9,
+      s,
+      b.leastAssist === 0 ? t('summary.record.noAssistance', undefined, lang) : b.leastAssist != null ? t('summary.record.assistance', { load: weight(b.leastAssist, b.leastAssistSet?.entered) }, lang) : '',
+    );
     for (const [k, reps] of b.repsAt) {
       const cur = repsAt.get(k);
       if (!cur || reps > cur.value)
-        repsAt.set(k, { exerciseId: ex.id, kind: 'reps_at_weight', value: reps, label: `${reps} reps at ${formatWeight(k, unit, b.entered.get(k))}`, date: s.date, sessionId: s.id });
+        repsAt.set(k, {
+          exerciseId: ex.id,
+          kind: 'reps_at_weight',
+          value: reps,
+          label: tp('summary.record.repsAtLoad', reps, { reps, load: weight(k, b.entered.get(k)) }, lang),
+          date: s.date,
+          sessionId: s.id,
+        });
     }
   }
   const out = [...best.values()];

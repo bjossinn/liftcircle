@@ -6,7 +6,8 @@
  */
 import { z } from 'zod';
 import type { ActivityLog, ActivityType, DistanceUnit, Intensity } from './types';
-import { fromMeters, round } from './units';
+import { formatSpeed, fromMeters } from './units';
+import { getLanguage, tKey, type Language } from '@/i18n';
 
 export type ActivityField = 'distance' | 'elevation' | 'hr' | 'pace';
 /** How pace/speed is expressed for a type. */
@@ -28,20 +29,33 @@ export interface ActivityTypeInfo {
   met: Record<Intensity, number>;
 }
 
-export const ACTIVITY_TYPES: ActivityTypeInfo[] = [
-  { type: 'walk', label: 'Walk', noun: 'walk', fields: ['distance', 'elevation', 'hr', 'pace'], paceMode: 'per_unit', maxDistanceM: 150_000, maxSpeedKmh: 12, met: { easy: 3, moderate: 3.8, hard: 5 } },
-  { type: 'run', label: 'Run', noun: 'run', fields: ['distance', 'elevation', 'hr', 'pace'], paceMode: 'per_unit', maxDistanceM: 350_000, maxSpeedKmh: 25, met: { easy: 7, moderate: 9.5, hard: 11.5 } },
-  { type: 'cycle', label: 'Cycle', noun: 'ride', fields: ['distance', 'elevation', 'hr'], paceMode: 'speed', maxDistanceM: 1_000_000, maxSpeedKmh: 80, met: { easy: 4, moderate: 6.8, hard: 10 } },
-  { type: 'hike', label: 'Hike', noun: 'hike', fields: ['distance', 'elevation', 'hr', 'pace'], paceMode: 'per_unit', maxDistanceM: 150_000, maxSpeedKmh: 12, met: { easy: 4.5, moderate: 6, hard: 7.8 } },
-  { type: 'swim', label: 'Swim', noun: 'swim', fields: ['distance', 'hr', 'pace'], paceMode: 'per_100m', maxDistanceM: 60_000, maxSpeedKmh: 8, met: { easy: 5.8, moderate: 7, hard: 9.8 } },
-  { type: 'row', label: 'Row', noun: 'row', fields: ['distance', 'hr', 'pace'], paceMode: 'per_500m', maxDistanceM: 200_000, maxSpeedKmh: 30, met: { easy: 4.8, moderate: 7, hard: 8.5 } },
-  { type: 'sport', label: 'Sport', noun: 'sport session', fields: ['hr'], paceMode: null, met: { easy: 4.5, moderate: 6.5, hard: 8.5 } },
-  { type: 'class', label: 'Fitness class', noun: 'class', fields: ['hr'], paceMode: null, met: { easy: 4, moderate: 6, hard: 8 } },
-  { type: 'yoga', label: 'Yoga', noun: 'yoga session', fields: ['hr'], paceMode: null, met: { easy: 2.5, moderate: 3, hard: 4 } },
-  { type: 'mobility', label: 'Mobility', noun: 'mobility session', fields: ['hr'], paceMode: null, met: { easy: 2.3, moderate: 2.8, hard: 3.5 } },
-  { type: 'stretch', label: 'Stretching', noun: 'stretching session', fields: ['hr'], paceMode: null, met: { easy: 2.3, moderate: 2.5, hard: 3 } },
-  { type: 'custom', label: 'Custom', noun: 'activity', fields: ['distance', 'elevation', 'hr'], paceMode: null, maxDistanceM: 1_000_000, met: { easy: 3.5, moderate: 5, hard: 7 } },
+const ACTIVITY_DEFS: Omit<ActivityTypeInfo, 'label'>[] = [
+  { type: 'walk', noun: 'walk', fields: ['distance', 'elevation', 'hr', 'pace'], paceMode: 'per_unit', maxDistanceM: 150_000, maxSpeedKmh: 12, met: { easy: 3, moderate: 3.8, hard: 5 } },
+  { type: 'run', noun: 'run', fields: ['distance', 'elevation', 'hr', 'pace'], paceMode: 'per_unit', maxDistanceM: 350_000, maxSpeedKmh: 25, met: { easy: 7, moderate: 9.5, hard: 11.5 } },
+  { type: 'cycle', noun: 'ride', fields: ['distance', 'elevation', 'hr'], paceMode: 'speed', maxDistanceM: 1_000_000, maxSpeedKmh: 80, met: { easy: 4, moderate: 6.8, hard: 10 } },
+  { type: 'hike', noun: 'hike', fields: ['distance', 'elevation', 'hr', 'pace'], paceMode: 'per_unit', maxDistanceM: 150_000, maxSpeedKmh: 12, met: { easy: 4.5, moderate: 6, hard: 7.8 } },
+  { type: 'swim', noun: 'swim', fields: ['distance', 'hr', 'pace'], paceMode: 'per_100m', maxDistanceM: 60_000, maxSpeedKmh: 8, met: { easy: 5.8, moderate: 7, hard: 9.8 } },
+  { type: 'row', noun: 'row', fields: ['distance', 'hr', 'pace'], paceMode: 'per_500m', maxDistanceM: 200_000, maxSpeedKmh: 30, met: { easy: 4.8, moderate: 7, hard: 8.5 } },
+  { type: 'sport', noun: 'sport session', fields: ['hr'], paceMode: null, met: { easy: 4.5, moderate: 6.5, hard: 8.5 } },
+  { type: 'class', noun: 'class', fields: ['hr'], paceMode: null, met: { easy: 4, moderate: 6, hard: 8 } },
+  { type: 'yoga', noun: 'yoga session', fields: ['hr'], paceMode: null, met: { easy: 2.5, moderate: 3, hard: 4 } },
+  { type: 'mobility', noun: 'mobility session', fields: ['hr'], paceMode: null, met: { easy: 2.3, moderate: 2.8, hard: 3.5 } },
+  { type: 'stretch', noun: 'stretching session', fields: ['hr'], paceMode: null, met: { easy: 2.3, moderate: 2.5, hard: 3 } },
+  { type: 'custom', noun: 'activity', fields: ['distance', 'elevation', 'hr'], paceMode: null, maxDistanceM: 1_000_000, met: { easy: 3.5, moderate: 5, hard: 7 } },
 ];
+
+/**
+ * Activity types in display order. `label` reads the approved dictionary (summary.activity.*) in the app's current
+ * language on every lookup; `type` stays the stored value.
+ */
+export const ACTIVITY_TYPES: ActivityTypeInfo[] = ACTIVITY_DEFS.map((d) =>
+  Object.defineProperty({ ...d } as ActivityTypeInfo, 'label', { enumerable: true, get: () => activityTypeLabel(d.type) }),
+);
+
+/** Display label for an activity type in `lang` (default: the current language): "Run" / "Hlaup". */
+export function activityTypeLabel(type: ActivityType, lang: Language = getLanguage()): string {
+  return tKey(`summary.activity.${type}`, type, undefined, lang);
+}
 
 const BY_TYPE = new Map(ACTIVITY_TYPES.map((t) => [t.type, t]));
 
@@ -53,10 +67,15 @@ export function hasField(type: ActivityType, field: ActivityField): boolean {
   return activityTypeInfo(type).fields.includes(field);
 }
 
-/** Display name for an activity ("Run", or the custom name for a custom activity). */
-export function activityLabel(a: Pick<ActivityLog, 'type' | 'customName'>): string {
-  if (a.type === 'custom') return a.customName?.trim() || 'Custom activity';
-  return activityTypeInfo(a.type).label;
+/** Display name for an activity ("Run", or the custom name — user content, shown as typed — for a custom activity). */
+export function activityLabel(a: Pick<ActivityLog, 'type' | 'customName'>, lang: Language = getLanguage()): string {
+  if (a.type === 'custom') {
+    const name = a.customName?.trim();
+    if (name) return name;
+    // English keeps "Custom activity"; i18n: no approved Icelandic copy for it, so other languages use the type label.
+    return lang === 'en' ? 'Custom activity' : activityTypeLabel('custom', lang);
+  }
+  return activityTypeLabel(activityTypeInfo(a.type).type, lang);
 }
 
 /* --------------------------------------------------------- pace & speed */
@@ -111,7 +130,7 @@ export function paceOrSpeed(
     case 'speed': {
       const v = fromMeters(d, unit) / (t / 3600);
       const per = unit === 'km' ? 'km/h' : 'mph';
-      return { kind: 'speed', value: v, per, text: `${round(v, 1)} ${per}` };
+      return { kind: 'speed', value: v, per, text: formatSpeed(v, unit) };
     }
   }
 }
