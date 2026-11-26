@@ -38,6 +38,7 @@ import type {
 } from '../../supabase/functions/_shared/ai/types';
 import { RECIPES } from '@/data/recipes';
 import { INGREDIENTS } from '@/data/ingredients';
+import { followSchema } from './helpers/schemaModel';
 
 /* ================================================================== corpus */
 interface Case {
@@ -175,7 +176,7 @@ function provider(replies: unknown[]) {
   const fetch: FetchLike = async (_url, init) => {
     requests.push(JSON.parse(init.body));
     const body = replies.shift() ?? text('…');
-    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) };
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => followSchema(init.body, body), text: async () => JSON.stringify(body) };
   };
   return { fetch, requests };
 }
@@ -548,7 +549,7 @@ describe('pain and discomfort: the area with current discomfort, safety first', 
       expect(classifyIntent(c.text)).toBeNull();
       const { reply, requests } = await chat(c.text, [text('Farðu varlega.')]);
       expect(reply.action ?? null).toBeNull();
-      expect(systemOf(requests[0])).toMatch(/If the user mentions pain, injury, illness, dizziness, chest pain or pressure[^\n]*never push/);
+      expect(systemOf(requests[0])).toMatch(/- Pain, injury, discomfort, illness, dizziness, chest pain or pressure[^\n]*never push/);
     }
   });
 });

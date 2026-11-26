@@ -16,6 +16,7 @@ import {
   describeSessionAdjustment, parseWorkoutContext, planShorten, remainingMinutes, workoutLines, type SessionAdjustmentAction, type WorkoutContext,
 } from '../../supabase/functions/_shared/ai/workout';
 import type { AiDb, AiScopes, AiSettingsRow, FetchLike, RecordExchangeInput, RefExercise, StoredExchange, StoredMessage, UserFacts } from '../../supabase/functions/_shared/ai/types';
+import { followSchema } from './helpers/schemaModel';
 
 const U = '11111111-1111-4111-8111-111111111111';
 const mid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -229,7 +230,7 @@ function provider(replies: unknown[]) {
   const fetch: FetchLike = async (_url, init) => {
     requests.push(JSON.parse(init.body));
     const body = replies.shift() ?? text('…');
-    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) };
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => followSchema(init.body, body), text: async () => JSON.stringify(body) };
   };
   return { fetch, requests };
 }
@@ -325,8 +326,8 @@ describe('Supportive default and tiredness (verified, roadmap item 7)', () => {
     expect(mentionsTiredness('tired of chicken')).toBe(false);
     const m = makeDb({ coachStyle: 'strict' });
     const ctx = await buildContext({ db: m.db, uid: U, settings: m.settings, text: 'so much fatigue today, want to skip', mode: 'chat', now: NOW });
-    expect(ctx.system).toMatch(/Tiredness is never a weak reason \(rule 9\)/);
-    expect(ctx.system).toMatch(/tired, too tired, fatigued, exhausted/);
+    expect(ctx.system).toMatch(/Tiredness \(.*\) is never a weak reason/);
+    expect(ctx.system).toMatch(/tired, fatigued, exhausted/);
     expect(ctx.system).toMatch(/The newest message says the user is tired\. Whatever the coach style: be supportive/);
   });
 });

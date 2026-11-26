@@ -13,7 +13,7 @@ import type { AiAction, AiDb, AiSettingsRow, ApiMessage, ContentBlock, FetchLike
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { buildContext } from './context.ts';
 // @ts-ignore see above
-import { addUsage, AiUnavailableError, createMessage, estimateCostUsd, PROVIDER_NAMES, resolveProvider, type ProviderId } from './provider.ts';
+import { addUsage, AiCancelledError, AiUnavailableError, createMessage, estimateCostUsd, PROVIDER_NAMES, resolveProvider, type ProviderId } from './provider.ts';
 // @ts-ignore see above
 import { consentProvider, consentedProvider } from './consent.ts';
 // @ts-ignore see above
@@ -22,6 +22,8 @@ import { alternativesFor, buildSessionAdjustment, MAX_TOOL_ROUNDS, runTool, TOOL
 import { describeSessionAdjustment, parseWorkoutContext, type WorkoutContext } from './workout.ts';
 // @ts-ignore see above
 import { splitWhy, tidyReply, wordCount } from './reply.ts';
+// @ts-ignore see above
+import { outputFormatFor, parseEnvelope, REPLY_SCHEMA, REPLY_SCHEMA_NAME, type OutputFormat } from './structured.ts';
 // @ts-ignore see above
 import { guideFeaturesFromEnv, validateOpenLinks } from './appGuide.ts';
 // @ts-ignore see above
@@ -50,7 +52,16 @@ export interface CoachDeps {
   random?: () => number;
   /** Structured, content-free event log (never pass message text, notes or keys). */
   log?: (event: string, fields: Record<string, string | number | boolean | null>) => void;
+  /** Progress for the streaming status line (item 10): a server-owned phase, emitted only when that work happens. */
+  onPhase?: (phase: CoachPhase) => void;
 }
+
+/** Server-owned phases (item 10). The app maps each to ai.chat.status.<phase>; model text is never a status. */
+export const COACH_PHASES = ['preparing', 'training', 'nutrition', 'recipes', 'planning', 'writing', 'checking', 'saving'] as const;
+export type CoachPhase = (typeof COACH_PHASES)[number];
+
+/** What this server supports (item 10). Older servers send none: the app keeps the JSON path and shows no Stop. */
+export const PROTOCOL = { stream: 1, cancel: 1 } as const;
 
 export interface CoachResult {
   status: number;
@@ -78,14 +89,68 @@ export function isConfigured(deps: CoachDeps): boolean {
 
 export { consentProvider, consentedProvider };
 
+/**
+ * A request either ends before any answer work starts (`done`: validation, consent, limits, duplicates, status, cancel…)
+ * or holds a reserved, charged request whose answer is produced by `run` (`started`). The streaming entry point uses
+ * this split to return normal JSON errors before any stream headers (item 10); both transports run the same `run`.
+ */
+export type CoachStart = { kind: 'done'; result: CoachResult } | { kind: 'started'; requestId: string; run: (hooks?: { onPhase?: (p: CoachPhase) => void }) => Promise<CoachResult> };
+
 export async function handleAiCoach(deps: CoachDeps, uid: string, rawBody: unknown): Promise<CoachResult> {
+  const s = await startAiCoach(deps, uid, rawBody);
+  return s.kind === 'done' ? s.result : s.run();
+}
+
+export async function startAiCoach(deps: CoachDeps, uid: string, rawBody: unknown): Promise<CoachStart> {
   const body = (rawBody && typeof rawBody === 'object' ? rawBody : {}) as Record<string, unknown>;
   // The app language (Settings.language) only picks the language of text; it never affects identity, scopes or sharing.
   const { t } = sharedT(requestLanguage(body.language) ?? 'en');
-  if (!UUID_RE.test(uid)) return err(401, 'auth', t('aiServer.auth.signIn'));
-  if (body.action === 'status') return status(deps, uid);
+  const done = (result: CoachResult): CoachStart => ({ kind: 'done', result });
+  if (!UUID_RE.test(uid)) return done(err(401, 'auth', t('aiServer.auth.signIn')));
+  if (body.action === 'status') return done(await status(deps, uid));
   if (body.action === 'send') return send(deps, uid, body);
-  return err(400, 'bad_request', t('aiServer.error.unknownAction'));
+  if (body.action === 'cancel') return done(await cancel(deps, uid, body));
+  if (body.action === 'request_status') return done(await requestStatus(deps, uid, body));
+  return done(err(400, 'bad_request', t('aiServer.error.unknownAction')));
+}
+
+/* ------------------------------------------------------------------ cancellation (item 10) */
+const cancellationAvailable = async (deps: CoachDeps) => {
+  try {
+    return !!deps.db.cancelRequest && !!deps.db.requestStatus && (await deps.db.cancelSupported?.()) === true;
+  } catch {
+    return false;
+  }
+};
+
+/** The stored exchange of a message, as a send would return it (never another user's: ownership is the JWT uid). */
+async function exchangeBody(deps: CoachDeps, uid: string, id: string) {
+  const ex = await deps.db.getExchange(uid, id);
+  return ex ? { reply: ex.reply, proposal: ex.proposal ?? null, duplicate: true } : null;
+}
+
+/** POST {action:'cancel', id}: the user's Stop. Acknowledged only when the request is actually settled. */
+async function cancel(deps: CoachDeps, uid: string, body: Record<string, unknown>): Promise<CoachResult> {
+  const { t } = sharedT(requestLanguage(body.language) ?? 'en');
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!UUID_RE.test(id)) return err(400, 'bad_request', t('aiServer.error.invalidMessageId'));
+  if (!(await cancellationAvailable(deps))) return err(501, 'cancel_unsupported', t('aiServer.error.unknownAction'));
+  const r = await deps.db.cancelRequest!(uid, id);
+  deps.log?.('ai_cancel', { status: r.status });
+  if (r.status === 'succeeded') return { status: 200, body: { state: 'succeeded', ...(await exchangeBody(deps, uid, id)), usage: await usageFor(deps, uid) } };
+  return { status: 200, body: { state: r.status, usage: await usageFor(deps, uid) } };
+}
+
+/** POST {action:'request_status', id}: where an interrupted or stopped request stands (same message id). */
+async function requestStatus(deps: CoachDeps, uid: string, body: Record<string, unknown>): Promise<CoachResult> {
+  const { t } = sharedT(requestLanguage(body.language) ?? 'en');
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!UUID_RE.test(id)) return err(400, 'bad_request', t('aiServer.error.invalidMessageId'));
+  const stored = await exchangeBody(deps, uid, id);
+  if (stored) return { status: 200, body: { state: 'succeeded', ...stored, usage: await usageFor(deps, uid) } };
+  if (!(await cancellationAvailable(deps))) return err(501, 'cancel_unsupported', t('aiServer.error.unknownAction'));
+  const state = await deps.db.requestStatus!(uid, id);
+  return { status: 200, body: { state, usage: await usageFor(deps, uid) } };
 }
 
 async function usageFor(deps: CoachDeps, uid: string) {
@@ -111,6 +176,8 @@ async function status(deps: CoachDeps, uid: string): Promise<CoachResult> {
       enabled: Boolean(settings?.enabled),
       paused: Boolean(settings?.paused),
       usage,
+      // Item 10: streaming is always available here; Stop only when the database has the cancellation functions.
+      protocol: { stream: PROTOCOL.stream, ...((await cancellationAvailable(deps)) ? { cancel: PROTOCOL.cancel } : {}) },
     },
   };
 }
@@ -135,7 +202,8 @@ function textOf(content: ContentBlock[]): string {
     .trim();
 }
 
-async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>): Promise<CoachResult> {
+async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>): Promise<CoachStart> {
+  const done = (result: CoachResult): CoachStart => ({ kind: 'done', result });
   // Only these fields are read from the request.
   const id = typeof body.id === 'string' ? body.id : '';
   const text = typeof body.text === 'string' ? body.text.trim() : '';
@@ -147,25 +215,25 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   // App language (validated; anything else is ignored). Error text follows it; codes stay stable.
   const setting = requestLanguage(body.language);
   const { t } = sharedT(setting ?? 'en');
-  if (!UUID_RE.test(id)) return err(400, 'bad_request', t('aiServer.error.invalidMessageId'));
-  if (!text) return err(400, 'bad_request', t('aiServer.error.emptyMessage'));
-  if (text.length > MAX_TEXT) return err(400, 'bad_request', t('aiServer.error.messageTooLong', { max: MAX_TEXT }));
+  if (!UUID_RE.test(id)) return done(err(400, 'bad_request', t('aiServer.error.invalidMessageId')));
+  if (!text) return done(err(400, 'bad_request', t('aiServer.error.emptyMessage')));
+  if (text.length > MAX_TEXT) return done(err(400, 'bad_request', t('aiServer.error.messageTooLong', { max: MAX_TEXT })));
 
   const prov = resolveProvider(deps.env);
-  if (!prov) return err(503, 'ai_unavailable', t('aiServer.error.notConfigured'), { reason: 'not_configured' });
+  if (!prov) return done(err(503, 'ai_unavailable', t('aiServer.error.notConfigured'), { reason: 'not_configured' }));
 
   const settings = await deps.db.getSettings(uid);
-  if (!settings?.enabled) return err(409, 'ai_disabled', t('aiServer.error.disabled'), { reason: 'disabled' });
-  if (settings.paused) return err(409, 'ai_paused', t('aiServer.error.paused'), { reason: 'disabled' });
+  if (!settings?.enabled) return done(err(409, 'ai_disabled', t('aiServer.error.disabled'), { reason: 'disabled' }));
+  if (settings.paused) return done(err(409, 'ai_paused', t('aiServer.error.paused'), { reason: 'disabled' }));
   // The user agreed to send data to one specific provider; a provider switch on the server needs a fresh agreement.
   if (consentedProvider(settings) !== prov.provider)
-    return err(409, 'consent_required', t('aiServer.error.consentRequired', { provider: PROVIDER_NAMES[prov.provider] }), {
+    return done(err(409, 'consent_required', t('aiServer.error.consentRequired', { provider: PROVIDER_NAMES[prov.provider] }), {
       reason: 'consent_required',
       provider: prov.provider,
-    });
+    }));
 
   const stored = await deps.db.getExchange(uid, id);
-  if (stored) return { status: 200, body: { reply: stored.reply, proposal: stored.proposal ?? null, duplicate: true } };
+  if (stored) return done({ status: 200, body: { reply: stored.reply, proposal: stored.proposal ?? null, duplicate: true, usage: await usageFor(deps, uid).catch(() => null) } });
 
   const limit = intEnv(deps, 'AI_DAILY_REQUEST_LIMIT', 40, 0, 10_000);
   // This run's attempt id: only it may settle the request as failed (a newer attempt may have taken over).
@@ -177,11 +245,16 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
       const begun = await deps.db.beginRequest(uid, id, limit);
       if (begun.status === 'duplicate') {
         const again = await deps.db.getExchange(uid, id);
-        if (again) return { status: 200, body: { reply: again.reply, proposal: again.proposal ?? null, duplicate: true } };
+        if (again) return done({ status: 200, body: { reply: again.reply, proposal: again.proposal ?? null, duplicate: true, usage: await usageFor(deps, uid).catch(() => null) } });
+      }
+      // Item 10: cancelled (even before it arrived): never starts. A resend uses a new message id.
+      if (begun.status === 'cancelled') {
+        deps.log?.('ai_cancelled_before_start', {});
+        return done(err(409, 'request_cancelled', t('aiServer.error.requestCancelled'), { reason: 'cancelled' }));
       }
       if (begun.status !== 'started') {
         deps.log?.('ai_in_progress', {});
-        return err(409, 'in_progress', t('aiServer.error.inProgress'), { reason: 'in_progress' });
+        return done(err(409, 'in_progress', t('aiServer.error.inProgress'), { reason: 'in_progress' }));
       }
       attempt = begun.attempt;
     } else await deps.db.checkAndCountUsage(uid, limit);
@@ -190,7 +263,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
       const usage = await usageFor(deps, uid).catch(() => null);
       // The database's message is English prose: Icelandic gets the authored copy (never the raw PT429 text).
       const message = setting === 'is' ? t('aiServer.error.dailyLimit') : (e as Error).message || t('aiServer.error.dailyLimit');
-      return err(429, 'rate_limited', message, { reason: 'rate_limited', usage });
+      return done(err(429, 'rate_limited', message, { reason: 'rate_limited', usage }));
     }
     throw e;
   }
@@ -198,28 +271,100 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   // Failure accounting (1.0.3): a request that fails gives its daily allowance back, and tokens from provider rounds that
   // did complete are booked as FAILED usage — never as a successful exchange. The database decides: the call is a no-op
   // unless this attempt still owns the running request (so a lost response after the answer was stored never refunds).
-  const tally = { inputTokens: 0, outputTokens: 0 };
+  const tally = { inputTokens: 0, outputTokens: 0, unknown: false };
   let settled = false;
+  const attemptUsage = () => ({
+    inputTokens: tally.inputTokens,
+    outputTokens: tally.outputTokens,
+    costUsd: estimateCostUsd(tally, deps.env('AI_PRICE_INPUT_PER_MTOK'), deps.env('AI_PRICE_OUTPUT_PER_MTOK')),
+    ...(tally.unknown ? { unknown: true } : {}),
+  });
   const fail = async () => {
     if (settled) return;
     settled = true;
     try {
-      if (attempt) await deps.db.failRequest?.(uid, id, attempt, { ...tally, costUsd: estimateCostUsd(tally, deps.env('AI_PRICE_INPUT_PER_MTOK'), deps.env('AI_PRICE_OUTPUT_PER_MTOK')) });
+      if (attempt) await deps.db.failRequest?.(uid, id, attempt, attemptUsage());
     } catch (e) {
       deps.log?.('ai_fail_request_error', { code: (e as { code?: string })?.code ?? null });
     }
+  };
+  // Item 10: the user stopped the reply. The worker acknowledges (cancelled, one refund, completed-round tokens booked);
+  // nothing is published. Never treated as a provider failure or a timeout.
+  const cancelled = async (): Promise<CoachResult> => {
+    if (!settled) {
+      settled = true;
+      try {
+        if (attempt) await deps.db.settleCancelled?.(uid, id, attempt, attemptUsage());
+      } catch (e) {
+        deps.log?.('ai_settle_cancel_error', { code: (e as { code?: string })?.code ?? null });
+      }
+    }
+    deps.log?.('ai_cancelled', { input_tokens: tally.inputTokens, output_tokens: tally.outputTokens });
+    return err(409, 'request_cancelled', t('aiServer.error.requestCancelled'), { reason: 'cancelled', usage: await usageFor(deps, uid).catch(() => null) });
   };
   const recordOnce = async <T,>(record: () => Promise<T>): Promise<T> => {
     const r = await record();
     settled = true; // stored: from here on the exchange counts as successful
     return r;
   };
-  try {
-    return await answer({ deps, uid, id, text, mode, unsynced, workout, prov, settings, tally, fail, recordOnce, setting });
-  } catch (e) {
-    await fail();
-    throw e;
-  }
+  const run = async (hooks: { onPhase?: (p: CoachPhase) => void } = {}): Promise<CoachResult> => {
+    // Cooperative cancellation: a bounded poll of this request's state aborts the attempt-owned signal.
+    const cancelCtl = new AbortController();
+    const poll = attempt && deps.db.requestState ? startCancelPoll(deps, uid, id, cancelCtl, intEnv(deps, 'AI_CANCEL_POLL_MS', 1500, 200, 10_000)) : null;
+    const phaseDeps: CoachDeps = {
+      ...deps,
+      onPhase: (p) => {
+        try {
+          hooks.onPhase?.(p);
+          deps.onPhase?.(p);
+        } catch {
+          // A progress writer must never affect the answer (stream errors are the transport's business).
+        }
+      },
+    };
+    try {
+      phaseDeps.onPhase!('preparing');
+      return await answer({ deps: phaseDeps, uid, id, text, mode, unsynced, workout, prov, settings, tally, fail, cancelled, recordOnce, setting, signal: cancelCtl.signal });
+    } catch (e) {
+      if (e instanceof AiCancelledError || isCancelledDbError(e)) return await cancelled();
+      await fail();
+      throw e;
+    } finally {
+      poll?.stop();
+    }
+  };
+  return { kind: 'started', requestId: id, run };
+}
+
+const isCancelledDbError = (e: unknown) => (e as { code?: string })?.code === 'PT409' && (e as { hint?: string })?.hint === 'cancelled';
+
+/** Bounded polling of the request row (item 10): aborts `ctl` once a cancel is requested. Stops when the answer ends. */
+function startCancelPoll(deps: CoachDeps, uid: string, id: string, ctl: AbortController, everyMs: number) {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let checks = 0;
+  const maxChecks = Math.ceil((TOTAL_BUDGET_MS + 30_000) / everyMs);
+  const tick = async () => {
+    if (stopped) return;
+    checks += 1;
+    try {
+      const st = await deps.db.requestState!(uid, id);
+      if (st === 'cancel_requested' || st === 'cancelled') {
+        ctl.abort();
+        return;
+      }
+    } catch {
+      // A failed check is not a cancel; the next one (or the final check before saving) decides.
+    }
+    if (!stopped && checks < maxChecks) timer = setTimeout(tick, everyMs);
+  };
+  timer = setTimeout(tick, everyMs);
+  return {
+    stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    },
+  };
 }
 
 /** Everything send() decided before the provider is called, plus the failure accounting hooks (1.0.3). */
@@ -233,20 +378,40 @@ interface Answering {
   workout: WorkoutContext | null;
   prov: NonNullable<ReturnType<typeof resolveProvider>>;
   settings: AiSettingsRow;
-  tally: { inputTokens: number; outputTokens: number };
+  tally: { inputTokens: number; outputTokens: number; unknown: boolean };
   fail: () => Promise<void>;
+  /** Settle as cancelled (item 10) and build the response. */
+  cancelled: () => Promise<CoachResult>;
   recordOnce: <T>(record: () => Promise<T>) => Promise<T>;
   /** The request's validated app language (Settings.language), or null when it sent none. */
   setting: Lang | null;
+  /** Aborted when the user cancels (attempt-owned; item 10). */
+  signal: AbortSignal;
 }
 
 async function answer(a: Answering): Promise<CoachResult> {
-  const { deps, uid, id, text, mode, unsynced, workout, prov, settings, tally, fail, recordOnce, setting } = a;
+  const { deps, uid, id, text, mode, unsynced, workout, prov, settings, tally, fail, cancelled, recordOnce, setting, signal } = a;
+  const phase = (p: CoachPhase) => deps.onPhase?.(p);
+  /** Bounded cancellation check at the points where work would otherwise continue. */
+  const stopRequested = async () => {
+    if (signal.aborted) return true;
+    if (!deps.db.requestState) return false;
+    try {
+      const st = await deps.db.requestState(uid, id);
+      return st === 'cancel_requested' || st === 'cancelled';
+    } catch {
+      return false;
+    }
+  };
   const now = deps.now?.() ?? new Date();
   const started = Date.now();
   // Hidden product areas (coach marketplace, social feed) stay out of the app guide and its links.
   const features = guideFeaturesFromEnv(deps.env);
-  const ctx = await buildContext({ db: deps.db, uid, settings, text, mode, now, unsynced, features, workout });
+  // Structured Outputs (item 10) only where the configured provider/model/endpoint supports it; else the text path.
+  const output: OutputFormat = outputFormatFor(prov, deps.env);
+  const ctx = await buildContext({
+    db: deps.db, uid, settings, text, mode, now, unsynced, features, workout, output: output === 'json_schema' ? 'structured' : 'text', onPhase: phase,
+  });
   const model = prov.model;
   const maxTokens = intEnv(deps, 'AI_MAX_OUTPUT_TOKENS', 1200, 64, 8192);
   const state: ToolState = { proposal: null, proposalAttempts: 0, weekPlan: null, weekAttempts: 0, mealPlan: null, mealPlanAttempts: 0, recipes: null, sessionAdjustment: null };
@@ -261,24 +426,30 @@ async function answer(a: Answering): Promise<CoachResult> {
   // Tell the model which language to answer in when the app sent its language or the user asked for one; requests from
   // older apps keep the prompt as it was.
   const langSource = replyLangSource({ text, setting });
-  const baseSystem = setting || langSource === 'asked' || langSource === 'refused' ? `${ctx.system}\n\n${replyLanguageLine(toolLang, langSource)}` : ctx.system;
+  const langControl = setting || langSource === 'asked' || langSource === 'refused' ? replyLanguageLine(toolLang, langSource) : null;
   // A meal-plan / recipe request the user has to settle first ("Vegan matseðill með kjúklingi", "2,5 máltíðir"): no plan or
   // recipe cards are built for it (tools and the fallback refuse), and the model is told to ask instead.
   const resumedPlan = ctx.followUp && ctx.openRequest?.intent === 'meal_plan';
   const kind = classifyRequest(text);
   const clarify = resumedPlan || kind === 'meal_plan' || kind === 'recipes' ? requestClarification(requestText) : null;
-  const system = clarify ? `${baseSystem}\n\nBefore any meal plan or recipes: ${clarificationNote(clarify)}` : baseSystem;
+  // Both are server-derived controls: composed with the others, before the app guide and the data (prompts/index.ts).
+  const system = ctx.compose([langControl ?? '', clarify ? `Before any meal plan or recipes: ${clarificationNote(clarify)}` : '']);
   const conversation: ApiMessage[] = [...ctx.messages];
   let usage = { inputTokens: 0, outputTokens: 0 };
   let reply = '';
   let usedModel = model;
   let rounds = 0;
+  // How the final round ended (Structured Outputs: refusal / truncation are explicit, never parsed as an answer).
+  let finalStop: string | null = null;
+  let finalRefusal: string | null = null;
   const deadline = Date.now() + TOTAL_BUDGET_MS;
 
   try {
     for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
+      if (await stopRequested()) return await cancelled();
       rounds = round;
       const last = round === MAX_TOOL_ROUNDS;
+      phase('writing');
       const res = await createMessage(
         {
           provider: prov.provider,
@@ -295,23 +466,35 @@ async function answer(a: Answering): Promise<CoachResult> {
           sleep: deps.sleep,
           random: deps.random,
           deadline,
+          signal,
         },
         // Last round: tools stay declared (the history contains tool blocks) but may not be called.
-        { system, messages: conversation, tools: TOOL_DEFS, tool_choice: { type: last ? 'none' : 'auto' } },
+        // The schema is sent on every round: the model may finish (answer) in any of them.
+        {
+          system, messages: conversation, tools: TOOL_DEFS, tool_choice: { type: last ? 'none' : 'auto' },
+          ...(output === 'json_schema' ? { responseFormat: { name: REPLY_SCHEMA_NAME, schema: REPLY_SCHEMA as unknown as Record<string, unknown> } } : {}),
+        },
       );
+      // Usage of every completed round is counted BEFORE anything is parsed, so an invalid reply still books it.
       usage = addUsage(usage, res.usage);
       tally.inputTokens = usage.inputTokens;
       tally.outputTokens = usage.outputTokens;
+      // Missing provider usage is unknown, never zero (booked as such if this request fails or is cancelled).
+      if (!res.usage || (res.usage.input_tokens == null && res.usage.output_tokens == null)) tally.unknown = true;
       if (typeof res.model === 'string') usedModel = res.model.slice(0, 100);
       const toolUses = res.content.filter((b): b is Extract<ContentBlock, { type: 'tool_use' }> => b.type === 'tool_use');
       if (res.stop_reason !== 'tool_use' || toolUses.length === 0 || last) {
         reply = textOf(res.content);
-        if (res.stop_reason === 'max_tokens' && reply) reply += ' …';
+        finalStop = res.stop_reason ?? null;
+        finalRefusal = typeof res.refusal === 'string' ? res.refusal : null;
+        if (output === 'text' && res.stop_reason === 'max_tokens' && reply) reply += ' …';
         break;
       }
       conversation.push({ role: 'assistant', content: res.content });
       const results: ContentBlock[] = [];
       for (const tu of toolUses.slice(0, 4)) {
+        if (tu.name === 'find_recipes') phase('recipes');
+        else if (tu.name.startsWith('propose_')) phase('planning');
         const out = await runTool(tu.name, tu.input, {
           db: deps.db, facts: ctx.facts, catalog: ctx.catalog, state, week: ctx.week, trainingShared: ctx.trainingShared, messageId: id,
           today: ctx.today, nutrition: ctx.nutrition, account: ctx.account, requestText, userText: text, workout: ctx.workout, lang: toolLang,
@@ -322,6 +505,7 @@ async function answer(a: Answering): Promise<CoachResult> {
       conversation.push({ role: 'user', content: results });
     }
   } catch (e) {
+    if (e instanceof AiCancelledError) return await cancelled();
     if (e instanceof AiUnavailableError) {
       deps.log?.('ai_provider_error', { provider: prov.provider, kind: e.kind, status: e.status ?? null, reason: e.reason, rounds });
       await fail();
@@ -332,9 +516,26 @@ async function answer(a: Answering): Promise<CoachResult> {
     throw e;
   }
 
+  phase('checking');
+  // Structured Outputs: the final text must be exactly the {answer, why} envelope. A refusal, a truncated or malformed
+  // envelope is never shown (no raw JSON): the reply falls back to a valid server action's own summary below, or the
+  // request fails as invalid_reply. No extra "repair" generation.
+  let envelopeFailure: string | null = null;
+  let modelWhy: string | null = null;
+  if (output === 'json_schema') {
+    const env = parseEnvelope(reply, finalStop, finalRefusal);
+    if (env.ok) {
+      reply = env.answer;
+      modelWhy = env.why;
+    } else {
+      envelopeFailure = env.reason;
+      reply = '';
+      deps.log?.('ai_reply_invalid', { reason: env.reason, rounds });
+    }
+  }
   // Reasoning goes to a separate, collapsed "Why this?" field; boilerplate the style rules forbid is trimmed.
   const split = splitWhy(reply);
-  let why = split.why ? tidyReply(split.why) || null : null;
+  let why = (modelWhy ?? split.why) ? tidyReply((modelWhy ?? split.why)!).slice(0, 1500) || null : null;
   reply = tidyReply(split.answer);
   // Server-written text follows the same order; without an app language the model's own reply is the last hint.
   const lang = resolveReplyLang({ text, history: [...history, reply], setting });
@@ -360,7 +561,9 @@ async function answer(a: Answering): Promise<CoachResult> {
     state.recipes = null;
     deps.log?.('ai_meal_plan_clarify', { kind: clarify.kind });
   } else if (wantsPlan && !state.mealPlan && !state.weekPlan && !mealPlanBlocker(ctx.nutrition)) {
+    phase('recipes');
     const [recipes, ingredients] = await Promise.all([deps.db.getRecipes(), deps.db.getIngredients()]);
+    phase('planning');
     const built = buildMealPlanAction(mealPlanIntentFromText(requestText), { facts: ctx.facts, account: ctx.account, today: ctx.today, nutrition: ctx.nutrition, messageId: id, recipes, ingredients, requestText, lang });
     if (built.action) {
       state.mealPlan = built.action;
@@ -385,6 +588,7 @@ async function answer(a: Answering): Promise<CoachResult> {
       live.intent === 'shorten'
         ? [{ change: 'shorten', minutes: live.minutesLeft }]
         : from && focus ? alternativesFor(from, ctx.catalog, ctx.facts).slice(0, 8).map((c) => ({ change: 'swap', session_exercise_id: focus.id, to_exercise_id: c.id })) : [];
+    if (tries.length) phase('planning');
     for (const input of tries) {
       const built = buildSessionAdjustment(input, { catalog: ctx.catalog, facts: ctx.facts, messageId: id, workout: live, trainingShared: ctx.trainingShared, lang });
       if (built.action) {
@@ -430,6 +634,12 @@ async function answer(a: Answering): Promise<CoachResult> {
     deps.log?.('ai_reply_replaced', { reason: replaced });
   }
 
+  // A malformed envelope with no valid server action: nothing checked to show. Settle as failed (refund, failed usage).
+  if (envelopeFailure && !action && !(p && p.validationErrors.length === 0) && !fallbackFailure) {
+    await fail();
+    return err(502, 'invalid_reply', tr.t('aiServer.error.invalidReply'), { reason: 'invalid_reply' });
+  }
+
   // In-app links: ≤ 2 screen links and ≤ 3 recipe links whose path is in the app guide (param routes only with ids we
   // know); the rest are stripped, lead-in lines removed, and the kept links moved to the end.
   const known = { ...ctx.known };
@@ -450,6 +660,17 @@ async function answer(a: Answering): Promise<CoachResult> {
             : tr.t('aiServer.reply.empty');
   }
   reply = reply.slice(0, MAX_REPLY_CHARS);
+
+  // Before publication (item 10): the user may have stopped the reply, or narrowed sharing / revoked consent while it was
+  // being written. Either way the buffered reply is discarded and never stored.
+  if (await stopRequested()) return await cancelled();
+  const fresh = await deps.db.getSettings(uid);
+  if (!sharingStillAllows(settings, fresh, prov.provider)) {
+    deps.log?.('ai_sharing_changed', {});
+    await fail();
+    return err(409, 'sharing_changed', tr.t('aiServer.error.sharingChanged'), { reason: 'sharing_changed' });
+  }
+  phase('saving');
   const cost = estimateCostUsd(usage, deps.env('AI_PRICE_INPUT_PER_MTOK'), deps.env('AI_PRICE_OUTPUT_PER_MTOK'));
   const recorded = await recordOnce(() => deps.db.recordExchange(uid, {
     message: { id, content: text, mode },
@@ -494,7 +715,21 @@ async function answer(a: Answering): Promise<CoachResult> {
   if (!recorded.duplicate && sessionAdjustment && !storedReply.action) storedReply.action = sessionAdjustment;
   return {
     status: 200,
-    body: { reply: storedReply, proposal: (recorded.proposal ?? null) as ProposalJson | null, duplicate: Boolean(recorded.duplicate) },
+    body: {
+      reply: storedReply, proposal: (recorded.proposal ?? null) as ProposalJson | null, duplicate: Boolean(recorded.duplicate),
+      // Authoritative usage after this exchange (item 10): the app refreshes it instead of counting replies itself.
+      usage: await usageFor(deps, uid).catch(() => null),
+    },
   };
+}
+
+/**
+ * Still allowed to publish (item 10)? On, not paused, consent for this provider, and every category this reply was built
+ * from still shared. Widening sharing is fine; any narrowing, a pause or a provider/consent change is not. A database
+ * read that returns nothing counts as changed.
+ */
+export function sharingStillAllows(used: AiSettingsRow, fresh: AiSettingsRow | null, provider: ProviderId): boolean {
+  if (!fresh || !fresh.enabled || fresh.paused || consentedProvider(fresh) !== provider) return false;
+  return (['profile', 'training', 'measurements', 'nutrition'] as const).every((k) => !used.scopes[k] || fresh.scopes[k]);
 }
 

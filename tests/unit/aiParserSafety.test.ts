@@ -24,6 +24,7 @@ import { nutritionStatus } from '../../supabase/functions/_shared/ai/dataStatus'
 import type { AccountStatePayload, AiDb, AiScopes, AiSettingsRow, FetchLike, MealPlanAction, RefIngredient, RefRecipe, StoredMessage, UserFacts } from '../../supabase/functions/_shared/ai/types';
 import { RECIPES } from '@/data/recipes';
 import { INGREDIENTS } from '@/data/ingredients';
+import { followSchema } from './helpers/schemaModel';
 
 /* ================================================================== catalog */
 const ALL_INGREDIENTS = INGREDIENTS as unknown as RefIngredient[];
@@ -56,9 +57,9 @@ const facts = (): UserFacts => ({
 const text = (t: string) => ({ id: 'm', model: 'claude-test', content: [{ type: 'text', text: t }], stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 10 } });
 const toolUse = (name: string, input: unknown) => ({ id: 'mt', model: 'claude-test', content: [{ type: 'tool_use', id: 'toolu_1', name, input }], stop_reason: 'tool_use', usage: { input_tokens: 10, output_tokens: 10 } });
 function provider(replies: unknown[]) {
-  const fetch: FetchLike = async () => {
+  const fetch: FetchLike = async (_url, init) => {
     const body = replies.shift() ?? text('…');
-    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) };
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => followSchema(init.body, body), text: async () => JSON.stringify(body) };
   };
   return { fetch };
 }

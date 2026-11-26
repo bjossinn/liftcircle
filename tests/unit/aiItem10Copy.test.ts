@@ -6,6 +6,8 @@
  *  - the 15 English and 15 Icelandic eval prompts and the seeded case-13 request/blocked reply in tests/evals/coach.cases.json.
  */
 import { describe, expect, it } from 'vitest';
+// The app tsconfig has no Node types.
+// @ts-ignore
 import { readFileSync } from 'node:fs';
 import EN_FIX from './fixtures/aiStreaming.en.json';
 import IS_FIX from './fixtures/aiStreaming.is.json';
@@ -17,12 +19,12 @@ import { SHARED_EN } from '../../supabase/functions/_shared/i18n/messages.en';
 import { SHARED_IS } from '../../supabase/functions/_shared/i18n/messages.is';
 import { sharedT } from '../../supabase/functions/_shared/i18n/core';
 
-const SPEC = readFileSync(new URL('../../docs/specs/item10-spec-and-copy.md', import.meta.url), 'utf8');
-const bytes = (s: string) => Buffer.from(s, 'utf8').toString('hex');
+const SPEC: string = readFileSync(new URL('../../docs/specs/item10-spec-and-copy.md', import.meta.url), 'utf8');
+const bytes = (s: string) => Array.from(new TextEncoder().encode(s), (b) => b.toString(16).padStart(2, '0')).join('');
 
 /** The two dictionary code blocks, in order (English, then Icelandic). */
 function specDictionaries(): [Record<string, string>, Record<string, string>] {
-  const blocks = SPEC.split('```json\n').slice(1).map((b) => b.slice(0, b.indexOf('\n```')));
+  const blocks = SPEC.split('```json\n').slice(1).map((b: string) => b.slice(0, b.indexOf('\n```')));
   const dicts = blocks.map((b) => JSON.parse(b) as Record<string, string>).filter((d) => 'ai.chat.stopReply' in d);
   expect(dicts).toHaveLength(2);
   return [dicts[0], dicts[1]];

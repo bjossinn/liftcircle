@@ -78,6 +78,18 @@ export class AiUnavailableError extends Error {
   }
 }
 
+/**
+ * The request was cancelled by the user (item 10): the attempt-owned signal fired. Never retried, never a timeout, and
+ * never a provider failure — the caller settles it as cancelled.
+ */
+export class AiCancelledError extends Error {
+  readonly code = 'request_cancelled';
+  constructor() {
+    super('The request was cancelled.');
+    this.name = 'AiCancelledError';
+  }
+}
+
 export interface ProviderConfig {
   /** Default 'anthropic'. */
   provider?: ProviderId;
@@ -96,6 +108,8 @@ export interface ProviderConfig {
   random?: () => number;
   /** Absolute epoch-ms deadline for the whole call incl. retries. */
   deadline?: number;
+  /** Cancellation owned by this request attempt: aborts the in-flight fetch and any backoff wait (AiCancelledError). */
+  signal?: AbortSignal;
 }
 
 export interface MessagesRequest {
@@ -103,6 +117,8 @@ export interface MessagesRequest {
   messages: ApiMessage[];
   tools?: readonly unknown[];
   tool_choice?: { type: 'auto' | 'none' | 'any' };
+  /** Structured Outputs for the final text (structured.ts): OpenAI response_format / Anthropic output_config.format. */
+  responseFormat?: { name: string; schema: Record<string, unknown> };
 }
 
 const RETRYABLE = (s: number) => s === 429 || s === 408 || s >= 500; // 500/502/503/504/529
@@ -126,7 +142,7 @@ export async function createMessage(cfg: ProviderConfig, req: MessagesRequest): 
   const openai = cfg.provider === 'openai';
   const body = JSON.stringify(
     openai
-      ? toOpenAiRequest(req, { model: cfg.model, maxTokens: cfg.maxTokens + (cfg.reasoningAllowance ?? 0), reasoningEffort: cfg.reasoningEffort })
+      ? toOpenAiRequest(req, { model: cfg.model, maxTokens: cfg.maxTokens + (cfg.reasoningAllowance ?? 0), reasoningEffort: cfg.reasoningEffort, responseFormat: req.responseFormat })
       : {
           model: cfg.model,
           max_tokens: cfg.maxTokens,
@@ -134,6 +150,7 @@ export async function createMessage(cfg: ProviderConfig, req: MessagesRequest): 
           messages: req.messages,
           ...(req.tools?.length ? { tools: req.tools } : {}),
           ...(req.tools?.length && req.tool_choice ? { tool_choice: req.tool_choice } : {}),
+          ...(req.responseFormat ? { output_config: { format: { type: 'json_schema', schema: req.responseFormat.schema } } } : {}),
         },
   );
   const headers: Record<string, string> = openai
@@ -143,12 +160,16 @@ export async function createMessage(cfg: ProviderConfig, req: MessagesRequest): 
     ? `${(cfg.baseUrl ?? 'https://api.openai.com').replace(/\/+$/, '')}/v1/chat/completions`
     : `${(cfg.baseUrl ?? 'https://api.anthropic.com').replace(/\/+$/, '')}/v1/messages`;
 
+  const cancelled = () => cfg.signal?.aborted === true;
   let last: AiUnavailableError = new AiUnavailableError('provider_down', 'deadline');
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (cancelled()) throw new AiCancelledError();
     const remaining = deadline - now();
     if (remaining <= 1000) throw last.kind === 'deadline' ? last : new AiUnavailableError('provider_down', last.kind, last.status);
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), Math.min(timeoutMs, remaining));
+    const onCancel = () => ctl.abort();
+    cfg.signal?.addEventListener('abort', onCancel);
     let retryAfterMs: number | null = null;
     try {
       const res = await cfg.fetch(url, { method: 'POST', headers, body, signal: ctl.signal });
@@ -157,9 +178,10 @@ export async function createMessage(cfg: ProviderConfig, req: MessagesRequest): 
         try {
           data = await res.json();
         } catch {
+          if (cancelled()) throw new AiCancelledError();
           throw new AiUnavailableError('provider_down', 'bad_response', res.status);
         }
-        const d = openai ? fromOpenAiResponse(data) : (data as ApiResponse);
+        const d = openai ? fromOpenAiResponse(data) : fromAnthropicResponse(data);
         if (!d || !Array.isArray(d.content)) throw new AiUnavailableError('provider_down', 'bad_response', res.status);
         return d;
       }
@@ -172,6 +194,8 @@ export async function createMessage(cfg: ProviderConfig, req: MessagesRequest): 
       last = new AiUnavailableError('provider_down', 'http', res.status);
       retryAfterMs = parseRetryAfter(res.headers.get('retry-after'), now());
     } catch (e) {
+      if (e instanceof AiCancelledError) throw e;
+      if (cancelled()) throw new AiCancelledError(); // never a timeout, never retried
       if (e instanceof AiUnavailableError) {
         if (e !== last) throw e; // non-retryable classification
       } else if (ctl.signal.aborted) {
@@ -182,14 +206,37 @@ export async function createMessage(cfg: ProviderConfig, req: MessagesRequest): 
       }
     } finally {
       clearTimeout(timer);
+      cfg.signal?.removeEventListener('abort', onCancel);
     }
     if (attempt === maxRetries) break;
     const backoff = Math.round(800 * 2 ** attempt * (0.75 + random() * 0.5));
     const wait = Math.min(MAX_RETRY_AFTER_MS, Math.max(backoff, retryAfterMs ?? 0));
     if (now() + wait + 2000 > deadline) break;
-    await sleep(wait);
+    await cancellableSleep(sleep, wait, cfg.signal);
+    if (cancelled()) throw new AiCancelledError();
   }
   throw last;
+}
+
+/** Backoff wait that ends early when the request is cancelled. */
+function cancellableSleep(sleep: (ms: number) => Promise<void>, ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return sleep(ms);
+  if (signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const done = () => {
+      signal.removeEventListener('abort', done);
+      resolve();
+    };
+    signal.addEventListener('abort', done);
+    sleep(ms).then(done, done);
+  });
+}
+
+/** Anthropic Messages is the internal format; refusal (stop_reason "refusal") is kept explicitly. */
+export function fromAnthropicResponse(data: unknown): ApiResponse | null {
+  const d = data as ApiResponse | null;
+  if (!d || typeof d !== 'object' || !Array.isArray(d.content)) return null;
+  return d.stop_reason === 'refusal' ? { ...d, refusal: d.refusal ?? 'refusal' } : d;
 }
 
 /* ------------------------------------------------------------------ usage & cost */
