@@ -13,11 +13,14 @@ import { kvGet, kvSet } from '@/db/repo';
 import type { LiftDb } from '@/db/db';
 import type { Exercise, ID, Program, WorkoutSession } from '@/domain/types';
 import { elapsedMs } from '@/domain/sessionOps';
+import { getLanguage, t, type Language } from '@/i18n';
 import type { WorkoutContext, WorkoutIntent } from '../../../../supabase/functions/_shared/ai/workout';
 
 export const AI_COACH_REQUEST_KEY = 'ai-coach-request';
 /** A request waiting in the composer ("Today's workout attached"), kept until it's sent or removed. */
 export const AI_ATTACHED_REQUEST_KEY = 'ai-attached-request';
+/** Which parts of the composer draft the app generated for a contextual request (DraftProvenance). */
+export const AI_DRAFT_GENERATED_KEY = 'ai-draft-generated';
 /** A request older than this is stale (the user moved on); it is dropped instead of sent. */
 export const COACH_REQUEST_TTL_MS = 30 * 60 * 1000;
 export const SHORT_ON_TIME_MINUTES = [10, 15, 20, 30, 45] as const;
@@ -61,22 +64,107 @@ export async function loadAttachedRequest(db: LiftDb, userId: string | undefined
   return r;
 }
 
+/** Exercise name for the data snapshot (catalog content, never translated). */
 const nameOf = (byId: Map<ID, Exercise>, id: ID) => byId.get(id)?.name ?? 'Exercise';
 
-/** The visible message the user sends (they can read exactly what was asked). */
-export function coachRequestText(req: CoachRequest, session: WorkoutSession, byId: Map<ID, Exercise>): string {
+/**
+ * The visible message the user sends (they can read exactly what was asked), in the app language. Catalog/session
+ * names go into placeholders unchanged. The typed `req.intent` (not this text) tells the server what was asked.
+ */
+export function coachRequestText(req: CoachRequest, session: WorkoutSession, byId: Map<ID, Exercise>, language: Language = getLanguage()): string {
   const focus = req.focusId ? session.exercises.find((e) => e.id === req.focusId) : undefined;
-  const ex = focus ? nameOf(byId, focus.exerciseId) : undefined;
-  if (req.intent === 'shorten')
-    return `Short on time: I have about ${req.minutes ?? 20} minutes left. Please shorten the rest of today’s workout (${session.name}).`;
-  if (req.intent === 'swap')
-    return `Equipment busy: the equipment for ${ex ?? 'this exercise'} is taken. What can I do instead, just for today?`;
+  const ex = focus ? (byId.get(focus.exerciseId)?.name ?? t('aiServer.context.exerciseFallback', undefined, language)) : undefined;
+  if (req.intent === 'shorten') return t('aiServer.context.shorten', { minutes: req.minutes ?? 20, sessionName: session.name }, language);
+  if (req.intent === 'swap') return t('aiServer.context.swap', { exerciseName: ex ?? t('aiServer.context.thisExercise', undefined, language) }, language);
   if (ex && req.shownTarget)
-    return session.status === 'completed'
-      ? `Explain this: why is my next target for ${ex} “${req.shownTarget}”?`
-      : `Explain this: why does the app suggest “${req.shownTarget}” for ${ex} today?`;
-  if (ex) return `Explain this: how should I approach ${ex} today, and why?`;
-  return session.status === 'completed' ? 'Explain this: what do my next targets from this workout mean?' : 'Explain this: how is today’s workout going, and what should I aim for next?';
+    return t(session.status === 'completed' ? 'aiServer.context.explainCompleted' : 'aiServer.context.explainActive', { exerciseName: ex, shownTarget: req.shownTarget }, language);
+  if (ex) return t('aiServer.context.explainExercise', { exerciseName: ex }, language);
+  return t(session.status === 'completed' ? 'aiServer.context.explainCompletedGeneric' : 'aiServer.context.explainActiveGeneric', undefined, language);
+}
+
+/* ------------------------------------------------------- generated-text provenance */
+/** [start, end) character ranges of a text. */
+export type TextRanges = [number, number][];
+
+/**
+ * Which parts of the composer draft the app generated (a contextual request names exercises and targets), so turning
+ * Training sharing off removes exactly those and keeps what the user wrote — in any language, after edits and reloads.
+ * Valid only while `draft` is the current draft.
+ */
+export interface DraftProvenance {
+  draft: string;
+  generated: TextRanges;
+  /** The generated texts themselves (a chunk of one pasted back, or restored by undo, counts as generated again). */
+  sources: string[];
+  userId?: string;
+  /**
+   * The whole draft is held back: an older version's edited workout question that can't be split into generated and
+   * user-written parts. Kept on the device, never stripped, and not sendable while Training isn't shared.
+   */
+  held?: boolean;
+}
+
+function mergeRanges(r: TextRanges, max: number): TextRanges {
+  const sorted = r
+    .map(([a, b]) => [Math.max(0, Math.min(a, max)), Math.max(0, Math.min(b, max))] as [number, number])
+    .filter(([a, b]) => b > a)
+    .sort((x, y) => x[0] - y[0]);
+  const out: TextRanges = [];
+  for (const [a, b] of sorted) {
+    const last = out[out.length - 1];
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b);
+    else out.push([a, b]);
+  }
+  return out;
+}
+
+/** A pasted/restored chunk this long that is part of a generated text counts as generated, not as the user's own. */
+const REINSERT_MIN = 12;
+
+/**
+ * The generated ranges after the draft changed from `prev` to `next` (one edit, as a text field reports it):
+ * characters before and after the changed span keep their origin; what the user typed or pasted there is theirs.
+ */
+export function trackDraftEdit(prev: string, next: string, generated: TextRanges, sources: string[] = []): TextRanges {
+  const max = Math.min(prev.length, next.length);
+  let p = 0;
+  while (p < max && prev[p] === next[p]) p++;
+  let s = 0;
+  while (s < max - p && prev[prev.length - 1 - s] === next[next.length - 1 - s]) s++;
+  const prevEnd = prev.length - s;
+  const delta = next.length - prev.length;
+  const out: TextRanges = [];
+  for (const [a, b] of generated) {
+    if (a < p) out.push([a, Math.min(b, p)]);
+    if (b > prevEnd) out.push([Math.max(a, prevEnd) + delta, b + delta]);
+  }
+  const inserted = next.slice(p, next.length - s);
+  if (inserted.trim().length >= REINSERT_MIN && sources.some((src) => src.includes(inserted))) out.push([p, p + inserted.length]);
+  return mergeRanges(out, next.length);
+}
+
+/** The draft without its generated parts: only what the user wrote (runs kept in order, never rewritten). */
+export function stripGenerated(text: string, generated: TextRanges, sources: string[] = []): string {
+  const ranges = mergeRanges(generated, text.length);
+  const runs: string[] = [];
+  let at = 0;
+  for (const [a, b] of ranges) {
+    if (a > at) runs.push(text.slice(at, a));
+    at = b;
+  }
+  if (at < text.length) runs.push(text.slice(at));
+  let out = '';
+  for (const run of runs) out += out && !/\s$/.test(out) && !/^\s/.test(run) && run.trim() ? ` ${run}` : run;
+  // Belt and braces: a whole generated text never survives.
+  for (const src of sources) if (src) out = out.split(src).join('');
+  return out.trim();
+}
+
+/** Offsets of `generated` (relative to `text`) after `text` was trimmed. */
+export function rangesAfterTrim(text: string, generated: TextRanges): TextRanges {
+  const lead = text.length - text.trimStart().length;
+  const len = text.trim().length;
+  return mergeRanges(generated.map(([a, b]) => [a - lead, b - lead]), len);
 }
 
 /** A compact, data-only snapshot of the workout (what the server's parseWorkoutContext accepts). */

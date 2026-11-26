@@ -5,6 +5,7 @@
  */
 import type { AiAvailability, AiMessage, AiScopes, AiSettings, AiUsage, ProgramProposal } from '@/backend/coachingContract';
 import type { CoachStyle, Program } from '@/domain/types';
+import { getLanguage, hasKey, listText, locale, t, tp, type MessageKey } from '@/i18n';
 import type { CoachRequest } from './workoutContext';
 
 /* ------------------------------------------------------------ local keys */
@@ -32,7 +33,13 @@ export interface PendingSend {
    * rebuilt from the device right before every send (and Retry), and only while Training is shared.
    */
   request?: CoachRequest;
+  /**
+   * Parts of `text` the app generated for a contextual request ([start, end) offsets), so they can be removed if
+   * Training sharing is turned off; the rest is what the user wrote.
+   */
+  generated?: [number, number][];
   status: 'sending' | 'failed';
+  /** Why it wasn't sent: a message key (stable). Older builds stored English text (see pendingErrorText). */
   error?: string;
   createdAt: string;
   /** The account that wrote it (1.0.3): never sent under another signed-in account. */
@@ -49,65 +56,69 @@ export interface QueuedAck {
 export const DEFAULT_SCOPES: AiScopes = { profile: true, training: true, measurements: false, nutrition: false };
 
 /* --------------------------------------------------------- data sharing */
-export const SCOPE_INFO: { key: keyof AiScopes; title: string; sends: string }[] = [
-  {
-    key: 'profile',
-    title: 'Profile & preferences',
-    sends: 'Your goal, experience, training days and session length, equipment, exercises you excluded, areas to go easy on (body-area names only), and diet preferences and allergies.',
+/** Display labels are localized on read (the keys are stable scope IDs). */
+export const SCOPE_INFO: { readonly key: keyof AiScopes; readonly title: string; readonly sends: string }[] = (['profile', 'training', 'measurements', 'nutrition'] as const).map((key) => ({
+  key,
+  get title() {
+    return t(`ai.scope.${key}`);
   },
-  {
-    key: 'training',
-    title: 'Training',
-    sends: 'Your active plan, recent workouts (dates, exercises, sets, reps and weights) and personal records.',
+  get sends() {
+    return t(`ai.scope.${key}.description`);
   },
-  {
-    key: 'measurements',
-    title: 'Measurements',
-    sends: 'Your recent bodyweight entries, so it can describe your trend.',
-  },
-  {
-    key: 'nutrition',
-    title: 'Nutrition',
-    sends: 'Your nutrition targets and recent daily food-log totals (such as protein and calories).',
-  },
-];
+}));
 
-export const ALWAYS_SENT = 'Your messages in this conversation (the most recent ones, for context) and your training assistant notes.';
-export const NEVER_SENT = 'Your email, photos, social posts and friends, messages with a human coach, coach notes, and private notes about injuries.';
+/** Scope display labels as a localized list ("Profile & preferences and Training" / "Prófíll og óskir og Æfingar"). */
+export function scopeListText(keys: (keyof AiScopes)[], lower = false): string {
+  return listText(keys.map((k) => {
+    const title = t(`ai.scope.${k}`);
+    return lower ? title.toLocaleLowerCase(locale()) : title;
+  }));
+}
+
+export const alwaysSentText = () => t('ai.data.alwaysSent');
+export const neverSentText = () => t('ai.data.neverSent');
 
 /* --------------------------------------------------------- coach style */
 /** Supportive is the default everywhere (consent screen, settings, server prompt and ai_settings_json). */
 export const DEFAULT_COACH_STYLE: CoachStyle = 'supportive';
-export const COACH_STYLE_INFO: { key: CoachStyle; title: string; body: string }[] = [
-  { key: 'supportive', title: 'Supportive', body: 'Gentle and encouraging. It never pushes: if you want a day off, it checks in kindly and accepts your call.' },
-  { key: 'balanced', title: 'Balanced', body: 'Encouraging with light accountability. If you want to skip, it asks what’s up and suggests a shorter version.' },
-  { key: 'strict', title: 'Strict', body: 'Firm and direct. It pushes back on reasons like “no time” and holds you to a minimum session (never when you’re tired or unwell).' },
-];
-export const COACH_STYLE_SAFETY = 'In every style: pain, injury, illness, poor sleep or feeling overwhelmed always mean rest or an easier plan, and rest days are never “skipping”.';
+export const COACH_STYLE_INFO: { readonly key: CoachStyle; readonly title: string; readonly body: string }[] = (['supportive', 'balanced', 'strict'] as const).map((key) => ({
+  key,
+  get title() {
+    return t(`ai.style.${key}`);
+  },
+  get body() {
+    return t(`ai.style.${key}.description`);
+  },
+}));
+export const coachStyleSafetyText = () => t('ai.style.safety');
 
 /** Quick replies under the welcome. Tapping one sends it as the user's message (the real AI answers). */
-export const WELCOME_CHIPS = ['Feeling great 💪', 'Bit tired', 'Sore', 'Short on time', 'Want to skip today'] as const;
+const WELCOME_CHIP_KEYS = ['ai.quick.feelingGreat', 'ai.quick.tired', 'ai.quick.sore', 'ai.quick.shortOnTime', 'ai.quick.skipToday'] as const;
+export const welcomeChips = (): string[] => WELCOME_CHIP_KEYS.map((k) => t(k));
 
 export function scopesEqual(a: AiScopes, b: AiScopes): boolean {
   return a.profile === b.profile && a.training === b.training && a.measurements === b.measurements && a.nutrition === b.nutrition;
 }
 
 /* ------------------------------------------------------------ prompts */
-export const SUGGESTED_QUESTIONS = [
-  'I can only train twice this week',
-  'Help me progress my bench press',
-  'Suggest meals that fit my protein target',
-  'Review my last two weeks',
-];
-export const CHECKIN_REVIEW_TEXT = 'Please do a check-in review of my recent training and progress.';
+const SUGGESTED_KEYS = ['ai.suggest.twiceWeek', 'ai.suggest.bench', 'ai.suggest.proteinMeals', 'ai.suggest.reviewFortnight'] as const;
+/** Suggested questions under the composer (put into the composer in the app language). */
+export const suggestedQuestions = (): string[] => SUGGESTED_KEYS.map((k) => t(k));
+/** The visible text of a check-in review request (the mode, not this text, selects the review). */
+export const checkinReviewText = () => t('ai.checkin.request');
 
 /* ------------------------------------------------------------ errors */
 export type AiErrorKind = 'offline' | 'rate_limited' | 'unavailable' | 'disabled' | 'paused' | 'auth' | 'failed';
 export interface ClassifiedAiError {
   kind: AiErrorKind;
+  /** Localized, user-facing text (never the raw provider/database message). */
   message: string;
+  /** The message key behind `message` (stable: store this, not the text). */
+  key: MessageKey;
   reason?: Extract<AiAvailability, { available: false }>['reason'];
   usage?: Partial<AiUsage>;
+  /** The raw error message, for diagnostics only (not shown). */
+  detail?: string;
 }
 
 type ErrLike = { code?: unknown; status?: unknown; message?: unknown; reason?: unknown; details?: unknown; usage?: unknown };
@@ -123,7 +134,10 @@ function pickUsage(...cands: unknown[]): Partial<AiUsage> | undefined {
   return undefined;
 }
 
-/** Map whatever the AI backend threw into something the UI can explain truthfully. */
+/**
+ * Map whatever the AI backend threw into something the UI can explain truthfully. Recognized codes/reasons map to
+ * authored messages; the raw error text (English from the server, the database or the network stack) is never shown.
+ */
 export function classifyAiError(e: unknown): ClassifiedAiError {
   const err = (e && typeof e === 'object' ? e : {}) as ErrLike;
   const code = typeof err.code === 'string' ? err.code : '';
@@ -131,21 +145,52 @@ export function classifyAiError(e: unknown): ClassifiedAiError {
   const msg = typeof err.message === 'string' ? err.message : typeof e === 'string' ? e : '';
   const details = (err.details && typeof err.details === 'object' ? err.details : {}) as Record<string, unknown>;
   const reason = (typeof err.reason === 'string' ? err.reason : typeof details.reason === 'string' ? details.reason : undefined) as ClassifiedAiError['reason'];
+  const out = (kind: AiErrorKind, key: MessageKey, extra: Partial<ClassifiedAiError> = {}): ClassifiedAiError => ({
+    kind,
+    key,
+    message: t(key),
+    ...extra,
+    ...(msg ? { detail: msg } : {}),
+  });
 
-  if (code === 'network' || /failed to fetch|networkerror|network request failed|load failed|fetch failed|offline/i.test(msg))
-    return { kind: 'offline', message: 'You appear to be offline. Your message is kept. Try again when you’re connected.' };
-  if (code === 'PT429' || code === 'rate_limited' || status === 429)
-    return { kind: 'rate_limited', message: msg || 'You’ve reached today’s training assistant limit.', usage: pickUsage(err.usage, err.details) };
-  if (code === 'ai_paused' || code === 'paused') return { kind: 'paused', message: 'The training assistant is paused.' };
-  if (code === 'consent_required' || (reason as string) === 'consent_required')
-    return { kind: 'disabled', message: msg || 'The training assistant’s provider changed. Review and agree again in training assistant setup.' };
-  if (code === 'ai_disabled' || code === 'disabled' || reason === 'disabled')
-    return { kind: 'disabled', message: 'The training assistant is turned off.' };
+  if (code === 'network' || /failed to fetch|networkerror|network request failed|load failed|fetch failed|offline/i.test(msg)) return out('offline', 'ai.error.offline');
+  if (code === 'PT429' || code === 'rate_limited' || status === 429) return out('rate_limited', 'ai.error.dailyLimit', { usage: pickUsage(err.usage, err.details) });
+  if (code === 'ai_paused' || code === 'paused') return out('paused', 'ai.error.paused');
+  if (code === 'consent_required' || (reason as string) === 'consent_required') return out('disabled', 'ai.error.providerChanged');
+  if (code === 'ai_disabled' || code === 'disabled' || reason === 'disabled') return out('disabled', 'ai.error.disabled');
   if (code === 'ai_unavailable' || status === 503 || reason === 'not_configured' || reason === 'provider_down')
-    return { kind: 'unavailable', reason: reason ?? 'provider_down', message: 'The training assistant is unavailable right now.' };
-  if (/not implemented/i.test(msg)) return { kind: 'unavailable', reason: 'backend_missing', message: 'The training assistant isn’t set up on this server yet.' };
-  if (code === 'auth' || status === 401) return { kind: 'auth', message: 'Your session has expired. Please sign in again.' };
-  return { kind: 'failed', message: msg || 'Couldn’t reach the training assistant. Please try again.' };
+    return out('unavailable', 'ai.error.unavailable', { reason: reason ?? 'provider_down' });
+  if (code === 'backend_missing' || reason === 'backend_missing' || /not implemented/i.test(msg)) return out('unavailable', 'ai.error.notSetUp', { reason: 'backend_missing' });
+  if (code === 'auth' || status === 401) return out('auth', 'ai.error.auth');
+  if (code === 'in_progress') return out('failed', 'aiServer.error.inProgress');
+  return out('failed', 'ai.error.failed');
+}
+
+/** Known English texts older builds stored as a pending message's error, mapped to their keys. */
+const LEGACY_PENDING_ERRORS: Record<string, MessageKey> = {
+  'Training sharing is off, so this workout question can’t be sent. Switch on Training in training assistant settings, or remove it.': 'ai.chat.trainingOffPending',
+  'Not confirmed yet. Tap Retry to send it again.': 'ai.chat.notConfirmed',
+  'You appear to be offline. Your message is kept. Try again when you’re connected.': 'ai.error.offline',
+  'You’ve reached today’s training assistant limit.': 'ai.error.dailyLimit',
+  'The training assistant is paused.': 'ai.error.paused',
+  'The training assistant’s provider changed. Review and agree again in training assistant setup.': 'ai.error.providerChanged',
+  'The training assistant is turned off.': 'ai.error.disabled',
+  'The training assistant is unavailable right now.': 'ai.error.unavailable',
+  'The training assistant isn’t set up on this server yet.': 'ai.error.notSetUp',
+  'Your session has expired. Please sign in again.': 'ai.error.auth',
+  'Couldn’t reach the training assistant. Please try again.': 'ai.error.failed',
+};
+
+/**
+ * The reason shown under an unsent message, in the app language. New builds store a message key; an older build's
+ * stored English is recognized exactly, and any other stored diagnostic gets the generic message outside English.
+ */
+export function pendingErrorText(error: string | undefined): string | undefined {
+  if (!error) return undefined;
+  if (hasKey(error)) return t(error);
+  const legacy = LEGACY_PENDING_ERRORS[error];
+  if (legacy) return t(legacy);
+  return getLanguage() === 'en' ? error : t('ai.error.failed');
 }
 
 /** True when the server will never answer (no point showing a chat composer). */
@@ -156,8 +201,8 @@ export function isHardUnavailable(a: AiAvailability | undefined): boolean {
 export function usageLine(u: Partial<AiUsage> | undefined): string | null {
   if (!u || typeof u.requests !== 'number') return null;
   if (typeof u.limitRequests === 'number' && u.limitRequests > 0)
-    return `${u.requests} of ${u.limitRequests} message${u.limitRequests === 1 ? '' : 's'} used today · ${Math.max(0, u.limitRequests - u.requests)} left`;
-  return `${u.requests} message${u.requests === 1 ? '' : 's'} today`;
+    return t('ai.usage.withLimit', { used: u.requests, limit: u.limitRequests, remaining: Math.max(0, u.limitRequests - u.requests) });
+  return tp('ai.usage.today', u.requests);
 }
 
 /* --------------------------------------------------------- conversation */
@@ -188,9 +233,17 @@ export function consentOutdated(s: AiSettings | null | undefined, a?: AiAvailabi
   return !!s?.consentAt && !!a && a.available && a.consentCurrent === false;
 }
 
-/** Name of the company that receives AI requests, for consent and data texts. */
+/** The named company that receives AI requests, when the server says which (a proper name: never translated). */
+export function providerName(a: AiAvailability | undefined): string | undefined {
+  return a && a.available && a.providerName ? a.providerName : undefined;
+}
+
+/**
+ * Name of the company that receives AI requests, or the localized generic wording, for inline use. Branch on
+ * providerName() (not on this text) to choose between named and generic sentences.
+ */
 export function providerLabel(a: AiAvailability | undefined): string {
-  return a && a.available && a.providerName ? a.providerName : 'the AI provider';
+  return providerName(a) ?? t('ai.provider.generic');
 }
 
 /* ------------------------------------------------------------- proposals */
@@ -212,16 +265,27 @@ export function proposalView(p: ProgramProposal, programs: Program[]): ProposalV
   return 'pending';
 }
 
-export const PROPOSAL_VIEW_LABEL: Record<ProposalView, { label: string; tone: 'accent' | 'neutral' | 'warn' | 'danger' | 'info' }> = {
-  pending: { label: 'Ready to review', tone: 'accent' },
-  stale: { label: 'Out of date', tone: 'warn' },
-  invalid: { label: 'Not applicable', tone: 'danger' },
-  accepted: { label: 'Applied', tone: 'info' },
-  declined: { label: 'Declined', tone: 'neutral' },
-  closed: { label: 'Replaced', tone: 'neutral' },
+type Tone = 'accent' | 'neutral' | 'warn' | 'danger' | 'info';
+const viewLabel = (view: ProposalView, tone: Tone): { readonly label: string; readonly tone: Tone } => ({
+  tone,
+  get label() {
+    return t(`ai.proposal.status.${view}`);
+  },
+});
+/** Status badge per proposal view; `label` is localized on read. */
+export const PROPOSAL_VIEW_LABEL: Record<ProposalView, { readonly label: string; readonly tone: Tone }> = {
+  pending: viewLabel('pending', 'accent'),
+  stale: viewLabel('stale', 'warn'),
+  invalid: viewLabel('invalid', 'danger'),
+  accepted: viewLabel('accepted', 'info'),
+  declined: viewLabel('declined', 'neutral'),
+  closed: viewLabel('closed', 'neutral'),
 };
 
-export const STALE_MESSAGE = 'Your plan changed since this suggestion; ask the AI for an updated one.';
+/** "Your plan changed since this suggestion…", in the app language. */
+export const staleMessage = () => t('ai.proposal.stale');
+/** @deprecated English only; use staleMessage(). */
+export const STALE_MESSAGE = t('ai.proposal.stale', undefined, 'en');
 
 export function isCoachManaged(programs: Program[]): boolean {
   return liveActive(programs)?.managedBy?.kind === 'coach';
@@ -229,7 +293,7 @@ export function isCoachManaged(programs: Program[]): boolean {
 
 /** Plain-text summary used when the user shares a suggestion with their human coach. */
 export function proposalShareText(p: ProgramProposal, describe: string[]): string {
-  const lines = [`Training assistant suggestion: ${p.program.name}`];
+  const lines = [t('ai.proposal.shareTitle', { name: p.program.name })];
   const changes = p.changeSummary.length ? p.changeSummary : describe;
   for (const c of changes.slice(0, 12)) lines.push(`• ${c}`);
   if (p.message) lines.push('', p.message);

@@ -7,23 +7,51 @@
  *    stored grounding labels) vs now, so the coach can say "Thanks — I can see your nutrition now" and continue.
  */
 import type { AiScopes, StoredMessage } from './types.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { classifyRequest, tokensOf } from './requestSignals.ts';
+// @ts-ignore see above
+import { foldIs, IS_VOCAB } from './isLexicon.ts';
 
 export type RequestIntent = 'meal_plan' | 'week_adjustment' | 'program' | 'recipes';
-const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+const fold = foldIs;
+const REQUEST_INTENTS: readonly string[] = ['meal_plan', 'week_adjustment', 'program', 'recipes'];
 
+/**
+ * The request a message makes that the coach can resume later (meal plan, this week's schedule, a new program, recipes),
+ * English or Icelandic. Built on requestSignals.classifyRequest — the same classifier meals.asksForMealPlan uses — so a
+ * question about an existing plan ("Hvar finn ég matseðilinn minn?") or a negated one ("Ekki búa til matseðil ennþá",
+ * "Ég vil ekki nýja æfingaáætlun") is never a request to create or replace it.
+ */
 export function classifyIntent(text: string): RequestIntent | null {
-  const t = fold(text);
-  if (/\bmeal[\s-]?plan|\bplan (my|the|our)?\s*(meals|food|eating)|\bplan meals\b|\bmeals for (the|this|next) week\b|\bmatarplan|\bmatseðil|\bmatseðl/.test(t)) return 'meal_plan';
-  if (/\b(only|just) (train|lift|go|make it)\b.*\b(this week|once|twice|\d+ times?)|\bthis week\b.*\b(only|just|can'?t|cannot|miss|skip|move)\b|\b(move|swap|reschedule)\b.*\b(session|workout|day)\b/.test(t)) return 'week_adjustment';
-  if (/\b(new|build|make|create|write|design|give me)\b.*\b(program|programme|routine|split|training plan|workout plan)\b|\b(program|programme|routine)\b.*\b(for me|please)\b/.test(t)) return 'program';
-  if (/\brecipes?\b|\bmeal ideas?\b|\bwhat (should|can) i (eat|cook|make)\b|\b(breakfast|lunch|dinner|snack) ideas?\b/.test(t)) return 'recipes';
-  return null;
+  const kind = classifyRequest(text);
+  return kind && REQUEST_INTENTS.includes(kind) ? (kind as RequestIntent) : null;
 }
+export { classifyRequest };
+
+/* ------------------------------------------------------------------ short follow-ups */
+const phrases = (xs: readonly string[]) => xs.map((x) => tokensOf(x)).filter((p) => p.length);
+const FU = IS_VOCAB.follow_up;
+/** Cancel / not now / no — checked first: "Já, en ekki gera það ennþá" is not approval. */
+const NEGATIVE = phrases([...FU.negative, 'bíddu', 'hættu', 'prófaðu ekki', 'reyndu ekki', 'ekki reyna', 'ekki ennþá', 'not now', 'not yet', "don't", 'do not', 'cancel', 'stop', 'wait', 'hold on', 'never mind']);
+/** Affirmatives that are the WHOLE message, or lead into a retry/continue ("Allt í lagi hjá mér" is just "I'm fine"). */
+const AFFIRM = phrases(FU.affirm);
+/** "Try again / now", "go on", and "I turned sharing on": a request to resume, anywhere in a short message. */
+const RESUME = phrases([...FU.retry, ...FU.sharingChanged, 'haltu áfram', 'reyndu aftur', 'prófaðu aftur', 'kveikti á því', 'kveikti á þessu', 'búinn að kveikja', 'búin að kveikja',
+  'búinn að deila', 'búin að deila', 'búið að deila', 'gerðu það', 'gerðu þetta']);
+const startsWith = (t: string[], p: string[]) => p.every((w, k) => t[k] === w);
+const contains = (t: string[], p: string[]) => t.some((_, i) => p.every((w, k) => t[i + k] === w));
 
 /** A short reply that refers back to the previous exchange ("ok", "yes do that", "try now", "go ahead"). */
 export function isFollowUp(text: string): boolean {
   const t = fold(text).replace(/[^a-zæðþ\s']/g, ' ').replace(/\s+/g, ' ').trim();
   if (!t || t.split(' ').length > 8) return false;
+  const w = tokensOf(text);
+  // Negative or cancelling words win over a leading "já" / "ok" (and "nei" anywhere means no).
+  if (w.includes('nei') || w[0] === 'no' || w[0] === 'nope' || NEGATIVE.some((p) => contains(w, p)) || /(?:^| )ekki (?:gera|profa|reyna|nuna)/.test(t)) return false;
+  if (RESUME.some((p) => contains(w, p))) return true;
+  // Icelandic affirmatives: the whole message ("Endilega.", "Já, takk.", "Ókei"), or "já" + anything that isn't negative.
+  const aff = AFFIRM.find((p) => startsWith(w, p));
+  if (aff && (aff.length === w.length || w[0] === 'ja' || w[0] === 'jæja' || (w.length === aff.length + 1 && w[w.length - 1] === 'takk'))) return true;
   return /^(ok|okay|k|yes|yep|yeah|yup|sure|please|go|go ahead|do it|do that|done|shared|again|now|lets go|let's go|lets do it|let's do it|sounds good|perfect|great)\b/.test(t) ||
     /\btry (it )?(again|now)\b|\b(do|make) it\b|\bgo ahead\b|\bdone now\b|\bshared it\b|\bturned it on\b/.test(t) ||
     // Icelandic (folded: accents dropped, æ/ð/þ kept): "já", "já takk", "endilega", "gerðu það", "prófaðu núna", "búið".
@@ -32,12 +60,33 @@ export function isFollowUp(text: string): boolean {
     /(?<![a-zæðþ])(profaðu|reyndu|profa) (aftur|nuna)|(?<![a-zæðþ])gerðu það|(?<![a-zæðþ])(buið|buinn|buin) (að )?(deila|kveikja)|(?<![a-zæðþ])kveikti a/.test(t);
 }
 
-/** The user says they're tired (EN/IS). Tiredness is never treated as a weak reason: see SYSTEM_RULES rule 9. */
+/* ------------------------------------------------------------------ tiredness */
+const FAT = IS_VOCAB.fatigue;
+const FATIGUE_TOKENS = new Set([...FAT.tokens, ...Object.keys(FAT.typographicalAliases), 'lufin', 'lufinn', 'útkeyrð', 'útkeyrður'].map(fold));
+const FATIGUE_PHRASES = phrases([...FAT.phrases, 'litla orku', 'enga orku', 'litla sem enga orku']);
+/** "þreytt á kjúklingi", "leið á þessum mat", "tired of chicken": fed up with something, not low on energy. */
+const BOREDOM = /(?:^| )(?:þreytt[a-zæðþ]* a|leið(?:ur|ar|ir)? a|komin(?:n)? með leið a|komið nog af)(?: |$)|\b(?:tired|sick|bored) of\b|\bfed up with\b/;
+const EN_TIRED = /\b(?:tired|exhausted|wiped(?: out)?|drained|knackered|shattered|worn out|burn(?:t|ed) out|no energy|sleepy|fatigued?|low on energy|slept badly|barely slept)\b/;
+const NEG_BEFORE = /(?:^| )(?:ekki|alls ekki|not|never|isn't|aren't|am not|i'm not|im not)(?: [a-zæðþ']+)?$/;
+
+/**
+ * The user says they're tired (EN/IS), clause by clause: a food-boredom clause ("þreytt á kjúklingi") or a negated one
+ * ("Ég er ekki þreyttur") doesn't count, but another clause in the same message still does ("…og líka orkulaus í dag").
+ * Context alone (night shifts, a baby) isn't tiredness. Tiredness is never treated as a weak reason: see SYSTEM_RULES rule 9.
+ */
 export function mentionsTiredness(text: string): boolean {
-  const t = fold(text);
-  // "tired of chicken" / "þreytt á kjúklingi" means fed up with something, not low on energy.
-  return /\b(?:tired(?! of\b)|exhausted|wiped(?: out)?|drained|knackered|shattered|worn out|burn(?:t|ed) out|no energy|sleepy|fatigued?|low on energy)\b/.test(t) ||
-    /(?<![a-zæðþ])(?:þreytt[a-zæðþ]*(?![a-zæðþ])(?! a\b)|uppgefin|orkulaus|orkulitil|syfjuð|syfjaður|buin a þvi|buinn a þvi|alveg buin|alveg buinn|lufin|lufinn)/.test(t);
+  const parts = fold(text).split(/[.,;:!?\n]+|(?<![a-zæðþ])(?:og|en|and|but)(?![a-zæðþ])/);
+  for (const part of parts) {
+    const c = part.replace(/\s+/g, ' ').trim();
+    if (!c || BOREDOM.test(c)) continue;
+    const w = tokensOf(c);
+    const at = w.findIndex((x) => FATIGUE_TOKENS.has(x) || /^(?:þreytt|orþreytt)/.test(x));
+    if (at >= 0 && !NEG_BEFORE.test(w.slice(Math.max(0, at - 3), at).join(' '))) return true;
+    if (FATIGUE_PHRASES.some((p) => contains(w, p))) return true;
+    const en = EN_TIRED.exec(c);
+    if (en && !NEG_BEFORE.test(c.slice(0, en.index).trimEnd())) return true;
+  }
+  return false;
 }
 
 const BLOCK_RE = /\/coaching\/ai\/settings|\/nutrition\/targets|\[\[open:\/settings|\[\[open:\/onboarding|can['’]t see|cannot see|isn['’]t shared|not shared/i;

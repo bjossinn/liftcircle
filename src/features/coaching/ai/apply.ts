@@ -7,7 +7,8 @@ import { kvGet, kvSet, saveRecord } from '@/db/repo';
 import type { LiftDb } from '@/db/db';
 import { applyProposal, takeOverPlan } from '@/domain/program/proposals';
 import type { Exercise, ID, ISODate, Program } from '@/domain/types';
-import { AI_ACK_QUEUE_KEY, liveActive, STALE_MESSAGE, type QueuedAck } from './model';
+import { t } from '@/i18n';
+import { AI_ACK_QUEUE_KEY, liveActive, type QueuedAck } from './model';
 
 type Respond = (id: ID, accept: boolean, applied?: { programId: ID; version: number }) => Promise<void>;
 
@@ -26,9 +27,9 @@ export async function applyAiProposal(args: {
   switchFromCoach?: boolean;
 }): Promise<AiApplyOutcome> {
   const { proposal, programs, db } = args;
-  if (proposal.authorKind !== 'ai') return { ok: false, reason: 'not_applicable', message: 'This isn’t an AI suggestion.' };
+  if (proposal.authorKind !== 'ai') return { ok: false, reason: 'not_applicable', message: t('ai.proposal.notAi') };
   const res = applyProposal(proposal, programs, { today: args.today, catalog: args.catalog, switchFromCoach: args.switchFromCoach === true });
-  if (!res.ok) return { ok: false, reason: res.reason, message: res.reason === 'stale' ? STALE_MESSAGE : res.message };
+  if (!res.ok) return { ok: false, reason: res.reason, message: res.reason === 'stale' ? t('ai.proposal.stale') : res.message };
   for (const p of res.deactivated) await saveRecord('programs', p, db);
   const saved = await saveRecord('programs', res.program, db);
   const applied = { programId: saved.id, version: saved.currentVersion };

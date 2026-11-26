@@ -7,6 +7,7 @@ import { EQUIPMENT_LABELS, exerciseSubtitle, MUSCLE_LABELS, PATTERN_LABELS, sear
 import { useExercises } from '@/data/catalog';
 import { useFavoriteExercises, useRecentExerciseIds } from '@/features/exercises/useExerciseData';
 import { CustomExerciseForm } from '@/features/exercises/CustomExerciseForm';
+import { useT } from '@/i18n';
 
 /* ------------------------------------------------------------ filters */
 export interface ExerciseFilterValue {
@@ -44,13 +45,15 @@ function ChipSelect<T extends string>({ label, anyLabel, value, options, onChang
 
 /** Horizontally scrolling row of filter chips (muscle / equipment / movement). */
 export function ExerciseFilterBar({ value, onChange, className }: { value: ExerciseFilterValue; onChange: (v: ExerciseFilterValue) => void; className?: string }) {
+  const { t } = useT();
   return (
-    <div role="group" aria-label="Filter exercises" className={cx('flex items-center gap-2 overflow-x-auto -mx-1 px-1 py-1', className)}>
-      <ChipSelect label="Muscle" anyLabel="Any muscle" value={value.muscle} options={MUSCLE_LABELS} onChange={(muscle) => onChange({ ...value, muscle })} />
-      <ChipSelect label="Equipment" anyLabel="Any equipment" value={value.equipment} options={EQUIPMENT_LABELS} onChange={(equipment) => onChange({ ...value, equipment })} />
-      <ChipSelect label="Movement" anyLabel="Any movement" value={value.pattern} options={PATTERN_LABELS} onChange={(pattern) => onChange({ ...value, pattern })} />
+    <div role="group" aria-label={t('workout.picker.filters')} className={cx('flex items-center gap-2 overflow-x-auto -mx-1 px-1 py-1', className)}>
+      <ChipSelect label={t('workout.picker.muscle')} anyLabel={t('workout.picker.anyMuscle')} value={value.muscle} options={MUSCLE_LABELS} onChange={(muscle) => onChange({ ...value, muscle })} />
+      <ChipSelect label={t('workout.picker.equipment')} anyLabel={t('workout.picker.anyEquipment')} value={value.equipment} options={EQUIPMENT_LABELS} onChange={(equipment) => onChange({ ...value, equipment })} />
+      <ChipSelect label={t('workout.picker.movement')} anyLabel={t('workout.picker.anyMovement')} value={value.pattern} options={PATTERN_LABELS} onChange={(pattern) => onChange({ ...value, pattern })} />
       {hasFilters(value) && (
         <Button size="sm" variant="ghost" className="shrink-0 min-h-11" onClick={() => onChange({})}>
+          {/* i18n: no approved Icelandic copy */}
           Clear
         </Button>
       )}
@@ -60,16 +63,18 @@ export function ExerciseFilterBar({ value, onChange, className }: { value: Exerc
 
 /* --------------------------------------------------------------- rows */
 export function ExerciseRowContent({ ex, favorite, right }: { ex: Exercise; favorite?: boolean; right?: ReactNode }) {
+  const { t, language } = useT();
   return (
     <>
       <ExerciseGlyphTile pattern={ex.pattern} />
       <span className="min-w-0 flex-1 text-left">
         <span className="flex items-center gap-1.5">
           <span className="min-w-0 text-[15px] font-medium line-clamp-2 break-words">{ex.name}</span>
-          {favorite && <Star className="size-3.5 shrink-0 fill-current text-accent" aria-label="Favourite" />}
+          {favorite && <Star className="size-3.5 shrink-0 fill-current text-accent" aria-label={t('workout.picker.favourite')} />}
+          {/* i18n: no approved Icelandic copy */}
           {ex.custom && <span className="shrink-0 rounded-full bg-surface-3 px-1.5 text-[11px] text-muted">Custom</span>}
         </span>
-        <span className="block text-xs text-muted truncate mt-0.5">{exerciseSubtitle(ex)}</span>
+        <span className="block text-xs text-muted truncate mt-0.5">{exerciseSubtitle(ex, language)}</span>
       </span>
       {right && <span className="shrink-0 text-muted">{right}</span>}
     </>
@@ -126,14 +131,16 @@ export function ExercisePicker(props: {
   onlyIds?: Set<ID>;
   onlyNote?: string;
 }) {
+  const { t } = useT();
   return (
-    <Sheet open={props.open} onClose={props.onClose} title={props.title ?? 'Choose exercise'} wide>
+    <Sheet open={props.open} onClose={props.onClose} title={props.title ?? t('workout.picker.choose')} wide>
       <PickerBody {...props} />
     </Sheet>
   );
 }
 
 function PickerBody({ onClose, onPick, suggestIds, excludeIds, fits, fitsNote, onlyIds, onlyNote }: { onClose: () => void; onPick: (ex: Exercise) => void; suggestIds?: ID[]; excludeIds?: ID[]; fits?: (ex: Exercise) => boolean; fitsNote?: string; onlyIds?: Set<ID>; onlyNote?: string }) {
+  const { t, tp } = useT();
   const { list: fullList, byId } = useExercises();
   const list = useMemo(() => (onlyIds ? fullList.filter((e) => onlyIds.has(e.id)) : fullList), [fullList, onlyIds]);
   const allowCustom = !onlyIds;
@@ -171,8 +178,8 @@ function PickerBody({ onClose, onPick, suggestIds, excludeIds, fits, fitsNote, o
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted" aria-hidden />
           <Input
             type="search"
-            aria-label="Search exercises"
-            placeholder="Search name, muscle or equipment"
+            aria-label={t('workout.picker.search')}
+            placeholder={t('workout.picker.searchHint')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             enterKeyHint="search"
@@ -183,10 +190,10 @@ function PickerBody({ onClose, onPick, suggestIds, excludeIds, fits, fitsNote, o
         <ExerciseFilterBar value={filters} onChange={setFilters} className="mt-2" />
         {fits && (
           <div className="mt-1 flex items-center gap-2 text-xs text-muted">
-            <span className="flex-1">{showAll ? 'Showing all exercises.' : fitsNote ?? 'Showing exercises that fit your setup.'}</span>
+            <span className="flex-1">{showAll ? t('workout.picker.showingAll') : fitsNote ?? t('workout.picker.showingFits')}</span>
             {(showAll || hiddenCount > 0) && (
               <Button size="sm" variant="ghost" className="shrink-0" aria-pressed={showAll} onClick={() => setShowAll((v) => !v)}>
-                {showAll ? 'Only ones that fit' : 'Show all exercises'}
+                {showAll ? t('workout.picker.onlyFits') : t('workout.picker.showAll')}
               </Button>
             )}
           </div>
@@ -195,16 +202,16 @@ function PickerBody({ onClose, onPick, suggestIds, excludeIds, fits, fitsNote, o
 
       {searching ? (
         results.length ? (
-          <Section title={`${results.length} result${results.length === 1 ? '' : 's'}`}>{results.map((e) => row(e, e.id))}</Section>
+          <Section title={tp('workout.picker.results', results.length)}>{results.map((e) => row(e, e.id))}</Section>
         ) : (
           <EmptyState
             icon={<Search className="size-5" />}
-            title="No matching exercises"
-            body={allowCustom ? 'Try a different word or clear the filters, or add it as your own exercise.' : 'Try a different word or clear the filters.'}
+            title={t('workout.picker.noMatches')}
+            body={allowCustom ? t('workout.picker.noMatchesCreateHint') : t('workout.picker.noMatchesHint')}
             action={
               allowCustom ? (
                 <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>
-                  Create “{query.trim() || 'custom exercise'}”
+                  {t('workout.picker.createNamed', { name: query.trim() || t('workout.picker.customFallback') })}
                 </Button>
               ) : undefined
             }
@@ -212,17 +219,17 @@ function PickerBody({ onClose, onPick, suggestIds, excludeIds, fits, fitsNote, o
         )
       ) : (
         <>
-          {suggested.length > 0 && <Section title="Suggested substitutions">{suggested.map((e) => row(e, `s-${e.id}`))}</Section>}
-          {favourites.length > 0 && <Section title="Favourites">{favourites.map((e) => row(e, `f-${e.id}`))}</Section>}
-          {recentIds === undefined ? <Spinner label="Loading recent exercises" /> : recent.length > 0 && <Section title="Recently used">{recent.map((e) => row(e, `r-${e.id}`))}</Section>}
-          <Section title={restricted ? 'Exercises that fit' : 'All exercises'}>{all.map((e) => row(e, `a-${e.id}`))}</Section>
+          {suggested.length > 0 && <Section title={t('workout.picker.suggested')}>{suggested.map((e) => row(e, `s-${e.id}`))}</Section>}
+          {favourites.length > 0 && <Section title={t('workout.picker.favourites')}>{favourites.map((e) => row(e, `f-${e.id}`))}</Section>}
+          {recentIds === undefined ? <Spinner label={t('workout.picker.loadingRecent')} /> : recent.length > 0 && <Section title={t('workout.picker.recent')}>{recent.map((e) => row(e, `r-${e.id}`))}</Section>}
+          <Section title={restricted ? t('workout.picker.exercisesFit') : t('workout.picker.all')}>{all.map((e) => row(e, `a-${e.id}`))}</Section>
         </>
       )}
 
       {allowCustom ? (
         <div className="mt-4">
           <Button block variant="outline" icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>
-            Create custom exercise
+            {t('workout.picker.create')}
           </Button>
         </div>
       ) : (

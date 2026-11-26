@@ -68,6 +68,7 @@ import SummaryPage from '@/features/train/SummaryPage';
 import { AI_DRAFT_KEY, AI_PENDING_KEY } from '@/features/coaching/ai/model';
 import { AI_ATTACHED_REQUEST_KEY, AI_COACH_REQUEST_KEY, openCoachWith, type CoachRequest } from '@/features/coaching/ai/workoutContext';
 import { applyAdjustment } from '@/features/coaching/ai/sessionAdjustStore';
+import { setLanguage } from '@/i18n';
 import type { SessionAdjustmentAction, WorkoutContext } from '../../supabase/functions/_shared/ai/workout';
 
 /* ---------------------------------------------------------------- harness */
@@ -498,13 +499,77 @@ describe('Coach: contextual requests, the workout card and first-use consent', (
     expect(chip()).toBeNull();
     act(() => root!.unmount());
     el!.remove();
-    await kvSet(AI_DRAFT_KEY, `${GENERATED.replace('Explain this:', 'Quick one:')}`, db()); // edited from the generated text
+    // Edited from the generated text by an older version (no record of which parts were generated): it can't be split
+    // safely, so the user's draft is kept on the device but can't be sent while Training is off.
+    const legacyEdited = `${GENERATED.replace('Explain this:', 'Quick one:')}\nAnd should I deload?`;
+    await kvSet(AI_DRAFT_KEY, legacyEdited, db());
     await kvSet(AI_ATTACHED_REQUEST_KEY, explainReq({ text: GENERATED }), db());
     coach();
     await waitFor(() => expect(text()).toContain('Training sharing is off'));
-    await waitFor(() => expect(composer().value).toBe(''));
-    expect(api.send).not.toHaveBeenCalled();
+    await waitFor(async () => expect(await kvGet(AI_ATTACHED_REQUEST_KEY, db())).toBeNull());
+    expect(composer().value).toBe(legacyEdited); // not wiped
+    expect(chip()).toBeNull();
+    expect(text()).toContain('Training sharing is off, so this workout question can’t be sent.');
+    expect(button('Send').disabled).toBe(true);
+    // Still unsendable after a reload.
+    act(() => root!.unmount());
+    el!.remove();
+    coach();
+    await waitFor(() => expect(composer().value).toBe(legacyEdited));
+    await tick(60);
+    expect(button('Send').disabled).toBe(true);
+    // Once the user clears it, they can write and send again.
+    fireInput(composer(), '');
+    fireInput(composer(), 'unrelated');
+    click(button('Send'));
+    await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1));
+    expect(sendArg()).toMatchObject({ text: 'unrelated' });
+    expect(sendArg().workout).toBeUndefined();
   });
+
+  /* ------------------------------------- PR #23 carry-over P2: an edited generated prompt plus the user's own words */
+  for (const lang of ['en', 'is'] as const) {
+    it(`(a) ${lang}: an edited generated request plus the user's own question — Training off removes only the generated detail`, async () => {
+      setLanguage(lang);
+      try {
+        await seed();
+        await failedPending(); // forces the request into the composer instead of sending it
+        await openCoachWith(db(), (() => undefined) as never, { intent: 'explain', sessionId: 'sess-live', focusId: 'se-bench', shownTarget: 'Add weight → 62.5 kg × 8', userId: 'user-1' });
+        coach();
+        await waitFor(() => expect(chip()).not.toBeNull());
+        const generated = composer().value;
+        const [prefix, replacement, own] =
+          lang === 'is' ? ['Útskýrðu þetta', 'Stutt spurning', '\nÆtti ég frekar að létta mig í dag?'] : ['Explain this', 'Quick one', '\nShould I deload instead?'];
+        expect(generated.startsWith(`${prefix}:`)).toBe(true);
+        expect(generated).toContain('62.5 kg × 8');
+        expect(generated).toContain(BENCH.name);
+        // The user edits the generated prefix, then adds their own question (as typed: one edit at a time).
+        fireInput(composer(), generated.replace(prefix, replacement));
+        fireInput(composer(), `${generated.replace(prefix, replacement)}${own}`);
+        // Training sharing is turned off (in settings), then the Coach is opened again.
+        act(() => root!.unmount());
+        el!.remove();
+        api.getSettings.mockResolvedValue(TRAINING_OFF);
+        coach();
+        await waitFor(() => expect(text()).toContain(lang === 'is' ? 'Ekki er deilt æfingagögnum, svo spurningin um æfinguna var ekki send.' : 'Training sharing is off, so your question about that workout wasn’t sent.'));
+        // The user's own words stay; the generated workout detail (exercise, target) is gone.
+        await waitFor(() => expect(composer().value).toBe(`${replacement}${own}`));
+        expect(await kvGet(AI_DRAFT_KEY, db())).toBe(`${replacement}${own}`);
+        expect(chip()).toBeNull();
+        expect(await kvGet(AI_ATTACHED_REQUEST_KEY, db())).toBeNull();
+        expect(api.send).not.toHaveBeenCalled();
+        // It can be sent now, without any workout detail.
+        click(button(lang === 'is' ? 'Breyta' : 'Edit')); // the earlier unconfirmed message goes back into the composer
+        click(await waitFor(() => button(lang === 'is' ? 'Senda' : 'Send')));
+        await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1));
+        expect(sendArg().text).toContain(`${replacement}${own}`);
+        expect(sendArg().workout).toBeUndefined();
+        expect(JSON.stringify(api.send.mock.calls)).not.toMatch(/62\.5|bench press/i);
+      } finally {
+        setLanguage('en');
+      }
+    });
+  }
 
   it('(b) a failed workout question can’t be retried after Training is turned off: shown as not sendable, Remove only, nothing sent', async () => {
     await seed();

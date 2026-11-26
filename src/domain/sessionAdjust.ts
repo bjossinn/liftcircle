@@ -21,6 +21,7 @@ import type { SessionAdjustmentAction } from '../../supabase/functions/_shared/a
 import type { Exercise, ID, LoggedSet, SessionExercise, WorkoutSession } from './types';
 import * as ops from './sessionOps';
 import { adaptPrescription } from './substitution';
+import { t, tp } from '../i18n';
 
 export interface SessionAdjustmentUndo {
   actionId: string;
@@ -52,9 +53,9 @@ const renumber = (s: WorkoutSession): WorkoutSession => ({ ...s, exercises: s.ex
 
 /** Why this change can't be applied to `session` right now (null = it can). */
 export function adjustmentBlocker(session: WorkoutSession | null | undefined, action: SessionAdjustmentAction): string | null {
-  if (!session || session.deletedAt) return 'This workout is no longer on this device.';
-  if (session.id !== action.sessionId) return 'This change is for a different workout.';
-  if (session.status !== 'active') return 'This workout is already finished, so there’s nothing to change.';
+  if (!session || session.deletedAt) return t('sessionAdjustment.missingSession');
+  if (session.id !== action.sessionId) return t('sessionAdjustment.differentSession');
+  if (session.status !== 'active') return t('sessionAdjustment.alreadyFinished');
   return null;
 }
 
@@ -66,18 +67,18 @@ export function applySessionAdjustment(session: WorkoutSession, action: SessionA
   if (action.change === 'swap') {
     const sw = action.swap;
     const se = sw ? session.exercises.find((e) => e.id === sw.sessionExerciseId) : undefined;
-    if (!sw || !se) return { ok: false, reason: 'That exercise isn’t in this workout any more.' };
-    if (se.exerciseId !== sw.fromExerciseId) return { ok: false, reason: `${sw.fromName} was already changed in this workout.` };
+    if (!sw || !se) return { ok: false, reason: t('sessionAdjustment.exerciseMissing') };
+    if (se.exerciseId !== sw.fromExerciseId) return { ok: false, reason: t('sessionAdjustment.exerciseChanged', { fromName: sw.fromName }) };
     const to = byId.get(sw.toExerciseId);
-    if (!to) return { ok: false, reason: `${sw.toName} isn’t available in this app version.` };
+    if (!to) return { ok: false, reason: t('sessionAdjustment.unavailableExercise', { toName: sw.toName }) };
     const from = byId.get(se.exerciseId);
     const left = pendingWorking(se);
-    if (!left.length) return { ok: false, reason: `Every set of ${sw.fromName} is already done.` };
+    if (!left.length) return { ok: false, reason: t('sessionAdjustment.allSetsDone', { fromName: sw.fromName }) };
     // In place only for an untouched exercise with no safety flag. A "Felt discomfort" flag belongs to the original
     // exercise: it stays on its own row (kept in history, so progression keeps holding it) and never moves to the swap.
     if (!se.sets.some((x) => x.completed) && !se.discomfort) {
       const next = ops.swapExercise(session, se.id, to, from);
-      if (next.exercises.find((e) => e.id === se.id)?.exerciseId !== to.id) return { ok: false, reason: `Couldn’t swap ${sw.fromName} for ${sw.toName} here. Use Swap exercise instead.` };
+      if (next.exercises.find((e) => e.id === se.id)?.exerciseId !== to.id) return { ok: false, reason: t('sessionAdjustment.swapFailed', { fromName: sw.fromName, toName: sw.toName }) };
       undo.replaced = { seId: se.id, before: se, toExerciseId: to.id };
       return { ok: true, session: next, undo };
     }
@@ -128,34 +129,38 @@ export function applySessionAdjustment(session: WorkoutSession, action: SessionA
     if (session.rest?.forExerciseId === se.id) session = ops.skipRest(session);
     changed = true;
   }
-  if (!changed) return { ok: false, reason: 'Your workout changed since this suggestion. Ask again for an updated one.' };
+  if (!changed) return { ok: false, reason: t('sessionAdjustment.staleSuggestion') };
   return { ok: true, session: renumber({ ...session, exercises }), undo };
 }
 
-/** Undo would delete or overwrite the row holding a "Felt discomfort" flag; that safety signal is never erased. */
-export const DISCOMFORT_KEEPS_SWAP = 'You flagged discomfort on the new exercise, so the swap stays (the flag is kept for your next sessions).';
+/**
+ * Undo would delete or overwrite the row holding a "Felt discomfort" flag; that safety signal is never erased.
+ * The English text of that refusal (kept for existing callers); `discomfortKeepsSwap()` is the current language's.
+ */
+export const DISCOMFORT_KEEPS_SWAP = t('sessionAdjustment.discomfortKeepsSwap', undefined, 'en');
+export const discomfortKeepsSwap = () => t('sessionAdjustment.discomfortKeepsSwap');
 
 export function revertSessionAdjustment(session: WorkoutSession, undo: SessionAdjustmentUndo): RevertResult {
-  if (!session || session.deletedAt || session.id !== undo.sessionId) return { ok: false, reason: 'This workout is no longer on this device.' };
-  if (session.status !== 'active') return { ok: false, reason: 'This workout is already finished, so it can’t be undone here. Edit it from your history instead.' };
+  if (!session || session.deletedAt || session.id !== undo.sessionId) return { ok: false, reason: t('sessionAdjustment.missingSession') };
+  if (session.status !== 'active') return { ok: false, reason: t('sessionAdjustment.finishedCannotUndo') };
   let exercises = [...session.exercises];
 
   // Check everything first, so Undo either restores all of it or nothing.
   for (const r of undo.removedSets) {
     const cur = exercises.find((e) => e.id === r.seId);
-    if (cur && cur.exerciseId !== r.exerciseId) return { ok: false, reason: 'That exercise was swapped since, so this change can’t be undone. Adjust the sets yourself.' };
+    if (cur && cur.exerciseId !== r.exerciseId) return { ok: false, reason: t('sessionAdjustment.swappedCannotUndo') };
   }
   if (undo.replaced) {
     const cur = exercises.find((e) => e.id === undo.replaced!.seId);
-    if (!cur) return { ok: false, reason: 'That exercise was removed from the workout since.' };
-    if (cur.exerciseId !== undo.replaced.toExerciseId) return { ok: false, reason: 'That exercise was changed again since, so this swap can’t be undone.' };
-    if (cur.sets.some((x) => x.completed)) return { ok: false, reason: 'You’ve logged sets on the new exercise, so the swap stays.' };
-    if (cur.discomfort) return { ok: false, reason: DISCOMFORT_KEEPS_SWAP };
+    if (!cur) return { ok: false, reason: t('sessionAdjustment.removedCannotUndo') };
+    if (cur.exerciseId !== undo.replaced.toExerciseId) return { ok: false, reason: t('sessionAdjustment.changedAgainCannotUndo') };
+    if (cur.sets.some((x) => x.completed)) return { ok: false, reason: t('sessionAdjustment.loggedKeepsSwap') };
+    if (cur.discomfort) return { ok: false, reason: discomfortKeepsSwap() };
   }
   if (undo.addedSeId) {
     const added = exercises.find((e) => e.id === undo.addedSeId);
-    if (added?.sets.some((x) => x.completed)) return { ok: false, reason: 'You’ve logged sets on the new exercise, so the swap stays.' };
-    if (added?.discomfort) return { ok: false, reason: DISCOMFORT_KEEPS_SWAP };
+    if (added?.sets.some((x) => x.completed)) return { ok: false, reason: t('sessionAdjustment.loggedKeepsSwap') };
+    if (added?.discomfort) return { ok: false, reason: discomfortKeepsSwap() };
   }
 
   if (undo.replaced) exercises = exercises.map((e) => (e.id === undo.replaced!.seId ? { ...undo.replaced!.before, order: e.order } : e));
@@ -177,11 +182,31 @@ export function revertSessionAdjustment(session: WorkoutSession, undo: SessionAd
   return { ok: true, session: renumber({ ...session, exercises }) };
 }
 
+/**
+ * One plain-language change line, as data (exercise names are the plan's own text, never translated). Stored with an
+ * applied change so the logger's banner can show it in whatever language is current later.
+ */
+export type AdjustmentLine =
+  | { kind: 'swap'; fromName: string; toName: string }
+  | { kind: 'skip'; exercise: string }
+  | { kind: 'fewerSets'; exercise: string; count: number };
+
+export function adjustmentLineItems(action: SessionAdjustmentAction): AdjustmentLine[] {
+  if (action.change === 'swap' && action.swap) return [{ kind: 'swap', fromName: action.swap.fromName, toName: action.swap.toName }];
+  return [
+    ...action.dropExercises.map((d): AdjustmentLine => ({ kind: 'skip', exercise: d.name })),
+    ...action.removeSets.map((r): AdjustmentLine => ({ kind: 'fewerSets', exercise: r.name, count: r.count })),
+  ];
+}
+
+/** One change line in the current language. */
+export function adjustmentLineText(line: AdjustmentLine): string {
+  if (line.kind === 'swap') return t('sessionAdjustment.swapLine', { fromName: line.fromName, toName: line.toName });
+  if (line.kind === 'skip') return t('sessionAdjustment.skipLine', { exercise: line.exercise });
+  return tp('sessionAdjustment.fewerSets', line.count, { exercise: line.exercise });
+}
+
 /** Plain-language lines for the preview card ("What changes today"). */
 export function adjustmentLines(action: SessionAdjustmentAction): string[] {
-  if (action.change === 'swap' && action.swap) return [`${action.swap.fromName} → ${action.swap.toName}`];
-  return [
-    ...action.dropExercises.map((d) => `Skip ${d.name}`),
-    ...action.removeSets.map((r) => `${r.name}: ${r.count} fewer set${r.count === 1 ? '' : 's'}`),
-  ];
+  return adjustmentLineItems(action).map(adjustmentLineText);
 }

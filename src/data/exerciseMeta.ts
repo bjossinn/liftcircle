@@ -1,103 +1,67 @@
 import type {
   Difficulty, Equipment, Exercise, ExerciseCategory, LimitationArea, LoadConvention, MovementPattern, MuscleGroup, TrackingType,
 } from '@/domain/types';
+import { getLanguage, t, tKey, type Language, type MessageKey } from '@/i18n';
+import { LANGUAGES } from '../../supabase/functions/_shared/i18n/core';
 
-export const MUSCLE_LABELS: Record<MuscleGroup, string> = {
-  chest: 'Chest',
-  upper_back: 'Upper back',
-  lats: 'Lats',
-  shoulders: 'Shoulders',
-  rear_delts: 'Rear delts',
-  biceps: 'Biceps',
-  triceps: 'Triceps',
-  forearms: 'Forearms',
-  quads: 'Quads',
-  hamstrings: 'Hamstrings',
-  glutes: 'Glutes',
-  calves: 'Calves',
-  adductors: 'Adductors',
-  abs: 'Abs',
-  obliques: 'Obliques',
-  lower_back: 'Lower back',
-  full_body: 'Full body',
-  cardio: 'Cardio',
-};
+/*
+ * Display labels for catalog metadata. Each record reads the approved dictionary (workout.meta.*) in the app's CURRENT
+ * language on every lookup, so existing `MUSCLE_LABELS[m]` callers render Icelandic when the UI is Icelandic and the
+ * same English as before otherwise. Keys (enum values) never change. Use the *Label(value, lang) functions to ask for
+ * a specific language.
+ */
+type MetaGroup = 'muscle' | 'equipment' | 'pattern' | 'tracking' | 'load' | 'category' | 'difficulty' | 'limitation';
 
-export const EQUIPMENT_LABELS: Record<Equipment, string> = {
-  barbell: 'Barbell',
-  rack: 'Rack',
-  bench: 'Bench',
-  dumbbell: 'Dumbbells',
-  kettlebell: 'Kettlebell',
-  machine: 'Machine',
-  cable: 'Cable',
-  band: 'Band',
-  bodyweight: 'Bodyweight',
-  pullup_bar: 'Pull-up bar',
-  dip_station: 'Dip station',
-  ez_bar: 'EZ bar',
-  smith: 'Smith machine',
-  cardio_machine: 'Cardio machine',
-};
+const metaKey = (group: MetaGroup, value: string | number) => `workout.meta.${group}.${value}` as MessageKey;
 
-export const PATTERN_LABELS: Record<MovementPattern, string> = {
-  squat: 'Squat',
-  lunge: 'Lunge',
-  hinge: 'Hinge',
-  horizontal_push: 'Horizontal push',
-  vertical_push: 'Vertical push',
-  horizontal_pull: 'Horizontal pull',
-  vertical_pull: 'Vertical pull',
-  trunk: 'Core',
-  carry: 'Carry',
-  isolation_upper: 'Upper-body isolation',
-  isolation_lower: 'Lower-body isolation',
-  conditioning: 'Conditioning',
-  mobility: 'Mobility',
-};
+/** Label of one metadata value in `lang` (default: the current language). Unknown values are returned as given. */
+export function metaLabel(group: MetaGroup, value: string | number, lang: Language = getLanguage()): string {
+  return tKey(metaKey(group, value), String(value), undefined, lang);
+}
 
-export const TRACKING_LABELS: Record<TrackingType, string> = {
-  weight_reps: 'Weight × reps',
-  reps: 'Reps only',
-  bodyweight_plus: 'Bodyweight + added load',
-  assisted: 'Assisted bodyweight',
-  duration: 'Duration',
-  distance_time: 'Distance / time',
-};
+function liveLabels<K extends string | number>(group: MetaGroup, values: readonly K[]): Record<K, string> {
+  const o = {} as Record<K, string>;
+  for (const v of values) Object.defineProperty(o, v, { enumerable: true, get: () => metaLabel(group, v) });
+  return Object.freeze(o);
+}
 
-export const LOAD_LABELS: Record<LoadConvention, string> = {
-  total: 'Total weight',
-  per_hand: 'Per hand',
-  stack: 'Machine / cable stack',
-  added: 'Added load',
-  assistance: 'Assistance',
-  none: 'No load',
-};
+export const MUSCLE_LABELS: Record<MuscleGroup, string> = liveLabels<MuscleGroup>('muscle', [
+  'chest', 'upper_back', 'lats', 'shoulders', 'rear_delts', 'biceps', 'triceps', 'forearms', 'quads', 'hamstrings', 'glutes',
+  'calves', 'adductors', 'abs', 'obliques', 'lower_back', 'full_body', 'cardio',
+]);
 
-export const CATEGORY_LABELS: Record<ExerciseCategory, string> = {
-  compound: 'Compound',
-  isolation: 'Isolation',
-  core: 'Core',
-  cardio: 'Cardio',
-  mobility: 'Mobility',
-};
+export const EQUIPMENT_LABELS: Record<Equipment, string> = liveLabels<Equipment>('equipment', [
+  'barbell', 'rack', 'bench', 'dumbbell', 'kettlebell', 'machine', 'cable', 'band', 'bodyweight', 'pullup_bar', 'dip_station',
+  'ez_bar', 'smith', 'cardio_machine',
+]);
 
-export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
-  1: 'Beginner-friendly',
-  2: 'Intermediate',
-  3: 'Technically demanding',
-};
+export const PATTERN_LABELS: Record<MovementPattern, string> = liveLabels<MovementPattern>('pattern', [
+  'squat', 'lunge', 'hinge', 'horizontal_push', 'vertical_push', 'horizontal_pull', 'vertical_pull', 'trunk', 'carry',
+  'isolation_upper', 'isolation_lower', 'conditioning', 'mobility',
+]);
 
-export const LIMITATION_LABELS: Record<LimitationArea, string> = {
-  knee: 'Knees',
-  shoulder: 'Shoulders',
-  lower_back: 'Lower back',
-  hip: 'Hips',
-  wrist: 'Wrists',
-  elbow: 'Elbows',
-  neck: 'Neck',
-  ankle: 'Ankles',
-};
+export const TRACKING_LABELS: Record<TrackingType, string> = liveLabels<TrackingType>('tracking', [
+  'weight_reps', 'reps', 'bodyweight_plus', 'assisted', 'duration', 'distance_time',
+]);
+
+export const LOAD_LABELS: Record<LoadConvention, string> = liveLabels<LoadConvention>('load', ['total', 'per_hand', 'stack', 'added', 'assistance', 'none']);
+
+export const CATEGORY_LABELS: Record<ExerciseCategory, string> = liveLabels<ExerciseCategory>('category', ['compound', 'isolation', 'core', 'cardio', 'mobility']);
+
+export const DIFFICULTY_LABELS: Record<Difficulty, string> = liveLabels<Difficulty>('difficulty', [1, 2, 3]);
+
+export const LIMITATION_LABELS: Record<LimitationArea, string> = liveLabels<LimitationArea>('limitation', [
+  'knee', 'shoulder', 'lower_back', 'hip', 'wrist', 'elbow', 'neck', 'ankle',
+]);
+
+export const muscleLabel = (m: MuscleGroup, lang?: Language) => metaLabel('muscle', m, lang);
+export const equipmentLabel = (e: Equipment, lang?: Language) => metaLabel('equipment', e, lang);
+export const patternLabel = (p: MovementPattern, lang?: Language) => metaLabel('pattern', p, lang);
+export const trackingLabel = (x: TrackingType, lang?: Language) => metaLabel('tracking', x, lang);
+export const loadLabel = (l: LoadConvention, lang?: Language) => metaLabel('load', l, lang);
+export const categoryLabel = (c: ExerciseCategory, lang?: Language) => metaLabel('category', c, lang);
+export const difficultyLabel = (d: Difficulty, lang?: Language) => metaLabel('difficulty', d, lang);
+export const limitationLabel = (l: LimitationArea, lang?: Language) => metaLabel('limitation', l, lang);
 
 /** Load conventions that make sense for each tracking type (first = default). */
 export const LOADS_FOR_TRACKING: Record<TrackingType, LoadConvention[]> = {
@@ -125,55 +89,64 @@ export function defaultIncrement(load: LoadConvention): { kg: number; lb: number
   }
 }
 
-function implementWord(ex: Exercise): string {
-  if (ex.equipment.includes('kettlebell')) return 'kettlebell';
-  if (ex.equipment.includes('dumbbell')) return 'dumbbell';
-  return 'implement';
+type Implement = 'Dumbbell' | 'Kettlebell' | 'Implement';
+function implementOf(ex: Exercise): Implement {
+  if (ex.equipment.includes('kettlebell')) return 'Kettlebell';
+  if (ex.equipment.includes('dumbbell')) return 'Dumbbell';
+  return 'Implement';
 }
+const PER_HAND_PAIR: Record<Implement, MessageKey> = {
+  Dumbbell: 'workout.loadNote.perHandDumbbells',
+  Kettlebell: 'workout.loadNote.perHandKettlebells',
+  Implement: 'workout.loadNote.perHandImplement',
+};
 
 /**
- * Plain-language explanation of what the entered load and rep numbers mean.
- * Returns null when there is nothing worth explaining.
+ * Plain-language explanation of what the entered load and rep numbers mean, in `lang` (default: the current language).
+ * Complete approved sentences per equipment (no translated noun spliced into a template). Null when there is nothing
+ * worth explaining.
  */
-export function loadConventionNote(ex: Exercise): string | null {
-  const parts: string[] = [];
-  const w = implementWord(ex);
+export function loadConventionNote(ex: Exercise, lang: Language = getLanguage()): string | null {
+  const keys: MessageKey[] = [];
+  const w = implementOf(ex);
   switch (ex.load) {
     case 'per_hand':
-      if ((ex.implements ?? 1) === 2) parts.push(`${cap(w)} weight is per hand. Enter one ${w}, not the pair.`);
-      else parts.push(`Enter the weight of the single ${w} you hold.`);
+      keys.push((ex.implements ?? 1) === 2 ? PER_HAND_PAIR[w] : (`workout.loadNote.single${w}` as MessageKey));
       break;
     case 'total':
-      if (ex.equipment.includes('barbell') || ex.equipment.includes('ez_bar') || ex.equipment.includes('smith'))
-        parts.push('Enter the total weight including the bar.');
-      else parts.push(`Enter the weight of the ${w}.`);
+      if (ex.equipment.includes('barbell') || ex.equipment.includes('ez_bar') || ex.equipment.includes('smith')) keys.push('workout.loadNote.includingBar');
+      else keys.push(`workout.loadNote.total${w}` as MessageKey);
       break;
     case 'stack':
-      parts.push('Weight is the machine or cable stack setting. It isn’t comparable with free weights or other machines.');
+      keys.push('workout.loadNote.machine');
       break;
     case 'added':
-      parts.push('Enter only the added weight (belt, vest or dumbbell), not your bodyweight. Leave it at 0 for bodyweight sets.');
+      keys.push('workout.loadNote.added');
       break;
     case 'assistance':
-      parts.push('Enter the assistance setting. Less assistance means you’re getting stronger.');
+      keys.push('workout.loadNote.assistance');
       break;
     case 'none':
-      if (ex.equipment.includes('band')) parts.push('Band tension isn’t counted as load. Note which band you used.');
+      if (ex.equipment.includes('band')) keys.push('workout.loadNote.band');
       break;
   }
-  if (ex.tracking === 'duration') parts.push(ex.unilateral ? 'Time is per side.' : 'Log the time for each set.');
-  else if (ex.tracking === 'distance_time') parts.push(ex.unilateral ? 'Log distance and/or time per side.' : 'Log distance and/or time.');
-  else if (ex.unilateral) parts.push('Reps are per side.');
-  return parts.length ? parts.join(' ') : null;
+  if (ex.tracking === 'duration') keys.push(ex.unilateral ? 'workout.loadNote.timePerSide' : 'workout.loadNote.timePerSet');
+  else if (ex.tracking === 'distance_time') keys.push(ex.unilateral ? 'workout.loadNote.distanceTimePerSide' : 'workout.loadNote.distanceTime');
+  else if (ex.unilateral) keys.push('workout.loadNote.repsPerSide');
+  return keys.length ? keys.map((k) => t(k, undefined, lang)).join(' ') : null;
 }
-
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /* ------------------------------------------------------------- search */
 
-/** Lowercase, strip diacritics, unify punctuation to spaces. */
+/**
+ * Lowercase, strip diacritics, unify punctuation to spaces. Icelandic letters without a decomposition are folded
+ * first (þ → th, ð → d, æ → ae) so "þríhöfði" and "hnébeygja" are searchable; English text is unaffected.
+ */
 export function normalizeText(s: string): string {
   return s
+    .replace(/[þÞ]/g, 'th')
+    .replace(/[ðÐ]/g, 'd')
+    .replace(/[æÆ]/g, 'ae')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
@@ -191,6 +164,27 @@ interface Indexed {
   pattern: string[];
 }
 
+/**
+ * Everyday Icelandic words for a muscle that the dictionary supplies as limitation labels ("Axlir" for the shoulders,
+ * "Mjóbak" for the lower back). Used only as extra search terms.
+ */
+const MUSCLE_SEARCH_EXTRA: Partial<Record<MuscleGroup, LimitationArea>> = { shoulders: 'shoulder', lower_back: 'lower_back' };
+
+/**
+ * Search terms for one metadata value: the label in EVERY app language plus the raw enum value, so English aliases
+ * keep working in Icelandic and Icelandic words ("axlir", "teygja", "hnébeygja") find the English catalog. Catalog
+ * exercise names are never translated.
+ */
+function terms(group: MetaGroup, value: string): string[] {
+  const out = new Set<string>([normalizeText(value)]);
+  for (const lang of LANGUAGES) out.add(normalizeText(metaLabel(group, value, lang)));
+  if (group === 'muscle') {
+    const extra = MUSCLE_SEARCH_EXTRA[value as MuscleGroup];
+    if (extra) for (const lang of LANGUAGES) out.add(normalizeText(metaLabel('limitation', extra, lang)));
+  }
+  return [...out];
+}
+
 const indexCache = new WeakMap<Exercise, Indexed>();
 function indexOf(ex: Exercise): Indexed {
   let ix = indexCache.get(ex);
@@ -198,10 +192,10 @@ function indexOf(ex: Exercise): Indexed {
     ix = {
       name: normalizeText(ex.name),
       aliases: ex.aliases.map(normalizeText),
-      primary: ex.primaryMuscles.flatMap((m) => [normalizeText(MUSCLE_LABELS[m] ?? m), normalizeText(m)]),
-      secondary: ex.secondaryMuscles.flatMap((m) => [normalizeText(MUSCLE_LABELS[m] ?? m), normalizeText(m)]),
-      equipment: ex.equipment.flatMap((e) => [normalizeText(EQUIPMENT_LABELS[e] ?? e), normalizeText(e)]),
-      pattern: [normalizeText(PATTERN_LABELS[ex.pattern] ?? ex.pattern), normalizeText(ex.pattern), normalizeText(CATEGORY_LABELS[ex.category] ?? ex.category)],
+      primary: ex.primaryMuscles.flatMap((m) => terms('muscle', m)),
+      secondary: ex.secondaryMuscles.flatMap((m) => terms('muscle', m)),
+      equipment: ex.equipment.flatMap((e) => terms('equipment', e)),
+      pattern: [...terms('pattern', ex.pattern), ...terms('category', ex.category)],
     };
     indexCache.set(ex, ix);
   }
@@ -287,9 +281,9 @@ export function searchExercises(
   return scored.map((s) => s.ex);
 }
 
-/** Short one-line description used in lists: "Chest, triceps · Barbell, bench, rack". */
-export function exerciseSubtitle(ex: Exercise): string {
-  const muscles = ex.primaryMuscles.map((m) => MUSCLE_LABELS[m]).join(', ');
-  const eq = ex.equipment.map((e) => EQUIPMENT_LABELS[e]).join(', ');
+/** Short one-line description used in lists: "Chest, triceps · Barbell, bench, rack" (labels in `lang`). */
+export function exerciseSubtitle(ex: Exercise, lang: Language = getLanguage()): string {
+  const muscles = ex.primaryMuscles.map((m) => muscleLabel(m, lang)).join(', ');
+  const eq = ex.equipment.map((e) => equipmentLabel(e, lang)).join(', ');
   return [muscles, eq].filter(Boolean).join(' · ');
 }

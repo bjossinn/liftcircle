@@ -13,6 +13,7 @@ import { AccessNotice, SnapshotView, useSocialAccess } from './common';
 import { AUDIENCE_OPTIONS, CAPTION_MAX } from './PostCard';
 import { PhotoPicker, usePhotoPicker } from './PhotoPicker';
 import { isFeatureEnabled } from '@/config/featureFlags';
+import { useT } from '@/i18n';
 
 type Phase = 'edit' | 'publishing' | 'failed' | 'posted' | 'queued';
 
@@ -23,6 +24,7 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
   const { access } = useSocialAccess();
   const toast = useToast();
   const { byId } = useExercises();
+  const { t } = useT();
 
   const [postId, setPostId] = useState<ID>(() => uuid());
   const [fields, setFields] = useState<ShareFields>(() => ({ ...settings.social.autoShare.fields }));
@@ -50,7 +52,7 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
   }, [session, activity, fields, byId, settings.units.weight, settings.units.distance, records]);
 
   if (access === 'personal' || access === 'guest' || access === 'loading') {
-    return <AccessNotice access={access} guestTitle="Share with friends" />;
+    return <AccessNotice access={access} guestTitle={t('workout.share.friends')} />;
   }
 
   const setField = (k: keyof ShareFields) => (v: boolean) => setFields((f) => ({ ...f, [k]: v, ...(k === 'exerciseNames' && !v ? { weightsReps: false } : {}) }));
@@ -58,25 +60,25 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
   const canUploadNow = auth.status === 'signed_in' && auth.userId === db.accountKey && online;
   const empty = kind === 'text' && !caption.trim() && picker.photos.length === 0;
   const blockedReason = picker.processing
-    ? 'Preparing photos…'
+    ? t('workout.share.preparingPhotos')
     : picker.hasErrors
-      ? 'Remove the photos that couldn’t be added.'
+      ? t('workout.share.removeFailedPhotos')
       : empty
-        ? 'Write something or add a photo.'
+        ? t('workout.share.emptyPost')
         : null;
 
   const finishCheck = async () => {
     const r = await db.pendingPosts.get(postId);
     if (cancelled.current) return;
     if (!r) {
-      toast.show(audience === 'friends' ? 'Posted to your friends' : 'Posted: only you can see it', { tone: 'success' });
+      toast.show(audience === 'friends' ? t('workout.share.postedFriends') : t('workout.share.postedPrivate'), { tone: 'success' });
       setPhase('posted');
       onDone?.(postId);
     } else if (r.status === 'error') {
-      setFailure(r.error ?? 'The upload didn’t finish.');
+      setFailure(r.error ?? t('workout.share.uploadIncomplete'));
       setPhase('failed');
     } else {
-      toast.show('Saved. Waiting to upload: it will post automatically.', { tone: 'info' });
+      toast.show(t('workout.share.queuedAuto'), { tone: 'info' });
       setPhase('queued');
       onDone?.(null);
     }
@@ -109,12 +111,12 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
       );
     } catch (e) {
       setPhase('edit');
-      toast.show(friendlyError(e, 'Couldn’t save your post on this device.'), { tone: 'error' });
+      toast.show(friendlyError(e, t('workout.share.saveFailed')), { tone: 'error' });
       return;
     }
     if (!canUploadNow) {
       toast.show(
-        online ? 'Saved. Waiting to upload, it will post after you sign in again.' : 'Saved. Waiting to upload, it will post when you’re back online.',
+        online ? t('workout.share.queuedSignIn') : t('workout.share.queuedOnline'),
         { tone: 'info' },
       );
       setPhase('queued');
@@ -138,62 +140,62 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
     await cancelPendingPost(postId, db);
     setPostId(uuid()); // a fresh id for any new attempt
     setPhase('edit');
-    toast.show('Upload cancelled. Nothing was posted.');
+    toast.show(t('workout.share.cancelled'));
   };
 
   const toggles =
     kind === 'workout' ? (
       <>
-        <Toggle label="Duration" checked={fields.duration} onChange={setField('duration')} disabled={busy} />
-        <Toggle label="Exercise names" checked={fields.exerciseNames} onChange={setField('exerciseNames')} disabled={busy} />
+        <Toggle label={t('workout.share.duration')} checked={fields.duration} onChange={setField('duration')} disabled={busy} />
+        <Toggle label={t('workout.share.exerciseNames')} checked={fields.exerciseNames} onChange={setField('exerciseNames')} disabled={busy} />
         <Toggle
-          label="Weights and reps"
-          description={fields.exerciseNames ? undefined : 'Needs exercise names'}
+          label={t('workout.share.weightsReps')}
+          description={fields.exerciseNames ? undefined : t('workout.share.needsExerciseNames')}
           checked={fields.weightsReps && fields.exerciseNames}
           onChange={setField('weightsReps')}
           disabled={busy || !fields.exerciseNames}
         />
-        <Toggle label="Volume" description="Total free-weight load lifted" checked={fields.volume} onChange={setField('volume')} disabled={busy} />
-        {hasRecords && <Toggle label="Records" checked={fields.records} onChange={setField('records')} disabled={busy} />}
+        <Toggle label={t('workout.share.volume')} description={t('workout.share.volumeDescription')} checked={fields.volume} onChange={setField('volume')} disabled={busy} />
+        {hasRecords && <Toggle label={t('workout.share.records')} checked={fields.records} onChange={setField('records')} disabled={busy} />}
       </>
     ) : kind === 'activity' ? (
       <>
-        <Toggle label="Duration" checked={fields.duration} onChange={setField('duration')} disabled={busy} />
-        <Toggle label="Distance" description="Pace is shown when duration is shared too" checked={fields.volume} onChange={setField('volume')} disabled={busy} />
-        {hasRecords && <Toggle label="Records" checked={fields.records} onChange={setField('records')} disabled={busy} />}
+        <Toggle label={t('workout.share.duration')} checked={fields.duration} onChange={setField('duration')} disabled={busy} />
+        <Toggle label={t('workout.share.distance')} description={t('workout.share.distanceDescription')} checked={fields.volume} onChange={setField('volume')} disabled={busy} />
+        {hasRecords && <Toggle label={t('workout.share.records')} checked={fields.records} onChange={setField('records')} disabled={busy} />}
       </>
     ) : null;
 
   return (
     <div className="flex flex-col">
-      {access === 'offline' && <Notice className="mb-3">You’re offline. Your post will wait on this device and upload when you’re back online.</Notice>}
-      {access === 'expired' && <Notice className="mb-3">Your session has expired. Your post will wait on this device and upload after you sign in again.</Notice>}
+      {access === 'offline' && <Notice className="mb-3">{t('workout.share.offline')}</Notice>}
+      {access === 'expired' && <Notice className="mb-3">{t('workout.share.expired')}</Notice>}
 
       {snapshot && (
         <>
-          <SectionTitle>What to include</SectionTitle>
+          <SectionTitle>{t('workout.share.include')}</SectionTitle>
           <Card className="px-4 py-1">{toggles}</Card>
-          <p className="text-xs text-muted mt-2 px-1">Only what you choose is copied into the post. The rest of your workout history isn’t posted.</p>
+          <p className="text-xs text-muted mt-2 px-1">{t('workout.share.privacy')}</p>
         </>
       )}
 
-      <SectionTitle>Caption</SectionTitle>
+      <SectionTitle>{t('workout.share.caption')}</SectionTitle>
       <Textarea
-        aria-label="Caption"
+        aria-label={t('workout.share.caption')}
         value={caption}
         maxLength={CAPTION_MAX}
         onChange={(e) => setCaption(e.target.value)}
-        placeholder={kind === 'text' ? 'What’s on your mind?' : 'How did it go?'}
+        placeholder={kind === 'text' ? t('workout.share.captionPlaceholder') : t('workout.share.workoutCaptionPlaceholder')}
         disabled={busy}
         hint={caption.length > CAPTION_MAX - 200 ? `${caption.length}/${CAPTION_MAX}` : undefined}
       />
 
-      <SectionTitle>Photos</SectionTitle>
+      <SectionTitle>{t('workout.share.photos')}</SectionTitle>
       <PhotoPicker picker={picker} disabled={busy} />
 
-      <SectionTitle>Who can see this</SectionTitle>
+      <SectionTitle>{t('workout.share.visibility')}</SectionTitle>
       <Segmented
-        label="Audience"
+        label={t('workout.share.audience')}
         value={audience}
         onChange={(v) => {
           setTouchedAudience(true);
@@ -201,11 +203,11 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
         }}
         options={AUDIENCE_OPTIONS}
       />
-      <p className="text-xs text-muted mt-2 px-1">{audience === 'friends' ? 'Your friends can see it, like it and comment.' : 'Only you can see it. You can change this later.'}</p>
+      <p className="text-xs text-muted mt-2 px-1">{audience === 'friends' ? t('workout.share.friendsHint') : t('workout.share.privateHint')}</p>
 
       {snapshot && (
         <>
-          <SectionTitle>Preview</SectionTitle>
+          <SectionTitle>{t('workout.share.preview')}</SectionTitle>
           <SnapshotView snapshot={snapshot} />
         </>
       )}
@@ -215,14 +217,14 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
           <Card className="p-4">
             <div className="flex items-center gap-2 text-sm font-medium">
               <CloudUpload className="size-4 text-accent animate-pulse" aria-hidden />
-              {row?.status === 'uploading' ? 'Uploading…' : 'Waiting to upload'}
+              {row?.status === 'uploading' ? t('workout.share.uploading') : t('workout.share.waitingUpload')}
             </div>
             <div className="mt-2">
-              <ProgressBar value={Math.round((progress ?? 0) * 100)} max={100} label="Upload progress" />
+              <ProgressBar value={Math.round((progress ?? 0) * 100)} max={100} label={t('workout.share.uploadProgress')} />
             </div>
-            <p className="text-xs text-muted mt-2">Not posted yet. It appears once the upload finishes.</p>
+            <p className="text-xs text-muted mt-2">{t('workout.share.notPostedYet')}</p>
             <Button className="mt-3" variant="ghost" size="sm" onClick={cancelUpload}>
-              Cancel upload
+              {t('workout.share.cancelUpload')}
             </Button>
           </Card>
         )}
@@ -230,19 +232,19 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
         {phase === 'failed' && (
           <Notice tone="danger">
             <p className="flex items-center gap-2 font-medium">
-              <AlertTriangle className="size-4 text-danger" aria-hidden /> Upload failed: not posted
+              <AlertTriangle className="size-4 text-danger" aria-hidden /> {t('workout.share.uploadFailed')}
             </p>
             {failure && <p className="mt-1 text-muted">{failure}</p>}
-            <p className="mt-1 text-muted">Your workout is saved. The post is kept on this device so you can try again.</p>
+            <p className="mt-1 text-muted">{t('workout.share.workoutSafe')}</p>
             <div className="flex flex-wrap gap-2 mt-3">
               <Button variant="primary" size="sm" onClick={retry}>
-                Retry
+                {t('workout.share.retry')}
               </Button>
               <Button size="sm" onClick={() => onDone?.(null)}>
-                Keep for later
+                {t('workout.share.keepLater')}
               </Button>
               <Button variant="ghost" size="sm" onClick={cancelUpload}>
-                Discard post
+                {t('workout.share.discardPost')}
               </Button>
             </div>
           </Notice>
@@ -252,17 +254,17 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
           <>
             {blockedReason && picker.photos.length > 0 && <p className="text-xs text-muted text-center">{blockedReason}</p>}
             <Button variant="primary" size="lg" block onClick={publish} disabled={!!blockedReason} icon={<Send className="size-5" />}>
-              {canUploadNow ? 'Share' : 'Save and upload later'}
+              {canUploadNow ? t('workout.share.share') : t('workout.share.saveUploadLater')}
             </Button>
             {onDone && (
               <Button variant="ghost" block onClick={() => onDone(null)}>
-                Not now
+                {t('workout.share.notNow')}
               </Button>
             )}
           </>
         )}
-        {phase === 'posted' && <Notice tone="accent">{isFeatureEnabled('socialFeed') ? 'Posted. You can see it in your feed.' : 'Posted. You can see it on your profile.'}</Notice>}
-        {phase === 'queued' && <Notice>Saved on this device. Waiting to upload. It isn’t visible to anyone yet.</Notice>}
+        {phase === 'posted' && <Notice tone="accent">{isFeatureEnabled('socialFeed') ? t('workout.share.postedFeed') : t('workout.share.postedProfile')}</Notice>}
+        {phase === 'queued' && <Notice>{t('workout.share.queuedPrivate')}</Notice>}
       </div>
     </div>
   );

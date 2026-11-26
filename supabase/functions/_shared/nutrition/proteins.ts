@@ -10,6 +10,8 @@ import type { Ingredient, ProteinGroup, ProteinPrefs, Recipe } from './types.ts'
 import { catalog } from './catalog.ts';
 // @ts-ignore see above
 import type { IngredientIndex, Swap } from './recipes.ts';
+// @ts-ignore see above
+import { listText, sharedT, type Language } from '../i18n/core.ts';
 
 /**
  * Swap target meaning "left out" (1.0.3): `{ from: 'blueberries', to: LEFT_OUT }`. Honoured only for an OPTIONAL
@@ -195,8 +197,15 @@ export function likedBonus(recipe: Recipe, liked: ProteinGroup[] | undefined, by
 export const LIKED_MAIN_BONUS = 0.45;
 export const LIKED_FEATURED_BONUS = 0.2;
 
-/** "prawns", "pork & ham and lamb": excluded groups in lower case for sentences. */
-export function proteinListText(groups: ProteinGroup[]): string {
+/** "Salmon & oily fish" / "Lax og feitur fiskur" (unknown groups show as given). */
+export function proteinGroupLabel(g: ProteinGroup, lang: Language = 'en'): string {
+  const tr = sharedT(lang);
+  return tr.has(`aiServer.protein.${g}`) ? tr.t(`aiServer.protein.${g}` as never) : PROTEIN_GROUP_LABELS[g] ?? g;
+}
+
+/** "prawns", "pork & ham and lamb": excluded groups in lower case for sentences (Icelandic: "rækjur og lambakjöt"). */
+export function proteinListText(groups: ProteinGroup[], lang: Language = 'en'): string {
+  if (lang !== 'en') return listText(groups.map((g) => proteinGroupLabel(g, lang).toLocaleLowerCase('is-IS')), lang);
   const names = groups.map((g) => PROTEIN_GROUP_LABELS[g].toLowerCase());
   if (names.length <= 1) return names.join('');
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { clearLocalDraft, formatNumber, parseNumberText, readLocalDraft, saveLocalDraft, useDraftRegistry } from './setDraft';
+import { useT } from '@/i18n';
+import { clearLocalDraft, formatNumber, parseNumberText, readLocalDraft, saveLocalDraft, useDraftRegistry, type DraftProblem } from './setDraft';
 
 /**
  * Result of committing a value:
@@ -46,8 +47,13 @@ export function DraftNumberField(props: DraftNumberFieldProps) {
   const { value, decimals = true, min, max, draftKey } = props;
   const auto = useId();
   const registry = useDraftRegistry();
-  const [text, setTextState] = useState(() => formatNumber(value));
-  const [localError, setLocalError] = useState<string | null>(null);
+  const { t, language } = useT();
+  const [text, setTextState] = useState(() => formatNumber(value, language));
+  // A parse problem is kept as a message key (shown in the current language); a caller's rejection is its own text.
+  const [localProblem, setLocalError] = useState<DraftProblem | string | null>(null);
+  const localError = localProblem == null ? null : typeof localProblem === 'string' ? localProblem : t(localProblem.key, localProblem.params);
+  const langRef = useRef(language);
+  langRef.current = language;
   const textRef = useRef(text);
   const dirty = useRef(false);
   const focused = useRef(false);
@@ -70,7 +76,7 @@ export function DraftNumberField(props: DraftNumberFieldProps) {
     if (!dirty.current) return null;
     const p = parseNumberText(textRef.current, opts.current);
     if (p.kind === 'invalid') {
-      setLocalError(p.reason);
+      setLocalError(p.problem);
       return p.reason;
     }
     const v = p.kind === 'empty' ? null : p.value;
@@ -105,8 +111,8 @@ export function DraftNumberField(props: DraftNumberFieldProps) {
     const p = parseNumberText(textRef.current, opts.current);
     const same = (p.kind === 'number' && p.value === value) || (p.kind === 'empty' && value == null);
     if (same && focused.current) return;
-    if (!same || textRef.current !== formatNumber(value)) setText(formatNumber(value));
-  }, [value]);
+    if (!same || textRef.current !== formatNumber(value, langRef.current)) setText(formatNumber(value, langRef.current));
+  }, [value, language]);
 
   // Restore a draft left behind by a reload / closed tab, then save it.
   useEffect(() => {
@@ -154,12 +160,12 @@ export function DraftNumberField(props: DraftNumberFieldProps) {
         e.currentTarget.select();
       }}
       onChange={(e) => {
-        const t = e.currentTarget.value;
-        setText(t);
+        const typed = e.currentTarget.value;
+        setText(typed);
         dirty.current = true;
-        const p = parseNumberText(t, opts.current);
-        setLocalError(p.kind === 'invalid' ? p.reason : null);
-        if (propsRef.current.draftKey) saveLocalDraft(propsRef.current.draftKey, t);
+        const p = parseNumberText(typed, opts.current);
+        setLocalError(p.kind === 'invalid' ? p.problem : null);
+        if (propsRef.current.draftKey) saveLocalDraft(propsRef.current.draftKey, typed);
         if (timer.current) clearTimeout(timer.current);
         timer.current = setTimeout(() => {
           timer.current = null;
@@ -178,7 +184,7 @@ export function DraftNumberField(props: DraftNumberFieldProps) {
         flush();
         if (!dirty.current) {
           const p = parseNumberText(textRef.current, opts.current);
-          if (p.kind === 'number' && p.value === propsRef.current.value) setText(formatNumber(propsRef.current.value));
+          if (p.kind === 'number' && p.value === propsRef.current.value) setText(formatNumber(propsRef.current.value, langRef.current));
         }
       }}
     />

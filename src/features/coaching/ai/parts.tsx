@@ -10,13 +10,15 @@ import type { AiAvailability, AiScopes, CoachingRelationship } from '@/backend/c
 import type { CoachStyle } from '@/domain/types';
 import { uuid } from '@/lib/id';
 import { BRAND } from '@/config/brand';
-import { ALWAYS_SENT, clip, COACH_MESSAGE_MAX, COACH_STYLE_INFO, COACH_STYLE_SAFETY, DEFAULT_COACH_STYLE, NEVER_SENT, SCOPE_INFO } from './model';
+import { t as tNow, useT } from '@/i18n';
+import { alwaysSentText, clip, COACH_MESSAGE_MAX, COACH_STYLE_INFO, coachStyleSafetyText, DEFAULT_COACH_STYLE, neverSentText, SCOPE_INFO } from './model';
 
 export function BackButton({ to }: { to?: string }) {
   const nav = useNavigate();
+  const { t } = useT();
   return (
     <IconButton
-      label="Back"
+      label={t('ai.back')}
       onClick={() => {
         if (to) nav(to);
         else if (window.history.length > 1) nav(-1);
@@ -29,44 +31,34 @@ export function BackButton({ to }: { to?: string }) {
 }
 
 /** Small "AI" marker used on every AI-authored message and suggestion. */
-export function AiBadge({ children = 'AI' }: { children?: ReactNode }) {
+export function AiBadge({ children }: { children?: ReactNode }) {
+  const { t } = useT();
   return (
     <Badge tone="info" className="uppercase tracking-wide">
       <Sparkles className="size-3" aria-hidden />
-      {children}
+      {children ?? t('ai.badge')}
     </Badge>
   );
 }
 
-const UNAVAILABLE_COPY: Record<Extract<AiAvailability, { available: false }>['reason'], { title: string; body: string }> = {
-  not_configured: {
-    title: 'The training assistant isn’t set up on this server yet',
-    body: `Whoever runs this ${BRAND.name} server hasn’t connected an AI provider. Your workouts, plan, nutrition and coaching all keep working as usual.`,
-  },
-  backend_missing: {
-    title: 'The training assistant isn’t set up on this server yet',
-    body: `This ${BRAND.name} server doesn’t offer the training assistant. Your workouts, plan, nutrition and coaching all keep working as usual.`,
-  },
-  provider_down: {
-    title: 'The training assistant is temporarily unavailable',
-    body: 'The AI service isn’t responding right now. Please try again in a little while. Everything else keeps working.',
-  },
-  offline: {
-    title: 'You’re offline',
-    body: 'The training assistant needs an internet connection. Your workouts and plan keep working offline.',
-  },
-  disabled: {
-    title: 'The training assistant is turned off',
-    body: 'Turn it on in training assistant settings whenever you like.',
-  },
-};
+type UnavailableReason = Extract<AiAvailability, { available: false }>['reason'];
+const UNAVAILABLE_KEYS = {
+  not_configured: ['ai.unavailable.notConfigured.title', 'ai.unavailable.notConfigured.body'],
+  backend_missing: ['ai.unavailable.notConfigured.title', 'ai.unavailable.backendMissing.body'],
+  provider_down: ['ai.unavailable.providerDown.title', 'ai.unavailable.providerDown.body'],
+  offline: ['ai.unavailable.offline.title', 'ai.unavailable.offline.body'],
+  disabled: ['ai.unavailable.disabled.title', 'ai.unavailable.disabled.body'],
+} as const satisfies Record<UnavailableReason, readonly [string, string]>;
 
-export function availabilityCopy(reason: Extract<AiAvailability, { available: false }>['reason']) {
-  return UNAVAILABLE_COPY[reason];
+/** Title and body for an unavailable state, in the app language. */
+export function availabilityCopy(reason: UnavailableReason): { title: string; body: string } {
+  const [title, body] = UNAVAILABLE_KEYS[reason];
+  return { title: tNow(title), body: tNow(body, { brand: BRAND.name }) };
 }
 
 export function AiUnavailable({ reason, onRetry }: { reason: Extract<AiAvailability, { available: false }>['reason']; onRetry?: () => void }) {
-  const c = UNAVAILABLE_COPY[reason];
+  const { t } = useT();
+  const c = availabilityCopy(reason);
   return (
     <EmptyState
       icon={reason === 'offline' ? <CloudOff className="size-6" /> : <Bot className="size-6" />}
@@ -75,7 +67,7 @@ export function AiUnavailable({ reason, onRetry }: { reason: Extract<AiAvailabil
       action={
         onRetry && reason !== 'not_configured' && reason !== 'backend_missing' ? (
           <Button onClick={onRetry} icon={<RefreshCw className="size-4" />}>
-            Try again
+            {t('ai.tryAgain')}
           </Button>
         ) : undefined
       }
@@ -86,14 +78,15 @@ export function AiUnavailable({ reason, onRetry }: { reason: Extract<AiAvailabil
 export function AiGuest() {
   const nav = useNavigate();
   const { pathname } = useLocation();
+  const { t } = useT();
   return (
     <EmptyState
       icon={<LogIn className="size-6" />}
-      title="Sign in to use the training assistant"
-      body="The training assistant runs on the server and keeps your conversation in your account, so it needs you to be signed in."
+      title={t('ai.guest.title')}
+      body={t('ai.guest.body')}
       action={
         <Button variant="primary" onClick={() => nav(authHref('signup', pathname))}>
-          Sign in or create an account
+          {t('ai.guest.signIn')}
         </Button>
       }
     />
@@ -102,20 +95,22 @@ export function AiGuest() {
 
 /** Supportive / Balanced / Strict, with what each one means. */
 export function CoachStylePicker({ value, onChange, disabled }: { value: CoachStyle; onChange: (next: CoachStyle) => void; disabled?: boolean }) {
+  const { t } = useT();
   const info = COACH_STYLE_INFO.find((s) => s.key === value) ?? COACH_STYLE_INFO.find((s) => s.key === DEFAULT_COACH_STYLE)!;
   return (
     <div className={disabled ? 'opacity-60 pointer-events-none' : undefined} aria-disabled={disabled || undefined}>
-      <Segmented<CoachStyle> label="Assistant style" value={value} onChange={onChange} options={COACH_STYLE_INFO.map((s) => ({ value: s.key, label: s.title }))} />
+      <Segmented<CoachStyle> label={t('ai.style.label')} value={value} onChange={onChange} options={COACH_STYLE_INFO.map((s) => ({ value: s.key, label: s.title }))} />
       <p className="text-sm text-muted mt-2" aria-live="polite">
         {info.body}
       </p>
-      <p className="text-xs text-faint mt-1">{COACH_STYLE_SAFETY}</p>
+      <p className="text-xs text-faint mt-1">{coachStyleSafetyText()}</p>
     </div>
   );
 }
 
 /** Data categories with plain explanations of what is sent. */
 export function ScopeToggles({ value, onChange, disabled }: { value: AiScopes; onChange: (next: AiScopes) => void; disabled?: boolean }) {
+  const { t } = useT();
   return (
     <div className="divide-y divide-line">
       {SCOPE_INFO.map((s) => (
@@ -125,7 +120,7 @@ export function ScopeToggles({ value, onChange, disabled }: { value: AiScopes; o
             disabled={disabled}
             onChange={(v) => onChange({ ...value, [s.key]: v })}
             label={s.title}
-            description={<>Sends: {s.sends}</>}
+            description={t('ai.scope.sends', { description: s.sends })}
           />
         </div>
       ))}
@@ -133,41 +128,43 @@ export function ScopeToggles({ value, onChange, disabled }: { value: AiScopes; o
   );
 }
 
-/** `provider`: the company the server sends AI requests to (from aiApi.status()); generic wording when unknown. */
+/** Puts `first` where a {{placeholder}} first appears in a localized sentence (e.g. a bold name), `rest` after that. */
+function withNode(sentence: (marker: string) => string, first: ReactNode, rest: ReactNode): ReactNode {
+  const MARK = '\u0000';
+  return sentence(MARK)
+    .split(MARK)
+    .flatMap((part, i) => (i === 0 ? [part] : [<span key={i}>{i === 1 ? first : rest}</span>, part]));
+}
+
+/**
+ * `provider`: the named company the server sends AI requests to (from aiApi.status(), via providerName()); omitted
+ * when unknown, which selects the generic sentence. A proper name is inserted unchanged.
+ */
 export function DataExplainer({ provider }: { provider?: string }) {
-  const named = provider && provider !== 'the AI provider';
+  const { t } = useT();
   return (
     <div className="space-y-2 text-sm text-muted">
       <p>
-        Your request is processed on the {BRAND.name} server, which sends the categories you allow to{' '}
-        {named ? (
-          <>
-            <strong className="text-ink">{provider}</strong>, the AI provider,
-          </>
-        ) : (
-          'the AI provider'
-        )}{' '}
-        to write a reply. Nothing is sent from your device directly to {named ? provider : 'the provider'}.
+        {provider
+          ? withNode((m) => t('ai.data.processing', { brand: BRAND.name, provider: m }), <strong className="text-ink">{provider}</strong>, provider)
+          : t('ai.data.processingGeneric', { brand: BRAND.name })}
       </p>
       <p>
-        <span className="text-ink font-medium">Always sent:</span> {ALWAYS_SENT}
+        <span className="text-ink font-medium">{t('ai.data.alwaysLabel')}</span> {alwaysSentText()}
       </p>
       <p>
-        <span className="text-ink font-medium">Never sent:</span> {NEVER_SENT}
+        <span className="text-ink font-medium">{t('ai.data.neverLabel')}</span> {neverSentText()}
       </p>
     </div>
   );
 }
 
 export function RetentionExplainer({ provider }: { provider?: string }) {
-  const p = provider && provider !== 'the AI provider' ? provider : 'the AI provider';
+  const { t } = useT();
   return (
     <div className="space-y-2 text-sm text-muted">
-      <p>Your AI conversation, suggestions and notes are stored in your account’s database until you clear them or delete your account.</p>
-      <p>
-        What {p} does with the requests it receives is governed by {p === 'the AI provider' ? 'its' : `${p}’s`} API data policy. Clearing your history here
-        removes it from your account; it can’t delete anything on {p === 'the AI provider' ? 'the provider’s' : `${p}’s`} side.
-      </p>
+      <p>{t('ai.retention.account')}</p>
+      <p>{provider ? t('ai.retention.provider', { provider }) : t('ai.retention.providerGeneric')}</p>
     </div>
   );
 }
@@ -176,23 +173,26 @@ export function RetentionExplainer({ provider }: { provider?: string }) {
  * Explicit confirm before sending AI text into the human-coach conversation.
  * The message id is created once per dialog so a retry can't send it twice.
  */
-export function ShareWithCoachDialog({ open, text, relationship, onClose, what = 'this training assistant message' }: { open: boolean; text: string; relationship: CoachingRelationship; onClose: () => void; what?: string }) {
+export function ShareWithCoachDialog({ open, text, relationship, onClose, what }: { open: boolean; text: string; relationship: CoachingRelationship; onClose: () => void; what?: string }) {
   const toast = useToast();
+  const { t } = useT();
+  const shared = what ?? t('ai.share.whatMessage');
   const [id] = useState(() => uuid());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const body = clip(text, COACH_MESSAGE_MAX);
-  const coachName = relationship.coach.displayName || 'your coach';
+  const coachName = relationship.coach.displayName || null;
 
   async function share() {
     setBusy(true);
     setError(null);
     try {
       await coachingApi.sendMessage({ id, relationshipId: relationship.id, body, sharedFromAi: true });
-      toast.show(`Shared with ${coachName}`, { tone: 'success' });
+      toast.show(coachName ? t('ai.share.success', { coachName }) : t('ai.share.successGeneric'), { tone: 'success' });
       onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Couldn’t share it. Please try again.');
+    } catch {
+      // The raw error (network/database, English) isn't shown.
+      setError(t('ai.share.failed'));
     } finally {
       setBusy(false);
     }
@@ -201,19 +201,15 @@ export function ShareWithCoachDialog({ open, text, relationship, onClose, what =
   return (
     <ConfirmDialog
       open={open}
-      title="Share with your coach?"
-      confirmLabel="Share"
+      title={t('ai.share.confirmTitle')}
+      confirmLabel={t('ai.share.action')}
       busy={busy}
       onCancel={onClose}
       onConfirm={share}
-      body={
-        <>
-          Only {what} is sent to {coachName} in your coaching messages, marked as coming from the training assistant. The rest of your AI conversation stays private.
-        </>
-      }
+      body={coachName ? t('ai.share.confirmBody', { what: shared, coachName }) : t('ai.share.confirmBodyGeneric', { what: shared })}
     >
       <blockquote className="mt-3 rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm whitespace-pre-wrap break-words max-h-60 overflow-y-auto">{body}</blockquote>
-      {body.length < text.length && <p className="mt-2 text-xs text-muted">Long messages are shortened to fit.</p>}
+      {body.length < text.length && <p className="mt-2 text-xs text-muted">{t('ai.share.truncated')}</p>}
       {error && (
         <Notice tone="danger" className="mt-3">
           <span role="alert">{error}</span>
@@ -224,9 +220,10 @@ export function ShareWithCoachDialog({ open, text, relationship, onClose, what =
 }
 
 export function ShareButton({ onClick }: { onClick: () => void }) {
+  const { t } = useT();
   return (
     <Button size="sm" variant="ghost" icon={<Share2 className="size-4" />} onClick={onClick}>
-      Share with my coach
+      {t('ai.share.button')}
     </Button>
   );
 }

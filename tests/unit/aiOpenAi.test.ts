@@ -210,6 +210,9 @@ describe('client wording and consent state', () => {
     expect(settingsActive(s, a)).toBe(false);
     expect(settingsActive(s, { ...a, consentCurrent: true })).toBe(true);
     expect(settingsActive(s, { available: false, reason: 'offline' })).toBe(true);
-    expect(classifyAiError({ code: 'consent_required', message: 'The training assistant now uses OpenAI.' })).toMatchObject({ kind: 'disabled', message: 'The training assistant now uses OpenAI.' });
+    // The authored message, not the server's raw text (kept only as a diagnostic).
+    expect(classifyAiError({ code: 'consent_required', message: 'The training assistant now uses OpenAI.' })).toMatchObject({
+      kind: 'disabled', key: 'ai.error.providerChanged', message: 'The training assistant’s provider changed. Review and agree again in training assistant setup.', detail: 'The training assistant now uses OpenAI.',
+    });
   });
 });

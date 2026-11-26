@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Info } from 'lucide-react';
 import { Card, Notice, Segmented, Stat } from '@/components/ui';
-import { VOLUME_CONVENTIONS, weeklyVolume, weeklyWorkingSets } from '@/domain/stats';
+import { volumeConventions, weeklyVolume, weeklyWorkingSets } from '@/domain/stats';
 import { fromKg, round } from '@/domain/units';
 import type { MuscleGroup } from '@/domain/types';
 import { ChartFigure, ChartTip, axisProps, chartAnimation, num, shortDate, useChartColors, weekLabel } from './charts';
@@ -108,8 +108,8 @@ export function VolumeSection({ d }: { d: ProgressData }) {
           <Info className="size-4 text-accent" aria-hidden /> {t('progress.calculationHelpTitle')}
         </div>
         <ul className="list-disc pl-5 space-y-1 text-xs text-muted">
-          {VOLUME_CONVENTIONS.map((t) => (
-            <li key={t}>{t}</li>
+          {volumeConventions(language).map((line) => (
+            <li key={line}>{line}</li>
           ))}
           <li>{t('progress.volumeDisclaimer')}</li>
         </ul>

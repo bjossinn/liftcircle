@@ -4,7 +4,8 @@ import type { DistanceUnit, Exercise, ID, ISODate, LoggedSet, WeightUnit, Workou
 import { alive } from '@/db/repo';
 import type { LiftDb } from '@/db/db';
 import { useApp } from '@/state/app';
-import { formatDistance, formatWeight } from '@/domain/units';
+import { formatDistance, formatWeight, fromMeters, round } from '@/domain/units';
+import { getLanguage, numberText, t, type Language, type MessageKey, type Params } from '@/i18n';
 import { formatDuration } from '@/lib/dates';
 
 /** Completed, non-deleted sessions, newest first. */
@@ -90,35 +91,49 @@ export function useExerciseUsageCount(exerciseId: ID | undefined): number | unde
   }, [db, exerciseId]);
 }
 
-/** Human-readable set, following the exercise's tracking type and load convention. */
-export function formatLoggedSet(set: LoggedSet, ex: Exercise, unit: WeightUnit, distanceUnit: DistanceUnit = 'km'): string {
+/**
+ * Human-readable set, following the exercise's tracking type and load convention, in `lang` (default: the current
+ * language): "61.25 kg × 8/side" / "61,25 kg × 8/hlið". Display only; units and values are never changed.
+ */
+export function formatLoggedSet(set: LoggedSet, ex: Exercise, unit: WeightUnit, distanceUnit: DistanceUnit = 'km', lang: Language = getLanguage()): string {
+  const tr = (key: MessageKey, params: Params) => t(key, params, lang);
   const reps = set.reps != null ? `${set.reps}` : null;
-  const w = set.weightKg != null ? formatWeight(set.weightKg, unit, set.entered) : null;
-  const side = ex.unilateral ? '/side' : '';
+  const w = set.weightKg != null ? formatWeight(set.weightKg, unit, set.entered, lang) : null;
+  const side = ex.unilateral ? t('workout.loggedSet.perSide', undefined, lang) : '';
   switch (ex.tracking) {
     case 'weight_reps':
-      if (w && reps && set.weightKg! > 0) return `${w} × ${reps}${side}`;
+      if (w && reps && set.weightKg! > 0) return tr('workout.loggedSet.weightReps', { load: w, reps, side });
       // A missing (or zero) load is "not recorded" — never shown as a known 0.
-      return reps ? `${reps} reps${side} (load not recorded)` : (w ?? '–');
+      return reps ? tr('workout.loggedSet.loadNotRecorded', { reps, side }) : (w ?? '–');
     case 'bodyweight_plus':
-      if (set.weightKg && w) return `BW + ${w} × ${reps ?? '–'}${side}`;
-      if (set.weightKg == null) return `${reps ?? '–'} reps${side} (added load not recorded)`;
-      return `BW × ${reps ?? '–'}${side}`;
+      if (set.weightKg && w) return tr('workout.loggedSet.addedLoad', { load: w, reps: reps ?? '–', side });
+      if (set.weightKg == null) return tr('workout.loggedSet.addedLoadNotRecorded', { reps: reps ?? '–', side });
+      return tr('workout.loggedSet.bodyweight', { reps: reps ?? '–', side });
     case 'assisted':
-      if (set.weightKg && w) return `${w} assist × ${reps ?? '–'}${side}`;
-      return `${reps ?? '–'} reps${side}`;
+      if (set.weightKg && w) return tr('workout.loggedSet.assisted', { load: w, reps: reps ?? '–', side });
+      return tr('workout.loggedSet.reps', { reps: reps ?? '–', side });
     case 'reps':
-      return `${reps ?? '–'} reps${side}`;
+      return tr('workout.loggedSet.reps', { reps: reps ?? '–', side });
     case 'duration': {
-      const t = set.durationSec != null ? formatDuration(set.durationSec) : '–';
-      return w && set.weightKg ? `${t}${side} @ ${w}` : `${t}${side}`;
+      const d = set.durationSec != null ? formatDuration(set.durationSec) : '–';
+      return w && set.weightKg ? tr('workout.loggedSet.timeLoad', { duration: d, side, load: w }) : `${d}${side}`;
     }
     case 'distance_time': {
       const parts: string[] = [];
-      if (set.distanceM != null) parts.push(set.distanceM < 1000 && distanceUnit === 'km' ? `${Math.round(set.distanceM)} m` : formatDistance(set.distanceM, distanceUnit));
+      if (set.distanceM != null) parts.push(distanceText(set.distanceM, distanceUnit, lang));
       if (set.durationSec != null) parts.push(formatDuration(set.durationSec));
-      if (w && set.weightKg) parts.push(`@ ${w}`);
+      if (w && set.weightKg) {
+        // English keeps its existing "1.2 km · 6:00 · @ 20 kg"; other languages use the approved full template.
+        if (lang === 'en') parts.push(`@ ${w}`);
+        else return tr('workout.loggedSet.distanceTimeLoad', { performance: parts.join(' · ') || '–', load: w });
+      }
       return parts.length ? parts.join(' · ') : '–';
     }
   }
+}
+
+/** "800 m" / "1.5 km" (1,5 km in Icelandic); units and rounding as before. */
+function distanceText(m: number, unit: DistanceUnit, lang: Language): string {
+  if (m < 1000 && unit === 'km') return `${Math.round(m)} m`;
+  return lang === 'en' ? formatDistance(m, unit) : `${numberText(round(fromMeters(m, unit), 2), 2, false, lang)} ${unit}`;
 }

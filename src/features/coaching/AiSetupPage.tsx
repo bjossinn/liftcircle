@@ -11,18 +11,20 @@ import { isHardUnavailable, settingsActive } from './ai/model';
 import { useAiBoot } from './ai/useAi';
 import { AiGuest, AiUnavailable, BackButton } from './ai/parts';
 import { AiConsent } from './ai/AiConsent';
+import { useT } from '@/i18n';
 
 export default function AiSetupPage() {
   const nav = useNavigate();
   const toast = useToast();
   const { boot, reload, setSettings } = useAiBoot();
+  const { t } = useT();
   const back = <BackButton />;
-  const title = 'Training assistant';
+  const title = t('ai.title');
 
   if (boot.phase === 'loading')
     return (
       <Page title={title} back={back}>
-        <Spinner label="Loading" />
+        <Spinner label={t('ai.loading')} />
       </Page>
     );
   if (boot.phase === 'guest')
@@ -44,9 +46,9 @@ export default function AiSetupPage() {
     <Page title={title} back={back}>
       {alreadyOn && (
         <Notice tone="accent" className="flex items-center gap-3 mb-1">
-          <span className="flex-1">Your training assistant is already on.</span>
+          <span className="flex-1">{t('ai.setup.alreadyOn')}</span>
           <Button size="sm" variant="primary" onClick={() => nav('/coach')}>
-            Open Coach
+            {t('ai.setup.openCoach')}
           </Button>
         </Notice>
       )}
@@ -56,7 +58,7 @@ export default function AiSetupPage() {
           settings={boot.settings}
           onEnabled={(saved) => {
             setSettings(saved);
-            toast.show('Your training assistant is on', { tone: 'success' });
+            toast.show(t('ai.setup.enabled'), { tone: 'success' });
             nav('/coach', { replace: true });
           }}
         />

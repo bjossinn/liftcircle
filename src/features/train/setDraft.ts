@@ -8,8 +8,18 @@
  *   finishing, or when the page is hidden / unloaded.
  */
 import { createContext, useContext } from 'react';
+import { decimalInput, getLanguage, t, type Language, type MessageKey, type Params } from '@/i18n';
 
-export type ParsedNumber = { kind: 'empty' } | { kind: 'number'; value: number } | { kind: 'invalid'; reason: string };
+/** Why a typed value was rejected: a message key and its params, so the text follows the current language. */
+export interface DraftProblem {
+  key: MessageKey;
+  params?: Params;
+}
+
+export type ParsedNumber =
+  | { kind: 'empty' }
+  | { kind: 'number'; value: number }
+  | { kind: 'invalid'; reason: string; problem: DraftProblem };
 
 export interface ParseOptions {
   decimals?: boolean;
@@ -17,21 +27,33 @@ export interface ParseOptions {
   max?: number;
 }
 
-/** Parse what the user typed. "2,5" and "2.5" are both 2.5; "" is an empty draft; "2." is 2. */
+const invalid = (problem: DraftProblem): ParsedNumber => ({ kind: 'invalid', reason: t(problem.key, problem.params), problem });
+
+/**
+ * Parse what the user typed. "2,5" and "2.5" are both 2.5 (decimal comma or point, in every language); "" is an empty
+ * draft; "2." is 2. Entry is ungrouped: grouped or mixed input such as "1.234,5" or "1 234" is rejected with a
+ * message instead of being guessed. The domain min/max checks are unchanged.
+ */
 export function parseNumberText(text: string, opts: ParseOptions = {}): ParsedNumber {
-  const s = text.trim().replace(/\s+/g, '').replace(',', '.');
-  if (s === '') return { kind: 'empty' };
-  if (!/^-?(\d+\.?\d*|\.\d+)$/.test(s)) return { kind: 'invalid', reason: 'Enter a number.' };
-  const n = Number(s);
-  if (!Number.isFinite(n)) return { kind: 'invalid', reason: 'Enter a number.' };
-  if (n < 0 || (opts.min != null && n < opts.min)) return { kind: 'invalid', reason: opts.min != null && opts.min > 0 ? `Must be at least ${opts.min}.` : 'Must be zero or more.' };
-  if (opts.max != null && n > opts.max) return { kind: 'invalid', reason: `Must be ${opts.max} or less.` };
-  if (opts.decimals === false && !Number.isInteger(n)) return { kind: 'invalid', reason: 'Use a whole number.' };
+  const parsed = decimalInput(text);
+  if (parsed.kind === 'empty') return { kind: 'empty' };
+  if (parsed.kind === 'invalid') return invalid({ key: 'workout.validation.enterNumber' });
+  const n = parsed.value;
+  if (n < 0 || (opts.min != null && n < opts.min))
+    return invalid(opts.min != null && opts.min > 0 ? { key: 'workout.validation.minimum', params: { min: opts.min } } : { key: 'workout.validation.nonnegative' });
+  if (opts.max != null && n > opts.max) return invalid({ key: 'workout.validation.maximum', params: { max: opts.max } });
+  if (opts.decimals === false && !Number.isInteger(n)) return invalid({ key: 'workout.validation.wholeNumber' });
   return { kind: 'number', value: n };
 }
 
-export function formatNumber(v: number | null | undefined): string {
-  return v == null ? '' : String(v);
+/**
+ * The saved value as editable text, with the language's decimal separator ("62,5" in Icelandic) and full precision,
+ * so parsing it back gives exactly the same number (an unchanged value is never re-written).
+ */
+export function formatNumber(v: number | null | undefined, language: Language = getLanguage()): string {
+  if (v == null) return '';
+  const s = String(v);
+  return language === 'is' ? s.replace('.', ',') : s;
 }
 
 /* ------------------------------------------------------------ local draft */

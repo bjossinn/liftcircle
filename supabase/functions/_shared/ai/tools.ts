@@ -18,7 +18,7 @@
 import type { AccountStatePayload, AiDb, MealPlanAction, RecipeSuggestionsAction, RefExercise, RefIngredient, RefRecipe, SessionAdjustmentAction, UserFacts, WeekAdjustmentAction } from './types.ts';
 import type { WorkoutContext } from './workout.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
-import { pendingWorking, planShorten, remainingMinutes, WORKOUT_LIMITS } from './workout.ts';
+import { describeSessionAdjustment, pendingWorking, planShorten, remainingMinutes, WORKOUT_LIMITS } from './workout.ts';
 import type { WeekState } from './week.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { validateWeekAdjustment } from './week.ts';
@@ -35,6 +35,11 @@ import { likedBonus, proteinFitSwaps } from '../nutrition/proteins.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { substitutionRatio } from '../nutrition/recipes.ts';
 import type { Ingredient, ProteinGroup, Recipe } from '../nutrition/types.ts';
+// @ts-ignore see above
+import { listText, sharedT, type Params, type SharedKey } from '../i18n/core.ts';
+// @ts-ignore see above
+import { summarizeMealPlan, summarizeWeekPlan } from './postcheck.ts';
+import type { Lang } from './lang.ts';
 
 /** find_recipes → propose_meal_plan (→ one corrected attempt) → final text. */
 export const MAX_TOOL_ROUNDS = 4;
@@ -241,6 +246,12 @@ export interface ToolContext {
   requestText?: string;
   /** The live-workout snapshot sent with this message (null when none, or when Training isn't shared). */
   workout?: WorkoutContext | null;
+  /**
+   * Reply language (replyLanguage.ts). User-facing text the tools produce (warnings, meal-plan errors) is written in it;
+   * diagnostics for the model stay English. For Icelandic, tool results also carry `say` / `suggested_reply`: the
+   * approved Icelandic copy, so the model doesn't translate button names or reasons itself.
+   */
+  lang?: Lang;
 }
 
 export interface ToolOutcome {
@@ -396,7 +407,7 @@ async function findRecipes(input: Record<string, unknown>, ctx: ToolContext): Pr
   if (!allowed.length) {
     const reason = explainNoRecipes(
       { allergens: hard.allergens, dietTags: hard.dietTags, disliked: hard.dislikedIngredientIds, maxMinutes: hard.maxCookMinutes, meal: null, proteinExcluded: hard.proteinExcluded },
-      recipes, ing, hard,
+      recipes, ing, hard, ctx.lang ?? 'en',
     );
     return {
       content: JSON.stringify({
@@ -566,14 +577,16 @@ function proposeWeekAdjustment(input: Record<string, unknown>, ctx: ToolContext)
   if (ctx.state.weekAttempts > 2) {
     return { content: JSON.stringify({ status: 'rejected', errors: ['Only one week adjustment (plus one corrected attempt) per reply.'] }), isError: true };
   }
-  const { action, errors } = validateWeekAdjustment(input, {
+  const lang = ctx.lang ?? 'en';
+  const { action, errors, say } = validateWeekAdjustment(input, {
     facts: ctx.facts,
     week: ctx.week ?? null,
     trainingShared: ctx.trainingShared === true,
     messageId: ctx.messageId ?? '',
+    lang,
   });
   if (!action) {
-    return { content: JSON.stringify({ status: 'invalid', errors, note: 'Fix these and call again once, or answer in text without it.' }), isError: true };
+    return { content: JSON.stringify({ status: 'invalid', errors, ...sayFields(say), note: 'Fix these and call again once, or answer in text without it.' }), isError: true };
   }
   ctx.state.weekPlan = action;
   return {
@@ -583,6 +596,7 @@ function proposeWeekAdjustment(input: Record<string, unknown>, ctx: ToolContext)
       skipped: action.skipped.map((s) => s.name),
       warnings: action.warnings,
       note: 'The user sees an "Apply to this week" button. Nothing has changed yet; next week reverts to the usual plan automatically.',
+      ...(lang !== 'en' && ctx.today ? suggested(summarizeWeekPlan(action, ctx.today, ctx.facts.weekStart, lang)) : {}),
     }),
   };
 }
@@ -596,53 +610,101 @@ const clip = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slic
  */
 export function buildSessionAdjustment(
   input: Record<string, unknown>,
-  ctx: Pick<ToolContext, 'catalog' | 'facts' | 'messageId'> & { workout?: WorkoutContext | null; trainingShared?: boolean },
-): { action: SessionAdjustmentAction | null; errors: string[] } {
+  ctx: Pick<ToolContext, 'catalog' | 'facts' | 'messageId'> & { workout?: WorkoutContext | null; trainingShared?: boolean; lang?: Lang },
+): { action: SessionAdjustmentAction | null; errors: string[]; say?: string[] } {
+  const lang: Lang = ctx.lang ?? 'en';
+  const { t, tp } = sharedT(lang);
+  // `errors`: English diagnostics for the model. `say`: the same problems as approved user-facing copy (Icelandic only),
+  // for the model to use as written when it answers in text. Warnings are user-facing, in the reply language.
+  const say: string[] = [];
+  const tell = (key: SharedKey, params?: Params) => {
+    if (lang !== 'en') say.push(t(key, params));
+  };
+  const fail = (errors: string[]) => ({ action: null, errors, ...(say.length ? { say } : {}) });
   const w = ctx.workout;
-  if (!w) return { action: null, errors: ['No workout snapshot came with this message: this tool only works from the workout screen ("Short on time" / "Equipment busy").'] };
-  if (ctx.trainingShared === false) return { action: null, errors: ['Training isn\'t shared, so the workout can\'t be changed from here.'] };
-  if (w.status !== 'active') return { action: null, errors: ['This workout is already finished; there is nothing left to change today.'] };
+  if (!w) {
+    tell('aiServer.session.noSnapshot');
+    return fail(['No workout snapshot came with this message: this tool only works from the workout screen ("Short on time" / "Equipment busy").']);
+  }
+  if (ctx.trainingShared === false) {
+    tell('aiServer.session.trainingNotShared');
+    return fail(['Training isn\'t shared, so the workout can\'t be changed from here.']);
+  }
+  if (w.status !== 'active') {
+    tell('aiServer.session.alreadyFinished');
+    return fail(['This workout is already finished; there is nothing left to change today.']);
+  }
   const change = input.change === 'swap' || input.change === 'shorten' ? input.change : null;
-  if (!change) return { action: null, errors: ['change must be "swap" or "shorten".'] };
+  if (!change) return fail(['change must be "swap" or "shorten".']);
   const base = { kind: 'session_adjustment' as const, id: ctx.messageId ?? '', sessionId: w.sessionId, summary: clip(input.summary, 300), warnings: [] as string[] };
 
   if (change === 'shorten') {
     const m = typeof input.minutes === 'number' && Number.isFinite(input.minutes) ? Math.round(input.minutes) : w.minutesLeft;
-    if (m == null) return { action: null, errors: ['minutes is required for "shorten" (ask the user how long they have).'] };
+    if (m == null) {
+      tell('aiServer.session.askMinutes');
+      return fail(['minutes is required for "shorten" (ask the user how long they have).']);
+    }
     const minutes = Math.min(WORKOUT_LIMITS.maxMinutes, Math.max(WORKOUT_LIMITS.minMinutes, m));
-    if (!w.exercises.some((e) => pendingWorking(e) > 0)) return { action: null, errors: ['Every set is already done: nothing left to shorten.'] };
+    if (!w.exercises.some((e) => pendingWorking(e) > 0)) {
+      tell('aiServer.session.allDone');
+      return fail(['Every set is already done: nothing left to shorten.']);
+    }
     const plan = planShorten(w, minutes);
-    if (plan.fits) return { action: null, errors: [`What is left (about ${remainingMinutes(w)} min) already fits in ${minutes} minutes: no change needed. Tell the user they can finish as planned.`] };
+    if (plan.fits) {
+      tell('aiServer.session.alreadyFits', { remaining: remainingMinutes(w), minutes });
+      return fail([`What is left (about ${remainingMinutes(w)} min) already fits in ${minutes} minutes: no change needed. Tell the user they can finish as planned.`]);
+    }
     const warnings: string[] = [];
-    if (plan.estimatedMinutes === 0) warnings.push('Less than one more set fits in that time. Finishing here is a good session too.');
+    if (plan.estimatedMinutes === 0) warnings.push(t('aiServer.session.canFinishHere'));
     return { action: { ...base, change, minutes, estimatedMinutes: plan.estimatedMinutes, removeSets: plan.removeSets, dropExercises: plan.dropExercises, warnings }, errors: [] };
   }
 
   const seId = typeof input.session_exercise_id === 'string' ? input.session_exercise_id : w.focusId ?? '';
   const se = w.exercises.find((e) => e.id === seId);
-  if (!se) return { action: null, errors: [`Unknown session_exercise_id "${seId.slice(0, 100)}": use an [id] from the workout snapshot.`] };
-  if (pendingWorking(se) === 0) return { action: null, errors: [`Every set of ${se.name} is already done: nothing to swap.`] };
+  if (!se) return fail([`Unknown session_exercise_id "${seId.slice(0, 100)}": use an [id] from the workout snapshot.`]);
+  if (pendingWorking(se) === 0) {
+    tell('aiServer.session.exerciseDone', { exerciseName: se.name });
+    return fail([`Every set of ${se.name} is already done: nothing to swap.`]);
+  }
   const toId = typeof input.to_exercise_id === 'string' ? input.to_exercise_id : '';
   const to = ctx.catalog.get(toId);
-  if (!to) return { action: null, errors: [`Unknown to_exercise_id "${toId.slice(0, 100)}": use a catalog id from exercise_alternatives.`] };
+  if (!to) return fail([`Unknown to_exercise_id "${toId.slice(0, 100)}": use a catalog id from exercise_alternatives.`]);
   const from = ctx.catalog.get(se.exerciseId);
   // Only a catalog exercise can be swapped this way: without its pattern and muscles we can't tell a real alternative.
-  if (!from) return { action: null, errors: [`${se.name} is a custom exercise, so a swap can't be checked here. Suggest one in text; the user can use Swap exercise.`] };
-  const errors: string[] = [];
-  if (to.id === se.exerciseId) errors.push('The replacement is the same exercise.');
-  else if (!isGenuineAlternative(from, to)) {
-    errors.push(`${to.name} isn't an alternative for ${from.name}: pick a listed substitution or the same movement pattern for the same muscles (call exercise_alternatives).`);
+  if (!from) {
+    tell('aiServer.session.customExercise', { exerciseName: se.name });
+    return fail([`${se.name} is a custom exercise, so a swap can't be checked here. Suggest one in text; the user can use Swap exercise.`]);
   }
-  if (ctx.facts.excludedExerciseIds.includes(to.id)) errors.push(`${to.name} is on the user's excluded list.`);
+  const errors: string[] = [];
+  if (to.id === se.exerciseId) {
+    errors.push('The replacement is the same exercise.');
+    tell('aiServer.session.sameExercise');
+  } else if (!isGenuineAlternative(from, to)) {
+    errors.push(`${to.name} isn't an alternative for ${from.name}: pick a listed substitution or the same movement pattern for the same muscles (call exercise_alternatives).`);
+    tell('aiServer.session.notAlternative', { fromName: from.name, toName: to.name });
+  }
+  if (ctx.facts.excludedExerciseIds.includes(to.id)) {
+    errors.push(`${to.name} is on the user's excluded list.`);
+    tell('aiServer.session.excluded', { exerciseName: to.name });
+  }
   if (ctx.facts.equipment) {
     const missing = missingEquipment(to, ctx.facts.equipment);
-    if (missing.length) errors.push(`${to.name} needs equipment the user doesn't have (${missing.join(', ')}).`);
+    if (missing.length) {
+      errors.push(`${to.name} needs equipment the user doesn't have (${missing.join(', ')}).`);
+      tell('aiServer.session.missingEquipment', { exerciseName: to.name, equipment: lang === 'en' ? missing.join(', ') : listText(missing, lang) });
+    }
   }
   const easy = (to.stresses ?? []).filter((x) => ctx.facts.limitations.includes(x));
-  if (easy.length) errors.push(`${to.name} loads an area the user asked to go easy on (${easy.join(', ')}); pick another.`);
-  if (w.exercises.some((e) => e.id !== se.id && e.exerciseId === to.id && pendingWorking(e) > 0)) errors.push(`${to.name} is already later in today's workout; pick another.`);
-  if (errors.length) return { action: null, errors };
-  const warnings = se.sets.some((x) => x.done) ? [`Sets you already did stay with ${se.name}; the remaining ${pendingWorking(se)} move to ${to.name}.`] : [];
+  if (easy.length) {
+    errors.push(`${to.name} loads an area the user asked to go easy on (${easy.join(', ')}); pick another.`);
+    tell('aiServer.session.limitedArea', { exerciseName: to.name, areas: lang === 'en' ? easy.join(', ') : listText(easy, lang) });
+  }
+  if (w.exercises.some((e) => e.id !== se.id && e.exerciseId === to.id && pendingWorking(e) > 0)) {
+    errors.push(`${to.name} is already later in today's workout; pick another.`);
+    tell('aiServer.session.alreadyLater', { exerciseName: to.name });
+  }
+  if (errors.length) return fail(errors);
+  const warnings = se.sets.some((x) => x.done) ? [tp('aiServer.session.completedSetsStay', pendingWorking(se), { fromName: se.name, toName: to.name })] : [];
   return {
     action: {
       ...base,
@@ -656,13 +718,17 @@ export function buildSessionAdjustment(
   };
 }
 
+/** Icelandic copy for the model to use as written (absent for English: the diagnostics already read as English). */
+const sayFields = (say: string[] | undefined) => (say?.length ? { say, say_note: 'If you answer in text, use these sentences as written (approved Icelandic copy).' } : {});
+const suggested = (text: string) => ({ suggested_reply: text, suggested_reply_note: 'Approved Icelandic wording with the button name as the app shows it; use it (you may shorten it).' });
+
 function proposeSessionAdjustment(input: Record<string, unknown>, ctx: ToolContext): ToolOutcome {
   ctx.state.sessionAdjustmentAttempts = (ctx.state.sessionAdjustmentAttempts ?? 0) + 1;
   if (ctx.state.sessionAdjustmentAttempts > 2) {
     return { content: JSON.stringify({ status: 'rejected', errors: ['Only one workout change (plus one corrected attempt) per reply.'] }), isError: true };
   }
-  const { action, errors } = buildSessionAdjustment(input, ctx);
-  if (!action) return { content: JSON.stringify({ status: 'invalid', errors, note: 'Fix these and call again once, or answer in text without it.' }), isError: true };
+  const { action, errors, say } = buildSessionAdjustment(input, ctx);
+  if (!action) return { content: JSON.stringify({ status: 'invalid', errors, ...sayFields(say), note: 'Fix these and call again once, or answer in text without it.' }), isError: true };
   ctx.state.sessionAdjustment = action;
   return {
     content: JSON.stringify({
@@ -672,6 +738,7 @@ function proposeSessionAdjustment(input: Record<string, unknown>, ctx: ToolConte
       ...(action.change === 'shorten' ? { dropped: action.dropExercises.map((d) => d.name), fewer_sets: action.removeSets.map((r) => `${r.name}: ${r.count} fewer`), estimated_minutes: action.estimatedMinutes } : {}),
       warnings: action.warnings,
       note: 'The user sees the change with "Apply to today\'s workout" and Undo. Nothing has changed yet, and the saved plan never changes. Reply in one or two short lines; don\'t list the changes again.',
+      ...(ctx.lang && ctx.lang !== 'en' ? suggested(describeSessionAdjustment(action, ctx.lang)) : {}),
     }),
   };
 }
@@ -685,10 +752,12 @@ async function proposeMealPlan(input: Record<string, unknown>, ctx: ToolContext)
     return { content: JSON.stringify({ status: 'rejected', errors: ['Only one meal plan (plus one corrected attempt) per reply.'] }), isError: true };
   }
   const nutrition = ctx.nutrition ?? NO_NUTRITION;
+  const lang = ctx.lang ?? 'en';
+  const today = ctx.today ?? new Date().toISOString().slice(0, 10);
   const [recipes, ingredients] = mealPlanBlocker(nutrition) ? [[], []] : await Promise.all([ctx.db.getRecipes(), ctx.db.getIngredients()]);
   const { action, errors, adjusted } = buildMealPlanAction(input, {
-    facts: ctx.facts, account: ctx.account ?? null, today: ctx.today ?? new Date().toISOString().slice(0, 10), nutrition, messageId: ctx.messageId ?? '', recipes, ingredients,
-    requestText: ctx.requestText,
+    facts: ctx.facts, account: ctx.account ?? null, today, nutrition, messageId: ctx.messageId ?? '', recipes, ingredients,
+    requestText: ctx.requestText, lang,
   });
   if (!action) return { content: JSON.stringify({ status: 'not_built', errors, note: 'Tell the user exactly this reason (with its link if any). Do not invent meals.' }), isError: true };
   ctx.state.mealPlan = action;
@@ -698,6 +767,7 @@ async function proposeMealPlan(input: Record<string, unknown>, ctx: ToolContext)
       days: action.days.length,
       ...(adjusted.length ? { adjusted } : {}),
       note: 'The plan is shown as a card with each day\'s meals and totals vs targets, plus "Add to my meal plan". Reply in one or two short lines (e.g. "Here\'s your week — tap Add to my meal plan to put it in the app."). Do not list the meals; the card shows them.',
+      ...(lang !== 'en' ? suggested(summarizeMealPlan(action, today, ctx.facts.weekStart, lang)) : {}),
     }),
   };
 }

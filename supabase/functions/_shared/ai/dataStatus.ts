@@ -7,6 +7,8 @@
  * program, logs). For categories that aren't shared only setup *status* is used (on/off, set/not set) — never values.
  */
 import type { AccountStatePayload, AiScopes } from './types.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { sharedT, type Language, type SharedKey } from '../i18n/core.ts';
 
 export const SHARE_LINK = '[[open:/coaching/ai/settings|Change what the coach can see]]';
 
@@ -39,8 +41,21 @@ export function nutritionStatus(account: AccountStatePayload | null, shared: boo
   };
 }
 
-/** Plain reason a meal plan can't be built right now (null = it can). Used by propose_meal_plan and the prompt. */
-export function mealPlanBlocker(s: NutritionStatus): string | null {
+/**
+ * Plain reason a meal plan can't be built right now (null = it can). Used by propose_meal_plan and the prompt.
+ * English (default) is the model-facing wording (it carries instructions for the model); Icelandic is the user-facing
+ * copy, so a reason that reaches the reply as written reads naturally. Link paths stay the same; only labels change.
+ */
+export function mealPlanBlocker(s: NutritionStatus, lang: Language = 'en'): string | null {
+  if (lang === 'is') {
+    const { t } = sharedT(lang);
+    const link = (path: string, key: SharedKey) => `[[open:${path}|${t(key)}]]`;
+    if (!s.shared) return t('aiServer.blocker.nutritionNotShared', { link: link('/coaching/ai/settings', 'aiServer.blocker.linkSettings') });
+    if (s.enabled === false) return t('aiServer.blocker.nutritionDisabled', { link: link('/settings', 'aiServer.blocker.linkSettings') });
+    if (s.autoDisabled) return t('aiServer.blocker.autoTargetsDisabled');
+    if (s.proteinG == null) return t('aiServer.blocker.noProteinTarget', { link: link('/nutrition/targets', 'aiServer.blocker.linkTargets') });
+    return null;
+  }
   if (!s.shared) return `Nutrition isn't shared with the training assistant. Tell the user they can share it under training assistant settings ${SHARE_LINK}.`;
   if (s.enabled === false) return 'Nutrition features are turned off in the app. Tell the user to turn on "Nutrition features" in Settings → Plan & nutrition [[open:/settings|Open Settings]].';
   if (s.autoDisabled) return 'Automatic nutrition targets are turned off for this user (under 18 or individualized guidance). Do not build a target-based meal plan; suggest a doctor or registered dietitian.';

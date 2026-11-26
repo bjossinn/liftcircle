@@ -12,6 +12,8 @@ import type { SessionPayload, UserFacts, WeekAdjustmentAction } from './types.ts
 
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { datePair, shortDate } from './humanDates.ts';
+// @ts-ignore see above
+import { sharedT, type Language, type Params, type SharedKey } from '../i18n/core.ts';
 export const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const LATE_WINDOW_DAYS = 2;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -155,22 +157,47 @@ export interface WeekToolContext {
   week: WeekState | null;
   trainingShared: boolean;
   messageId: string;
+  /** Reply language for user-facing text (warnings, `say`); the `errors` diagnostics for the model stay English. */
+  lang?: Language;
 }
 
 const strList = (v: unknown, maxItems: number, maxLen: number): string[] =>
   (Array.isArray(v) ? v : []).filter((x): x is string => typeof x === 'string').map((x) => x.trim().slice(0, maxLen)).filter(Boolean).slice(0, maxItems);
 
-export function validateWeekAdjustment(raw: Record<string, unknown>, ctx: WeekToolContext): { action: WeekAdjustmentAction | null; errors: string[] } {
+export function validateWeekAdjustment(raw: Record<string, unknown>, ctx: WeekToolContext): { action: WeekAdjustmentAction | null; errors: string[]; say?: string[] } {
+  const lang: Language = ctx.lang ?? 'en';
+  const { t, tp } = sharedT(lang);
+  // `errors`: English diagnostics for the model (fixable tool input). `say`: the same problems as user-facing copy in
+  // Icelandic, for the model to use as written when it answers in text (English replies need no second copy).
+  const say: string[] = [];
+  const tell = (key: SharedKey, params?: Params) => {
+    if (lang !== 'en') say.push(t(key, params));
+  };
+  const tellCount = (base: string, count: number) => {
+    if (lang !== 'en') say.push(tp(base, count));
+  };
+  const out = (errors: string[]) => ({ action: null, errors, ...(say.length ? { say: [...new Set(say)].slice(0, 12) } : {}) });
   const ap = ctx.facts.activeProgram;
   const w = ctx.week;
-  if (!ctx.trainingShared) return { action: null, errors: ['Training data is not shared, so this week cannot be planned. Answer in text and suggest sharing Training in training assistant settings.'] };
-  if (!ap || !ap.version || !w) return { action: null, errors: ['The user has no active plan to adjust.'] };
+  if (!ctx.trainingShared) {
+    tell('aiServer.week.notShared');
+    return out(['Training data is not shared, so this week cannot be planned. Answer in text and suggest sharing Training in training assistant settings.']);
+  }
+  if (!ap || !ap.version || !w) {
+    tell('aiServer.week.noActivePlan');
+    return out(['The user has no active plan to adjust.']);
+  }
   const errors: string[] = [];
   const target = typeof raw.total_sessions_this_week === 'number' ? raw.total_sessions_this_week : Number(raw.total_sessions_this_week);
-  if (!(Number.isInteger(target) && target >= 0 && target <= 7)) errors.push('total_sessions_this_week must be a whole number 0–7.');
+  if (!(Number.isInteger(target) && target >= 0 && target <= 7)) {
+    errors.push('total_sessions_this_week must be a whole number 0–7.');
+    tell('aiServer.week.countInvalid');
+  }
   const done = w.completed.length;
-  if (Number.isInteger(target) && target < done)
+  if (Number.isInteger(target) && target < done) {
     errors.push(`The user already completed ${done} workout${done === 1 ? '' : 's'} this week; total_sessions_this_week counts those, so it must be at least ${done}.`);
+    tellCount('aiServer.week.alreadyCompleted', done);
+  }
 
   const picks = (Array.isArray(raw.sessions) ? raw.sessions : []).slice(0, 7).map((x) => {
     const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
@@ -187,11 +214,18 @@ export function validateWeekAdjustment(raw: Record<string, unknown>, ctx: WeekTo
   for (const p of [...picks].sort((a, b) => (a.date < b.date ? -1 : 1))) {
     if (!DATE_RE.test(p.date) || p.date < firstDay || p.date > w.end) {
       errors.push(`Date "${p.date.slice(0, 20)}" must be between ${firstDay} and ${w.end} (today or later, this week only).`);
+      tell('aiServer.week.invalidDate', { date: shortDate(p.date.slice(0, 20), lang), start: shortDate(firstDay, lang), end: shortDate(w.end, lang) });
       continue;
     }
-    if (dates.has(p.date)) errors.push(`Two sessions on ${p.date}; use one session per day.`);
+    if (dates.has(p.date)) {
+      errors.push(`Two sessions on ${p.date}; use one session per day.`);
+      tell('aiServer.week.twoOnSameDay', { date: shortDate(p.date, lang) });
+    }
     dates.add(p.date);
-    if (completedDates.has(p.date)) errors.push(`The user already trained on ${p.date}; pick another day.`);
+    if (completedDates.has(p.date)) {
+      errors.push(`The user already trained on ${p.date}; pick another day.`);
+      tell('aiServer.week.alreadyTrained', { date: shortDate(p.date, lang) });
+    }
     const pool = w.remaining.filter((r) => r.templateId === p.templateId && !used.has(r));
     const item = pool.find((r) => r.date === p.date) ?? pool[0];
     if (!item) {
@@ -202,14 +236,15 @@ export function validateWeekAdjustment(raw: Record<string, unknown>, ctx: WeekTo
     used.add(item);
     chosen.push({ templateId: item.templateId, name: item.name, date: p.date, plannedDate: item.date });
   }
-  if (errors.length) return { action: null, errors: [...new Set(errors)].slice(0, 12) };
+  if (errors.length) return out([...new Set(errors)].slice(0, 12));
 
+  // Warnings are user-facing (summary line and the card), in the reply language.
   const warnings: string[] = [];
   const avail = new Set(ap.availableWeekdays);
-  for (const c of chosen) if (avail.size && !avail.has(weekdayOf(c.date))) warnings.push(`${shortDate(c.date)} is not one of your usual training days.`);
+  for (const c of chosen) if (avail.size && !avail.has(weekdayOf(c.date))) warnings.push(t('aiServer.week.notUsualDay', { date: shortDate(c.date, lang) }));
   const hardDates = [...chosen.map((c) => c.date), ...w.completed.map((c) => c.date)].sort();
   for (let i = 1; i < hardDates.length; i++) if (addDays(hardDates[i - 1], 1) === hardDates[i]) {
-    warnings.push(`Back-to-back days (${datePair(hardDates[i - 1], hardDates[i])}): keep the effort a little lower on the second.`);
+    warnings.push(t('aiServer.week.consecutiveDays', { dates: datePair(hardDates[i - 1], hardDates[i], lang) }));
     break;
   }
   const action: WeekAdjustmentAction = {

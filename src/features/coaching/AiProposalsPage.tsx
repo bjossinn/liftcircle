@@ -10,6 +10,7 @@ import { Badge, Button, Card, EmptyState, ErrorState, ListRow, Page, SectionTitl
 import { aiApi } from '@/backend/ai';
 import type { ProgramProposal } from '@/backend/coachingContract';
 import { useApp } from '@/state/app';
+import { dateTimeText, useT } from '@/i18n';
 import { classifyAiError, PROPOSAL_VIEW_LABEL, proposalView, type ClassifiedAiError } from './ai/model';
 import { flushAcks } from './ai/apply';
 import { useActiveCoach } from './ai/useAi';
@@ -17,10 +18,11 @@ import { AiGuest, AiUnavailable, BackButton } from './ai/parts';
 import { ProposalDetail } from './ai/ProposalDetail';
 
 export default function AiProposalsPage() {
+  const { t } = useT();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const selectedId = params.get('id');
-  const { db, auth, online, backendConfigured } = useApp();
+  const { db, auth, online, backendConfigured, account } = useApp();
   const programs = useLiveQuery(() => db.programs.toArray(), [db]);
   const coach = useActiveCoach();
   const [items, setItems] = useState<ProgramProposal[] | undefined>(undefined);
@@ -46,7 +48,7 @@ export default function AiProposalsPage() {
   const live = useMemo(() => (programs ?? []).filter((p) => !p.deletedAt), [programs]);
   const selected = selectedId ? items?.find((p) => p.id === selectedId) : undefined;
   const back = <BackButton />;
-  const title = selectedId ? 'AI suggestion' : 'AI suggestions';
+  const title = selectedId ? t('ai.proposals.singular') : t('ai.proposals.title');
 
   if (!backendConfigured)
     return (
@@ -72,14 +74,14 @@ export default function AiProposalsPage() {
         {error.kind === 'unavailable' && error.reason ? (
           <AiUnavailable reason={error.reason} onRetry={() => void load()} />
         ) : (
-          <ErrorState title="Couldn’t load AI suggestions" message={error.message} onRetry={() => void load()} />
+          <ErrorState title={t('ai.proposals.loadError')} message={error.message} onRetry={() => void load()} />
         )}
       </Page>
     );
   if (items === undefined || programs === undefined)
     return (
       <Page title={title} back={back}>
-        <Spinner label="Loading suggestions" />
+        <Spinner label={t('ai.proposals.loading')} />
       </Page>
     );
 
@@ -96,9 +98,9 @@ export default function AiProposalsPage() {
           />
         ) : (
           <EmptyState
-            title="Suggestion not found"
-            body="It may have been removed when the conversation was cleared."
-            action={<Button onClick={() => setParams({})}>See all suggestions</Button>}
+            title={t('ai.proposals.notFound')}
+            body={t('ai.proposals.removed')}
+            action={<Button onClick={() => setParams({})}>{t('ai.proposals.seeAll')}</Button>}
           />
         )}
       </Page>
@@ -121,15 +123,15 @@ export default function AiProposalsPage() {
         title={p.program.name}
         subtitle={
           <>
-            <span className="sr-only">AI suggestion · </span>
-            {new Date(p.createdAt).toLocaleDateString()}
-            {p.target === 'for_coach_review' ? ' · for your coach to review' : ''}
+            <span className="sr-only">{t('ai.proposals.singular')} · </span>
+            {dateTimeText(Date.parse(p.createdAt), account.settings.timeZone, { day: 'numeric', month: 'short', year: 'numeric' })}
+            {p.target === 'for_coach_review' ? ` · ${t('ai.proposals.forCoach')}` : ''}
             {p.changeSummary[0] ? ` · ${p.changeSummary[0]}` : ''}
           </>
         }
         right={
           <span className="flex items-center gap-1">
-            <Badge tone={PROPOSAL_VIEW_LABEL[view].tone}>{PROPOSAL_VIEW_LABEL[view].label}</Badge>
+            <Badge tone={PROPOSAL_VIEW_LABEL[view].tone}>{t(`ai.proposal.status.${view}`)}</Badge>
             <ChevronRight className="size-4" aria-hidden />
           </span>
         }
@@ -140,16 +142,16 @@ export default function AiProposalsPage() {
   return (
     <Page title={title} back={back}>
       <p className="text-sm text-muted px-1">
-        Plan changes the training assistant suggested. Each one is labelled as an AI suggestion and nothing changes until you review and apply it.
+        {t('ai.proposals.description')}
       </p>
       {items.length === 0 ? (
         <EmptyState
           icon={<Sparkles className="size-6" />}
-          title="No suggestions yet"
-          body="Ask the training assistant for help with your schedule or progression. If it proposes a plan change, it shows up here."
+          title={t('ai.proposals.empty.title')}
+          body={t('ai.proposals.empty.body')}
           action={
             <Button variant="primary" icon={<MessageCircle className="size-4" />} onClick={() => nav('/coach')}>
-              Open training assistant
+              {t('ai.proposals.openAssistant')}
             </Button>
           }
         />
@@ -157,7 +159,7 @@ export default function AiProposalsPage() {
         <>
           {open.length > 0 && (
             <>
-              <SectionTitle>To review</SectionTitle>
+              <SectionTitle>{t('ai.proposals.reviewHeading')}</SectionTitle>
               <Card as="section" className="overflow-hidden">
                 <ul className="divide-y divide-line">{open.map(row)}</ul>
               </Card>
@@ -165,7 +167,7 @@ export default function AiProposalsPage() {
           )}
           {earlier.length > 0 && (
             <>
-              <SectionTitle>Earlier</SectionTitle>
+              <SectionTitle>{t('ai.proposals.earlier')}</SectionTitle>
               <Card as="section" className="overflow-hidden">
                 <ul className="divide-y divide-line">{earlier.map(row)}</ul>
               </Card>

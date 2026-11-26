@@ -3,6 +3,8 @@
  * Pure; no Deno / npm imports.
  */
 import type { EnteredValue, WeightUnit } from './types.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { numberText, type Language } from '../i18n/core.ts';
 
 /** Exact definition (international avoirdupois pound). */
 export const KG_PER_LB = 0.45359237;
@@ -33,9 +35,14 @@ export function displayWeight(kg: number | null | undefined, unit: WeightUnit, e
   if (entered && entered.unit === unit) return entered.value;
   return round(fromKg(kg, unit), decimals);
 }
-export function formatWeight(kg: number | null | undefined, unit: WeightUnit, entered?: EnteredValue): string {
+/**
+ * "62.5 kg" / "62,5 kg" (lang 'is'). Display only: the language changes the decimal separator, never the value, the
+ * unit or the rounding. English (the default, and every server caller) is unchanged.
+ */
+export function formatWeight(kg: number | null | undefined, unit: WeightUnit, entered?: EnteredValue, lang: Language = 'en'): string {
   const v = displayWeight(kg, unit, entered);
-  return v == null ? '–' : `${trimNum(v)} ${unit}`;
+  if (v == null) return '–';
+  return lang === 'en' ? `${trimNum(v)} ${unit}` : `${numberText(round(v, 2), lang)} ${unit}`;
 }
 export function trimNum(n: number, decimals = 2): string {
   return String(round(n, decimals));

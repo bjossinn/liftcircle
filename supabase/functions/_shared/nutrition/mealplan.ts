@@ -20,7 +20,9 @@ import type {
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { catalog } from './catalog.ts';
 // @ts-ignore see above
-import { addMacros, ALLERGEN_LABELS, ingredientFitsProteinPrefs, likedBonus, normalizeProteinPrefs, proteinFitSwaps, proteinListText, recipeProteinGroups, DIET_TAG_LABELS, displayMacro, formatGrams, friendlyAmount, ingredientAllowed, macrosForGrams, MEAL_LABELS, recipeAllergens, recipeCostTier, recipeDietTags, recipeMatches, recipeMinutes, recipeNutrition, resolveIngredients, roundMacros, satisfiesTag, ZERO_MACROS, type IngredientIndex, type Swap, } from './recipes.ts';
+import { addMacros, ALLERGEN_LABELS, ingredientFitsProteinPrefs, likedBonus, normalizeProteinPrefs, proteinFitSwaps, proteinListText, recipeProteinGroups, DIET_TAG_LABELS, displayMacro, formatFraction, formatGrams, friendlyAmount, ingredientAllowed, macrosForGrams, MEAL_LABELS, recipeAllergens, recipeCostTier, recipeDietTags, recipeMatches, recipeMinutes, recipeNutrition, resolveIngredients, roundMacros, satisfiesTag, ZERO_MACROS, type IngredientIndex, type Swap, } from './recipes.ts';
+// @ts-ignore see above
+import { localeFor, sharedT, type Language } from '../i18n/core.ts';
 
 const round = (n: number, decimals = 2) => {
   const f = 10 ** decimals;
@@ -216,14 +218,54 @@ export function allowedAddOns(slot: MealSlot, prefs: PlanPrefs, ctx: PlanContext
   });
 }
 
-/** "100 g roast chicken breast", "2 eggs (hard-boiled)", "1 can tuna in water". */
-export function extraText(extra: MealPlanExtra, byId: IngredientIndex = catalog().byId): string {
+/** Localized label keys for the protein sides (aiCard.side.*); the English `label` above stays the canonical text. */
+const SIDE_KEYS: Record<string, string> = {
+  'chicken-breast-cooked': 'chicken', 'tuna-canned': 'tuna', 'shrimp-cooked': 'shrimp', egg: 'egg', 'tofu-firm': 'tofu', tempeh: 'tempeh',
+  edamame: 'edamame', 'skyr-plain': 'skyr', 'greek-yogurt-0': 'yogurt', 'cottage-cheese': 'cottageCheese', 'lentils-cooked': 'lentils',
+};
+
+/** A protein side's display label: "roast chicken breast" / "steikt kjúklingabringa"; eggs agree with `count`. */
+export function sideLabel(ingredientId: ID, lang: Language = 'en', count = 1): string | null {
+  const addOn = ADDON_BY_ID.get(ingredientId);
+  if (!addOn) return null;
+  const key = SIDE_KEYS[ingredientId];
+  if (lang === 'en' || !key) return addOn.label;
+  const tr = sharedT(lang);
+  return tr.has(`aiCard.side.${key}`) ? tr.t(`aiCard.side.${key}` as never) : tr.tp(`aiCard.side.${key}`, count);
+}
+
+/**
+ * "100 g roast chicken breast", "2 eggs (hard-boiled)", "1 can tuna in water". Icelandic puts the food first and the
+ * amount after a colon, so catalogue-style labels never need inflecting: "Steikt kjúklingabringa: 100 g",
+ * "Harðsoðin egg: 2 stk.", "Túnfiskur í vatni: 1 dós".
+ */
+export function extraText(extra: MealPlanExtra, byId: IngredientIndex = catalog().byId, lang: Language = 'en'): string {
   const ing = byId.get(extra.ingredientId);
-  if (!ing) return formatGrams(extra.grams);
+  if (!ing) return formatGrams(extra.grams, lang);
+  if (lang !== 'en') return extraTextLocalized(extra, ing, lang);
   const addOn = ADDON_BY_ID.get(extra.ingredientId);
   const counted = ing.units?.piece || ing.units?.can ? friendlyAmount(ing, extra.grams) : null;
   if (counted && addOn) return ing.units?.piece ? `${counted} (${addOn.label})` : `${counted} ${addOn.label}`;
   return `${formatGrams(extra.grams)} ${addOn?.label ?? ing.name.toLowerCase()}`;
+}
+
+function extraTextLocalized(extra: MealPlanExtra, ing: Ingredient, lang: Language): string {
+  const tr = sharedT(lang);
+  const cap = (x: string) => x.charAt(0).toLocaleUpperCase(localeFor(lang)) + x.slice(1);
+  const addOn = ADDON_BY_ID.get(extra.ingredientId);
+  // Counted like the English text: only ingredients with piece labels in the catalog (eggs).
+  if (addOn && ing.units?.piece && catalog().pieceLabels[ing.id]) {
+    const n = extra.grams / ing.units.piece;
+    if (n >= 0.2) {
+      const r = n >= 3 ? Math.round(n) : Math.round(n * 2) / 2;
+      const nn = r === 0 ? 0.5 : r;
+      const food = cap(sideLabel(extra.ingredientId, lang, nn) ?? addOn.label);
+      return tr.tp('aiCard.side.pieces', nn, { food, amount: tr.t('aiCard.quantity.pieces', { count: formatFraction(nn) }) });
+    }
+  }
+  const counted = addOn && ing.units?.can ? friendlyAmount(ing, extra.grams, lang) : null;
+  const food = cap(addOn ? sideLabel(extra.ingredientId, lang) ?? addOn.label : ing.name.toLowerCase());
+  return tr.t('aiCard.side.amount', { food, amount: counted ?? formatGrams(extra.grams, lang) });
 }
 
 /* -------------------------------------------------------------- nutrition */
