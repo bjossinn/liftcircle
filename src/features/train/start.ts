@@ -14,6 +14,23 @@ export async function completedHistory(db: LiftDb): Promise<WorkoutSession[]> {
   return alive(await db.sessions.where('status').equals('completed').toArray()).sort((a, b) => b.startedAt - a.startedAt);
 }
 
+/**
+ * Check-and-create in ONE IndexedDB read-write transaction over sessions (+ outbox): if a workout is already active,
+ * return it; otherwise store the new one. IndexedDB serializes overlapping read-write transactions, also across tabs,
+ * so two concurrent starts can never both see "no active session" and create two. `build` must only await Dexie
+ * (no other promises), or the transaction would commit early.
+ */
+async function createUnlessActiveTx(db: LiftDb, build: () => Promise<WorkoutSession> | WorkoutSession): Promise<{ session: WorkoutSession; created: boolean }> {
+  return db.transaction('rw', db.sessions, db.outbox, async () => {
+    const existing = await activeSession(db);
+    if (existing) return { session: existing, created: false };
+    return { session: await saveRecord('sessions', await build(), db), created: true };
+  });
+}
+async function createUnlessActive(db: LiftDb, build: () => Promise<WorkoutSession> | WorkoutSession): Promise<WorkoutSession> {
+  return (await createUnlessActiveTx(db, build)).session;
+}
+
 export interface StartCtx {
   db: LiftDb;
   settings: Settings;
@@ -28,23 +45,32 @@ export async function startFromTemplate(
   ctx: StartCtx,
   meta: { programId?: ID; programVersion?: number; plannedDate?: ISODate } = {},
 ): Promise<WorkoutSession> {
-  const existing = await activeSession(ctx.db);
-  if (existing) return existing;
-  const history = await completedHistory(ctx.db);
-  const tz = ctx.settings.timeZone;
-  const session = buildSessionFromTemplate(t, {
-    catalog: ctx.catalog,
-    history,
-    settings: ctx.settings,
-    programId: meta.programId,
-    programVersion: meta.programVersion,
-    plannedDate: meta.plannedDate,
-    date: todayISO(tz),
-    timeZone: tz,
-    experience: ctx.experience,
+  return (await tryStartFromTemplate(t, ctx, meta)).session;
+}
+
+/** Like startFromTemplate, and says whether a new session was created (false: another one was already active). */
+export async function tryStartFromTemplate(
+  t: SessionTemplate,
+  ctx: StartCtx,
+  meta: { programId?: ID; programVersion?: number; plannedDate?: ISODate } = {},
+): Promise<{ session: WorkoutSession; created: boolean }> {
+  return createUnlessActiveTx(ctx.db, async () => {
+    const history = await completedHistory(ctx.db);
+    const tz = ctx.settings.timeZone;
+    const session = buildSessionFromTemplate(t, {
+      catalog: ctx.catalog,
+      history,
+      settings: ctx.settings,
+      programId: meta.programId,
+      programVersion: meta.programVersion,
+      plannedDate: meta.plannedDate,
+      date: todayISO(tz),
+      timeZone: tz,
+      experience: ctx.experience,
+    });
+    session.templateId = t.id;
+    return session;
   });
-  session.templateId = t.id;
-  return saveRecord('sessions', session, ctx.db);
 }
 
 const pos = (v: number | null | undefined) => (v != null && Number.isFinite(v) && v > 0 ? v : null);
@@ -52,56 +78,52 @@ const pos0 = (v: number | null | undefined) => (v != null && Number.isFinite(v) 
 
 /** Repeat a past workout: same exercises and loads, nothing completed. */
 export async function repeatSession(past: WorkoutSession, ctx: StartCtx): Promise<WorkoutSession> {
-  const existing = await activeSession(ctx.db);
-  if (existing) return existing;
-  const now = Date.now();
-  const tz = ctx.settings.timeZone;
-  const s: WorkoutSession = {
-    id: uuid(),
-    createdAt: now,
-    updatedAt: now,
-    name: past.name,
-    status: 'active',
-    templateId: past.templateId,
-    date: todayISO(tz),
-    timeZone: tz,
-    startedAt: now,
-    pausedTotalMs: 0,
-    exercises: past.exercises.map((e, i) => ({
+  return createUnlessActive(ctx.db, () => {
+    const now = Date.now();
+    const tz = ctx.settings.timeZone;
+    const s: WorkoutSession = {
       id: uuid(),
-      exerciseId: e.exerciseId,
-      order: i,
-      supersetGroup: e.supersetGroup,
-      prescription: e.prescription,
-      // Copy loads and targets, but never copy invalid values (0 reps, negative/non-finite numbers) forward.
-      sets: e.sets.map((st) => ({
-        ...st,
+      createdAt: now,
+      updatedAt: now,
+      name: past.name,
+      status: 'active',
+      templateId: past.templateId,
+      date: todayISO(tz),
+      timeZone: tz,
+      startedAt: now,
+      pausedTotalMs: 0,
+      exercises: past.exercises.map((e, i) => ({
         id: uuid(),
-        weightKg: pos0(st.weightKg),
-        entered: pos0(st.weightKg) == null ? undefined : st.entered,
-        reps: pos(st.reps),
-        durationSec: pos(st.durationSec),
-        distanceM: pos(st.distanceM),
-        completed: false,
-        completedAt: undefined,
-        rpe: null,
-        rir: null,
+        exerciseId: e.exerciseId,
+        order: i,
+        supersetGroup: e.supersetGroup,
+        prescription: e.prescription,
+        // Copy loads and targets, but never copy invalid values (0 reps, negative/non-finite numbers) forward.
+        sets: e.sets.map((st) => ({
+          ...st,
+          id: uuid(),
+          weightKg: pos0(st.weightKg),
+          entered: pos0(st.weightKg) == null ? undefined : st.entered,
+          reps: pos(st.reps),
+          durationSec: pos(st.durationSec),
+          distanceM: pos(st.distanceM),
+          completed: false,
+          completedAt: undefined,
+          rpe: null,
+          rir: null,
+        })),
       })),
-    })),
-  };
-  return saveRecord('sessions', s, ctx.db);
+    };
+    return s;
+  });
 }
 
 export async function startEmpty(ctx: StartCtx, name = 'Workout'): Promise<WorkoutSession> {
-  const existing = await activeSession(ctx.db);
-  if (existing) return existing;
-  const now = Date.now();
-  const tz = ctx.settings.timeZone;
-  return saveRecord(
-    'sessions',
-    { id: uuid(), createdAt: now, updatedAt: now, name, status: 'active', date: todayISO(tz), timeZone: tz, startedAt: now, pausedTotalMs: 0, exercises: [] },
-    ctx.db,
-  );
+  return createUnlessActive(ctx.db, () => {
+    const now = Date.now();
+    const tz = ctx.settings.timeZone;
+    return { id: uuid(), createdAt: now, updatedAt: now, name, status: 'active', date: todayISO(tz), timeZone: tz, startedAt: now, pausedTotalMs: 0, exercises: [] };
+  });
 }
 
 /** Query string for logging a non-lifting planned session as an activity. */

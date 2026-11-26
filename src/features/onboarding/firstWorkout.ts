@@ -9,7 +9,7 @@ import { alive } from '@/db/repo';
 import { currentVersion } from '@/domain/program/program';
 import { plannedSessionsInRange, type PlannedSession } from '@/domain/program/schedule';
 import { addDays } from '@/lib/dates';
-import { activeSession, startFromTemplate, type StartCtx } from '@/features/train/start';
+import { activeSession, tryStartFromTemplate, type StartCtx } from '@/features/train/start';
 
 export function firstWorkoutToStart(program: Program, today: ISODate, sessions: WorkoutSession[]): PlannedSession | null {
   const items = plannedSessionsInRange(program, today, addDays(today, 13), today, sessions);
@@ -30,6 +30,7 @@ export async function startFirstWorkout(program: Program, today: ISODate, ctx: S
   const sessions = alive(await ctx.db.sessions.toArray());
   const first = firstWorkoutToStart(program, today, sessions);
   if (!first) return { kind: 'none' };
-  const session = await startFromTemplate(first.template, ctx, { programId: program.id, programVersion: currentVersion(program).version, plannedDate: first.date });
-  return { kind: 'started', session };
+  // Atomic check-and-create: if another tab started a workout meanwhile, that one is kept and returned.
+  const r = await tryStartFromTemplate(first.template, ctx, { programId: program.id, programVersion: currentVersion(program).version, plannedDate: first.date });
+  return r.created ? { kind: 'started', session: r.session } : { kind: 'already_active', session: r.session };
 }

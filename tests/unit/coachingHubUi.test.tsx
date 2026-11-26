@@ -52,6 +52,11 @@ async function mount() {
   await waitFor(() => expect(el.textContent).not.toMatch(/Loading your coaching|Checking the training assistant/));
   await tick();
 }
+const retry = () => {
+  const b = [...el.querySelectorAll<HTMLButtonElement>('button')].find((x) => x.textContent?.trim() === 'Retry');
+  if (!b) throw new Error('no Retry');
+  return b;
+};
 const links = () => [...el.querySelectorAll('a')].map((a) => a.getAttribute('href'));
 
 const coach = (over: Partial<CoachProfile>): CoachProfile => ({
@@ -79,13 +84,44 @@ describe('coaching hub: no coach recruitment for lifters', () => {
     expect(links()).not.toContain('/coaching/apply');
   });
 
-  it('a failed coach-profile load is not shown to a lifter with no coaching clients', async () => {
+  it('a failed coach-profile load shows a neutral Retry (no coach pitch, no apply link)', async () => {
     h.profile = async () => {
       throw new Error('network down');
     };
     await mount();
+    await waitFor(() => expect(el.textContent).toContain('Some of your coaching details couldn’t load.'));
     expect(el.textContent).not.toContain('For coaches');
-    expect(el.textContent).not.toContain('Couldn’t load your coach profile');
+    expect(el.textContent).not.toMatch(/coach on hard earned|apply/i);
+    expect(links()).not.toContain('/coaching/apply');
+    // Retry for a lifter: the notice goes away and nothing else appears.
+    h.profile = async () => null;
+    await act(async () => retry().click());
+    await waitFor(() => expect(el.textContent).not.toContain('couldn’t load'));
+    expect(el.textContent).not.toContain('For coaches');
+  });
+
+  it('an applicant whose profile fails to load can Retry and gets their application status back', async () => {
+    h.profile = async () => {
+      throw new Error('network down');
+    };
+    await mount();
+    await waitFor(() => expect(retry()).toBeTruthy());
+    h.profile = async () => coach({ status: 'submitted', listed: false });
+    await act(async () => retry().click());
+    await waitFor(() => expect(el.textContent).toContain('Your coach application'));
+    expect(el.textContent).toContain('View application');
+  });
+
+  it('an approved coach with no clients whose profile fails to load can Retry and gets the workspace back', async () => {
+    h.profile = async () => {
+      throw new Error('network down');
+    };
+    await mount();
+    await waitFor(() => expect(retry()).toBeTruthy());
+    h.profile = async () => coach({});
+    await act(async () => retry().click());
+    await waitFor(() => expect(el.textContent).toContain('Your coaching workspace'));
+    expect(links()).toContain('/coaching/dashboard');
   });
 
   it('an approved coach keeps the workspace and profile links', async () => {

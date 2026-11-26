@@ -15,7 +15,7 @@ import type { AccountState, ProgramVersion, SessionTemplate, WorkoutSession } fr
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const h = vi.hoisted(() => ({ db: null as unknown as import('@/db/db').LiftDb }));
+const h = vi.hoisted(() => ({ db: null as unknown as import('@/db/db').LiftDb, failStart: false }));
 vi.mock('@/state/app', async () => {
   const { useLiveQuery } = await import('dexie-react-hooks');
   const { defaultAccountState } = await import('@/state/defaults');
@@ -38,6 +38,16 @@ vi.mock('@/state/app', async () => {
     };
   };
   return { useApp, useDb: () => h.db, useSettings: () => useApp().account.settings, isDemoMode: () => false, DEMO_KEY: 'lc-demo' };
+});
+
+// failStart: the workout can't be started after the plan was saved (e.g. storage error on that write).
+vi.mock('@/features/train/start', async (orig) => {
+  const actual = (await orig()) as typeof import('@/features/train/start');
+  return {
+    ...actual,
+    tryStartFromTemplate: (...args: Parameters<typeof actual.tryStartFromTemplate>) =>
+      h.failStart ? Promise.reject(new Error('The device storage is full')) : actual.tryStartFromTemplate(...args),
+  };
 });
 
 const { LiftDb } = await import('@/db/db');
@@ -70,6 +80,7 @@ function programWith(templates: SessionTemplate[], schedule: { weekday: number; 
 }
 
 beforeEach(async () => {
+  h.failStart = false;
   localStorage.clear();
   h.db = new LiftDb(`onboarding-start-${Math.random().toString(36).slice(2)}`);
   await h.db.open();
@@ -131,6 +142,25 @@ describe('startFirstWorkout', () => {
     const r = await startFirstWorkout(p, today, ctx());
     expect(r).toMatchObject({ kind: 'already_active', session: { id: 'live' } });
     expect(await h.db.sessions.count()).toBe(1);
+  });
+
+  it('concurrent starts (two tabs / two taps) create exactly one active session', async () => {
+    const p = programWith([lifting('a')], [{ weekday: weekday(today), templateId: 'a' }]);
+    const results = await Promise.all([startFirstWorkout(p, today, ctx()), startFirstWorkout(p, today, ctx()), startFirstWorkout(p, today, ctx())]);
+    const active = (await h.db.sessions.toArray()).filter((s) => s.status === 'active');
+    expect(active).toHaveLength(1);
+    expect(results.filter((r) => r.kind === 'started')).toHaveLength(1);
+    for (const r of results) expect(r.kind === 'none' ? null : r.session.id).toBe(active[0].id);
+  });
+
+  it('the shared starters are atomic too: concurrent template / empty / repeat starts leave one active session', async () => {
+    const { startFromTemplate, startEmpty, repeatSession } = await import('@/features/train/start');
+    const past: WorkoutSession = { id: 'old', createdAt: 1, updatedAt: 1, name: 'Old', status: 'completed', date: '2026-01-01', timeZone: 'UTC', startedAt: 1, pausedTotalMs: 0, exercises: [] };
+    const out = await Promise.all([startFromTemplate(lifting('a'), ctx()), startEmpty(ctx()), repeatSession(past, ctx()), startEmpty(ctx())]);
+    const active = (await h.db.sessions.toArray()).filter((s) => s.status === 'active');
+    expect(active).toHaveLength(1);
+    expect(new Set(out.map((s) => s.id))).toEqual(new Set([active[0].id]));
+    expect((await h.db.outbox.toArray()).filter((o) => o.entity === 'sessions')).toHaveLength(1);
   });
 
   it('starts nothing for a plan without a lifting workout', async () => {
@@ -219,6 +249,17 @@ describe('OnboardingPage: Accept & start', () => {
     expect(await programs()).toHaveLength(1);
     expect((await sessions()).map((s) => s.id)).toEqual(['live']);
     expect(el!.textContent).toContain('already have a workout in progress');
+  });
+
+  it('if the plan saves but the workout can’t start, it goes to Today with an error and the plan is saved once', async () => {
+    h.failStart = true;
+    await mountAtResult();
+    await act(async () => button('Accept & start').click());
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    expect(await programs()).toHaveLength(1);
+    expect(await sessions()).toHaveLength(0);
+    expect(el!.textContent).toContain('Plan saved, but the workout couldn’t start');
+    expect(await h.db.kv.get(DRAFT_KEY)).toBeUndefined();
   });
 
   it('“Save plan, start later” saves the plan and goes to Today without starting a workout', async () => {

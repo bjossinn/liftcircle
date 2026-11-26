@@ -11,18 +11,27 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const h = vi.hoisted(() => ({ db: null as unknown, account: null as unknown, failSave: false }));
+const h = vi.hoisted(() => ({ db: null as unknown, account: null as unknown, failSave: false, delayMs: 0, shares: 0 }));
 
 vi.mock('@/state/app', () => ({
   useApp: () => ({ db: h.db, account: h.account, auth: { status: 'guest' }, updateAccount: async () => undefined }),
   useDb: () => h.db,
 }));
-vi.mock('@/social/autoShare', () => ({ maybeAutoShare: async () => false }));
+vi.mock('@/social/autoShare', () => ({
+  maybeAutoShare: async () => {
+    h.shares++;
+    return false;
+  },
+}));
 vi.mock('@/db/repo', async (orig) => {
   const actual = (await orig()) as typeof import('@/db/repo');
   return {
     ...actual,
-    saveRecord: (...args: Parameters<typeof actual.saveRecord>) => (h.failSave ? Promise.reject(new Error('The device storage is full')) : actual.saveRecord(...args)),
+    // delayMs: every write waits first (a slow device), so the UI can act before a queued change is stored.
+    saveRecord: async (...args: Parameters<typeof actual.saveRecord>) => {
+      if (h.delayMs) await new Promise((r) => setTimeout(r, h.delayMs));
+      return h.failSave ? Promise.reject(new Error('The device storage is full')) : actual.saveRecord(...args);
+    },
   };
 });
 
@@ -115,6 +124,8 @@ function seed(): WorkoutSession {
 
 beforeEach(async () => {
   h.failSave = false;
+  h.delayMs = 0;
+  h.shares = 0;
   h.db = new LiftDb(`logging-ui-${++dbCount}`);
   h.account = defaultAccountState();
   localStorage.clear();
@@ -374,14 +385,65 @@ describe('Finish (roadmap item 3: no redundant confirmation)', () => {
     expect(sheetOpen()).toBe(false);
   });
 
-  it('a double tap finishes once', async () => {
+  it('a double tap finishes once and auto-shares once', async () => {
     await reseed(tickAll);
+    h.delayMs = 50;
     act(() => {
       finishButton().click();
       finishButton().click();
     });
     await waitFor(async () => expect((await db().sessions.get('s1'))!.status).toBe('completed'));
+    await waitFor(() => expect(document.body.textContent).toContain('elsewhere'));
+    await tick(150);
     expect(await db().sessions.count()).toBe(1);
+    expect(h.shares).toBe(1);
+  });
+
+  it('slow write: a note saved just before Finish is kept (direct Finish never writes stale notes)', async () => {
+    await reseed(tickAll); // notes: 'Felt strong'
+    h.delayMs = 150;
+    click(button('Edit notes'));
+    const area = await waitFor(() => {
+      const t = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Workout notes"]');
+      if (!t) throw new Error('no notes field');
+      return t;
+    });
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(area, 'New PR on bench');
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    click([...document.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent?.trim() === 'Save')!);
+    click(finishButton()); // the note's write is still pending; the rendered session still has the old note
+    await waitFor(async () => expect((await db().sessions.get('s1'))!.status).toBe('completed'));
+    expect((await db().sessions.get('s1'))!.notes).toBe('New PR on bench');
+  });
+
+  it('slow write: Add set then immediate Finish opens the confirmation instead of dropping the new set', async () => {
+    await reseed(tickAll);
+    h.delayMs = 150;
+    click(button('Add set'));
+    click(finishButton());
+    await waitFor(() => expect(sheetOpen()).toBe(true));
+    const cur = (await db().sessions.get('s1'))!;
+    expect(cur.status).toBe('active');
+    expect(cur.exercises[0].sets).toHaveLength(3);
+  });
+
+  it('slow write: undoing the only completed set then immediate Finish opens the confirmation (no empty workout saved)', async () => {
+    await reseed((s) => ({ ...s, exercises: [{ ...s.exercises[0], sets: [s.exercises[0].sets[0]] }] })); // one set: 20 kg × 8
+    await waitFor(() => input('Set 1 load in kg'));
+    click(button('Mark set 1 done'));
+    await waitFor(async () => expect((await set(0)).completed).toBe(true));
+    await waitFor(() => expect(finishButton()).toBeTruthy());
+    const undo = await waitFor(() => button('Undo'));
+    h.delayMs = 150;
+    click(undo);
+    click(finishButton()); // rendered state still shows the set done
+    await waitFor(() => expect(sheetOpen()).toBe(true));
+    const cur = (await db().sessions.get('s1'))!;
+    expect(cur.status).toBe('active');
+    expect(cur.exercises[0].sets[0].completed).toBe(false);
+    expect(document.body.textContent).toContain('No sets are marked done yet');
   });
 
   it('unfinished sets → the confirmation still asks, and nothing is saved until Finish in the sheet', async () => {

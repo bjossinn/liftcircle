@@ -198,8 +198,9 @@ function AiSection() {
 /**
  * Only for people who already coach or have applied: a regular lifter isn't pitched coach onboarding here (no
  * "Coach on Hard Earned / Apply to be listed" card). /coaching/apply and every coach route still work as before.
- * While the profile loads nothing shows; if it fails to load, the error shows only to someone known to coach
- * (they have coaching relationships as the coach), so their workspace link isn't silently lost.
+ * While the profile loads nothing shows. If it fails to load we can't tell a lifter from an applicant or a coach
+ * without clients, so everyone gets a neutral "couldn't load" notice with Retry (no coach wording, no apply link);
+ * someone known to coach (relationships as the coach) gets the full "For coaches" error card instead.
  */
 function ForCoachesSection({ profile, rels }: { profile: Loaded<CoachProfile | null>; rels: CoachingRelationship[] | undefined }) {
   const p = profile.data;
@@ -207,7 +208,16 @@ function ForCoachesSection({ profile, rels }: { profile: Loaded<CoachProfile | n
   const requests = asCoach.filter((r) => r.status === 'requested').length;
   const clients = asCoach.filter((r) => r.status === 'active').length;
   const loadFailed = !!profile.error && p === undefined;
-  if (!p && !(loadFailed && asCoach.length > 0)) return null;
+  if (!p && loadFailed && asCoach.length === 0)
+    return (
+      <Notice className="mt-4">
+        Some of your coaching details couldn’t load.{' '}
+        <button type="button" className="text-accent font-medium min-h-11 px-1" onClick={profile.reload}>
+          Retry
+        </button>
+      </Notice>
+    );
+  if (!p && !loadFailed) return null;
   return (
     <section aria-labelledby="hub-coaches">
       <SectionTitle id="hub-coaches">For coaches</SectionTitle>
