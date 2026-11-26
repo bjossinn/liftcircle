@@ -11,6 +11,7 @@ import { CalendarCheck, Undo2 } from 'lucide-react';
 import { Badge, Button, Notice } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { saveRecord } from '@/db/repo';
+import { trackAiAction } from '@/analytics/analytics';
 import type { LiftDb } from '@/db/db';
 import { applyWeekPlan, revertWeekPlan, weekPlanState, WEEK_PLAN_EXPIRED, WEEK_PLAN_STALE, type WeekPlan } from '@/domain/program/schedule';
 import type { ActivityLog, ISODate, Program, WorkoutSession } from '@/domain/types';
@@ -43,7 +44,10 @@ export function WeekPlanCard({
         toast.show(r.message, { tone: 'error' });
         return;
       }
-      if (!r.alreadyApplied) await saveRecord('programs', r.program, db);
+      if (!r.alreadyApplied) {
+        await saveRecord('programs', r.program, db);
+        void trackAiAction(db, 'week_plan', 'applied');
+      }
       toast.show(r.message, { tone: 'success' });
     } finally {
       setBusy(false);
@@ -54,6 +58,7 @@ export function WeekPlanCard({
     setBusy(true);
     try {
       await saveRecord('programs', revertWeekPlan(program, plan.id), db);
+      void trackAiAction(db, 'week_plan', 'reverted');
       toast.show('Back to your usual schedule for this week.');
     } finally {
       setBusy(false);

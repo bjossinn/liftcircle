@@ -278,6 +278,7 @@ const accountState = z.looseObject({
     social: opt(z.looseObject({ discoverable: opt(z.boolean()) })),
     nutritionEnabled: opt(z.boolean()),
     demoData: opt(z.boolean()),
+    analytics: opt(z.boolean()),
   }),
   profile: z.looseObject({
     displayName: opt(str()),

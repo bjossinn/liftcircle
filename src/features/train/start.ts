@@ -5,6 +5,8 @@ import { alive, saveRecord } from '@/db/repo';
 import { buildSessionFromTemplate } from '@/domain/program/session';
 import { uuid } from '@/lib/id';
 import { todayISO } from '@/lib/dates';
+import { trackWorkoutStarted } from '@/analytics/analytics';
+import type { WorkoutStartSource } from '@/analytics/events';
 
 export async function activeSession(db: LiftDb): Promise<WorkoutSession | undefined> {
   return db.sessions.where('status').equals('active').filter((s) => !s.deletedAt).first();
@@ -20,15 +22,18 @@ export async function completedHistory(db: LiftDb): Promise<WorkoutSession[]> {
  * so two concurrent starts can never both see "no active session" and create two. `build` must only await Dexie
  * (no other promises), or the transaction would commit early.
  */
-async function createUnlessActiveTx(db: LiftDb, build: () => Promise<WorkoutSession> | WorkoutSession): Promise<{ session: WorkoutSession; created: boolean }> {
-  return db.transaction('rw', db.sessions, db.outbox, async () => {
+async function createUnlessActiveTx(db: LiftDb, build: () => Promise<WorkoutSession> | WorkoutSession, source: WorkoutStartSource): Promise<{ session: WorkoutSession; created: boolean }> {
+  const r = await db.transaction('rw', db.sessions, db.outbox, async () => {
     const existing = await activeSession(db);
     if (existing) return { session: existing, created: false };
     return { session: await saveRecord('sessions', await build(), db), created: true };
   });
+  // After the transaction (analytics must never be part of it). Only how it was started is recorded.
+  if (r.created) void trackWorkoutStarted(db, source);
+  return r;
 }
-async function createUnlessActive(db: LiftDb, build: () => Promise<WorkoutSession> | WorkoutSession): Promise<WorkoutSession> {
-  return (await createUnlessActiveTx(db, build)).session;
+async function createUnlessActive(db: LiftDb, build: () => Promise<WorkoutSession> | WorkoutSession, source: WorkoutStartSource): Promise<WorkoutSession> {
+  return (await createUnlessActiveTx(db, build, source)).session;
 }
 
 export interface StartCtx {
@@ -70,7 +75,7 @@ export async function tryStartFromTemplate(
     });
     session.templateId = t.id;
     return session;
-  });
+  }, 'template');
 }
 
 const pos = (v: number | null | undefined) => (v != null && Number.isFinite(v) && v > 0 ? v : null);
@@ -115,7 +120,7 @@ export async function repeatSession(past: WorkoutSession, ctx: StartCtx): Promis
       })),
     };
     return s;
-  });
+  }, 'repeat');
 }
 
 export async function startEmpty(ctx: StartCtx, name = 'Workout'): Promise<WorkoutSession> {
@@ -123,7 +128,7 @@ export async function startEmpty(ctx: StartCtx, name = 'Workout'): Promise<Worko
     const now = Date.now();
     const tz = ctx.settings.timeZone;
     return { id: uuid(), createdAt: now, updatedAt: now, name, status: 'active', date: todayISO(tz), timeZone: tz, startedAt: now, pausedTotalMs: 0, exercises: [] };
-  });
+  }, 'empty');
 }
 
 /** Query string for logging a non-lifting planned session as an activity. */

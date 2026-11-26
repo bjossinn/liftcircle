@@ -10,6 +10,7 @@ import { UpdateBanner } from '@/pwa/UpdateBanner';
 import { HealthBanner, StorageHealthRunner, useHealth } from '@/pwa/HealthBanner';
 import { SyncRunner, SyncStatusBanner } from '@/sync/SyncStatus';
 import { PendingPostsRunner } from '@/social/pendingPosts';
+import { AnalyticsRunner } from '@/analytics/analytics';
 import { GuestImportPrompt } from '@/features/auth/GuestImportPrompt';
 import { usePushScheduler } from '@/pwa/pushScheduler';
 import { isFeatureEnabled } from '@/config/featureFlags';
@@ -56,6 +57,7 @@ export function Shell() {
       <SyncRunner />
       <StorageHealthRunner />
       <PendingPostsRunner />
+      <AnalyticsRunner />
       <PushRunner />
       {db.isDemo && (
         <Suspense fallback={null}>

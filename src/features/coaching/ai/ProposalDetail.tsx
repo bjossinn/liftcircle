@@ -8,6 +8,7 @@ import { aiApi } from '@/backend/ai';
 import type { CoachingRelationship, ProgramProposal } from '@/backend/coachingContract';
 import { kvSet } from '@/db/repo';
 import { useApp } from '@/state/app';
+import { trackAiAction } from '@/analytics/analytics';
 import { useExercises } from '@/data/catalog';
 import { describeChanges, validateProposedProgram } from '@/domain/program/proposals';
 import { currentVersion } from '@/domain/program/program';
@@ -70,6 +71,7 @@ export function ProposalDetail({
         return;
       }
       setConfirm(null);
+      void trackAiAction(db, 'program_proposal', 'applied');
       toast.show(res.recorded ? 'Your plan was updated' : 'Your plan was updated on this device. The training assistant will be told when you’re back online.', { tone: res.recorded ? 'success' : 'warn' });
       onChanged({ ...p, status: 'accepted', appliedProgramId: res.program.id, appliedVersion: res.program.currentVersion, respondedAt: new Date().toISOString() });
     } catch (e) {
@@ -98,6 +100,7 @@ export function ProposalDetail({
     setBusy('decline');
     try {
       const recorded = await respondOrQueue(db, (id, accept) => aiApi.respondProposal(id, accept), { id: p.id, accept: false });
+      void trackAiAction(db, 'program_proposal', 'dismissed');
       toast.show(recorded ? 'Suggestion declined' : 'Declined on this device; it will sync when you’re back online.', { tone: recorded ? 'success' : 'warn' });
       onChanged({ ...p, status: 'declined', respondedAt: new Date().toISOString() });
     } finally {

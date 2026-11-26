@@ -558,6 +558,11 @@ export interface Settings {
   };
   nutritionEnabled: boolean;
   demoData: boolean;
+  /**
+   * "Share product usage events" (src/analytics). Optional (added in roadmap item 5); undefined means on. Off: no
+   * analytics event is recorded and queued ones are deleted, never sent.
+   */
+  analytics?: boolean;
 }
 
 /** Private profile — never part of the discoverable social profile. */
