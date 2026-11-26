@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { Bot, ChevronRight, ClipboardList, GraduationCap, Search, ShieldCheck, UserRound } from 'lucide-react';
+import { Bot, ChevronRight, ClipboardList, GraduationCap, Search, ShieldCheck } from 'lucide-react';
 import { coachingApi } from '@/backend/coaching';
 import { aiApi } from '@/backend/ai';
 import type { AiAvailability, CoachingRelationship, CoachProfile } from '@/backend/coachingContract';
@@ -195,34 +195,25 @@ function AiSection() {
 }
 
 /* ---------------------------------------------------------------- coaches */
+/**
+ * Only for people who already coach or have applied: a regular lifter isn't pitched coach onboarding here (no
+ * "Coach on Hard Earned / Apply to be listed" card). /coaching/apply and every coach route still work as before.
+ * While the profile loads nothing shows; if it fails to load, the error shows only to someone known to coach
+ * (they have coaching relationships as the coach), so their workspace link isn't silently lost.
+ */
 function ForCoachesSection({ profile, rels }: { profile: Loaded<CoachProfile | null>; rels: CoachingRelationship[] | undefined }) {
   const p = profile.data;
   const asCoach = (rels ?? []).filter((r) => r.viewerIsCoach);
   const requests = asCoach.filter((r) => r.status === 'requested').length;
   const clients = asCoach.filter((r) => r.status === 'active').length;
+  const loadFailed = !!profile.error && p === undefined;
+  if (!p && !(loadFailed && asCoach.length > 0)) return null;
   return (
     <section aria-labelledby="hub-coaches">
       <SectionTitle id="hub-coaches">For coaches</SectionTitle>
       <Card className="p-4 flex flex-col gap-3">
-        {profile.loading && profile.data === undefined ? (
-          <Spinner label="Loading your coach profile" />
-        ) : profile.error && profile.data === undefined ? (
-          <ErrorState title="Couldn’t load your coach profile" message={profile.error} onRetry={profile.reload} />
-        ) : !p ? (
-          <>
-            <div className="flex items-start gap-3">
-              <span className="size-10 rounded-xl bg-surface-3 text-accent flex items-center justify-center shrink-0">
-                <UserRound className="size-5" aria-hidden />
-              </span>
-              <div>
-                <p className="font-semibold">Coach on Hard Earned</p>
-                <p className="text-sm text-muted">Apply with your profile and experience. After review, approved coaches can list themselves and take on clients, using this same account.</p>
-              </div>
-            </div>
-            <Link to="/coaching/apply" className={secondaryLink}>
-              Apply to be listed
-            </Link>
-          </>
+        {!p ? (
+          <ErrorState title="Couldn’t load your coach profile" message={profile.error ?? undefined} onRetry={profile.reload} />
         ) : p.status === 'approved' ? (
           <>
             <div className="flex items-center justify-between gap-2">

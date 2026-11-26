@@ -16,6 +16,24 @@ test('new user completes onboarding and gets a schedule matching days, equipment
   for (const m of minutes) expect(m).toBeLessThanOrEqual(60);
 });
 
+test('Accept & start saves the plan and opens its first workout in the logger', async ({ page }) => {
+  await page.goto('/onboarding');
+  for (let i = 0; i < 20 && !(await page.getByRole('button', { name: 'Accept & start' }).count()); i++) {
+    const step = await page.getByText(/Step \d+ of \d+/).innerText().catch(() => '');
+    if (step.startsWith('Step 2')) await page.getByLabel('What should we call you?').fill('Starter');
+    await page.getByRole('button', { name: /^(Get started|Continue|Build my plan)$/ }).last().click();
+    await page.waitForTimeout(150);
+  }
+  await page.getByRole('button', { name: 'Accept & start' }).dblclick(); // a double tap starts one workout
+  await page.waitForURL(/\/train\/session\//);
+  await expect(page.getByRole('table').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Finish', exact: true })).toBeVisible();
+  // Back on Today the same workout is in progress (not a second one).
+  await page.getByRole('button', { name: 'Minimise workout' }).click();
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Continue workout' })).toBeVisible();
+});
+
 test('a user can skip nutrition and still use the complete tracker', async ({ page }) => {
   await completeOnboarding(page);
   await page.goto('/nutrition');
@@ -54,7 +72,8 @@ test('an explicit split choice survives refresh, review, shuffling and acceptanc
   await page.getByRole('button', { name: 'Shuffle exercises', exact: true }).click();
   await expect(page.getByRole('article', { name: 'Lower A' })).toBeVisible();
   await page.getByRole('button', { name: 'Accept & start' }).click();
-  await page.waitForURL((u) => u.pathname === '/');
+  // Accept & start opens the plan's first workout in the logger.
+  await page.waitForURL(/\/train\/session\//);
 
   await page.goto('/train/program');
   await expect(page.getByText('Upper / Lower', { exact: true }).first()).toBeVisible();

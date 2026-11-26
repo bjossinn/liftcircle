@@ -159,6 +159,8 @@ export default function SessionPage() {
   const now = useNow(1000, !!session && session.status === 'active');
   const [picker, setPicker] = useState<null | { mode: 'add' } | { mode: 'swap'; exId: string; suggest: string[] }>(null);
   const [finishOpen, setFinishOpen] = useState(false);
+  /** A direct finish (no sheet) is running: ignores repeated taps on Finish. */
+  const finishing = useRef(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -281,6 +283,19 @@ export default function SessionPage() {
     nav(`/train/summary/${finished.id}`, { replace: true });
   };
 
+  // Every working set is done: finish straight away (keeping any notes already on the session). Otherwise ask first,
+  // since unticked sets would be dropped or nothing is done yet.
+  const onFinishTap = async () => {
+    if (finishing.current) return;
+    if (!ops.allWorkingSetsDone(session)) return setFinishOpen(true);
+    finishing.current = true;
+    try {
+      await finish(session.notes ?? '');
+    } finally {
+      finishing.current = false;
+    }
+  };
+
   const fitsUser = constraints && hasConstraints(constraints) ? (e: Exercise) => fitsConstraints(e, constraints) : undefined;
 
   return (
@@ -303,7 +318,7 @@ export default function SessionPage() {
           <IconButton label={paused ? 'Resume workout' : 'Pause workout'} onClick={() => void update((s) => (s.pausedAt ? ops.resumeSession(s, Date.now()) : ops.pauseSession(s, Date.now())))}>
             {paused ? <Play className="size-5" /> : <Pause className="size-5" />}
           </IconButton>
-          <Button variant="primary" size="sm" onClick={() => setFinishOpen(true)}>
+          <Button variant="primary" size="sm" onClick={onFinishTap}>
             Finish
           </Button>
         </div>

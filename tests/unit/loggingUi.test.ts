@@ -340,3 +340,72 @@ describe('exercise picker constraints', () => {
     expect(names().some((n) => n.startsWith('Lat pulldown'))).toBe(true);
   });
 });
+
+describe('Finish (roadmap item 3: no redundant confirmation)', () => {
+  const finishButton = () => [...document.querySelectorAll<HTMLButtonElement>('header button')].find((b) => b.textContent?.trim() === 'Finish')!;
+  const sheetOpen = () => [...document.querySelectorAll('dialog[open]')].some((d) => d.textContent?.includes('Finish workout?'));
+  async function reseed(patch: (s: WorkoutSession) => WorkoutSession) {
+    await db().sessions.put(patch(seed()));
+    await tick(50);
+  }
+  const tickAll = (s: WorkoutSession): WorkoutSession => ({
+    ...s,
+    notes: 'Felt strong',
+    exercises: s.exercises.map((e) => ({ ...e, sets: e.sets.map((x) => ({ ...x, weightKg: x.type === 'timed' ? null : 20, reps: x.type === 'timed' ? null : 8, durationSec: x.type === 'timed' ? 30 : null, completed: true, completedAt: Date.now() })) })),
+  });
+
+  it('every working set done → finishes straight away, no sheet, keeping the session notes', async () => {
+    await reseed(tickAll);
+    click(finishButton());
+    await waitFor(async () => expect((await db().sessions.get('s1'))!.status).toBe('completed'));
+    expect(sheetOpen()).toBe(false);
+    expect((await db().sessions.get('s1'))!.notes).toBe('Felt strong');
+    await waitFor(() => expect(document.body.textContent).toContain('elsewhere')); // navigated to the summary
+  });
+
+  it('an unticked warm-up doesn’t trigger the confirmation', async () => {
+    await reseed((s) => {
+      const t = tickAll(s);
+      const e = t.exercises[0];
+      return { ...t, exercises: [{ ...e, sets: [{ id: 'w', type: 'warmup', weightKg: 10, reps: 10, completed: false }, ...e.sets] }, t.exercises[1]] };
+    });
+    click(finishButton());
+    await waitFor(async () => expect((await db().sessions.get('s1'))!.status).toBe('completed'));
+    expect(sheetOpen()).toBe(false);
+  });
+
+  it('a double tap finishes once', async () => {
+    await reseed(tickAll);
+    act(() => {
+      finishButton().click();
+      finishButton().click();
+    });
+    await waitFor(async () => expect((await db().sessions.get('s1'))!.status).toBe('completed'));
+    expect(await db().sessions.count()).toBe(1);
+  });
+
+  it('unfinished sets → the confirmation still asks, and nothing is saved until Finish in the sheet', async () => {
+    await reseed((s) => {
+      const t = tickAll(s);
+      return { ...t, exercises: [t.exercises[0], { ...t.exercises[1], sets: t.exercises[1].sets.map((x) => ({ ...x, completed: false })) }] };
+    });
+    click(finishButton());
+    await waitFor(() => expect(sheetOpen()).toBe(true));
+    expect(document.body.textContent).toMatch(/1 unticked set won’t be saved/);
+    expect((await db().sessions.get('s1'))!.status).toBe('active');
+  });
+
+  it('nothing done yet, or an empty workout → the sheet explains, Finish stays disabled', async () => {
+    click(finishButton());
+    await waitFor(() => expect(sheetOpen()).toBe(true));
+    expect(document.body.textContent).toContain('No sets are marked done yet');
+    expect((await db().sessions.get('s1'))!.status).toBe('active');
+    unmount();
+    await db().sessions.put({ ...seed(), exercises: [] });
+    mount();
+    await waitFor(() => expect(finishButton()).toBeTruthy());
+    click(finishButton());
+    await waitFor(() => expect(sheetOpen()).toBe(true));
+    expect((await db().sessions.get('s1'))!.status).toBe('active');
+  });
+});

@@ -11,7 +11,9 @@ At the end you see your suggested program: the weekly schedule, each session's e
 effort and rest, an estimated duration, and *why it fits you*. With 2 or more lifting days you choose the **split**
 (for example Full-body A/B or Upper/Lower at 2 days; Full body, Upper/Lower/Full or Push/Pull/Legs at 3 days); the
 recommended one is marked. **Change split** switches the structure, **Shuffle exercises** keeps the split and picks
-other exercises. You can also swap exercises, edit anything, or accept it. Prefer your own routine? Choose **I already have a program** and build sessions yourself
+other exercises. You can also swap exercises and edit anything. **Accept & start** saves the plan and opens its first
+workout straight in the logger (today's session, or the next one if today is a rest day); **Save plan, start later**
+saves it and takes you to Today. If a workout is already in progress, it is kept and the plan is just saved. Prefer your own routine? Choose **I already have a program** and build sessions yourself
 under **Train → Program**.
 
 **About "reps in reserve" (RIR):** stop each set when you could still do about that many more good reps. Starting
@@ -22,9 +24,9 @@ small jumps until a set feels like 2–3 reps left in the tank, then log that as
 
 ## Looks & celebrations
 
-The first time you open the app it asks you to **Pick your look**: **Dark** (charcoal with ember accents, the
-flagship look), **Light** (chalk with ember accents), or **Match my phone** (follows your phone's light or dark mode).
-Tap a card to try it; it changes straight away. You can switch anytime in **Settings → Appearance**. Your choice is
+The app starts on **Match my phone** (follows your phone's light or dark mode). In **Settings → Appearance** you can
+pick **Dark** (charcoal with ember accents, the flagship look) or **Light** (chalk with ember accents) instead; it
+changes straight away. Your choice is
 saved with your settings, so signing in on another phone keeps it. If you chose Midnight or Daylight before 1.0, you
 now see Dark or Light: the same choice, in the Hard Earned colours.
 
@@ -59,7 +61,8 @@ Workouts & rest timer → Celebrations**. With your phone's "reduce motion" sett
   coach style (Supportive, Balanced or Strict). If you flagged **Felt discomfort**, it only says caring things. No
   popup for warm-ups or when you undo a set. Tap a popup to dismiss it. It works offline and costs nothing (no AI call).
   Turn it off in Settings → Workout (**Coach cheers during workouts**) or from the workout's ⋮ menu.
-- **Pause / resume** the whole workout from the header. **Finish** saves completed sets; unticked sets are dropped.
+- **Pause / resume** the whole workout from the header. **Finish** saves completed sets; unticked sets are dropped. When every working set is ticked, Finish saves straight
+  away; otherwise it asks first and shows how many sets are unticked.
 - Everything saves instantly on your device — closing the app, losing signal, or a failed upload never loses a workout.
   The green **Resume workout** bar brings you back.
 
@@ -200,7 +203,8 @@ logging and manual targets only, no automatic prescriptions.
 - **Without an account** you can read what human and AI coaching involve and browse approved coaches' public listings;
   requesting, messaging and the training assistant need an account. Unsent messages to your coach are kept as a draft on your
   device.
-- **Become a coach**: *Coaching → Become a coach*. Save a draft, submit, and follow the review status. Qualification
+- **Become a coach**: the Coaching hub doesn't advertise coach sign-up to lifters; open the coach application
+  (`/coaching/apply`) directly. Once you have applied, *Coaching → For coaches* shows your status. Save a draft, submit, and follow the review status. Qualification
   documents are only visible to you and the reviewers.
 
 ## Notifications

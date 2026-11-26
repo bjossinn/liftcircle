@@ -240,6 +240,16 @@ export function completedSetCount(s: S): number {
 }
 
 /**
+ * Every working set (anything but a warm-up) in the session is ticked, and there is at least one. Finish then needs no
+ * confirmation: nothing the user planned to do would be dropped. Unticked warm-ups don't block it (they are optional
+ * and, like any unticked set, aren't saved). A session with no working sets (empty/freestyle) is never "all done".
+ */
+export function allWorkingSetsDone(s: S): boolean {
+  const working = s.exercises.flatMap((e) => e.sets.filter((x) => x.type !== 'warmup'));
+  return working.length > 0 && working.every((x) => x.completed);
+}
+
+/**
  * Completed sets that are also valid (shared rules). Without `byId`, generic rules apply
  * (non-negative finite numbers and at least one positive measure).
  */

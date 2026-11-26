@@ -12,13 +12,10 @@ import { SyncRunner, SyncStatusBanner } from '@/sync/SyncStatus';
 import { PendingPostsRunner } from '@/social/pendingPosts';
 import { GuestImportPrompt } from '@/features/auth/GuestImportPrompt';
 import { usePushScheduler } from '@/pwa/pushScheduler';
-import { shouldShowThemePicker, themePickedOnDevice } from '@/theme/theme';
 
 // The demo module bundles the program generator and the exercise catalogue to seed sample data;
 // load it only when the demo is actually open so it stays out of the startup bundle.
 const DemoBanner = lazy(() => import('@/features/settings/demo').then((m) => ({ default: m.DemoBanner })));
-// First launch only, so it stays out of the startup bundle too.
-const ThemePicker = lazy(() => import('@/theme/ThemePicker').then((m) => ({ default: m.ThemePicker })));
 
 const TABS = [
   { to: '/', label: 'Today', icon: Home, end: true },
@@ -34,20 +31,10 @@ const FULLSCREEN = [/^\/train\/session\//, /^\/onboarding/, /^\/auth/, /^\/coach
 
 export function Shell() {
   const { pathname } = useLocation();
-  const { online, db, account, accountReady } = useApp();
+  const { online, db } = useApp();
   const health = useHealth();
   const fullscreen = FULLSCREEN.some((r) => r.test(pathname));
-  const [pickedNow, setPickedNow] = useState(false);
-  const showPicker =
-    !pickedNow &&
-    shouldShowThemePicker({ pickedOnDevice: themePickedOnDevice(), accountReady, accountTheme: account.settings.theme, isDemo: db.isDemo, path: pathname });
-  if (showPicker) {
-    return (
-      <Suspense fallback={<div className="min-h-dvh bg-bg" />}>
-        <ThemePicker onDone={() => setPickedNow(true)} />
-      </Suspense>
-    );
-  }
+  // No first-launch theme picker: new users start on Match my phone and can change it in Settings → Appearance.
   return (
     <div className="min-h-dvh flex flex-col pl-safe pr-safe">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:p-2 focus:bg-surface">
