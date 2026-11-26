@@ -9,6 +9,8 @@ import { deleteAccountDb } from '@/db/db';
 import { syncNow, unsyncedCount } from '@/sync/engine';
 import { buildBackup, downloadText, stamp } from './backup';
 import { useToast } from '@/components/toast';
+import { getLanguage, t as tNow, useT } from '@/i18n';
+import { knownErrorText } from './errorText';
 
 /**
  * Sign-out handles unsynced data explicitly: sync first, then (if anything is still unsynced)
@@ -17,6 +19,7 @@ import { useToast } from '@/components/toast';
 export function SignOutButton() {
   const { db, auth, online, finishSignOut } = useApp();
   const toast = useToast();
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [unsynced, setUnsynced] = useState(0);
   const [removeLocal, setRemoveLocal] = useState(true);
@@ -43,9 +46,9 @@ export function SignOutButton() {
       finishSignOut(); // switch to the guest database first so no screen keeps using account data
       await supabase()?.auth.signOut({ scope: 'local' });
       if (remove) await deleteAccountDb(accountKey);
-      toast.show(remove ? 'Signed out and removed this account’s data from this device' : 'Signed out. Your data stays on this device for next time.');
+      toast.show(remove ? t('settings.signedOutRemoved') : t('settings.signedOutKept'));
     } catch (e) {
-      toast.show((e as Error).message, { tone: 'error' });
+      toast.show(knownErrorText(e), { tone: 'error' });
     } finally {
       setBusy(false);
       setOpen(false);
@@ -55,18 +58,20 @@ export function SignOutButton() {
   return (
     <>
       <Button icon={<LogOut className="size-4" />} onClick={() => void begin()} loading={busy}>
+        {/* i18n: no approved Icelandic copy */}
         Sign out
       </Button>
       <Sheet
         open={open}
         onClose={() => setOpen(false)}
-        title="Sign out?"
+        title={t('settings.signOutConfirm')}
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button variant={unsynced > 0 && removeLocal ? 'danger' : 'primary'} loading={busy} onClick={() => void complete(removeLocal)}>
+              {/* i18n: no approved Icelandic copy */}
               Sign out
             </Button>
           </>
@@ -74,30 +79,24 @@ export function SignOutButton() {
       >
         <div className="space-y-3">
           {unsynced > 0 ? (
-            <Notice tone="warn">
-              {unsynced} change{unsynced === 1 ? ' hasn’t' : 's haven’t'} been backed up yet{online ? '' : ' because you’re offline'}. Export a backup or keep the data on this device so nothing is lost.
-            </Notice>
+            <Notice tone="warn">{unsyncedText(unsynced, online)}</Notice>
           ) : (
-            <p className="text-sm text-muted">Everything is backed up to your account.</p>
+            <p className="text-sm text-muted">{t('settings.allBackedUp')}</p>
           )}
           {unsynced > 0 && (
             <Button
               block
               onClick={async () => {
                 downloadText(`hard-earned-backup-${stamp()}.json`, JSON.stringify(await buildBackup(db), null, 2));
-                toast.show('Backup downloaded');
+                toast.show(t('settings.backupDownloaded'));
               }}
             >
-              Download a backup first
+              {t('settings.backupFirst')}
             </Button>
           )}
           <Toggle
-            label="Remove this account’s data from this device"
-            description={
-              unsynced > 0
-                ? 'Unsynced changes would be lost. Leave this off to keep them here. They’ll back up when you sign in again with the same account.'
-                : 'Recommended on shared devices. Signing in again downloads it from your account.'
-            }
+            label={t('settings.removeLocalData')}
+            description={unsynced > 0 ? t('settings.keepUnsyncedHelp') : t('settings.removeLocalHelp')}
             checked={removeLocal}
             onChange={setRemoveLocal}
           />
@@ -112,6 +111,7 @@ export function DeleteAccountButton() {
   const { db, auth, online, finishSignOut } = useApp();
   const nav = useNavigate();
   const toast = useToast();
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
@@ -120,19 +120,19 @@ export function DeleteAccountButton() {
   return (
     <>
       <Button variant="danger" onClick={() => setOpen(true)}>
-        Delete account…
+        {t('settings.deleteAccount')}
       </Button>
       <ConfirmDialog
         open={open}
         danger
-        title="Delete your account permanently?"
-        body="This deletes your profile, posts, photos, comments, friends and all synced workouts, activities, measurements and nutrition records from the server, then removes them from this device. It can’t be undone. Consider downloading a backup first."
-        confirmLabel="Delete everything"
+        title={t('settings.deleteAccountConfirm')}
+        body={t('settings.deleteAccountHelp')}
+        confirmLabel={t('settings.deleteEverything')}
         busy={busy}
         onCancel={() => setOpen(false)}
         onConfirm={async () => {
-          if (confirm !== 'DELETE') return setError('Type DELETE to confirm.');
-          if (!online) return setError('You need to be online to delete your account.');
+          if (confirm !== 'DELETE') return setError(t('settings.deleteConfirmValidation'));
+          if (!online) return setError(t('settings.deleteOnlineRequired'));
           setBusy(true);
           setError(null);
           const key = db.accountKey;
@@ -140,19 +140,27 @@ export function DeleteAccountButton() {
             await socialApi.deleteAccount();
             finishSignOut();
             await deleteAccountDb(key);
-            toast.show('Your account was deleted');
+            toast.show(t('settings.accountDeleted'));
             nav('/', { replace: true });
           } catch (e) {
-            setError((e as Error).message);
+            setError(knownErrorText(e));
           } finally {
             setBusy(false);
           }
         }}
       >
         <div className="mt-3 space-y-2">
-          <Input label="Type DELETE to confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoCapitalize="characters" error={error} />
+          <Input label={t('settings.deleteConfirmLabel')} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoCapitalize="characters" error={error} />
         </div>
       </ConfirmDialog>
     </>
   );
+}
+
+/** Unsynced-changes warning. English keeps its singular wording for one change; the Icelandic copy is count-neutral. */
+function unsyncedText(count: number, online: boolean): string {
+  if (count === 1 && getLanguage() === 'en') {
+    return `1 change hasn’t been backed up yet${online ? '' : ' because you’re offline'}. Export a backup or keep the data on this device so nothing is lost.`;
+  }
+  return tNow(online ? 'settings.unsyncedSignOut' : 'settings.unsyncedOfflineSignOut', { count });
 }

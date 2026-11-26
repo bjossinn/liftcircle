@@ -14,17 +14,29 @@ import { pushApi } from '@/backend/push';
 import type { PushKind, PushPrefs } from '@/domain/pushSchedule';
 import { cachePushPrefs, cachedPushPrefs, disablePush, enablePush, onPushChange, pushEnabledHere, pushSupport, type PushSupport } from '@/pwa/push';
 import { resetUploadedSchedules } from '@/pwa/pushScheduler';
+import { t as tNow, useT, type MessageKey } from '@/i18n';
 
-export const PUSH_KIND_INFO: { key: PushKind; title: string; description: string }[] = [
-  { key: 'workout_reminder', title: 'Workout reminders', description: 'On planned training days, about 2 hours before you usually start (or noon).' },
-  { key: 'rest_over', title: 'Rest-over alerts', description: 'When your rest timer ends and the app is in the background.' },
-  { key: 'coaching', title: 'Coaching messages', description: 'New messages and plan updates from your coach (never the message text).' },
-  { key: 'social', title: 'Friends & social', description: 'Friend requests, likes and comments.' },
-  { key: 'missed_nudge', title: 'Missed-session nudges', description: 'One nudge the day after a planned session that didn’t happen.' },
+/** Title/description are read on access, so they follow the current language. */
+const kindInfo = (key: PushKind, titleKey: MessageKey, descriptionKey: MessageKey) => ({
+  key,
+  get title() {
+    return tNow(titleKey);
+  },
+  get description() {
+    return tNow(descriptionKey);
+  },
+});
+export const PUSH_KIND_INFO: { readonly key: PushKind; readonly title: string; readonly description: string }[] = [
+  kindInfo('workout_reminder', 'settings.pushWorkout', 'settings.pushWorkoutHelp'),
+  kindInfo('rest_over', 'settings.pushRest', 'settings.pushRestHelp'),
+  kindInfo('coaching', 'settings.pushCoaching', 'settings.pushCoachingHelp'),
+  kindInfo('social', 'settings.pushFriends', 'settings.pushFriendsHelp'),
+  kindInfo('missed_nudge', 'settings.pushMissed', 'settings.pushMissedHelp'),
 ];
 
 export function PushSection() {
   const toast = useToast();
+  const { t } = useT();
   const { auth, online, account } = useApp();
   const [support, setSupport] = useState<PushSupport>(() => pushSupport());
   const [on, setOn] = useState(() => pushEnabledHere());
@@ -69,13 +81,14 @@ export function PushSection() {
       resetUploadedSchedules();
       setOn(true);
       setPrefs(cachedPushPrefs());
-      toast.show('Notifications are on for this device', { tone: 'success' });
+      toast.show(t('settings.pushOnToast'), { tone: 'success' });
     } else if (r.reason === 'denied') {
       setSupport('denied');
     } else if (r.reason === 'dismissed') {
-      toast.show('Notifications stay off. You can turn them on any time.', { tone: 'info' });
+      toast.show(t('settings.pushStayedOff'), { tone: 'info' });
     } else {
-      toast.show(r.message || 'Couldn’t turn on notifications. Please try again.', { tone: 'error' });
+      // The raw browser/server error message is not approved copy: always the localized message.
+      toast.show(t('settings.pushOnFailed'), { tone: 'error' });
     }
   }
   async function turnOff() {
@@ -83,9 +96,9 @@ export function PushSection() {
     try {
       await disablePush();
       setOn(false);
-      toast.show('Notifications are off on this device', { tone: 'success' });
-    } catch (e) {
-      toast.show((e as Error).message || 'Couldn’t turn off notifications.', { tone: 'error' });
+      toast.show(t('settings.pushOffToast'), { tone: 'success' });
+    } catch {
+      toast.show(t('settings.pushOffFailed'), { tone: 'error' });
     } finally {
       setBusy(null);
     }
@@ -99,9 +112,9 @@ export function PushSection() {
       setPrefs(p);
       cachePushPrefs(p);
       resetUploadedSchedules();
-    } catch (e) {
+    } catch {
       setPrefs(prev);
-      toast.show((e as Error).message || 'Couldn’t save that change.', { tone: 'error' });
+      toast.show(t('settings.pushSaveFailed'), { tone: 'error' });
     } finally {
       setBusy(null);
     }
@@ -110,9 +123,9 @@ export function PushSection() {
     setBusy('test');
     try {
       await pushApi.sendTest();
-      toast.show('Test notification on its way. It should arrive within a minute.', { tone: 'success' });
-    } catch (e) {
-      toast.show((e as Error).message || 'Couldn’t send a test notification.', { tone: 'error' });
+      toast.show(t('settings.pushTestSent'), { tone: 'success' });
+    } catch {
+      toast.show(t('settings.pushTestFailed'), { tone: 'error' });
     } finally {
       setBusy(null);
     }
@@ -121,50 +134,45 @@ export function PushSection() {
 
   return (
     <section aria-labelledby="push-title">
-      <SectionTitle id="push-title">Push notifications</SectionTitle>
+      <SectionTitle id="push-title">{t('settings.pushTitle')}</SectionTitle>
       <Card className="p-4 space-y-3">
         {support === 'ios_needs_install' ? (
           <div data-testid="push-ios-install" className="space-y-2">
             <p className="text-sm flex gap-2 items-start">
               <Smartphone className="size-4 mt-0.5 shrink-0 text-accent" aria-hidden />
-              <span>On iPhone and iPad, notifications only work in the installed app.</span>
+              <span>{t('settings.pushIosInstalled')}</span>
             </p>
             <ol className="text-sm text-muted list-decimal pl-5 space-y-1">
-              <li>Open Hard Earned in Safari.</li>
-              <li>
-                Tap <strong className="text-ink">Share</strong>, then <strong className="text-ink">Add to Home Screen</strong>.
-              </li>
-              <li>Open Hard Earned from your Home Screen and come back here.</li>
+              <li>{t('settings.pushIosStep1')}</li>
+              <li>{t('settings.pushIosStep2')}</li>
+              <li>{t('settings.pushIosStep3')}</li>
             </ol>
             <Link to="/install" className="text-sm text-accent underline">
-              Step-by-step install guide
+              {t('settings.pushInstallGuide')}
             </Link>
           </div>
         ) : support === 'unsupported' ? (
-          <p className="text-sm text-muted">This browser doesn’t support push notifications. Try the installed app, or Chrome, Edge, Firefox or Safari.</p>
+          <p className="text-sm text-muted">{t('settings.pushUnsupported')}</p>
         ) : support === 'denied' ? (
           <div data-testid="push-denied">
           <Notice tone="warn">
-            <p className="font-medium">Notifications are blocked for Hard Earned.</p>
-            <p className="mt-1">
-              iPhone/iPad: Settings → Notifications → Hard Earned → Allow Notifications. Android/Chrome: tap the lock icon next to the address (or long-press the app icon → App info) → Notifications → Allow. Desktop: the site settings next to the address bar.
-              Then come back here and turn them on.
-            </p>
+            <p className="font-medium">{t('settings.pushBlocked')}</p>
+            <p className="mt-1">{t('settings.pushUnblockHelp')}</p>
           </Notice>
           </div>
         ) : !signedIn ? (
-          <p className="text-sm text-muted">Sign in to get reminders and coaching messages as notifications.</p>
+          <p className="text-sm text-muted">{t('settings.pushSignIn')}</p>
         ) : !on ? (
           <>
-            <p className="text-sm text-muted">Get workout reminders, rest-over alerts and coaching messages on this device, even when Hard Earned is closed. You choose which ones next.</p>
+            <p className="text-sm text-muted">{t('settings.pushIntro')}</p>
             <Button variant="primary" icon={<BellRing className="size-4" />} loading={busy === 'enable'} disabled={!online} onClick={() => void turnOn()}>
-              Turn on notifications
+              {t('settings.pushEnable')}
             </Button>
-            {!online && <p className="text-xs text-muted">You’re offline. Connect to turn notifications on.</p>}
+            {!online && <p className="text-xs text-muted">{t('settings.pushOffline')}</p>}
           </>
         ) : (
           <>
-            <p className="text-sm">Notifications are on for this device.</p>
+            <p className="text-sm">{t('settings.pushOnStatus')}</p>
             <div className="divide-y divide-line -my-1">
               {PUSH_KIND_INFO.map((k) => (
                 <Toggle key={k.key} label={k.title} description={k.description} checked={prefs.kinds.includes(k.key)} disabled={busy === 'prefs' || !online} onChange={(v) => toggleKind(k.key, v)} />
@@ -172,8 +180,8 @@ export function PushSection() {
             </div>
             <div className="pt-1">
               <Toggle
-                label="Remind me at a fixed time"
-                description="Use the same time for every workout reminder instead of the automatic one."
+                label={t('settings.pushFixedTime')}
+                description={t('settings.pushFixedTimeHelp')}
                 checked={prefs.fixedReminderTime != null}
                 disabled={busy === 'prefs' || !online || !prefs.kinds.includes('workout_reminder')}
                 onChange={(v) => void save({ fixedReminderTime: v ? prefs.fixedReminderTime ?? '17:00' : null })}
@@ -181,7 +189,7 @@ export function PushSection() {
               {prefs.fixedReminderTime != null && (
                 <Input
                   type="time"
-                  label="Reminder time"
+                  label={t('settings.pushReminderTime')}
                   value={prefs.fixedReminderTime}
                   onChange={(e) => {
                     const v = e.target.value;
@@ -189,16 +197,14 @@ export function PushSection() {
                   }}
                 />
               )}
-              <p className="text-xs text-muted mt-2">
-                Quiet hours {prefs.quietStart}–{prefs.quietEnd}: nothing is sent then except rest-over alerts during a workout.
-              </p>
+              <p className="text-xs text-muted mt-2">{t('settings.pushQuietHours', { start: prefs.quietStart, end: prefs.quietEnd })}</p>
             </div>
             <div className="flex flex-wrap gap-2 pt-1">
               <Button icon={<Send className="size-4" />} loading={busy === 'test'} disabled={!online} onClick={() => void test()}>
-                Send a test notification
+                {t('settings.pushTest')}
               </Button>
               <Button variant="outline" icon={<BellOff className="size-4" />} loading={busy === 'disable'} disabled={!online} onClick={() => void turnOff()}>
-                Turn off on this device
+                {t('settings.pushDisableDevice')}
               </Button>
             </div>
           </>

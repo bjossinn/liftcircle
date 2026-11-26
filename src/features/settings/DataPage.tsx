@@ -5,7 +5,7 @@ import { ChevronLeft, Download, FileUp, HardDrive, RefreshCw } from 'lucide-reac
 import { useApp } from '@/state/app';
 import { Badge, Button, Card, ConfirmDialog, IconButton, Notice, Page, SectionTitle, Segmented, Toggle } from '@/components/ui';
 import {
-  SINGLETON_PARTS, activitiesCsv, applyImport, buildBackup, describePlan, downloadText, measurementsCsv, parseBackup, previewImport, stamp, workoutsCsv,
+  SINGLETON_PARTS, activitiesCsv, applyImport, buildBackup, countText, describePlan, downloadText, measurementsCsv, parseBackup, previewImport, stamp, workoutsCsv,
   type ExistingRule, type ImportPreview, type SingletonPart,
 } from './backup';
 import { MAX_BACKUP_BYTES } from './backupSchema';
@@ -15,10 +15,13 @@ import { requestPersistentStorage, deleteAccountDb, type SyncConflict, type Sync
 import { resolveConflict, retryFailed, syncNow, useSyncStatus } from '@/sync/engine';
 import { DeleteAccountButton } from './account';
 import { useToast } from '@/components/toast';
+import { clockText, dateTimeText, getLanguage, locale, t as tNow, useT } from '@/i18n';
+import { knownErrorText, restoreErrorText } from './errorText';
 
 export default function DataPage() {
   const nav = useNavigate();
   const toast = useToast();
+  const { t } = useT();
   const { db, auth } = useApp();
   const { byId } = useExercises();
   const [persisted, setPersisted] = useState<boolean | null>(null);
@@ -33,9 +36,9 @@ export default function DataPage() {
   const exportJson = async () => {
     try {
       downloadText(`hard-earned-backup-${stamp()}.json`, JSON.stringify(await buildBackup(db), null, 2));
-      toast.show('Backup downloaded', { tone: 'success' });
+      toast.show(t('settings.backupDownloaded'), { tone: 'success' });
     } catch (e) {
-      toast.show((e as Error).message, { tone: 'error' });
+      toast.show(knownErrorText(e), { tone: 'error' });
     }
   };
   const exportCsv = async (kind: 'workouts' | 'measurements' | 'activities') => {
@@ -46,74 +49,78 @@ export default function DataPage() {
 
   return (
     <Page
-      title="Your data"
+      title={t('settings.dataTitle')}
       back={
-        <IconButton label="Back" onClick={() => nav(-1)}>
+        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
           <ChevronLeft className="size-6" />
         </IconButton>
       }
     >
-      <SectionTitle>On this device</SectionTitle>
+      <SectionTitle>{t('settings.onDevice')}</SectionTitle>
       <Card className="p-4 space-y-3 text-sm">
         <div className="flex items-center gap-2">
           <HardDrive className="size-4 text-muted" aria-hidden />
-          <span className="flex-1">Protected from automatic clean-up</span>
-          <Badge tone={persisted ? 'accent' : 'warn'}>{persisted ? 'Yes' : persisted === false ? 'Not yet' : 'Unknown'}</Badge>
+          <span className="flex-1">{t('settings.protectedStorage')}</span>
+          <Badge tone={persisted ? 'accent' : 'warn'}>{persisted ? t('settings.yes') : persisted === false ? t('settings.notYet') : t('settings.unknown')}</Badge>
         </div>
-        {estimate?.usage != null && <p className="text-muted">Using about {(estimate.usage / 1024 / 1024).toFixed(1)} MB on this device.</p>}
+        {estimate?.usage != null && (
+          <p className="text-muted">
+            {t('settings.storageUsage', { size: new Intl.NumberFormat(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1, useGrouping: false }).format(estimate.usage / 1024 / 1024) })}
+          </p>
+        )}
         {!persisted && (
           <Button
             size="sm"
             onClick={async () => {
               const r = await requestPersistentStorage();
               setPersisted(!!r);
-              toast.show(r ? 'Your browser will keep this data' : 'Your browser didn’t allow it. Installing the app to your home screen often helps.', { tone: r ? 'success' : 'warn' });
+              toast.show(r ? t('settings.storageProtected') : t('settings.storageNotProtected'), { tone: r ? 'success' : 'warn' });
             }}
           >
-            Ask the browser to keep my data
+            {t('settings.protectStorage')}
           </Button>
         )}
         <p className="text-muted">
-          Records are stored in this browser. Clearing site data or uninstalling the browser removes them. {db.isGuest ? 'Create an account for automatic backup, or download backups regularly.' : 'Your account keeps a backup copy in the cloud.'}
+          {t('settings.deviceDataHelp')} {db.isGuest ? t('settings.guestBackupHelp') : t('settings.accountBackupHelp')}
         </p>
       </Card>
 
       {!db.isGuest && <SyncSection />}
 
-      <SectionTitle>Back up & export</SectionTitle>
+      <SectionTitle>{t('settings.backupExport')}</SectionTitle>
       <Card className="p-4 space-y-3">
         <Button variant="primary" block icon={<Download className="size-4" />} onClick={() => void exportJson()}>
-          Download full backup (JSON)
+          {t('settings.downloadFullBackup')}
         </Button>
         <div className="grid grid-cols-3 gap-2">
           <Button size="sm" onClick={() => void exportCsv('workouts')}>
-            Workouts CSV
+            {t('settings.exportWorkouts')}
           </Button>
           <Button size="sm" onClick={() => void exportCsv('activities')}>
-            Activities CSV
+            {t('settings.exportActivities')}
           </Button>
           <Button size="sm" onClick={() => void exportCsv('measurements')}>
-            Body CSV
+            {t('settings.exportBody')}
           </Button>
         </div>
-        <p className="text-xs text-muted">Backups contain your structured records (workouts, activities, programs, measurements, nutrition, settings). They don’t include photo files from shared posts.</p>
+        <p className="text-xs text-muted">{t('settings.backupContents')}</p>
       </Card>
 
-      <SectionTitle>Restore from a backup</SectionTitle>
+      <SectionTitle>{t('settings.restoreBackup')}</SectionTitle>
       <RestoreSection />
 
-      <SectionTitle>Delete</SectionTitle>
+      <SectionTitle>{t('common.delete')}</SectionTitle>
       <Card className="p-4 space-y-3">
         {auth.status === 'signed_in' || auth.status === 'expired' ? (
           <>
-            <p className="text-sm text-muted">Deleting your account removes your records and photos from the server and this device.</p>
+            <p className="text-sm text-muted">{t('settings.deleteAccountDataHelp')}</p>
             <DeleteAccountButton />
           </>
         ) : (
           <>
-            <p className="text-sm text-muted">Remove all records stored on this device.</p>
+            <p className="text-sm text-muted">{t('settings.deleteDeviceHelp')}</p>
             <Button variant="danger" onClick={() => setWipe(true)}>
-              Delete all data on this device…
+              {t('settings.deleteDevice')}
             </Button>
           </>
         )}
@@ -121,9 +128,9 @@ export default function DataPage() {
       <ConfirmDialog
         open={wipe}
         danger
-        title="Delete everything on this device?"
-        body="All workouts, activities, programs, measurements and nutrition records stored here will be permanently removed. Download a backup first if you might want them."
-        confirmLabel="Delete everything"
+        title={t('settings.deleteDeviceConfirm')}
+        body={t('settings.deleteDeviceConfirmHelp')}
+        confirmLabel={t('settings.deleteEverything')}
         onCancel={() => setWipe(false)}
         onConfirm={async () => {
           await deleteAccountDb(db.accountKey);
@@ -136,8 +143,9 @@ export default function DataPage() {
 
 /** Restore: validate the whole file, show exactly what will happen, then import in one transaction. */
 function RestoreSection() {
-  const { db } = useApp();
+  const { db, account } = useApp();
   const toast = useToast();
+  const { t } = useT();
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [selected, setSelected] = useState<Set<SyncedEntity>>(new Set());
   const [existing, setExisting] = useState<ExistingRule>('keep');
@@ -164,7 +172,7 @@ function RestoreSection() {
         type="file"
         accept="application/json,.json"
         className="sr-only"
-        aria-label="Choose backup file"
+        aria-label={t('settings.chooseBackupAria')}
         onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = '';
@@ -172,17 +180,20 @@ function RestoreSection() {
           setImportError(null);
           reset();
           try {
-            if (f.size > MAX_BACKUP_BYTES) throw new Error('That file is too large to be a backup.');
+            if (f.size > MAX_BACKUP_BYTES) {
+              setImportError(t('settings.backupTooLarge'));
+              return;
+            }
             const p = await previewImport(db, parseBackup(await f.text()));
             setPreview(p);
             setSelected(new Set(p.rows.filter((r) => r.newCount > 0 && !(r.entity === 'account_state' && p.singleton?.onDevice)).map((r) => r.entity)));
           } catch (err) {
-            setImportError((err as Error).message);
+            setImportError(knownErrorText(err, 'settings.backupImportFailed'));
           }
         }}
       />
       <Button block icon={<FileUp className="size-4" />} onClick={() => fileRef.current?.click()}>
-        Choose backup file…
+        {t('settings.chooseBackup')}
       </Button>
       {importError && (
         <Notice tone="danger">
@@ -193,26 +204,24 @@ function RestoreSection() {
       )}
       {preview && plan && (
         <div className="space-y-3">
-          <p className="text-sm">Backup from {new Date(preview.backup.exportedAt).toLocaleString()}. The file was checked and nothing has changed yet.</p>
+          <p className="text-sm">{t('settings.backupPreview', { dateTime: exportedText(preview.backup.exportedAt, account.settings.timeZone) })}</p>
           <details className="text-xs text-muted rounded-xl border border-line px-3 py-2">
-            <summary className="min-h-11 flex items-center cursor-pointer text-sm text-ink">How restoring works</summary>
+            <summary className="min-h-11 flex items-center cursor-pointer text-sm text-ink">{t('settings.restoreHow')}</summary>
             <ul className="list-disc pl-4 space-y-1 pb-2">
-              <li>Records are matched by their id. Records you don’t have are added; identical ones are skipped, so nothing is duplicated.</li>
-              <li>Records on this device that differ from the backup are kept as they are unless you choose to use the backup’s version.</li>
-              <li>Settings, your private profile, nutrition targets and favourites are only replaced if you choose that for each one.</li>
-              <li>Records you deleted on this device aren’t brought back.</li>
-              <li>Everything is imported in one step: if something goes wrong, nothing is changed.</li>
+              <li>{t('settings.restoreMatching')}</li>
+              <li>{t('settings.restoreKeepLocal')}</li>
+              <li>{t('settings.restoreChoices')}</li>
+              <li>{t('settings.restoreDeleted')}</li>
+              <li>{t('settings.restoreAtomic')}</li>
             </ul>
           </details>
           {preview.repaired.sets > 0 && (
-            <Notice tone="warn">
-              {preview.repaired.sets} set{preview.repaired.sets === 1 ? '' : 's'} in {preview.repaired.sessions} workout{preview.repaired.sessions === 1 ? '' : 's'} have missing or impossible values. They’ll be imported with those values left blank, and sets that can’t count as done are imported as not done.
-            </Notice>
+            <Notice tone="warn">{repairedText(preview.repaired.sets, preview.repaired.sessions)}</Notice>
           )}
           {preview.warnings.map((w) => (
             <Notice key={w}>{w}</Notice>
           ))}
-          {preview.unknownEntities.length > 0 && <Notice>Some parts of this file aren’t used by this version of the app and will be ignored.</Notice>}
+          {preview.unknownEntities.length > 0 && <Notice>{t('settings.restoreUnknown')}</Notice>}
           <div className="divide-y divide-line rounded-xl border border-line px-3">
             {preview.rows
               .filter((r) => !(r.entity === 'account_state' && singletonOnDevice))
@@ -222,7 +231,11 @@ function RestoreSection() {
                   <div key={r.entity}>
                     <Toggle
                       label={ENTITY_LABELS[r.entity]}
-                      description={`${r.newCount} new · ${r.existing} already here${r.differs ? ` (${r.differs} different)` : ''}`}
+                      description={
+                        r.differs
+                          ? t('settings.restoreCountsDifferent', { newCount: r.newCount, existingCount: r.existing, differentCount: r.differs })
+                          : t('settings.restoreCounts', { newCount: r.newCount, existingCount: r.existing })
+                      }
                       checked={selected.has(r.entity) && actionable}
                       disabled={!actionable}
                       onChange={(v) => {
@@ -243,17 +256,17 @@ function RestoreSection() {
           </div>
           {anyDiffers && (
             <div className="space-y-1.5">
-              <span className="text-sm font-medium">Records that differ from the backup</span>
+              <span className="text-sm font-medium">{t('settings.restoreDifferent')}</span>
               <Segmented<ExistingRule>
-                label="Records that differ from the backup"
+                label={t('settings.restoreDifferent')}
                 value={existing}
                 onChange={(v) => {
                   setExisting(v);
                   if (v === 'replace') setSelected(new Set([...selected, ...preview.rows.filter((r) => r.differs > 0 && r.entity !== 'account_state').map((r) => r.entity)]));
                 }}
                 options={[
-                  { value: 'keep', label: 'Keep this device’s' },
-                  { value: 'replace', label: 'Use the backup’s' },
+                  { value: 'keep', label: t('settings.keepDeviceVersion') },
+                  { value: 'replace', label: t('settings.useBackupVersion') },
                 ]}
               />
             </div>
@@ -262,7 +275,7 @@ function RestoreSection() {
             <div className="rounded-xl border border-line p-3 space-y-3">
               <p className="text-sm font-medium">{ENTITY_LABELS.account_state}</p>
               {SINGLETON_PARTS.filter((x) => preview.singleton!.differs[x.key]).length === 0 ? (
-                <p className="text-xs text-muted">Same as on this device. Nothing to change.</p>
+                <p className="text-xs text-muted">{t('settings.restoreNoChanges')}</p>
               ) : (
                 SINGLETON_PARTS.filter((x) => preview.singleton!.differs[x.key]).map((x) => (
                   <div key={x.key} className="space-y-1.5">
@@ -273,8 +286,8 @@ function RestoreSection() {
                       value={parts[x.key] ?? 'keep'}
                       onChange={(v) => setParts({ ...parts, [x.key]: v })}
                       options={[
-                        { value: 'keep', label: 'Keep current' },
-                        { value: 'replace', label: 'Use backup' },
+                        { value: 'keep', label: t('settings.keepCurrent') },
+                        { value: 'replace', label: t('settings.useBackup') },
                       ]}
                     />
                   </div>
@@ -284,8 +297,14 @@ function RestoreSection() {
           )}
           <p className="text-sm text-muted" role="status">
             {plan.add + plan.replace === 0
-              ? 'Nothing selected to import.'
-              : `Will add ${plan.add}${plan.replace ? `, replace ${plan.replace}` : ''}${plan.keep ? ` and keep ${plan.keep} as they are on this device` : ''}.`}
+              ? t('settings.restoreNoneSelected')
+              : plan.replace
+                ? plan.keep
+                  ? t('settings.restorePlanAll', { add: plan.add, replace: plan.replace, keep: plan.keep })
+                  : t('settings.restorePlanAddReplace', { add: plan.add, replace: plan.replace })
+                : plan.keep
+                  ? t('settings.restorePlanAddKeep', { add: plan.add, keep: plan.keep })
+                  : t('settings.restorePlanAdd', { add: plan.add })}
           </p>
           <div className="flex gap-2">
             <Button
@@ -297,20 +316,24 @@ function RestoreSection() {
                 setImportError(null);
                 try {
                   const r = await applyImport(db, preview.backup, opts);
-                  toast.show(`Restored ${r.written} record${r.written === 1 ? '' : 's'}${r.replaced ? ` (${r.replaced} replaced)` : ''}`, { tone: 'success' });
+                  toast.show(
+                    r.replaced
+                      ? countText('settings.restoredReplaced', r.written, `Restored 1 record (${r.replaced} replaced)`, { replaced: r.replaced })
+                      : countText('settings.restored', r.written, 'Restored 1 record'),
+                    { tone: 'success' },
+                  );
                   reset();
                 } catch (e) {
-                  const msg = (e as Error).message;
-                  setImportError(/Nothing was/.test(msg) ? msg : `${msg} Nothing was changed.`);
+                  setImportError(restoreErrorText(e));
                 } finally {
                   setBusy(false);
                 }
               }}
             >
-              Import selected
+              {t('settings.importSelected')}
             </Button>
             <Button variant="ghost" onClick={reset}>
-              Cancel
+              {t('common.cancel')}
             </Button>
           </div>
         </div>
@@ -320,46 +343,47 @@ function RestoreSection() {
 }
 
 function SyncSection() {
-  const { db, auth, online } = useApp();
+  const { db, auth, online, account } = useApp();
   const toast = useToast();
+  const { t } = useT();
   const s = useSyncStatus();
   const conflicts = useLiveQuery(() => db.conflicts.toArray(), [db]) ?? [];
   const label: Record<typeof s.phase, string> = {
-    disabled: 'Off',
-    idle: 'Up to date',
-    syncing: 'Syncing…',
-    offline: 'Waiting for connection',
-    paused_auth: 'Paused: sign in again',
-    error: 'Having trouble: will retry',
+    disabled: t('sync.off'),
+    idle: t('sync.upToDate'),
+    syncing: t('sync.syncing'),
+    offline: t('sync.waitingConnection'),
+    paused_auth: t('sync.pausedSignIn'),
+    error: t('sync.retrying'),
   };
   return (
     <>
-      <SectionTitle id="sync">Backup & sync</SectionTitle>
+      <SectionTitle id="sync">{t('sync.backupSync')}</SectionTitle>
       <Card className="p-4 space-y-3 text-sm">
         <div className="flex items-center justify-between">
-          <span>Status</span>
+          <span>{t('sync.status')}</span>
           <Badge tone={s.phase === 'idle' ? 'accent' : s.phase === 'error' || s.phase === 'paused_auth' ? 'warn' : 'neutral'}>{label[s.phase]}</Badge>
         </div>
         <div className="flex justify-between text-muted">
-          <span>Changes waiting</span>
+          <span>{t('sync.changesWaiting')}</span>
           <span className="tabular">{s.pending}</span>
         </div>
-        {s.lastSyncedAt && <p className="text-muted">Last synced {new Date(s.lastSyncedAt).toLocaleTimeString()}</p>}
+        {s.lastSyncedAt && <p className="text-muted">{t('sync.lastSynced', { time: clockText(s.lastSyncedAt, account.settings.timeZone) })}</p>}
         {s.lastError && s.phase !== 'idle' && <p className="text-xs text-muted">{s.lastError}</p>}
         <div className="flex gap-2">
-          <Button size="sm" icon={<RefreshCw className="size-4" />} disabled={!online || auth.status !== 'signed_in'} onClick={() => void syncNow().then(() => toast.show('Sync finished'))}>
-            Sync now
+          <Button size="sm" icon={<RefreshCw className="size-4" />} disabled={!online || auth.status !== 'signed_in'} onClick={() => void syncNow().then(() => toast.show(t('sync.finished')))}>
+            {t('sync.now')}
           </Button>
           {s.failing > 0 && (
             <Button size="sm" onClick={() => void retryFailed(db)}>
-              Retry {s.failing} failed
+              {t('sync.retryFailed', { count: s.failing })}
             </Button>
           )}
         </div>
       </Card>
       {conflicts.length > 0 && (
         <Card className="p-4 mt-3 space-y-4">
-          <p className="text-sm">These were changed on more than one device. Nothing has been lost. Choose what to keep.</p>
+          <p className="text-sm">{t('sync.conflictHelp')}</p>
           {conflicts.map((c) => (
             <ConflictRow key={c.id} c={c} />
           ))}
@@ -369,40 +393,59 @@ function SyncSection() {
   );
 }
 
-function describe(rec: unknown): string {
+/** A short description of a conflicting record. Names/dates/kinds are stored content and shown as they are. */
+function describe(rec: unknown, timeZone?: string): string {
   const r = rec as Record<string, unknown> | null;
-  if (!r) return 'Deleted';
+  if (!r) return tNow('sync.deleted');
   const parts = [r.name, (r as { template?: { name?: string } }).template?.name, r.date, r.kind, r.type].filter((x) => typeof x === 'string') as string[];
-  const exercises = Array.isArray(r.exercises) ? `${(r.exercises as { sets: { completed?: boolean }[] }[]).reduce((n, e) => n + e.sets.filter((s) => s.completed).length, 0)} completed sets` : null;
-  const when = typeof r.updatedAt === 'number' ? `edited ${new Date(r.updatedAt).toLocaleString()}` : null;
-  return [parts.slice(0, 2).join(' · '), exercises, when].filter(Boolean).join(': ') || 'Record';
+  const exercises = Array.isArray(r.exercises)
+    ? tNow('sync.completedSets', { count: (r.exercises as { sets: { completed?: boolean }[] }[]).reduce((n, e) => n + e.sets.filter((s) => s.completed).length, 0) })
+    : null;
+  const when = typeof r.updatedAt === 'number' && Number.isFinite(r.updatedAt) ? tNow('sync.editedAt', { dateTime: dateTimeText(r.updatedAt, timeZone) }) : null;
+  return [parts.slice(0, 2).join(' · '), exercises, when].filter(Boolean).join(': ') || tNow('sync.record');
 }
 
 function ConflictRow({ c }: { c: SyncConflict & { remoteDeleted?: boolean } }) {
-  const { db } = useApp();
+  const { db, account } = useApp();
   const toast = useToast();
+  const { t } = useT();
+  const tz = account.settings.timeZone;
   const go = async (choice: 'keep_local' | 'keep_remote' | 'keep_both') => {
     await resolveConflict(db, c.id, choice);
-    toast.show('Resolved', { tone: 'success' });
+    toast.show(t('sync.resolved'), { tone: 'success' });
   };
   return (
     <div className="rounded-xl border border-line p-3 space-y-2 text-sm">
       <div className="font-medium">{ENTITY_LABELS[c.entity]}</div>
-      <div className="text-xs text-muted">This device: {describe(c.local)}</div>
-      <div className="text-xs text-muted">Other device: {c.remoteDeleted ? 'deleted it' : describe(c.remote)}</div>
+      <div className="text-xs text-muted">{t('sync.thisDevice', { description: describe(c.local, tz) })}</div>
+      <div className="text-xs text-muted">{c.remoteDeleted ? t('sync.deletedOnOtherDevice') : t('sync.otherDevice', { description: describe(c.remote, tz) })}</div>
       <div className="flex flex-wrap gap-2">
         {!c.remoteDeleted && (
           <Button size="sm" onClick={() => void go('keep_local')}>
-            Keep this device’s
+            {t('settings.keepDeviceVersion')}
           </Button>
         )}
         <Button size="sm" onClick={() => void go('keep_remote')}>
-          {c.remoteDeleted ? 'Accept deletion' : 'Keep other version'}
+          {c.remoteDeleted ? t('sync.acceptDeletion') : t('sync.keepOther')}
         </Button>
         <Button size="sm" variant="primary" onClick={() => void go('keep_both')}>
-          {c.remoteDeleted ? 'Restore as a copy' : 'Keep both'}
+          {c.remoteDeleted ? t('sync.restoreCopy') : t('sync.keepBoth')}
         </Button>
       </div>
     </div>
   );
+}
+
+/** The backup's export time in the account's time zone; an unreadable value is shown as stored. */
+function exportedText(exportedAt: string, timeZone?: string): string {
+  const ms = Date.parse(exportedAt);
+  return Number.isFinite(ms) ? dateTimeText(ms, timeZone) : exportedAt;
+}
+
+/** Repaired-sets notice. English keeps its singular wording; the Icelandic copy is count-neutral. */
+function repairedText(sets: number, sessions: number): string {
+  if (getLanguage() === 'en' && (sets === 1 || sessions === 1)) {
+    return `${sets} set${sets === 1 ? '' : 's'} in ${sessions} workout${sessions === 1 ? '' : 's'} have missing or impossible values. They’ll be imported with those values left blank, and sets that can’t count as done are imported as not done.`;
+  }
+  return tNow('settings.restoreRepaired', { sets, sessions });
 }

@@ -8,6 +8,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { RefreshCw } from 'lucide-react';
 import { Button, ListRow } from '@/components/ui';
 import { useApp } from '@/state/app';
+import { useT } from '@/i18n';
 import { applyUpdate, checkForUpdates, pwaState, subscribePwa, type UpdateCheckResult } from '@/pwa/update';
 
 let snapshot = pwaState();
@@ -24,6 +25,7 @@ type Status = 'idle' | 'checking' | UpdateCheckResult;
 
 export function UpdateCheckRow() {
   const { db } = useApp();
+  const { t } = useT();
   const pwa = useSyncExternalStore(subscribe, () => snapshot);
   const [status, setStatus] = useState<Status>('idle');
   const activeCount = useLiveQuery(() => db.sessions.where('status').equals('active').filter((s) => !s.deletedAt).count(), [db]);
@@ -38,33 +40,33 @@ export function UpdateCheckRow() {
 
   const subtitle = available
     ? busy
-      ? 'Update ready. Install it after your workout.'
-      : 'Update ready to install'
+      ? t('settings.updateReadyAfter')
+      : t('settings.updateReady')
     : {
-        idle: `You have ${version}`,
-        checking: 'Checking…',
-        latest: `You’re up to date (${version})`,
-        offline: 'You’re offline. Try again later.',
-        unsupported: 'Not available here. Reload to update.',
-        error: 'Couldn’t check. Try again.',
+        idle: t('settings.versionCurrent', { version }),
+        checking: t('settings.checking'),
+        latest: t('settings.upToDate', { version }),
+        offline: t('settings.checkOffline'),
+        unsupported: t('settings.checkUnsupported'),
+        error: t('settings.checkFailed'),
         available: '',
       }[status];
 
   return (
     <ListRow
       left={<RefreshCw className={`size-5 text-muted${status === 'checking' ? ' animate-spin' : ''}`} aria-hidden />}
-      title="Check for updates"
+      title={t('settings.checkUpdates')}
       subtitle={<span role="status">{subtitle}</span>}
       right={
         available ? (
           !busy && (
             <Button size="sm" variant="primary" onClick={() => applyUpdate()}>
-              Update
+              {t('sync.update')}
             </Button>
           )
         ) : (
           <Button size="sm" variant="secondary" disabled={status === 'checking'} onClick={() => void check()}>
-            {status === 'checking' ? 'Checking…' : 'Check'}
+            {status === 'checking' ? t('settings.checking') : t('settings.check')}
           </Button>
         )
       }
