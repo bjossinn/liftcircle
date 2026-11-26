@@ -44,6 +44,11 @@ export interface PendingSend {
   createdAt: string;
   /** The account that wrote it (1.0.3): never sent under another signed-in account. */
   userId?: string;
+  /**
+   * The reply was stopped and the server confirmed it (item 10). The id is spent: sending the text again (Retry) is a
+   * deliberate new request with a new id.
+   */
+  stopped?: boolean;
 }
 
 export interface QueuedAck {
@@ -163,6 +168,13 @@ export function classifyAiError(e: unknown): ClassifiedAiError {
   if (code === 'backend_missing' || reason === 'backend_missing' || /not implemented/i.test(msg)) return out('unavailable', 'ai.error.notSetUp', { reason: 'backend_missing' });
   if (code === 'auth' || status === 401) return out('auth', 'ai.error.auth');
   if (code === 'in_progress') return out('failed', 'aiServer.error.inProgress');
+  // Item 10 (approved copy; typed codes only, never the raw transport or provider text).
+  if (code === 'invalid_reply') return out('failed', 'ai.error.invalidReply');
+  if (code === 'sharing_changed') return out('failed', 'ai.chat.replyDiscardedPrivacy');
+  if (code === 'training_not_shared') return out('failed', 'ai.chat.trainingOffPending');
+  if (code === 'request_cancelled') return out('failed', 'ai.chat.replyStopped');
+  if (code === 'cancel_unconfirmed') return out('failed', 'ai.chat.stopUnconfirmed');
+  if (code === 'stream_interrupted' || code === 'stream_protocol') return out('failed', 'ai.chat.replyInterrupted');
   return out('failed', 'ai.error.failed');
 }
 

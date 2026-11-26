@@ -28,6 +28,7 @@ import { RECIPES } from '@/data/recipes';
 import { INGREDIENTS } from '@/data/ingredients';
 import { generateMealPlan, planPrefsFrom } from '@/domain/nutrition/mealplan';
 import { defaultAccountState } from '@/state/defaults';
+import { followSchema } from './helpers/schemaModel';
 
 /* ================================================================== fixtures */
 const U = '11111111-1111-4111-8111-111111111111';
@@ -121,7 +122,7 @@ function provider(replies: unknown[]) {
   const fetch: FetchLike = async (_url, init) => {
     requests.push(JSON.parse(init.body));
     const body = replies.shift() ?? text('…');
-    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) };
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => followSchema(init.body, body), text: async () => JSON.stringify(body) };
   };
   return { fetch, requests };
 }
@@ -345,8 +346,8 @@ describe('MOCKED follow-ups resume the open request', () => {
 
   it('the follow-up rules are in the prompt (two-part answers handled together)', async () => {
     const ctx = await buildContext({ db: makeDb(data()).db, uid: U, settings: { enabled: true, paused: false, scopes: ALL, profileNotes: '' }, text: 'hi', mode: 'chat', now: NOW });
-    expect(ctx.system).toMatch(/"try now" and similar short replies resume the open request/);
-    expect(ctx.system).toMatch(/\("yes, but make the meal plan"\), handle both parts in this reply/);
+    expect(ctx.system).toMatch(/"try again", "try now"\) resume the open request first, keeping its original dates, counts and restrictions/);
+    expect(ctx.system).toMatch(/If a reply has two parts \("yes, but make the meal plan"\), handle both/);
   });
 });
 
@@ -376,7 +377,7 @@ describe('MOCKED links, dates, chips and recipe links', () => {
     const { fetch, requests } = provider([text(recipe)]);
     const { d, logs } = deps(makeDb(data()).db, fetch);
     await handleAiCoach(d, U, send('how do I make the chicken bowl?'));
-    expect(requests[0].system).toMatch(/never write a recipe's ingredient list or steps in chat, even when asked how to make it/);
+    expect(requests[0].system).toMatch(/Never write a recipe's ingredient list or steps in chat, even when asked how to make it/);
     expect(requests[0].system).toMatch(/\[\[open:\/nutrition\/recipes\/<id>\|Open recipe\]\]/);
     expect(logs.some((l) => l.event === 'ai_full_recipe_warning')).toBe(true);
   });

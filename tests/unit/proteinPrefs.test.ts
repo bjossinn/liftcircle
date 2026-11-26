@@ -232,7 +232,7 @@ describe('MOCKED training assistant: protein preferences', () => {
     const ctx = await buildContext({ db: db(acc), uid: 'u', settings: { enabled: true, paused: false, scopes: { profile: true, training: true, measurements: false, nutrition: true }, profileNotes: '' }, text: 'dinner ideas?', mode: 'chat', now: new Date('2026-10-29T10:00:00Z') } as never);
     expect(ctx.system).toMatch(/Proteins they like \(prefer these\): Tuna/);
     expect(ctx.system).toMatch(/Proteins they don't eat \("not for me": a taste preference, not an allergy; never suggest them\): Pork & ham, Prawns/);
-    expect(ctx.system).toMatch(/mention it \("since you don't eat prawns…"\) only when it's relevant/);
+    expect(ctx.system).toMatch(/Mention a "not for me" protein only when relevant \("since you don't eat prawns…"\)/);
   });
 
   it('find_recipes never returns excluded proteins, ranks liked ones first, and explains when choices empty everything', async () => {

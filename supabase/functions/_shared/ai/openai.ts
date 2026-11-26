@@ -19,6 +19,7 @@ interface InternalRequest {
   messages: ApiMessage[];
   tools?: readonly unknown[];
   tool_choice?: { type: 'auto' | 'none' | 'any' };
+  responseFormat?: { name: string; schema: Record<string, unknown> };
 }
 
 type OaMessage =
@@ -58,7 +59,7 @@ export function toOpenAiTools(tools: readonly unknown[] | undefined) {
   });
 }
 
-export function toOpenAiRequest(req: InternalRequest, opts: { model: string; maxTokens: number; reasoningEffort?: string }) {
+export function toOpenAiRequest(req: InternalRequest, opts: { model: string; maxTokens: number; reasoningEffort?: string; responseFormat?: InternalRequest['responseFormat'] }) {
   const tools = toOpenAiTools(req.tools);
   const choice = req.tool_choice?.type === 'any' ? 'required' : req.tool_choice?.type;
   return {
@@ -67,6 +68,8 @@ export function toOpenAiRequest(req: InternalRequest, opts: { model: string; max
     max_completion_tokens: opts.maxTokens,
     ...(opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
     ...(tools.length ? { tools, ...(choice ? { tool_choice: choice } : {}) } : {}),
+    // Structured Outputs for the final text (item 10). Tool schemas stay non-strict (optional/nested parameters).
+    ...(opts.responseFormat ? { response_format: { type: 'json_schema', json_schema: { name: opts.responseFormat.name, strict: true, schema: opts.responseFormat.schema } } } : {}),
   };
 }
 
@@ -82,7 +85,9 @@ export function fromOpenAiResponse(data: unknown): ApiResponse | null {
   if (!choice || !choice.message || typeof choice.message !== 'object') return null;
   const msg = choice.message;
   const content: ContentBlock[] = [];
-  const text = typeof msg.content === 'string' ? msg.content : typeof msg.refusal === 'string' ? msg.refusal : '';
+  // An explicit refusal is kept as such (stop_reason 'refusal', `refusal`); in text mode its words remain the reply text.
+  const refusal = typeof msg.refusal === 'string' && msg.refusal.trim() ? msg.refusal : null;
+  const text = typeof msg.content === 'string' && msg.content ? msg.content : refusal ?? '';
   if (text.trim()) content.push({ type: 'text', text });
   for (const raw of Array.isArray(msg.tool_calls) ? msg.tool_calls : []) {
     const c = raw as { id?: unknown; type?: unknown; function?: { name?: unknown; arguments?: unknown } };
@@ -100,12 +105,13 @@ export function fromOpenAiResponse(data: unknown): ApiResponse | null {
   }
   const hasTools = content.some((b) => b.type === 'tool_use');
   const fr = choice.finish_reason;
-  const stop_reason = hasTools && (fr === 'tool_calls' || fr === 'stop' || !fr) ? 'tool_use' : fr === 'length' ? 'max_tokens' : 'end_turn';
+  const stop_reason = hasTools && (fr === 'tool_calls' || fr === 'stop' || !fr) ? 'tool_use' : fr === 'length' ? 'max_tokens' : refusal || fr === 'content_filter' ? 'refusal' : 'end_turn';
   return {
     id: d?.id,
     model: d?.model,
     content,
     stop_reason,
+    ...(refusal ? { refusal } : {}),
     usage: { input_tokens: d?.usage?.prompt_tokens, output_tokens: d?.usage?.completion_tokens },
   };
 }

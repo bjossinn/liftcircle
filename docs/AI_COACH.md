@@ -68,6 +68,8 @@ The Anthropic variables below apply only when Anthropic is the provider.
 | `AI_DAILY_REQUEST_LIMIT` | `40` | Messages per user per **UTC** day (`ai_usage.requests`). Over → `429 rate_limited` (SQLSTATE PT429). |
 | `AI_MAX_OUTPUT_TOKENS` | `1200` | `max_tokens` per provider call. |
 | `AI_TIMEOUT_MS` | `45000` | Per-attempt timeout (AbortController). Whole request budget ≈ 110 s. |
+| `AI_STRUCTURED_OUTPUT` | `auto` | Item 10. `auto`: the final reply uses Structured Outputs (`{answer, why}`) only on the provider's official endpoint with a model known to support it (Anthropic `output_config.format`, OpenAI `response_format` json_schema); custom `*_BASE_URL` endpoints and other models use the text reply. `on`: the configured endpoint is declared to support it. `off`: always text. Never switches provider or model. |
+| `AI_CANCEL_POLL_MS` | `1500` | Item 10. How often a running request checks whether the user pressed Stop (bounded; 200–10000). |
 | `AI_PRICE_INPUT_PER_MTOK` / `AI_PRICE_OUTPUT_PER_MTOK` | unset | USD per million tokens, used for the cost estimate. Unset → `cost_usd` stays null. Copy current prices from your provider's pricing page (they change). |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`/publishable, `SUPABASE_SERVICE_ROLE_KEY`/secret | provided by Supabase | Same as the other functions. |
 
@@ -494,6 +496,92 @@ From the Claude + ChatGPT cross-review of 25 Nov 2026 (`tests/unit/aiCorrectness
   `ai_settings_json` (NULL reads as supportive since `20261128000001`), client parsing, the consent screen, and the
   offline mirrors (logger cheers, push texts, welcome). Tiredness and fatigue are never weak reasons in any style.
 
+## 4g. Eval set, streaming status line and six-part prompt (roadmap item 10)
+
+Spec (verbatim, with the approved English and Icelandic copy): `docs/specs/item10-spec-and-copy.md`.
+
+- **Six-part prompt.** `_shared/ai/prompts/`: `identity`, `safety` (+ only the selected coach style), `grounding`,
+  `training`, `nutrition`, `response` (+ the selected output format) — about 1,200 words of static instructions instead
+  of ~2,300. The composer orders static modules → server-derived controls (tiredness, today, rest day, workout,
+  check-in, data status, sharing changed, open request, reply language, clarification) → feature-filtered app guide →
+  bounded permitted data, with a budget per section instead of clipping the whole prompt: static rules, controls and
+  restriction-carrying data (profile, open request, workout, coach management) are never shortened; history-like
+  sections are clipped or dropped lowest priority first. `docs/AI_PROMPT_RULES.md` maps every earlier instruction to its
+  module, deterministic enforcement and regression test (checked by `tests/unit/aiPromptModules.test.ts`). The send log
+  records `prompt_version`, `prompt_hash` and the assembled size.
+- **Structured Outputs.** Final reply envelope `{"answer": string, "why": string|null}` (strict, no other fields) on
+  every round where supported (`structured.ts`, `AI_STRUCTURED_OUTPUT`). Actions, proposals, grounding, permissions and
+  safety stay server-owned. Link markers stay inside `answer` and are filtered afterwards. Tool schemas are NOT made
+  strict. Refusals and truncation are kept explicitly in the normalized provider response. Usage of every completed
+  round is booked before parsing. A refused, truncated or malformed envelope is never shown: a valid server action uses
+  its deterministic summary; otherwise `502 invalid_reply` through the normal failure settlement (refund + failed
+  usage). No extra repair generation.
+- **Streaming.** `send` with `stream: true` and `Accept: text/event-stream` (authenticated `fetch`, never EventSource).
+  Authentication, consent and the reservation happen first, so refusals stay normal JSON. Events (`sse.ts`, v1):
+  `status {phase}` (`preparing`, `training`, `nutrition`, `recipes`, `planning`, `writing`, `checking`, `saving`, only
+  when that work happens — never training/nutrition when unshared), `text_delta` (chunks of the FINAL, STORED answer),
+  `complete` (the same exchange as JSON, plus authoritative usage), `error {code, reason?, retryable}`, `cancelled
+  {usage}`; heartbeat comments every 12 s; `text/event-stream; charset=utf-8`, `Cache-Control: no-store,
+  no-transform`. The model's raw text is buffered: the answer is released only after every check and the durable
+  store, without artificial delays. The work runs as a Supabase background task (`EdgeRuntime.waitUntil`): a client
+  that disconnects detaches; it never cancels or refunds. Before publishing, consent and sharing are re-read; if they
+  were narrowed, the reply is discarded and the request fails as `sharing_changed`.
+- **Stop.** `cancel` and `request_status` actions keyed by the message id (ownership from the JWT), backed by
+  `20261130000001_ai_cancellation.sql` (see docs/BACKEND.md §9b). "Stopping…" until the server acknowledges; success
+  may still win ("The reply finished before it could be stopped"). The worker polls (bounded) and aborts the provider
+  fetch/backoff with an attempt-owned signal (never a retryable timeout). One refund, against the charged day;
+  completed-round tokens booked as cancelled usage; late reports idempotent; missing provider usage counted as unknown.
+  `status` advertises `protocol: {stream: 1, cancel: 1}` (cancel only when the database has the functions): older
+  servers keep JSON and show no Stop button.
+- **App.** `src/backend/sseParser.ts` (incremental UTF-8, CRLF/CR, comments, bounded frames), `aiApi.sendStream /
+  cancel / requestStatus` (`src/backend/ai.ts`), `ai/replyFlow.ts`, and the chat status line (approved copy
+  `ai.chat.status.*`, slow notice after 20 s, Stop/Stopping…). The preview is plain text with no links, cards, badges,
+  history writes or analytics until `complete`; the final reply goes through the normal mappers. EOF without a terminal
+  event = interrupted/unconfirmed: the same id is checked (`request_status`, or the existing in_progress replay on
+  servers without it) — never a second generation. Leaving the chat detaches. A confirmed Stop keeps the message; Retry
+  then sends it with a new id. Scroll position is respected ("Show latest reply"); screen readers hear phase changes
+  and completion, not every chunk.
+- **Eval set and comparison runner.** 30 cases (15 EN + 15 IS, verbatim) in `tests/evals/coach.cases.json`, synthetic
+  fixtures on the production catalogs (`coach.fixtures.ts`), reservation-aware in-memory database (`memoryDb.ts`),
+  deterministic scoring (`coach.scoring.ts`) and explicit candidates (`coach.models.json`). Run
+  `node tests/live/coach-eval.mjs --models tests/evals/coach.models.json --cases tests/evals/coach.cases.json --repeat 3 --max-cost-usd 10 --out artifacts/coach-eval`
+  (live, costs money; `--dry-run` checks the harness only). Writes `manifest.json`, append-only `results.jsonl`,
+  `comparison.md` and a blind Icelandic rating sheet `review.csv`. The production model is never changed by it.
+
+### 4g.1 Review round 2 (PR #26)
+
+- Every message-bound request (stream, JSON send/replay, cancel, request_status) carries the account that wrote the
+  message; the session is resolved and its user checked immediately before dispatch (`account_changed` otherwise).
+- Training sharing is re-checked and the workout snapshot rebuilt before EVERY attempt (first send, in_progress
+  retries, recovery replay); a flow is stopped as soon as Training is turned off. The server refuses a contextual
+  workout request (one carrying a workout snapshot) while Training isn't shared: `409 training_not_shared`, nothing
+  reserved, charged or sent to the provider.
+- Blank Structured Output (no content, whitespace, empty `answer`) is invalid: a valid server action's summary, or
+  `invalid_reply` with the allowance refunded. Never a stored, charged "couldn't reply".
+- A cancel is reported as stopped only when the database confirms it; otherwise `cancel_unconfirmed` and the app keeps
+  checking the same id (bounded). Streams end as interrupted after 45 s without bytes or 180 s overall; control calls
+  time out after 20 s and follow the flow's abort signal.
+- Dispatched provider attempts are counted; one that never produced known usage (aborted, timed out, network error,
+  unreadable) marks the attempt's usage as unknown while keeping the known tokens.
+- Pregnancy and medication precautions are back in the safety module (R46/R47 in docs/AI_PROMPT_RULES.md).
+- Eval: unsafe prose fails deterministically (pushing through pain, advice to add load, shaming, an excluded allergen
+  recommended in the text, with negations understood), and every result in BOTH languages needs a recorded safety
+  review before a candidate can qualify. Subsets, fewer than 3 repetitions or a baseline without the same coverage are
+  diagnostic only; a budget-exhausted run is INCOMPLETE; served models must match exactly (or a documented alias).
+  `--report <run dir> --ratings <file>` attaches the blind reviews to the original run without model calls.
+
+### 4g.2 Review round 3 (PR #26)
+
+- Workout questions carry a `contextual: true` marker independently of the workout snapshot (kept through removing
+  the attachment, pending messages, reload, Edit and recovery); the server refuses it while Training isn't shared,
+  even when this device's settings are stale.
+- Every client request keeps its deadline and abort link until the body is read (JSON and error bodies included); a
+  streamed send gets no headers within 30 s → interrupted, then checked by id.
+- Provider attempts that may have been billed without reporting usage are recorded with a successful exchange too
+  (`ai_usage.unknown_usage_attempts`), once, without changing its charge.
+- Eval: negated safety wording ("Do not push through the pain") is a review flag, not a violation; the blind review
+  sheet is RFC 4180 CSV (doubled quotes, multiline fields).
+
 ## 5. Testing status
 
 | What | How | Status |
@@ -517,4 +605,11 @@ From the Claude + ChatGPT cross-review of 25 Nov 2026 (`tests/unit/aiCorrectness
 | DB v4: meal_plan and recipe_suggestions actions stored, replayed and returned to their owner only; unknown kinds dropped; client can't write | `node tests/rls/ai-run.mjs` (CI) | see PR CI |
 | 0.7.0 fixes, **MOCKED** provider + real catalog: server/app meal plan parity, plan with nutrition shared and a 198 g target, default/next-week/named days, preferences only tighten, impossible constraints explained, missing sharing/targets, invented meals replaced by a real plan; find_recipes tolerant matching, tags, fallback, empty-with-reason; text vs card conflicts (corrected / unchanged); open request + sharing widened / revoked; link lead-in cleanup; recipe links (valid kept, unknown stripped, max 3); no-full-recipe rule + warning; human dates in text and week warnings; chip plurals | `npx vitest run tests/unit/aiCoachFixes.test.ts` | passing (24) |
 | Chat UI 0.7.0, **MOCKED** aiApi: recipe cards (name/time/protein, Open, Save, Add to plan…), recipe link opens the recipe page with no lead-in line, ISO dates shown as human dates, "Why this?" hidden without text, legacy chip label, week-card warnings | `npx vitest run tests/unit/aiUi.test.ts` | passing (26 incl. earlier) |
+| Item 10: six-part prompt (word budgets, order, per-section budgets, selected style/output, version/hash, rule matrix) | `npx vitest run tests/unit/aiPromptModules.test.ts` | passing |
+| Item 10: Structured Outputs (capability config, request shapes per provider, every round, refusal / truncation / malformed JSON, usage before parsing, text path) | `npx vitest run tests/unit/aiStructured.test.ts` | passing |
+| Item 10: SSE server + cancellation, **MOCKED** provider and in-memory db (JSON/SSE equivalence, no pre-postcheck text, store failure, phases, heartbeats, detach, replay without charge, cancel before send / during model wait / after success / before saving, stale worker, worker death, midnight refund, sharing changed) | `npx vitest run tests/unit/aiStreamServer.test.ts` | passing |
+| Item 10: client parser, stream consumption, Stop/recovery flow; chat UI (status line, preview, Stop during sync / model wait / retry polling / delivery, lost acknowledgement, interrupted stream, unmount) | `npx vitest run tests/unit/aiStreamClient.test.ts tests/unit/aiChatStreamUi.test.tsx` | passing |
+| Item 10: verbatim copy (27 EN + 27 IS strings, 30 eval prompts) and eval harness (fixtures, controls, scoring, stub end-to-end) | `npx vitest run tests/unit/aiItem10Copy.test.ts tests/unit/coachEval.test.ts` | passing |
+| Item 10: cancellation RPCs on PostgreSQL 16 (tombstone, cancel/success both orders, repeated cancel, expiry finalizer, stale worker, legacy wrapper trigger, late usage, midnight refund, privileges) | `npm run test:ai-db` | passing |
+| Item 10: live eval / deployed SSE smoke | `node tests/live/coach-eval.mjs …`, `node tests/live/ai-sse-smoke.mjs` | **not run here** (no provider keys, no deployed project or Deno runtime in the build environment); both print BLOCKED and exit 2 without credentials |
 | Live OpenAI / Anthropic API | `OPENAI_API_KEY=… node tests/live/ai-live.mjs` (or `ANTHROPIC_API_KEY=…`; prints the two-sessions reply, Why, week plan and soft checks, then the off-topic Python check — no code and a mention of training — and (0.7.0) "make me a meal plan for this week and add it" → a meal_plan action and "Ok try now" after a sharing-blocked request → resumed; the hard checks fail the run; without a key prints BLOCKED) | **not verified here** (no key; sandbox egress to api.openai.com refused). The script was run against a local OpenAI-format stub only. After deploying: run it with the real key, then send one chat message from the app and check `ai_usage`. |

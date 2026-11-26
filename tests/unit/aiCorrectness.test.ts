@@ -22,6 +22,7 @@ import type {
 } from '../../supabase/functions/_shared/ai/types';
 import { RECIPES } from '@/data/recipes';
 import { INGREDIENTS } from '@/data/ingredients';
+import { followSchema } from './helpers/schemaModel';
 
 const U = '11111111-1111-4111-8111-111111111111';
 const mid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -74,9 +75,9 @@ function makeDb(messages: StoredMessage[] = [], acc: AccountStatePayload = accou
 }
 const text = (t: string) => ({ id: 'm', model: 'claude-test', content: [{ type: 'text', text: t }], stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 10 } });
 function provider(replies: unknown[]) {
-  const fetch: FetchLike = async () => {
+  const fetch: FetchLike = async (_url, init) => {
     const body = replies.shift() ?? text('…');
-    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) };
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => followSchema(init.body, body), text: async () => JSON.stringify(body) };
   };
   return { fetch };
 }
@@ -270,7 +271,7 @@ function capturingProvider(replies: unknown[]) {
   const fetch: FetchLike = async (_url, init) => {
     requests.push(JSON.parse(init.body));
     const body = replies.shift() ?? text('…');
-    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) };
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => followSchema(init.body, body), text: async () => JSON.stringify(body) };
   };
   return { fetch, requests };
 }

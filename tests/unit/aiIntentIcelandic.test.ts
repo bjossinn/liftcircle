@@ -38,6 +38,7 @@ import type {
 } from '../../supabase/functions/_shared/ai/types';
 import { RECIPES } from '@/data/recipes';
 import { INGREDIENTS } from '@/data/ingredients';
+import { followSchema } from './helpers/schemaModel';
 
 /* ================================================================== corpus */
 interface Case {
@@ -175,7 +176,7 @@ function provider(replies: unknown[]) {
   const fetch: FetchLike = async (_url, init) => {
     requests.push(JSON.parse(init.body));
     const body = replies.shift() ?? text('…');
-    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) };
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => followSchema(init.body, body), text: async () => JSON.stringify(body) };
   };
   return { fetch, requests };
 }
@@ -222,7 +223,7 @@ async function chat(t: string, replies: unknown[], opts: DbOpts & { body?: Recor
   const conv = conversationDb(opts);
   const p = provider(replies);
   const res = await handleAiCoach(deps(conv.db, p.fetch), U, send(t, opts.body));
-  return { reply: res.body.reply as Reply, requests: p.requests, conv, status: res.status };
+  return { reply: res.body.reply as Reply, requests: p.requests, conv, status: res.status, body: res.body };
 }
 const toolCtx = (requestText?: string, recipes: RefRecipe[] = ALL_RECIPES, f: Partial<UserFacts> = {}) => {
   const db = conversationDb({ recipes }).db;
@@ -548,7 +549,7 @@ describe('pain and discomfort: the area with current discomfort, safety first', 
       expect(classifyIntent(c.text)).toBeNull();
       const { reply, requests } = await chat(c.text, [text('Farðu varlega.')]);
       expect(reply.action ?? null).toBeNull();
-      expect(systemOf(requests[0])).toMatch(/If the user mentions pain, injury, illness, dizziness, chest pain or pressure[^\n]*never push/);
+      expect(systemOf(requests[0])).toMatch(/- Pain, injury, discomfort, illness, dizziness, chest pain or pressure[^\n]*never push/);
     }
   });
 });
@@ -708,14 +709,14 @@ describe('context: sharing, untrusted snapshot text, finished workouts, reply la
   it.each(casesOf('context'))('%s', async (_id, c) => {
     const e = c.expected;
     if (e.trainingSharing === false) {
-      // Training not shared: the snapshot is not sent to the model and no workout change is made.
+      // Training not shared: the contextual workout request is refused before anything reaches the model (review P1-2).
       expect(classifyRequest(c.text)).toBe('session_swap');
-      const { reply, requests } = await chat(c.text, [toolUse('propose_session_adjustment', { change: 'swap', session_exercise_id: 'se-bench', to_exercise_id: 'dumbbell-bench-press' }), text('Ég sé ekki æfinguna.')], {
+      const { requests, status, conv } = await chat(c.text, [toolUse('propose_session_adjustment', { change: 'swap', session_exercise_id: 'se-bench', to_exercise_id: 'dumbbell-bench-press' }), text('Ég sé ekki æfinguna.')], {
         scopes: { ...ALL, training: false }, body: { workout: live({ intent: 'swap' }) },
       });
-      expect(systemOf(requests[0])).not.toContain('Barbell bench press');
-      expect(systemOf(requests[0])).toMatch(/Training isn't shared, so you can't see that workout/);
-      expect(reply.action ?? null).toBeNull();
+      expect(status).toBe(409);
+      expect(requests).toHaveLength(0);
+      expect(conv.messages).toHaveLength(0);
     }
     if (e.trainingSharingRevoked) {
       // A training request before Training was revoked is never carried into the model's history or resumed.
@@ -753,10 +754,12 @@ describe('context: sharing, untrusted snapshot text, finished workouts, reply la
       // App language Icelandic: the reply language is Icelandic (an ambiguous "ok" never defaults to English).
       expect(resolveReplyLang({ text: c.text, setting: e.settingsLanguage, history: ['Hi there'] })).toBe(e.responseLanguage);
       const body = { language: e.settingsLanguage, ...(e.mustUseEngineTargetExactly ? { workout: live({ intent: 'explain', shownTarget: 'Add weight → 62.5 kg × 8' }) } : {}) };
-      // The model returns nothing usable, so the reply is the server's own sentence — in the resolved language.
-      const { reply, requests } = await chat(c.text, [text('')], { body, messages: [{ id: 'h1', role: 'user', content: 'Hi there', createdAt: '2026-11-26T09:00:00Z' }] });
-      expect(reply.content).toMatch(/[áðéíóúýþæö]/i);
-      expect(reply.content).not.toMatch(/Sorry/);
+      // The model returns nothing usable: a blank reply is never stored as a charged success (review P2-1); the server's
+      // own message is in the resolved language.
+      const { requests, status, body: res } = await chat(c.text, [text('')], { body, messages: [{ id: 'h1', role: 'user', content: 'Hi there', createdAt: '2026-11-26T09:00:00Z' }] });
+      expect(status).toBe(502);
+      expect(String(res.error)).toMatch(/[áðéíóúýþæö]/i);
+      expect(String(res.error)).not.toMatch(/Sorry|could not/);
       if (e.mustUseEngineTargetExactly) expect(systemOf(requests[0])).toContain('62.5 kg × 8');
     }
   });

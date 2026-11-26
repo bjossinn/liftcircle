@@ -7,6 +7,7 @@
  *    recipe cards from find_recipes, one action per reply, new programs via propose_program_change
  *    (excluded exercises / stale base refused, coach-managed → for_coach_review).
  */
+import { followSchema } from './helpers/schemaModel';
 import { describe, expect, it } from 'vitest';
 import { handleAiCoach, type CoachDeps } from '../../supabase/functions/_shared/ai/coach';
 import { buildContext, COACH_STYLES } from '../../supabase/functions/_shared/ai/context';
@@ -117,7 +118,7 @@ function provider(replies: unknown[]) {
   const fetch: FetchLike = async (_url, init) => {
     requests.push(JSON.parse(init.body));
     const body = replies.shift() ?? text('…');
-    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) };
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => followSchema(init.body, body), text: async () => JSON.stringify(body) };
   };
   return { fetch, requests };
 }
@@ -134,12 +135,12 @@ describe('MOCKED ai-coach v4: shorter, formatted answers', () => {
   it('length and formatting rules reach the prompt for every coach style', async () => {
     for (const style of COACH_STYLES) {
       const ctx = await ctxFor(data({ coachStyle: style }));
-      expect(ctx.system, style).toMatch(/Default 40–90 words\. The main answer comes first/);
-      expect(ctx.system, style).toMatch(/talk like a person texting a client, not an article/);
+      expect(ctx.system, style).toMatch(/default 40–90 words, the answer first/);
+      expect(ctx.system, style).toMatch(/Talk like a person texting a client, not an article/);
       expect(ctx.system, style).toMatch(/No preambles, don't repeat the question/);
       expect(ctx.system, style).toMatch(/Want the full breakdown\?/);
-      expect(ctx.system, style).toMatch(/\*\*bold\*\* for key numbers and exercise or recipe names/);
-      expect(ctx.system, style).toMatch(/No headings, tables or code blocks/);
+      expect(ctx.system, style).toMatch(/\*\*bold\*\* for key numbers and names/);
+      expect(ctx.system, style).toMatch(/no headings, tables or code blocks/);
       expect(ctx.system, style).toContain(`Coach style: ${style.toUpperCase()}`);
     }
   });

@@ -81,3 +81,19 @@ are safe: the script resets the member's open coaching and uses fresh ids.
 Not automated here: suspension of a live coach (do it by hand: `admin_review_coach(..., 'suspend', 'test')` as the admin,
 then repeat the coaching read checks with the coach's existing session — they must fail immediately; reinstate after),
 blocking, and moderation of reports (covered by the local suite).
+
+## Training assistant eval and streaming smoke test (roadmap item 10)
+
+- `node tests/live/coach-eval.mjs --models tests/evals/coach.models.json --cases tests/evals/coach.cases.json --repeat 3 --max-cost-usd 10 --out artifacts/coach-eval`
+  runs the 30-case EN/IS eval through the real handler against each candidate in `coach.models.json` (needs
+  `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY`; candidates without a key are BLOCKED). Budgets: `--max-cost-usd`,
+  `--max-requests`, `--max-wall-sec`; an exhausted budget is INCOMPLETE. `--dry-run` uses a stub provider to check the
+  harness only. Outputs go to `artifacts/` (git-ignored): `manifest.json`, `results.jsonl`, `comparison.md`,
+  `review.csv` (blind review sheet for EVERY result: a safety pass/fail for English and Icelandic, plus a 1–5 rating
+  for Icelandic) and `review-key.json`. Record the reviews as `{"<code>": {"safety": "pass", "icelandic": 5}}` and run
+  `node tests/live/coach-eval.mjs --report artifacts/coach-eval/<run> --ratings reviews.json` to attach them to that run
+  (no model calls). Only a complete 30-case × 3-repetition run with a matching baseline can qualify a candidate.
+- `SUPABASE_URL=… SUPABASE_ANON_KEY=… LC_MEMBER=email:password node tests/live/ai-sse-smoke.mjs` checks the deployed
+  stream: headers, event order, deltas = stored reply, disconnect → the work still finishes and the replay is a
+  duplicate without another charge, and Stop (when the cancellation migration is applied). Use a synthetic test
+  account with the training assistant on.

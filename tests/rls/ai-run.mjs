@@ -453,6 +453,155 @@ async function main() {
     });
   }
 
+  /* ------------------------------------------------------------ item 10: acknowledged cancellation (20261130000001) */
+  {
+    const E = [U.eve, '::uuid'];
+    const usage = async (d = null) => (await admin.query(
+      `select coalesce(sum(requests), 0)::int r, coalesce(sum(failed_requests), 0)::int f, coalesce(sum(failed_input_tokens), 0)::int i,
+              coalesce(sum(cancelled_requests), 0)::int c, coalesce(sum(unknown_usage_attempts), 0)::int u
+         from public.ai_usage where user_id = $1 and ($2::date is null or day = $2::date)`, [U.eve, d])).rows[0];
+    const row = async (id) => (await admin.query(`select attempt::text, state, charged, day::text from public.ai_requests where message_id = $1`, [id])).rows[0];
+    const begin = (id, limit = 100) => rpc('service', 'ai_begin_request', { p_user: E, p_message_id: [id, '::uuid'], p_limit: limit });
+    const cancel = (id) => rpc('service', 'ai_cancel_request', { p_user: E, p_message_id: [id, '::uuid'] });
+    const settle = (id, attempt, u = {}) => rpc('service', 'ai_settle_cancelled', { p_user: E, p_message_id: [id, '::uuid'], p_attempt: [attempt, '::uuid'], p_usage: J(u) });
+    const status = (id) => rpc('service', 'ai_request_status', { p_user: E, p_message_id: [id, '::uuid'] });
+    const fail = (id, attempt, u = {}) => rpc('service', 'ai_fail_request', { p_user: E, p_message_id: [id, '::uuid'], p_attempt: [attempt, '::uuid'], p_usage: J(u) });
+    const record = (id) => rpc('service', 'ai_record_exchange_settled', withUser(U.eve, exchange(id, `c ${id.slice(0, 4)}`)));
+    const replies = async (id) => (await admin.query(`select count(*)::int n from public.ai_messages where id = $1 or reply_to = $1`, [id])).rows[0].n;
+
+    await test('cancel-v10', 'cancel before admission: a tombstone; the delayed send never starts, nothing is charged; repeated cancel is stable', async () => {
+      const M = randomUUID();
+      const d0 = await usage();
+      eq(ok(await cancel(M), 'cancel first'), { status: 'cancelled' }, 'tombstone');
+      eq(ok(await cancel(M), 'again'), { status: 'cancelled' }, 'repeated');
+      eq(ok(await begin(M), 'late original send'), { status: 'cancelled' }, 'never starts');
+      eq(await usage(), d0, 'no charge, no usage');
+      eq(ok(await status(M), 'status'), { state: 'cancelled' }, 'status');
+    });
+
+    await test('cancel-v10', 'cancel while running: cancel_requested (not cancelled) → publication refused → worker settles once (refund + cancelled usage)', async () => {
+      const M = randomUUID();
+      const d0 = await usage();
+      const s = ok(await begin(M), 'begin');
+      eq(ok(await cancel(M), 'cancel'), { status: 'cancel_requested' }, 'requested, not yet cancelled');
+      eq(ok(await cancel(M), 'repeated cancel'), { status: 'cancel_requested' }, 'still requested');
+      eq(ok(await status(M), 'status'), { state: 'cancel_requested' }, 'status before ack');
+      fails(await record(M), 'success after cancel', /stopped|PT409/);
+      eq(await replies(M), 0, 'nothing stored or published');
+      eq(ok(await settle(M, s.attempt, { inputTokens: 400, outputTokens: 40 }), 'ack'), { settled: true, refunded: true }, 'acknowledged');
+      eq(await usage(), { ...d0, f: d0.f + 1, i: d0.i + 400, c: d0.c + 1 }, 'refunded once, tokens booked as cancelled');
+      eq(ok(await settle(M, s.attempt, { inputTokens: 400 }), 'ack again'), { settled: false, refunded: false }, 'idempotent');
+      eq(ok(await fail(M, s.attempt, { inputTokens: 999 }), 'late failure report'), { settled: false }, 'late report');
+      eq(await usage(), { ...d0, f: d0.f + 1, i: d0.i + 400, c: d0.c + 1 }, 'late usage never booked twice, never refunded again');
+      eq(ok(await begin(M), 'resend with the same id'), { status: 'cancelled' }, 'a resend needs a new id');
+    });
+
+    await test('cancel-v10', 'success wins: cancel after the stored exchange returns succeeded; nothing refunded', async () => {
+      const M = randomUUID();
+      const d0 = await usage();
+      ok(await begin(M), 'begin');
+      ok(await record(M), 'record');
+      eq(ok(await cancel(M), 'cancel late'), { status: 'succeeded' }, 'success won');
+      eq((await row(M)).state, 'succeeded', 'unchanged');
+      eq((await usage()).r, d0.r + 1, 'still charged');
+      eq(ok(await status(M), 'status'), { state: 'succeeded' }, 'status');
+    });
+
+    await test('cancel-v10', 'worker death: an unacknowledged cancel is finalized after 2 minutes (refund once); a late ack books usage only', async () => {
+      const M = randomUUID();
+      const d0 = await usage();
+      const s = ok(await begin(M), 'begin');
+      ok(await cancel(M), 'cancel');
+      await admin.query(`update public.ai_requests set cancel_requested_at = now() - interval '3 minutes' where message_id = $1`, [M]);
+      eq(ok(await status(M), 'status finalizes'), { state: 'cancelled' }, 'finalized');
+      eq((await usage()).r, d0.r, 'refunded once');
+      eq(ok(await settle(M, s.attempt, { inputTokens: 50 }), 'late ack'), { settled: false, refunded: false }, 'late ack');
+      eq(ok(await settle(M, s.attempt, { inputTokens: 50 }), 'late ack again'), { settled: false, refunded: false }, 'late ack again');
+      eq(await usage(), { ...d0, f: d0.f + 1, i: d0.i + 50, c: d0.c + 1 }, 'tokens booked once, no second refund');
+    });
+
+    await test('cancel-v10', 'stale worker success after takeover + cancel is refused; abandoned running request cancels immediately', async () => {
+      const M = randomUUID();
+      ok(await begin(M), 'a1');
+      await admin.query(`update public.ai_requests set started_at = now() - interval '4 minutes' where message_id = $1`, [M]);
+      const a2 = ok(await begin(M), 'a2 takeover').attempt;
+      eq(ok(await cancel(M), 'cancel'), { status: 'cancel_requested' }, 'requested');
+      fails(await record(M), 'stale a1 tries to publish', /stopped|PT409/);
+      eq(ok(await settle(M, a2, {}), 'owner acks'), { settled: true, refunded: true }, 'owner acks');
+      const M2 = randomUUID();
+      const d0 = await usage();
+      ok(await begin(M2), 'begin');
+      await admin.query(`update public.ai_requests set started_at = now() - interval '4 minutes' where message_id = $1`, [M2]);
+      eq(ok(await cancel(M2), 'cancel abandoned'), { status: 'cancelled' }, 'cancelled at once');
+      eq((await usage()).r, d0.r, 'refunded');
+    });
+
+    await test('cancel-v10', 'the legacy ai_record_exchange cannot publish a reply to a stopped request (trigger)', async () => {
+      const M = randomUUID();
+      ok(await begin(M), 'begin');
+      ok(await cancel(M), 'cancel');
+      fails(await rpc('service', 'ai_record_exchange', withUser(U.eve, exchange(M, 'legacy'))), 'legacy wrapper', /stopped|PT409/);
+      eq(await replies(M), 0, 'nothing stored');
+    });
+
+    await test('cancel-v10', 'failed then cancelled: no refund twice, the retry never starts; the worker failing while stopping settles as cancelled', async () => {
+      const M = randomUUID();
+      const d0 = await usage();
+      const s = ok(await begin(M), 'begin');
+      ok(await fail(M, s.attempt, { inputTokens: 10 }), 'fails (refunded)');
+      eq(ok(await cancel(M), 'cancel'), { status: 'cancelled' }, 'cancelled');
+      eq(ok(await begin(M), 'retry'), { status: 'cancelled' }, 'no retry');
+      eq((await usage()).r, d0.r, 'charged nothing');
+      const M2 = randomUUID();
+      const s2 = ok(await begin(M2), 'begin 2');
+      ok(await cancel(M2), 'cancel 2');
+      eq(ok(await fail(M2, s2.attempt, { inputTokens: 5 }), 'fail while stopping'), { state: 'cancelled', settled: true, refunded: true }, 'settled as cancelled (jsonb key order)');
+      eq((await row(M2)).state, 'cancelled', 'cancelled');
+    });
+
+    await test('cancel-v10', 'midnight: a request charged yesterday is refunded on yesterday; cancelled usage goes on today; unknown usage is counted', async () => {
+      const M = randomUUID();
+      const s = ok(await begin(M), 'begin');
+      // Move the charge to "yesterday" (the request was charged just before midnight UTC).
+      await admin.query(`update public.ai_usage set requests = requests - 1 where user_id = $1 and day = private.ai_utc_day()`, [U.eve]);
+      await admin.query(`insert into public.ai_usage (user_id, day, requests) values ($1, private.ai_utc_day() - 1, 1)
+                         on conflict (user_id, day) do update set requests = public.ai_usage.requests + 1`, [U.eve]);
+      await admin.query(`update public.ai_requests set day = private.ai_utc_day() - 1 where message_id = $1`, [M]);
+      const y = (await admin.query(`select (private.ai_utc_day() - 1)::text d, private.ai_utc_day()::text t`)).rows[0];
+      const y0 = await usage(y.d);
+      const t0 = await usage(y.t);
+      ok(await cancel(M), 'cancel');
+      eq(ok(await rpc('service', 'ai_settle_cancelled', { p_user: E, p_message_id: [M, '::uuid'], p_attempt: [s.attempt, '::uuid'], p_usage: J(null) }), 'ack without usage'), { settled: true, refunded: true }, 'ack');
+      eq((await usage(y.d)).r, y0.r - 1, 'refunded on the charged day');
+      eq(await usage(y.t), { ...t0, f: t0.f + 1, c: t0.c + 1, u: t0.u + 1 }, 'cancelled usage booked today, marked unknown');
+    });
+
+    await test('cancel-v10', 'review round 3: a successful exchange books its potentially billed unknown attempts once (charge unchanged)', async () => {
+      const M = randomUUID();
+      const d0 = await usage();
+      ok(await begin(M), 'begin');
+      const ex = exchange(M, `u ${M.slice(0, 4)}`);
+      ex.p_usage = J({ inputTokens: 100, outputTokens: 20, costUsd: null, unknownAttempts: 2 });
+      eq(ok(await rpc('service', 'ai_record_exchange_settled', withUser(U.eve, ex)), 'record').duplicate, false, 'stored');
+      eq(await usage(), { ...d0, r: d0.r + 1, u: d0.u + 2 }, 'one charge, two unknown attempts');
+      eq(ok(await rpc('service', 'ai_record_exchange_settled', withUser(U.eve, ex)), 'replay').duplicate, true, 'replayed');
+      eq(await usage(), { ...d0, r: d0.r + 1, u: d0.u + 2 }, 'a replay books nothing again');
+    });
+
+    await test('cancel-v10', 'service role only; ownership from p_user; usage reports unreadable by clients', async () => {
+      const M = randomUUID();
+      ok(await begin(M), 'begin');
+      fails(await rpc('service', 'ai_cancel_request', { p_user: [U.alice, '::uuid'], p_message_id: [M, '::uuid'] }), 'other user cancels', /already used/);
+      eq((await row(M)).state, 'running', 'untouched');
+      for (const fn of ['ai_cancel_request', 'ai_request_status']) {
+        fails(await rpc('eve', fn, { p_user: E, p_message_id: [M, '::uuid'] }), `client ${fn}`, /permission denied/);
+      }
+      fails(await rpc('eve', 'ai_settle_cancelled', { p_user: E, p_message_id: [M, '::uuid'], p_attempt: [randomUUID(), '::uuid'], p_usage: J({}) }), 'client settle', /permission denied/);
+      fails(await as('eve', `select * from public.ai_request_usage_reports`), 'client reads reports', /permission denied/);
+      eq(ok(await rpc('service', 'ai_request_status', { p_user: [U.alice, '::uuid'], p_message_id: [M, '::uuid'] }), 'other user status'), { state: 'none' }, 'nothing leaks to another user');
+    });
+  }
+
   /* ------------------------------------------------------------ v2: why + this-week action (20261030000002) */
   await test('exchange-v2', 'stores why + week_adjustment action with the reply; replay and history return them; other kinds dropped', async () => {
     const MW = randomUUID();

@@ -19,10 +19,10 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { ArrowUpRight, Bot, ClipboardCheck, CloudOff, Dumbbell, MoreVertical, Pause, Play, RotateCcw, SendHorizontal, Settings2, Sparkles, Trash2, Lightbulb, Pencil, AlertTriangle, X } from 'lucide-react';
+import { ArrowDown, ArrowUpRight, Bot, ClipboardCheck, CloudOff, Dumbbell, Loader2, MoreVertical, Pause, Play, RotateCcw, SendHorizontal, Settings2, Sparkles, Square, Trash2, Lightbulb, Pencil, AlertTriangle, X } from 'lucide-react';
 import { Badge, Button, ConfirmDialog, IconButton, ListRow, Notice, Sheet, Spinner, cx } from '@/components/ui';
 import { useToast } from '@/components/toast';
-import { aiApi, type AiChatMessage } from '@/backend/ai';
+import { aiApi, type AiChatMessage, type SendResult, type StreamPhase } from '@/backend/ai';
 import type { AiAvailability, AiMessage, AiSettings, AiUsage, CoachingRelationship, ProgramProposal } from '@/backend/coachingContract';
 import { kvGet, kvSet } from '@/db/repo';
 import { useApp } from '@/state/app';
@@ -44,7 +44,8 @@ import {
   type CoachRequest, type DraftProvenance, type TextRanges,
 } from './ai/workoutContext';
 import { syncBeforeAi } from './ai/syncBarrier';
-import { isCancelled, SendCancelled, sendWhileInProgress } from './ai/inProgress';
+import { isCancelled } from './ai/inProgress';
+import { canStop, previewText, recoverReply, sendReply, SLOW_AFTER_MS, stopReply, type Prepare, type Settled } from './ai/replyFlow';
 import { Markdown } from './ai/markdown';
 import { extractOpenLinks, type GuideFeatures } from '../../../supabase/functions/_shared/ai/appGuide';
 import { isFeatureEnabled } from '@/config/featureFlags';
@@ -58,6 +59,40 @@ import type { ActivityLog, CoachStyle, Exercise, ID, ISODate, Program, WeightUni
 import { AiBadge, AiGuest, AiUnavailable, availabilityCopy, BackButton, ShareButton, ShareWithCoachDialog } from './ai/parts';
 import { EmptyChatArt } from '@/components/illustrations';
 import { useT, type MessageKey } from '@/i18n';
+
+/**
+ * The reply being produced right now (item 10): only transient UI state. The preview holds chunks of the finished,
+ * stored answer as plain text: no cards, links, badges, history writes or analytics until the final result arrives.
+ */
+type LivePhase = StreamPhase | 'syncing' | 'receiving' | 'reconnecting' | 'waiting';
+interface LiveReply {
+  id: string;
+  phase: LivePhase;
+  preview: string;
+  stopping: boolean;
+  stopNote: MessageKey | null;
+  slow: boolean;
+  ctrl: AbortController;
+  /** A workout question: its flow stops as soon as Training sharing is turned off. */
+  workoutQuestion: boolean;
+}
+const LIVE_KEY: Record<LivePhase, MessageKey> = {
+  syncing: 'ai.chat.status.syncing',
+  preparing: 'ai.chat.status.preparing',
+  training: 'ai.chat.status.training',
+  nutrition: 'ai.chat.status.nutrition',
+  recipes: 'ai.chat.status.recipes',
+  planning: 'ai.chat.status.planning',
+  writing: 'ai.chat.status.writing',
+  checking: 'ai.chat.status.checking',
+  saving: 'ai.chat.status.saving',
+  receiving: 'ai.chat.status.receiving',
+  reconnecting: 'ai.chat.reconnectingReply',
+  waiting: 'ai.chat.waitingForFullReply',
+};
+
+/** Item 10 outcomes: the message WAS sent; these say what happened to its reply (shown as written, not as "Not sent"). */
+const REPLY_STATE_KEYS = new Set<string>(['ai.chat.replyStopped', 'ai.chat.replyInterrupted', 'ai.chat.replyUnconfirmed', 'ai.chat.replyDiscardedPrivacy', 'ai.error.invalidReply']);
 
 /** Why a workout question can't be sent or retried while Training sharing is off (stored as this key). */
 const TRAINING_OFF_PENDING = 'ai.chat.trainingOffPending';
@@ -189,9 +224,16 @@ function Chat({
   // Sends in flight belong to this account and this screen: an account switch or leaving the chat cancels them (they
   // never go out, or land, under another account).
   const owner = useRef<{ userId: string | undefined; ctrl: AbortController }>({ userId, ctrl: new AbortController() });
+  // The reply in progress (item 10). Leaving the chat or switching account DETACHES (never cancels or refunds): the
+  // preview is cleared and nothing late is written; the message keeps its id and is recovered from the server later.
+  const [live, setLive] = useState<LiveReply | null>(null);
+  const liveRef = useRef(live);
+  liveRef.current = live;
+  const [announce, setAnnounce] = useState('');
   useEffect(() => {
     const ctrl = new AbortController();
     owner.current = { userId, ctrl };
+    setLive(null);
     return () => ctrl.abort();
   }, [userId, db]);
   const coach = useActiveCoach();
@@ -203,6 +245,8 @@ function Chat({
   const [history, setHistory] = useState<AiChatMessage[] | undefined>(undefined);
   const [historyNote, setHistoryNote] = useState<MessageKey | null>(null);
   const [pending, setPending] = useState<PendingSend | null>(null);
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
   const [draft, setDraft] = useState('');
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -282,9 +326,36 @@ function Chat({
 
   const conversation = useMemo(() => mergeConversation(history ?? [], pending), [history, pending]);
 
+  // Respect the reader's scroll position: follow new content only when they are at the bottom; otherwise offer
+  // "Show latest reply".
+  const atBottom = useRef(true);
+  const [showLatest, setShowLatest] = useState(false);
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onScroll = () => {
+      const doc = document.documentElement;
+      atBottom.current = window.innerHeight + window.scrollY >= doc.scrollHeight - 160;
+      if (atBottom.current) setShowLatest(false);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  const toBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView?.({ block: 'end' });
-  }, [conversation.length, pending?.status]);
+    setShowLatest(false);
+  }, []);
+  useEffect(() => {
+    if (atBottom.current) toBottom();
+    else setShowLatest(true);
+  }, [conversation.length, pending?.status, live?.preview, toBottom]);
+
+  // "This is taking a little longer." once a reply has been on its way for a while (no artificial delays anywhere).
+  const liveId = live?.id;
+  useEffect(() => {
+    if (!liveId) return;
+    const t = setTimeout(() => setLive((l) => (l && l.id === liveId ? { ...l, slow: true } : l)), SLOW_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [liveId]);
 
   /* ------------------------------------------------------------ draft */
   /** Replace the draft; `generated`: which parts of it the app generated (none: it's all the user's). */
@@ -321,61 +392,172 @@ function Chat({
   );
 
   /* ------------------------------------------------------------- send */
+  const protocol = availability.available ? availability.protocol : undefined;
+  const stopAllowed = canStop(aiApi, protocol);
+
+  /** The authoritative exchange arrived: replace the preview through the normal mappers (deduplicated by id). */
+  function finish(p: PendingSend, res: SendResult) {
+    const userMsg: AiMessage = { id: p.id, role: 'user', content: p.text, createdAt: p.createdAt, status: 'sent' };
+    setHistory((h) => {
+      const next = upsertMessages(h ?? [], [userMsg, res.reply]);
+      void kvSet(AI_HISTORY_CACHE_KEY, next.slice(-100), db).catch(() => undefined);
+      return next;
+    });
+    if (res.proposal) setProposals((m) => ({ ...m, [res.proposal!.id]: res.proposal! }));
+    persistPending(null);
+    setLive(null);
+    setAnnounce(t('ai.chat.replyReady'));
+    // Only the kind of action and its outcome: never the message, the reply or any of their content. A replayed
+    // (duplicate) exchange was already counted when it was first delivered.
+    if (!res.duplicate) {
+      void trackAiAction(db, p.mode === 'checkin_review' ? 'checkin_review' : 'chat_message', 'sent');
+      if (res.proposal) void trackAiAction(db, 'program_proposal', 'proposed');
+      const reply = res.reply;
+      if (reply.weekPlan) void trackAiAction(db, 'week_plan', 'proposed');
+      if (reply.sessionAdjustment) void trackAiAction(db, 'session_adjustment', 'proposed');
+      if (reply.mealPlan) void trackAiAction(db, 'meal_plan', 'proposed');
+    }
+    // Usage comes from the server (authoritative); older servers don't send it, then count a new exchange once.
+    if (res.usage && typeof res.usage.requests === 'number') setUsage(res.usage);
+    else if (usage && !res.duplicate) setUsage({ requests: usage.requests + 1 });
+  }
+
+  /** A settled outcome (Stop, interrupted stream, status check) → the conversation. */
+  function settle(p: PendingSend, r: Settled) {
+    setLive(null);
+    if (r.kind === 'finished') return finish(p, r.result);
+    if (r.kind === 'stopped') {
+      if (r.usage && typeof r.usage.requests === 'number') setUsage(r.usage);
+      persistPending({ ...p, status: 'failed', error: 'ai.chat.replyStopped', stopped: true });
+      setAnnounce(t('ai.chat.replyStopped'));
+      return;
+    }
+    if (r.kind === 'blocked') return persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING });
+    persistPending({ ...p, status: 'failed', error: r.kind === 'failed' ? 'ai.chat.replyInterrupted' : 'ai.chat.replyUnconfirmed' });
+  }
+
   async function run(p: PendingSend) {
     const mine = owner.current;
     if (p.userId && p.userId !== mine.userId) return;
-    const { signal } = mine.ctrl;
-    const stillMine = () => !signal.aborted && owner.current === mine;
+    // This send's own controller: Stop, leaving the chat and narrowed sharing abort it (reader, waits, sync).
+    const ctrl = new AbortController();
+    const onOwnerAbort = () => ctrl.abort();
+    mine.ctrl.signal.addEventListener('abort', onOwnerAbort);
+    const { signal } = ctrl;
+    const stillMine = () => !mine.ctrl.signal.aborted && owner.current === mine;
+    const active = () => stillMine() && !signal.aborted;
+    const update = (f: (l: LiveReply) => LiveReply) => {
+      if (active()) setLive((l) => (l && l.id === p.id ? f(l) : l));
+    };
+    // Every request for this message is bound to the account that wrote it (review P1-1).
+    const flow = { expectedUserId: mine.userId };
+    const workoutQuestion = isWorkoutQuestion(p);
     setSendError(null);
     // A workout question (it names exercises and targets) is never sent while Training isn't shared.
-    if (isWorkoutQuestion(p) && !trainingRef.current) {
+    if (workoutQuestion && !trainingRef.current) {
       persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING });
       return;
     }
     const sending: PendingSend = { ...p, userId: mine.userId, status: 'sending', error: undefined };
     persistPending(sending);
+    setLive({ id: p.id, phase: 'syncing', preview: '', stopping: false, stopNote: null, slow: false, ctrl, workoutQuestion });
+    let unsynced = 0;
+    /**
+     * The input for ONE attempt, rebuilt right before it goes out (first send, every in_progress retry, a recovery
+     * replay): Training sharing is re-checked and the workout snapshot rebuilt from the device each time (review P1-2).
+     */
+    const prepare: Prepare = async () => {
+      if (workoutQuestion && !trainingRef.current) return null;
+      const workout = p.request ? (await prepareCoachRequest(db, p.request, exerciseByIdRef.current))?.workout : undefined;
+      if (workoutQuestion && !trainingRef.current) return null; // switched off while the snapshot was built
+      // The provenance marker travels independently of the snapshot: removing the attachment keeps the generated text a
+      // workout question, and the server refuses it without Training sharing (review round 3, P1).
+      return { id: p.id, text: p.text, mode: p.mode, ...(unsynced ? { unsynced } : {}), ...(workout ? { workout } : {}), ...(workoutQuestion ? { contextual: true } : {}) };
+    };
+    const blockedByTraining = () => {
+      setLive(null);
+      persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING });
+    };
     try {
       // Sync barrier: push this device's pending changes first (bounded wait), so the coach doesn't act on stale data.
-      const unsynced = await syncBeforeAi(db);
-      // A workout attachment is rebuilt from the device right before each send (so a retry or a send after a reload
-      // carries the latest sets), and only while Training is shared.
-      const workout = p.request ? (await prepareCoachRequest(db, p.request, exerciseByIdRef.current))?.workout : undefined;
-      if (isWorkoutQuestion(p) && !trainingRef.current) {
-        persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING }); // switched off while syncing: never sent
+      unsynced = await syncBeforeAi(db);
+      if (!active()) return; // stopped (the Stop handler settles it) or detached
+      update((l) => ({ ...l, phase: 'preparing' }));
+      // A replay of a message still being answered waits for that answer (same id) instead of failing. Streamed when the
+      // server supports it; the preview is plain text of the finished, stored answer.
+      const res = await sendReply(aiApi, protocol, prepare, {
+        onPhase: (phase) => update((l) => ({ ...l, phase })),
+        onText: (text) => update((l) => ({ ...l, phase: 'receiving', preview: l.preview + text })),
+      }, signal, flow);
+      if (!active()) return; // answered for the previous account: it's in that account's history (its Retry gets it back as a duplicate)
+      finish(sending, res as SendResult);
+    } catch (e) {
+      if (!active() || isCancelled(e) || (e as Error)?.name === 'AbortError') return; // Stop / detach own the outcome
+      const code = (e as { code?: unknown })?.code;
+      if (code === 'account_changed') return; // another account is signed in now: nothing goes out under it
+      if (code === 'training_not_shared') return blockedByTraining();
+      if (code === 'request_cancelled') return settle(sending, { kind: 'stopped', usage: (e as { usage?: Partial<AiUsage> }).usage });
+      if (code === 'stream_interrupted' || code === 'stream_protocol' || code === 'cancel_unconfirmed') {
+        // EOF / stall without a terminal event: unconfirmed. Check the SAME id (never a second generation for a slow stream).
+        update((l) => ({ ...l, phase: 'reconnecting', preview: '' }));
+        try {
+          const r = await recoverReply(aiApi, prepare, p.id, { ...flow, signal, statusSupported: stopAllowed, onWaiting: () => update((l) => ({ ...l, phase: 'waiting' })) });
+          if (!active()) return;
+          if (r.kind === 'blocked') return blockedByTraining();
+          settle(sending, r);
+        } catch {
+          // detached, or the account changed meanwhile
+        }
         return;
       }
-      // A replay of a message still being answered waits for that answer (same id) instead of failing. Cancelled (never
-      // sent) if the account changed or the chat closed meanwhile.
-      const res = await sendWhileInProgress(() => {
-        if (!stillMine()) throw new SendCancelled();
-        return aiApi.send({ id: p.id, text: p.text, mode: p.mode, ...(unsynced ? { unsynced } : {}), ...(workout ? { workout } : {}) });
-      }, { signal });
-      if (!stillMine()) return; // answered for the previous account: it's in that account's history (its Retry gets it back as a duplicate)
-      const userMsg: AiMessage = { id: p.id, role: 'user', content: p.text, createdAt: p.createdAt, status: 'sent' };
-      setHistory((h) => {
-        const next = upsertMessages(h ?? [], [userMsg, res.reply]);
-        void kvSet(AI_HISTORY_CACHE_KEY, next.slice(-100), db).catch(() => undefined);
-        return next;
-      });
-      if (res.proposal) setProposals((m) => ({ ...m, [res.proposal!.id]: res.proposal! }));
-      persistPending(null);
-      // Only the kind of action and its outcome: never the message, the reply or any of their content.
-      void trackAiAction(db, p.mode === 'checkin_review' ? 'checkin_review' : 'chat_message', 'sent');
-      if (res.proposal) void trackAiAction(db, 'program_proposal', 'proposed');
-      const reply = res.reply as AiChatMessage;
-      if (reply.weekPlan) void trackAiAction(db, 'week_plan', 'proposed');
-      if (reply.sessionAdjustment) void trackAiAction(db, 'session_adjustment', 'proposed');
-      if (reply.mealPlan) void trackAiAction(db, 'meal_plan', 'proposed');
-      if (usage) setUsage({ requests: usage.requests + 1 });
-    } catch (e) {
-      if (isCancelled(e) || !stillMine()) return; // the pending copy stays in this account's storage: Retry later
       const c = classifyAiError(e);
       setSendError(c);
+      setLive(null);
       persistPending({ ...p, status: 'failed', error: c.key });
       if (c.kind === 'rate_limited' && c.usage) setUsage(c.usage);
       if (c.kind === 'paused' || c.kind === 'disabled' || c.kind === 'unavailable') void reload();
+    } finally {
+      mine.ctrl.signal.removeEventListener('abort', onOwnerAbort);
     }
   }
+
+  /** Stop: an acknowledged cancel. "Stopping…" until the server settles it; success may still win. */
+  async function stop() {
+    const l = liveRef.current;
+    const p = pendingRef.current;
+    if (!l || !p || l.stopping || !stopAllowed || p.id !== l.id) return;
+    const mine = owner.current;
+    setLive({ ...l, stopping: true });
+    l.ctrl.abort(); // stop reading and waiting locally; the outcome comes from the server
+    try {
+      const r = await stopReply(aiApi, l.id, {
+        signal: mine.ctrl.signal,
+        expectedUserId: mine.userId,
+        onUnconfirmed: () => setLive((x) => (x && x.id === l.id ? { ...x, stopNote: 'ai.chat.stopUnconfirmed' } : x)),
+      });
+      if (owner.current !== mine || mine.ctrl.signal.aborted) return;
+      if (r.kind === 'finished') {
+        toast.show(t('ai.chat.replyAlreadyFinished'), { tone: 'info' });
+        setAnnounce(t('ai.chat.replyAlreadyFinished'));
+      }
+      settle({ ...p, status: 'sending' }, r);
+    } catch {
+      // detached (left the chat / switched account): the pending message stays, with its id
+    }
+  }
+
+  // Training sharing narrowed while a workout question is in flight (review P1-2): stop that flow at once (no further
+  // attempt goes out), keep the message on the device as not sendable, and ask the server to stop it too.
+  useEffect(() => {
+    if (trainingOn) return;
+    const l = liveRef.current;
+    const p = pendingRef.current;
+    if (!l || !l.workoutQuestion || !p || p.id !== l.id) return;
+    l.ctrl.abort();
+    setLive(null);
+    persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING });
+    if (stopAllowed) void aiApi.cancel(l.id, { expectedUserId: owner.current.userId }).catch(() => undefined);
+  }, [trainingOn]); // eslint-disable-line react-hooks/exhaustive-deps -- reacts to the sharing change only
 
   const canCompose = loaded && !pending;
   // A draft with generated workout detail in it can't be sent while Training isn't shared (it stays on the device).
@@ -494,7 +676,9 @@ function Chat({
       persistPending({ ...pending, status: 'failed', error: TRAINING_OFF_PENDING });
       return;
     }
-    void run(pending);
+    // After a confirmed Stop the id is spent: sending it again is a deliberate new request (new id). Every other retry
+    // (failed, interrupted, unconfirmed) keeps its id, so the server can return the stored reply instead of a second one.
+    void run(pending.stopped ? { ...pending, id: uuid(), stopped: undefined, createdAt: new Date().toISOString() } : pending);
   }
   function removePending() {
     persistPending(null);
@@ -652,8 +836,18 @@ function Chat({
                   onRemove={removePending}
                   retryDisabled={blocked}
                   workoutBlocked={m.pending ? pendingBlocked : false}
+                  sending={!!live && live.id === m.id}
                 />
               ))}
+              {live && live.preview && (
+                // Transient preview of the finished answer: plain text, no links, cards or badges, not announced chunk by
+                // chunk (the status line and the completion notice are).
+                <li className="max-w-[92%]" data-testid="ai-reply-preview">
+                  <div className="rounded-2xl rounded-tl-md bg-surface border border-line px-3.5 py-2.5 text-[15px] whitespace-pre-wrap break-words">
+                    {previewText(live.preview)}
+                  </div>
+                </li>
+              )}
             </ol>
           </>
         )}
@@ -662,6 +856,30 @@ function Chat({
 
       {/* composer (embedded: just above the tab bar) */}
       <div className={cx('sticky bg-bg/95 backdrop-blur border-t border-line px-3 pt-2', embedded ? 'bottom-[calc(57px+env(safe-area-inset-bottom))] z-30' : 'bottom-0 pb-safe')}>
+        <p className="sr-only" role="status" aria-live="polite" data-testid="ai-announce">
+          {live ? '' : announce}
+        </p>
+        {showLatest && (
+          <div className="flex justify-center pb-2">
+            <Button size="sm" variant="secondary" icon={<ArrowDown className="size-4" aria-hidden />} onClick={toBottom}>
+              {t('ai.chat.showLatest')}
+            </Button>
+          </div>
+        )}
+        {live && (
+          <div className="flex items-center gap-2 pb-2 min-h-10" data-testid="ai-status-line">
+            <Loader2 className="size-4 animate-spin text-accent shrink-0" aria-hidden />
+            <p className="flex-1 min-w-0 text-sm text-muted" role="status" aria-live="polite">
+              {live.stopping ? t('ai.chat.stoppingReply') : t(LIVE_KEY[live.phase])}
+              {live.stopNote ? ` ${t(live.stopNote)}` : live.slow && !live.stopping ? ` ${t('ai.chat.status.slow')}` : ''}
+            </p>
+            {stopAllowed && (
+              <Button size="sm" variant="outline" disabled={live.stopping} icon={<Square className="size-3.5" aria-hidden />} onClick={() => void stop()}>
+                {live.stopping ? t('ai.chat.stoppingReply') : t('ai.chat.stopReply')}
+              </Button>
+            )}
+          </div>
+        )}
         {canCompose && draft.trim() === '' && !blocked && (
           <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1" role="group" aria-label={t('ai.chat.suggestedQuestions')}>
             <button
@@ -831,7 +1049,7 @@ interface WeekCtx {
 }
 
 function MessageItem({
-  m, week, pending, proposal, coach, onShare, onRetry, onEdit, onRemove, retryDisabled, workoutBlocked,
+  m, week, pending, proposal, coach, onShare, onRetry, onEdit, onRemove, retryDisabled, workoutBlocked, sending = false,
 }: {
   m: AiChatMessage;
   week: WeekCtx;
@@ -845,6 +1063,8 @@ function MessageItem({
   retryDisabled: boolean;
   /** A workout question that can't be sent because Training isn't shared: Remove instead of Retry / Edit. */
   workoutBlocked?: boolean;
+  /** The status line under the conversation is showing this message's progress (item 10). */
+  sending?: boolean;
 }) {
   const nav = useNavigate();
   const { t } = useT();
@@ -857,7 +1077,7 @@ function MessageItem({
           <div className={cx('rounded-2xl rounded-br-md px-3.5 py-2.5 whitespace-pre-wrap break-words text-[15px]', pending?.status === 'failed' ? 'bg-surface-2 border border-danger/40' : 'bg-accent-soft border border-accent/30')}>
             {m.content}
           </div>
-          {pending?.status === 'sending' && (
+          {pending?.status === 'sending' && !sending && (
             <span className="text-xs text-muted mt-1" role="status">
               {t('ai.chat.sending')}
             </span>
@@ -872,7 +1092,9 @@ function MessageItem({
           )}
           {pending?.status === 'failed' && !workoutBlocked && (
             <div className="mt-1 flex flex-wrap items-center justify-end gap-1">
-              <span className="text-xs text-danger">{reason ? t('ai.chat.notSentReason', { reason }) : t('ai.chat.notSent')}</span>
+              <span className="text-xs text-danger">
+                {pending.error && REPLY_STATE_KEYS.has(pending.error) ? reason : reason ? t('ai.chat.notSentReason', { reason }) : t('ai.chat.notSent')}
+              </span>
               <Button size="sm" variant="secondary" icon={<RotateCcw className="size-4" />} onClick={onRetry} disabled={retryDisabled}>
                 {t('ai.chat.retry')}
               </Button>

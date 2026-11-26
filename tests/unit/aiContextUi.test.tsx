@@ -365,6 +365,25 @@ describe('Coach: contextual requests, the workout card and first-use consent', (
     expect(el!.querySelector('[data-testid="ai-attached-workout"]')).toBeNull();
   });
 
+  it('review round 3 P1: an Explain question whose attachment was removed still goes out marked contextual (the server can refuse it)', async () => {
+    const { p } = await seed();
+    await saveRecord('sessions', live(p, { id: 'w-done', status: 'completed', endedAt: Date.now() }), db());
+    // An earlier unconfirmed message keeps the request in the composer (with its attachment) instead of sending it.
+    await kvSet(AI_PENDING_KEY, { id: '00000000-0000-4000-8000-000000000998', text: 'earlier', mode: 'chat', status: 'failed', createdAt: new Date().toISOString(), userId: 'user-1' }, db());
+    await openCoachWith(db(), (() => undefined) as never, { intent: 'explain', sessionId: 'w-done', focusId: 'se-bench', shownTarget: '62.5 kg × 8 reps (Add weight)', userId: 'user-1' });
+    coach();
+    await waitFor(() => expect(el!.querySelector('[data-testid="ai-attached-workout"]')).not.toBeNull());
+    click(button('Remove attached workout')); // the generated text stays, the snapshot goes
+    expect(el!.querySelector('[data-testid="ai-attached-workout"]')).toBeNull();
+    click(button('Edit')); // frees the composer (this device still believes Training is shared: stale settings)
+    click(await waitFor(() => button('Send')));
+    await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1));
+    const a = sendArg() as ReturnType<typeof sendArg> & { contextual?: boolean };
+    expect(a.text).toContain(`Explain this: why is my next target for ${BENCH.name} “62.5 kg × 8 reps (Add weight)”?`);
+    expect(a.workout).toBeUndefined();
+    expect(a.contextual).toBe(true); // provenance travels without the attachment
+  });
+
   const failedPending = () =>
     kvSet(AI_PENDING_KEY, { id: '00000000-0000-4000-8000-000000000999', text: 'earlier', mode: 'chat', status: 'failed', createdAt: new Date().toISOString(), userId: 'user-1' }, db());
   const chip = () => el!.querySelector('[data-testid="ai-attached-workout"]');

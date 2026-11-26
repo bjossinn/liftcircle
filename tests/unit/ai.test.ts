@@ -3,6 +3,7 @@
  * No network, no live Anthropic API: every describe block is labelled MOCKED.
  * Live-provider verification is a separate, manual step (docs/AI_COACH.md).
  */
+import { followSchema } from './helpers/schemaModel';
 import { describe, expect, it, vi } from 'vitest';
 import { handleAiCoach, type CoachDeps } from '../../supabase/functions/_shared/ai/coach';
 import { buildContext, deriveFacts, neutralize, progressionHint, trainingSessions } from '../../supabase/functions/_shared/ai/context';
@@ -174,7 +175,7 @@ function mockFetch(replies: Reply[]) {
       ok: status >= 200 && status < 300,
       status,
       headers: { get: (k: string) => r.headers?.[k.toLowerCase()] ?? null },
-      json: async () => r.body,
+      json: async () => followSchema(init.body, r.body),
       text: async () => JSON.stringify(r.body ?? ''),
     };
   };
@@ -233,11 +234,11 @@ describe('MOCKED ai-coach: context isolation (only the authenticated user, only 
   it('tells the assistant to reply in the user’s language, with natural Icelandic and data names kept as shown', async () => {
     const { db } = makeDb({ [A]: userA() });
     const ctx = await buildContext({ db, uid: A, settings: userA().settings!, text: 'Hvað á ég að æfa í dag?', mode: 'chat', now: new Date('2026-10-29T10:00:00Z') });
-    expect(ctx.system).toContain("Reply in the language of the user's latest message");
+    expect(ctx.system).toContain("reply in the language of the user's latest message");
     expect(ctx.system).toContain('natural, idiomatic Icelandic');
     expect(ctx.system).toContain('"102,5 kg"');
-    expect(ctx.system).toContain('Keep exercise, recipe and program names exactly as they appear in the data');
-    expect(ctx.system).toContain('All rules above apply in every language.');
+    expect(ctx.system).toContain('Keep stored exercise, recipe and program names exactly as written');
+    expect(ctx.system).toContain('All rules apply in every language.');
   });
 
   it('revoked scopes: category absent from context, rows not even read; history before scopes_changed_at excluded', async () => {

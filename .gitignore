@@ -10,3 +10,4 @@ dist-live
 .env.*
 !.env.example
 .DS_Store
+artifacts/

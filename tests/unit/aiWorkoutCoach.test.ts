@@ -16,6 +16,7 @@ import {
   describeSessionAdjustment, parseWorkoutContext, planShorten, remainingMinutes, workoutLines, type SessionAdjustmentAction, type WorkoutContext,
 } from '../../supabase/functions/_shared/ai/workout';
 import type { AiDb, AiScopes, AiSettingsRow, FetchLike, RecordExchangeInput, RefExercise, StoredExchange, StoredMessage, UserFacts } from '../../supabase/functions/_shared/ai/types';
+import { followSchema } from './helpers/schemaModel';
 
 const U = '11111111-1111-4111-8111-111111111111';
 const mid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -229,7 +230,7 @@ function provider(replies: unknown[]) {
   const fetch: FetchLike = async (_url, init) => {
     requests.push(JSON.parse(init.body));
     const body = replies.shift() ?? text('…');
-    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) };
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => followSchema(init.body, body), text: async () => JSON.stringify(body) };
   };
   return { fetch, requests };
 }
@@ -276,14 +277,17 @@ describe('MOCKED ai-coach: contextual requests from the workout', () => {
     expect(m.recorded[0].reply.action ?? null).toBeNull();
   });
 
-  it('Training not shared: the workout is never shown to the model and no change is offered', async () => {
+  it('Training not shared: a contextual workout request is refused; nothing reaches the provider or is charged (review P1-2)', async () => {
     const m = makeDb({ scopes: { profile: true, training: false, measurements: false, nutrition: false } });
     const { fetch, requests } = provider([toolUse('propose_session_adjustment', { change: 'shorten', minutes: 12 }), text('Training isn’t shared.')]);
-    await handleAiCoach(deps(m.db, fetch), U, sendW('Short on time', live()));
-    expect(requests[0].system).not.toMatch(/kind="workout"/);
-    expect(requests[0].system).not.toMatch(/Barbell bench press/);
-    expect(requests[0].system).toMatch(/Training isn't shared, so you can't see that workout/);
-    expect(m.recorded[0].reply.action ?? null).toBeNull();
+    // The generated contextual question names the exercise and the app's target.
+    const r = await handleAiCoach(deps(m.db, fetch), U, sendW('Explain this: why is my next target for Barbell bench press “62.5 kg × 8 reps”?', live()));
+    expect(r).toMatchObject({ status: 409, body: { code: 'training_not_shared', reason: 'training_not_shared' } });
+    expect(requests).toHaveLength(0);
+    expect(m.recorded).toHaveLength(0);
+    // The same user without a workout attached (their own words only) is answered normally.
+    const plain = await handleAiCoach(deps(m.db, provider([text('Sure.')]).fetch), U, { action: 'send', id: mid(9), text: 'Can you help me today?', mode: 'chat' });
+    expect(plain.status).toBe(200);
   });
 
   it('a malformed workout body is ignored like a normal message', async () => {
@@ -325,8 +329,8 @@ describe('Supportive default and tiredness (verified, roadmap item 7)', () => {
     expect(mentionsTiredness('tired of chicken')).toBe(false);
     const m = makeDb({ coachStyle: 'strict' });
     const ctx = await buildContext({ db: m.db, uid: U, settings: m.settings, text: 'so much fatigue today, want to skip', mode: 'chat', now: NOW });
-    expect(ctx.system).toMatch(/Tiredness is never a weak reason \(rule 9\)/);
-    expect(ctx.system).toMatch(/tired, too tired, fatigued, exhausted/);
+    expect(ctx.system).toMatch(/Tiredness \(.*\) is never a weak reason/);
+    expect(ctx.system).toMatch(/tired, fatigued, exhausted/);
     expect(ctx.system).toMatch(/The newest message says the user is tired\. Whatever the coach style: be supportive/);
   });
 });

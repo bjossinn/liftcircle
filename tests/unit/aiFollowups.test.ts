@@ -29,6 +29,7 @@ import { LEFT_OUT, recipeNutrition, resolveIngredients, substitutionRatio } from
 import { linkSwaps } from '@/features/nutrition/RecipeDetailPage';
 import { RECIPES, RECIPES_BY_ID } from '@/data/recipes';
 import { INGREDIENTS } from '@/data/ingredients';
+import { followSchema } from './helpers/schemaModel';
 
 const U = '11111111-1111-4111-8111-111111111111';
 const mid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -137,7 +138,7 @@ function provider(replies: (unknown | null)[]) {
       down = true;
       return { ok: false, status: 529, headers: { get: () => null }, json: async () => ({ error: { type: 'overloaded_error' } }), text: async () => '{"error":{"type":"overloaded_error"}}' };
     }
-    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) };
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => followSchema((init as { body?: string })?.body, body), text: async () => JSON.stringify(body) };
   };
   return { fetch, requests };
 }

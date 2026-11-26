@@ -305,7 +305,8 @@ export interface RecordExchangeInput {
     action?: AiAction | null;
   };
   proposal: RecordProposalInput | null;
-  usage: { inputTokens: number; outputTokens: number; costUsd: number | null };
+  /** unknownAttempts: provider attempts in this exchange that may have been billed without reporting usage. */
+  usage: { inputTokens: number; outputTokens: number; costUsd: number | null; unknownAttempts?: number };
 }
 
 /**
@@ -314,7 +315,29 @@ export interface RecordExchangeInput {
  * There are deliberately no methods for coach messages, coach notes/feedback, social data or other users.
  */
 /** `attempt` identifies this run of the request; only it may settle the request as failed (null: older database). */
-export type BeginRequestResult = { status: 'started'; attempt: string | null; remaining?: number } | { status: 'duplicate' } | { status: 'in_progress' };
+export type BeginRequestResult =
+  | { status: 'started'; attempt: string | null; remaining?: number }
+  | { status: 'duplicate' }
+  | { status: 'in_progress' }
+  /** Item 10: the message was cancelled (possibly before it arrived): it never starts. A resend needs a new id. */
+  | { status: 'cancelled' };
+
+/**
+ * Request state (item 10, 20261130000001_ai_cancellation.sql). `cancel_requested` is not yet `cancelled`: the worker (or
+ * the bounded expiry finalizer) still has to acknowledge it. 'none' = no request row for this message id.
+ */
+export type RequestState = 'none' | 'running' | 'cancel_requested' | 'cancelled' | 'failed' | 'succeeded';
+
+/** Usage reported when an attempt ends without a stored exchange; `unknown`: the provider reported none (never zero). */
+export interface AttemptUsage {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number | null;
+  unknown?: boolean;
+}
+
+/** Result of a cancel: 'succeeded' means success won (the stored exchange is returned to the caller). */
+export type CancelResult = { status: 'cancelled' | 'cancel_requested' | 'succeeded' };
 
 export interface AiDb {
   getSettings(uid: string): Promise<AiSettingsRow | null>;
@@ -332,7 +355,21 @@ export interface AiDb {
    * rounds are booked as FAILED usage (never as successful usage). A no-op for an older attempt, a request already
    * settled (failed or succeeded) and repeated calls. Optional, like beginRequest.
    */
-  failRequest?(uid: string, messageId: string, attempt: string, usage: { inputTokens: number; outputTokens: number; costUsd: number | null }): Promise<void>;
+  failRequest?(uid: string, messageId: string, attempt: string, usage: AttemptUsage): Promise<void>;
+  /**
+   * Item 10 cancellation (all optional; capability-gated, see cancelSupported). Ownership is the verified uid.
+   *  - requestState: what the worker polls (bounded) to notice a cancel.
+   *  - cancelRequest: the user's Stop. Before admission → a cancelled tombstone (the delayed send never starts); while
+   *    running → cancel_requested; after success → 'succeeded'. Serialized with success on the same request row.
+   *  - settleCancelled: the worker acknowledges: cancelled, one refund against the charged day, completed-round tokens
+   *    booked as failed/cancelled usage. Idempotent per attempt; a late report never refunds again.
+   *  - requestStatus: requestState plus the bounded expiry finalizer (a cancel_requested whose worker died).
+   */
+  cancelSupported?(): Promise<boolean>;
+  requestState?(uid: string, messageId: string): Promise<RequestState>;
+  cancelRequest?(uid: string, messageId: string): Promise<CancelResult>;
+  settleCancelled?(uid: string, messageId: string, attempt: string, usage: AttemptUsage): Promise<{ settled: boolean; refunded: boolean }>;
+  requestStatus?(uid: string, messageId: string): Promise<RequestState>;
   getUsage(uid: string, day: string): Promise<UsageRow | null>;
   getAccountState(uid: string): Promise<AccountStatePayload | null>;
   getActiveProgram(uid: string): Promise<ActiveProgramRow | null>;
@@ -342,6 +379,7 @@ export interface AiDb {
   getFoodLogs(uid: string, sinceDate: string): Promise<FoodLogPayload[]>;
   /** AI messages created strictly after `after` (ISO) — newest `limit`, returned oldest first. */
   getHistory(uid: string, after: string | null, limit: number): Promise<StoredMessage[]>;
+  /** Throws code 'PT409' (hint 'cancelled') when the request was cancelled: nothing is stored or published. */
   recordExchange(uid: string, input: RecordExchangeInput): Promise<StoredExchange>;
   /* shared, read-only reference catalogs (not user data) */
   getExercises(): Promise<RefExercise[]>;
@@ -393,7 +431,10 @@ export interface ApiResponse {
   id?: string;
   model?: string;
   content: ContentBlock[];
+  /** 'end_turn' | 'tool_use' | 'max_tokens' (truncated) | 'refusal' (the provider declined; Structured Outputs may not match). */
   stop_reason?: string | null;
+  /** Explicit refusal from the provider (OpenAI message.refusal / Anthropic stop_reason "refusal"), kept separately. */
+  refusal?: string | null;
   usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
 }
 

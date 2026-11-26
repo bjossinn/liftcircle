@@ -9,6 +9,7 @@ import { createMessage, resolveProvider } from '../../supabase/functions/_shared
 import { fromOpenAiResponse, isOpenAiQuotaError, toOpenAiRequest } from '../../supabase/functions/_shared/ai/openai';
 import type { AiDb, AiSettingsRow, FetchLike, RecordExchangeInput, StoredMessage } from '../../supabase/functions/_shared/ai/types';
 import { classifyAiError, consentOutdated, providerLabel, settingsActive } from '@/features/coaching/ai/model';
+import { followSchema } from './helpers/schemaModel';
 
 const UID = '11111111-1111-4111-8111-111111111111';
 const MSG = '00000000-0000-4000-8000-000000001000';
@@ -58,7 +59,7 @@ function mockFetch(replies: Reply[]) {
     requests.push({ url, headers: init.headers, body: JSON.parse(init.body) });
     const r = replies.shift() ?? { status: 500, body: {} };
     const status = r.status ?? 200;
-    return { ok: status < 300, status, headers: { get: () => null }, json: async () => r.body, text: async () => JSON.stringify(r.body) };
+    return { ok: status < 300, status, headers: { get: () => null }, json: async () => followSchema(init.body, r.body), text: async () => JSON.stringify(r.body) };
   };
   return { fetch, requests };
 }
