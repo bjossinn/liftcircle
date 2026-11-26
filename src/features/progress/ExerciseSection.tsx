@@ -7,12 +7,14 @@ import { RECORD_KIND_LABELS, e1rmEligible, exerciseSeries, exercisesWithHistory,
 import { fromKg, round } from '@/domain/units';
 import { exerciseName } from '@/data/catalog';
 import { formatDate, formatDuration } from '@/lib/dates';
-import { ChartFigure, ChartTip, Legend, axisProps, chartAnimation, seriesLine, shortDate, useChartColors } from './charts';
+import { ChartFigure, ChartTip, Legend, axisProps, chartAnimation, num, seriesLine, shortDate, useChartColors } from './charts';
+import { loadText, useT } from '@/i18n';
 import { conventionNote, type ProgressData } from './shared';
 
 export function ExerciseSection({ d }: { d: ProgressData }) {
   const c = useChartColors();
   const nav = useNavigate();
+  const { t, tp, language } = useT();
   const unit = d.settings.units.weight;
   const ids = useMemo(() => exercisesWithHistory(d.sessions), [d.sessions]);
   const [picked, setPicked] = useState<string>('');
@@ -20,6 +22,8 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
   const ex = id ? d.byId.get(id) : undefined;
 
   const series = useMemo(() => (id ? exerciseSeries(d.rangeSessions, id, ex) : []), [d.rangeSessions, id, ex]);
+  // English keeps "1 session" (singular); Icelandic copy is count-neutral.
+  const enOne = language === 'en' && series.length === 1;
   const records = useMemo(() => (ex ? personalRecords(d.sessions, ex, unit) : []), [d.sessions, ex, unit]);
 
   if (!ids.length)
@@ -27,11 +31,11 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
       <Card>
         <EmptyState
           icon={<Trophy className="size-6" />}
-          title="No exercise history yet"
-          body="Complete a workout and your load, reps and records for each exercise will show up here."
+          title={t('progress.exerciseEmptyTitle')}
+          body={t('progress.exerciseEmptyHelp')}
           action={
             <Button variant="primary" onClick={() => nav('/train')}>
-              Log your first workout
+              {t('progress.logFirst')}
             </Button>
           }
         />
@@ -67,62 +71,68 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
 
   if (tracking === 'weight_reps' || tracking === 'bodyweight_plus') {
     const eligible = ex ? e1rmEligible(ex) : false;
-    legend = [{ label: tracking === 'bodyweight_plus' ? 'Top added load' : 'Top-set weight', color: c.series[0], series: 0 }];
-    if (eligible) legend.push({ label: 'Estimated 1RM (Epley)', color: c.series[1], series: 1 });
+    legend = [{ label: t(tracking === 'bodyweight_plus' ? 'progress.topAddedLoad' : 'progress.topSetWeight'), color: c.series[0], series: 0 }];
+    if (eligible) legend.push({ label: t('progress.estimated1rm'), color: c.series[1], series: 1 });
     const tops = data.filter((x) => x.top != null);
     summary = tops.length
-      ? `Top working set went from ${tops[0].top} ${unit} on ${formatDate(tops[0].date)} to ${tops.at(-1)!.top} ${unit} on ${formatDate(tops.at(-1)!.date)} across ${series.length} session${series.length === 1 ? '' : 's'}.${eligible ? ' Estimated 1RM is a calculation, not a tested maximum.' : ''}`
-      : `${series.length} session${series.length === 1 ? '' : 's'} without loaded sets in this period.`;
+      ? (enOne
+          ? `Top working set went from ${tops[0].top} ${unit} on ${formatDate(tops[0].date)} to ${tops.at(-1)!.top} ${unit} on ${formatDate(tops.at(-1)!.date)} across 1 session.`
+          : t('progress.loadedTrend', { first: tops[0].top!, unit, firstDate: formatDate(tops[0].date), last: tops.at(-1)!.top!, lastDate: formatDate(tops.at(-1)!.date), count: series.length })) +
+        (eligible ? ` ${t('progress.estimated1rmHelp')}` : '')
+      : enOne
+        ? '1 session without loaded sets in this period.'
+        : t('progress.noLoadedSessions', { count: series.length });
     table = {
-      headers: ['Date', `Top set (${unit})`, ...(eligible ? [`Est. 1RM (${unit})`] : []), 'Working sets', 'Total reps'],
+      headers: [t('progress.date'), t('progress.topSetUnit', { unit }), ...(eligible ? [t('progress.estimated1rmUnit', { unit })] : []), t('progress.workingSets'), t('progress.totalReps')],
       rows: series.map((p, i) => [formatDate(p.date), data[i].top ?? '–', ...(eligible ? [data[i].e1rm ?? '–'] : []), p.workingSets, p.totalReps]),
     };
     chart = (
       <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
         {common}
-        <YAxis {...axisProps(c)} domain={['auto', 'auto']} width={52} unit={` ${unit}`} />
-        <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => `${v} ${unit}`} />} />
+        <YAxis {...axisProps(c)} domain={['auto', 'auto']} width={52} unit={` ${unit}`} tickFormatter={(v: number) => num(v)} />
+        <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => loadText(v, unit)} />} />
         <Line dataKey="top" name={legend[0].label} {...lineProps} {...seriesLine(0, c)} />
-        {eligible && <Line dataKey="e1rm" name="Estimated 1RM (Epley)" {...lineProps} {...seriesLine(1, c)} />}
+        {eligible && <Line dataKey="e1rm" name={t('progress.estimated1rm')} {...lineProps} {...seriesLine(1, c)} />}
       </LineChart>
     );
   } else if (tracking === 'reps') {
-    legend = [{ label: 'Best set (reps)', color: c.series[0], series: 0 }, { label: 'Total reps', color: c.series[1], series: 1 }];
-    summary = first && last ? `Best set went from ${first.maxReps} to ${last.maxReps} reps; total reps from ${first.reps} to ${last.reps} across ${series.length} sessions.` : '';
-    table = { headers: ['Date', 'Best set', 'Total reps', 'Working sets'], rows: series.map((p) => [formatDate(p.date), p.maxReps, p.totalReps, p.workingSets]) };
+    legend = [{ label: t('progress.bestRepsSet'), color: c.series[0], series: 0 }, { label: t('progress.totalReps'), color: c.series[1], series: 1 }];
+    summary = first && last ? t('progress.bodyweightTrend', { firstBest: first.maxReps ?? 0, lastBest: last.maxReps ?? 0, firstTotal: first.reps, lastTotal: last.reps, count: series.length }) : '';
+    // i18n: no approved Icelandic copy for the short 'Best set' header
+    table = { headers: [t('progress.date'), 'Best set', t('progress.totalReps'), t('progress.workingSets')], rows: series.map((p) => [formatDate(p.date), p.maxReps, p.totalReps, p.workingSets]) };
     chart = (
       <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -24 }}>
         {common}
         <YAxis {...axisProps(c)} allowDecimals={false} width={48} />
-        <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => `${v} reps`} />} />
-        <Line dataKey="maxReps" name="Best set (reps)" {...lineProps} {...seriesLine(0, c)} />
-        <Line dataKey="reps" name="Total reps" {...lineProps} {...seriesLine(1, c)} />
+        <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => tp('progress.repCount', v)} />} />
+        <Line dataKey="maxReps" name={t('progress.bestRepsSet')} {...lineProps} {...seriesLine(0, c)} />
+        <Line dataKey="reps" name={t('progress.totalReps')} {...lineProps} {...seriesLine(1, c)} />
       </LineChart>
     );
   } else if (tracking === 'assisted') {
-    legend = [{ label: 'Least assistance', color: c.series[0], series: 0 }];
+    legend = [{ label: t('progress.leastAssistance'), color: c.series[0], series: 0 }];
     const pts = data.filter((x) => x.assist != null);
-    summary = pts.length ? `Assistance went from ${pts[0].assist} ${unit} to ${pts.at(-1)!.assist} ${unit}. Lower means you are lifting more of your own bodyweight.` : 'No assisted sets with reps in this period.';
-    table = { headers: ['Date', `Least assistance (${unit})`, 'Best set (reps)', 'Working sets'], rows: series.map((p, i) => [formatDate(p.date), data[i].assist ?? '–', p.maxReps, p.workingSets]) };
+    summary = pts.length ? t('progress.assistanceTrend', { first: pts[0].assist!, unit, last: pts.at(-1)!.assist! }) : t('progress.assistanceEmpty');
+    table = { headers: [t('progress.date'), t('progress.leastAssistanceUnit', { unit }), t('progress.bestRepsSet'), t('progress.workingSets')], rows: series.map((p, i) => [formatDate(p.date), data[i].assist ?? '–', p.maxReps, p.workingSets]) };
     chart = (
       <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
         {common}
-        <YAxis {...axisProps(c)} domain={[0, 'auto']} width={52} unit={` ${unit}`} />
-        <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => `${v} ${unit}`} />} />
-        <Line dataKey="assist" name="Least assistance" {...lineProps} {...seriesLine(0, c)} />
+        <YAxis {...axisProps(c)} domain={[0, 'auto']} width={52} unit={` ${unit}`} tickFormatter={(v: number) => num(v)} />
+        <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => loadText(v, unit)} />} />
+        <Line dataKey="assist" name={t('progress.leastAssistance')} {...lineProps} {...seriesLine(0, c)} />
       </LineChart>
     );
   } else {
-    legend = [{ label: 'Longest set', color: c.series[0], series: 0 }];
+    legend = [{ label: t('progress.longestSet'), color: c.series[0], series: 0 }];
     const pts = data.filter((x) => x.longest != null);
-    summary = pts.length ? `Longest set went from ${formatDuration(pts[0].longest!)} to ${formatDuration(pts.at(-1)!.longest!)} across ${pts.length} sessions.` : 'No timed sets in this period.';
-    table = { headers: ['Date', 'Longest set', 'Working sets'], rows: series.map((p) => [formatDate(p.date), p.longestSec ? formatDuration(p.longestSec) : '–', p.workingSets]) };
+    summary = pts.length ? t('progress.timedTrend', { firstDuration: formatDuration(pts[0].longest!), lastDuration: formatDuration(pts.at(-1)!.longest!), count: pts.length }) : t('progress.timedEmpty');
+    table = { headers: [t('progress.date'), t('progress.longestSet'), t('progress.workingSets')], rows: series.map((p) => [formatDate(p.date), p.longestSec ? formatDuration(p.longestSec) : '–', p.workingSets]) };
     chart = (
       <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
         {common}
         <YAxis {...axisProps(c)} tickFormatter={(v: number) => formatDuration(v)} width={52} />
         <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => formatDuration(v)} />} />
-        <Line dataKey="longest" name="Longest set" {...lineProps} {...seriesLine(0, c)} />
+        <Line dataKey="longest" name={t('progress.longestSet')} {...lineProps} {...seriesLine(0, c)} />
       </LineChart>
     );
   }
@@ -131,7 +141,7 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
 
   return (
     <Card className="p-4 flex flex-col gap-3">
-      <Select label="Exercise" value={id} onChange={(e) => setPicked(e.target.value)}>
+      <Select label={t('progress.exercise')} value={id} onChange={(e) => setPicked(e.target.value)}>
         {sorted.map((x) => (
           <option key={x} value={x}>
             {exerciseName(x, d.byId)}
@@ -141,24 +151,24 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
       {note && <p className="text-xs text-muted -mt-1">{note}</p>}
 
       {series.length === 0 ? (
-        <p className="text-sm text-muted py-4 text-center">No sessions with this exercise in the selected period. Try a longer range.</p>
+        <p className="text-sm text-muted py-4 text-center">{t('progress.exercisePeriodEmpty')}</p>
       ) : (
         <div>
           {legend.length > 1 && <Legend items={legend} />}
-          <ChartFigure title={`${ex?.name ?? exerciseName(id, d.byId)} progress`} summary={summary} table={table}>
+          <ChartFigure title={t('progress.exerciseProgressTitle', { exercise: ex?.name ?? exerciseName(id, d.byId) })} summary={summary} table={table}>
             <ResponsiveContainer width="100%" height="100%">
               {chart ?? <div />}
             </ResponsiveContainer>
           </ChartFigure>
-          {series.length === 1 && <p className="text-xs text-muted px-1 mt-1">One session so far. A trend appears after your next one.</p>}
+          {series.length === 1 && <p className="text-xs text-muted px-1 mt-1">{t('progress.oneSession')}</p>}
         </div>
       )}
 
       <div className="border-t border-line pt-3">
-        <h3 className="text-sm font-medium mb-1">Personal records</h3>
-        <p className="text-xs text-muted mb-2">All-time, compared only with this exercise. Warm-ups don’t count.</p>
+        <h3 className="text-sm font-medium mb-1">{t('progress.records')}</h3>
+        <p className="text-xs text-muted mb-2">{t('progress.recordsHelp')}</p>
         {records.length === 0 ? (
-          <p className="text-sm text-muted">No records yet.</p>
+          <p className="text-sm text-muted">{t('progress.noRecords')}</p>
         ) : (
           <ul className="-mx-4 divide-y divide-line">
             {records.map((r) => (

@@ -9,19 +9,20 @@ import { rollingAverage } from '@/domain/stats';
 import { cmToIn, fromKg, inToCm, round, toKg } from '@/domain/units';
 import type { Measurement, MeasurementKind } from '@/domain/types';
 import { formatDate } from '@/lib/dates';
-import { ChartFigure, ChartTip, Legend, axisProps, chartAnimation, seriesLine, shortDate, useChartColors } from './charts';
+import { ChartFigure, ChartTip, Legend, axisProps, chartAnimation, num, seriesLine, shortDate, useChartColors } from './charts';
+import { t, useT, type MessageKey } from '@/i18n';
 import type { ProgressData } from './shared';
 
-const KINDS: { value: MeasurementKind; label: string }[] = [
-  { value: 'bodyweight', label: 'Bodyweight' },
-  { value: 'waist', label: 'Waist' },
-  { value: 'chest', label: 'Chest' },
-  { value: 'hips', label: 'Hips' },
-  { value: 'arm', label: 'Arm' },
-  { value: 'thigh', label: 'Thigh' },
-  { value: 'bodyfat_pct', label: 'Body fat' },
+const KINDS: { value: MeasurementKind; label: MessageKey }[] = [
+  { value: 'bodyweight', label: 'progress.bodyweight' },
+  { value: 'waist', label: 'progress.waist' },
+  { value: 'chest', label: 'progress.chest' },
+  { value: 'hips', label: 'progress.hips' },
+  { value: 'arm', label: 'progress.arm' },
+  { value: 'thigh', label: 'progress.thigh' },
+  { value: 'bodyfat_pct', label: 'progress.bodyFat' },
 ];
-const kindLabel = (k: MeasurementKind) => KINDS.find((x) => x.value === k)!.label;
+const kindLabel = (k: MeasurementKind) => t(KINDS.find((x) => x.value === k)!.label);
 
 /** Display unit, conversions and plausible bounds (in display units) for a measurement kind. */
 function unitFor(kind: MeasurementKind, d: ProgressData) {
@@ -36,6 +37,8 @@ export function BodySection({ d, today }: { d: ProgressData; today: string }) {
   const c = useChartColors();
   const { db } = useApp();
   const toast = useToast();
+  const { t, locale } = useT();
+  const lower = (s: string) => s.toLocaleLowerCase(locale);
   const [kind, setKind] = useState<MeasurementKind>('bodyweight');
   const [editing, setEditing] = useState<Measurement | 'new' | null>(null);
   const [date, setDate] = useState(today);
@@ -73,11 +76,11 @@ export function BodySection({ d, today }: { d: ProgressData; today: string }) {
 
   const save = async () => {
     if (value == null || value < u.min || value > u.max) {
-      setError(`Enter a value between ${u.min} and ${u.max} ${u.unit}`);
+      setError(t('validation.between', { min: u.min, max: u.max, unit: u.unit }));
       return;
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today) {
-      setError('Choose a date that isn’t in the future');
+      setError('Choose a date that isn’t in the future'); // i18n: no approved Icelandic copy
       return;
     }
     setBusy(true);
@@ -90,9 +93,9 @@ export function BodySection({ d, today }: { d: ProgressData; today: string }) {
         await saveRecord('measurements', { ...editing, date, value: canonical, entered, note: note.trim() || undefined }, db);
       }
       setEditing(null);
-      toast.show(isBw ? 'Weight entry saved.' : `${kindLabel(kind)} saved`, { tone: 'success' });
+      toast.show(isBw ? t('progress.weightSaved') : t('progress.measurementSaved', { measurement: kindLabel(kind) }), { tone: 'success' });
     } catch (e) {
-      toast.show(e instanceof StorageWriteError ? e.message : 'Couldn’t save the entry', { tone: 'error' });
+      toast.show(e instanceof StorageWriteError ? e.message : t('progress.entrySaveFailed'), { tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -102,33 +105,34 @@ export function BodySection({ d, today }: { d: ProgressData; today: string }) {
     if (!editing || editing === 'new') return;
     try {
       await deleteRecord('measurements', editing.id, db);
-      toast.show('Entry deleted');
+      toast.show(t('progress.entryDeleted'));
     } catch (e) {
-      toast.show(e instanceof StorageWriteError ? e.message : 'Couldn’t delete the entry', { tone: 'error' });
+      toast.show(e instanceof StorageWriteError ? e.message : t('progress.entryDeleteFailed'), { tone: 'error' });
     }
     setConfirmDel(false);
     setEditing(null);
   };
 
-  const fmt = (m: Measurement) => `${m.entered && m.entered.unit === u.unit ? m.entered.value : u.toDisplay(m.value)} ${u.unit}`;
+  const fmt = (m: Measurement) => `${num(m.entered && m.entered.unit === u.unit ? m.entered.value : u.toDisplay(m.value))} ${u.unit}`;
   const latest = chartData.at(-1);
   const firstPt = chartData[0];
   const summary =
     chartData.length >= 2
-      ? `${chartData.length} entries. ${isBw ? '7-day average' : 'Value'} went from ${isBw ? firstPt.avg : firstPt.value} to ${isBw ? latest!.avg : latest!.value} ${u.unit}.`
+      ? t('progress.measurementTrend', { count: chartData.length, metric: t(isBw ? 'progress.average7Days' : 'progress.value'), first: (isBw ? firstPt.avg : firstPt.value) ?? '–', last: (isBw ? latest!.avg : latest!.value) ?? '–', unit: u.unit })
       : chartData.length === 1
-        ? `One entry: ${latest!.value} ${u.unit}.`
+        ? t('progress.oneMeasurement', { value: latest!.value, unit: u.unit })
         : '';
 
   return (
     <Card className="p-4 flex flex-col gap-3">
       <div className="flex gap-2 items-end">
-        <Select label="Measurement" value={kind} onChange={(e) => setKind(e.target.value as MeasurementKind)} className="flex-1">
+        <Select label={t('progress.measurement')} value={kind} onChange={(e) => setKind(e.target.value as MeasurementKind)} className="flex-1">
           {KINDS.map((k) => (
-            <option key={k.value} value={k.value}>{k.label}</option>
+            <option key={k.value} value={k.value}>{t(k.label)}</option>
           ))}
         </Select>
         <Button variant="primary" icon={<Plus className="size-4" />} onClick={openNew}>
+          {/* i18n: no approved Icelandic copy for the bare "Add" button */}
           Add
         </Button>
       </div>
@@ -136,34 +140,34 @@ export function BodySection({ d, today }: { d: ProgressData; today: string }) {
       {all.length === 0 ? (
         <EmptyState
           icon={<Scale className="size-6" />}
-          title={isBw ? 'Add a weight entry to start your history.' : `No ${kindLabel(kind).toLowerCase()} entries yet`}
-          body={isBw ? 'Weigh in at a similar time of day; a 7-day average smooths out day-to-day changes.' : 'Measurements are optional. Other members never see them; a coach or the training assistant only does if you choose to share measurements.'}
-          action={<Button onClick={openNew}>Add {kindLabel(kind).toLowerCase()}</Button>}
+          title={isBw ? t('progress.weightEmpty') : t('progress.measurementEmpty', { measurement: lower(kindLabel(kind)) })}
+          body={isBw ? t('progress.weightHelp') : t('progress.measurementPrivacy')}
+          action={<Button onClick={openNew}>{t('progress.addMeasurement', { measurement: lower(kindLabel(kind)) })}</Button>}
         />
       ) : (
         <>
           {chartData.length > 0 ? (
             <div>
-              {isBw && <Legend items={[{ label: 'Entries', color: c.series[1], series: 1 }, { label: '7-day average', color: c.series[0], series: 0 }]} />}
+              {isBw && <Legend items={[{ label: t('progress.entries'), color: c.series[1], series: 1 }, { label: t('progress.average7Days'), color: c.series[0], series: 0 }]} />}
               <ChartFigure
                 title={`${kindLabel(kind)} (${u.unit})`}
                 summary={summary}
-                table={{ headers: ['Date', `Value (${u.unit})`, ...(isBw ? ['7-day avg'] : [])], rows: chartData.map((p) => [formatDate(p.date), p.value, ...(isBw ? [p.avg ?? '–'] : [])]) }}
+                table={{ headers: [t('progress.date'), t('progress.valueUnit', { unit: u.unit }), ...(isBw ? [t('progress.average7DaysShort')] : [])], rows: chartData.map((p) => [formatDate(p.date), p.value, ...(isBw ? [p.avg ?? '–'] : [])]) }}
               >
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
                     <CartesianGrid vertical={false} stroke={c.line} />
                     <XAxis dataKey="date" tickFormatter={shortDate} {...axisProps(c)} interval="preserveStartEnd" minTickGap={16} />
-                    <YAxis {...axisProps(c)} domain={['auto', 'auto']} width={52} />
-                    <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => `${v} ${u.unit}`} />} />
-                    <Line dataKey="value" name="Entry" strokeWidth={2} isAnimationActive={chartAnimation()} {...seriesLine(isBw ? 1 : 0, c)} stroke={isBw ? 'transparent' : c.series[0]} />
-                    {isBw && <Line type="monotone" dataKey="avg" name="7-day average" strokeWidth={2} isAnimationActive={chartAnimation()} {...seriesLine(0, c)} dot={false} />}
+                    <YAxis {...axisProps(c)} domain={['auto', 'auto']} width={52} tickFormatter={(v: number) => num(v)} />
+                    <Tooltip cursor={{ stroke: c.line }} content={(p) => <ChartTip {...p} labelFmt={(l) => formatDate(l)} valueFmt={(v) => `${num(v)} ${u.unit}`} />} />
+                    <Line dataKey="value" name="Entry" /* i18n: no approved Icelandic copy */ strokeWidth={2} isAnimationActive={chartAnimation()} {...seriesLine(isBw ? 1 : 0, c)} stroke={isBw ? 'transparent' : c.series[0]} />
+                    {isBw && <Line type="monotone" dataKey="avg" name={t('progress.average7Days')} strokeWidth={2} isAnimationActive={chartAnimation()} {...seriesLine(0, c)} dot={false} />}
                   </ComposedChart>
                 </ResponsiveContainer>
               </ChartFigure>
             </div>
           ) : (
-            <p className="text-sm text-muted">No entries in this period.</p>
+            <p className="text-sm text-muted">{t('progress.entriesPeriodEmpty')}</p>
           )}
           <ul className="-mx-4 divide-y divide-line border-t border-line max-h-80 overflow-y-auto">
             {all.slice(0, 50).map((m) => (
@@ -172,7 +176,7 @@ export function BodySection({ d, today }: { d: ProgressData; today: string }) {
                   <span className="text-[15px] tabular">{fmt(m)}</span>
                   <span className="block text-xs text-muted truncate">{formatDate(m.date, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}{m.note ? ` · ${m.note}` : ''}</span>
                 </span>
-                <IconButton label={`Edit ${kindLabel(kind).toLowerCase()} entry from ${formatDate(m.date)}`} onClick={() => openEdit(m)}>
+                <IconButton label={t('progress.editMeasurementDated', { measurement: lower(kindLabel(kind)), date: formatDate(m.date) })} onClick={() => openEdit(m)}>
                   <Pencil className="size-4" />
                 </IconButton>
               </li>
@@ -184,26 +188,26 @@ export function BodySection({ d, today }: { d: ProgressData; today: string }) {
       <Sheet
         open={editing != null}
         onClose={() => setEditing(null)}
-        title={editing === 'new' ? `Add ${kindLabel(kind).toLowerCase()}` : `Edit ${kindLabel(kind).toLowerCase()}`}
+        title={editing === 'new' ? t('progress.addMeasurement', { measurement: lower(kindLabel(kind)) }) : t('progress.editMeasurement', { measurement: lower(kindLabel(kind)) })}
         footer={
           <>
             {editing && editing !== 'new' && (
               <Button variant="danger" onClick={() => setConfirmDel(true)} className="mr-auto">
-                Delete
+                {t('common.delete')}
               </Button>
             )}
-            <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
-            <Button variant="primary" onClick={save} loading={busy}>Save</Button>
+            <Button variant="ghost" onClick={() => setEditing(null)}>{t('common.cancel')}</Button>
+            <Button variant="primary" onClick={save} loading={busy}>{t('common.save')}</Button>
           </>
         }
       >
         <div className="flex flex-col gap-3">
           <NumberInput label={`${kindLabel(kind)} (${u.unit})`} value={value} onChange={(v) => { setValue(v); setError(null); }} error={error} suffix={u.unit} />
-          <Input label="Date" type="date" value={date} max={today} onChange={(e) => { setDate(e.target.value); setError(null); }} />
-          <Input label="Note" hint="Optional" value={note} onChange={(e) => setNote(e.target.value)} maxLength={140} />
+          <Input label={t('progress.date')} type="date" value={date} max={today} onChange={(e) => { setDate(e.target.value); setError(null); }} />
+          <Input label={t('progress.note')} hint={t('common.optional')} value={note} onChange={(e) => setNote(e.target.value)} maxLength={140} />
         </div>
       </Sheet>
-      <ConfirmDialog open={confirmDel} title="Delete this entry?" body="It will be removed from your charts and averages." confirmLabel="Delete" danger onConfirm={remove} onCancel={() => setConfirmDel(false)} />
+      <ConfirmDialog open={confirmDel} title={t('progress.deleteMeasurementTitle')} body={t('progress.deleteMeasurementHelp')} confirmLabel={t('common.delete')} danger onConfirm={remove} onCancel={() => setConfirmDel(false)} />
     </Card>
   );
 }

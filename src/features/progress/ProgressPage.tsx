@@ -21,14 +21,15 @@ import { NutritionSection } from './NutritionSection';
 import { GoalsSection } from './GoalsSection';
 import type { ProgressData } from './shared';
 import type { FoodLogEntry } from '@/domain/types';
+import { useT, type MessageKey } from '@/i18n';
 
 type RangeKey = '4w' | '3m' | '6m' | '1y' | 'all';
-const RANGES: { value: RangeKey; label: string; days?: number }[] = [
-  { value: '4w', label: '4 wk', days: 28 },
-  { value: '3m', label: '3 mo', days: 91 },
-  { value: '6m', label: '6 mo', days: 182 },
-  { value: '1y', label: '1 yr', days: 365 },
-  { value: 'all', label: 'All' },
+const RANGES: { value: RangeKey; label: MessageKey; days?: number }[] = [
+  { value: '4w', label: 'progress.range4Weeks', days: 28 },
+  { value: '3m', label: 'progress.range3Months', days: 91 },
+  { value: '6m', label: 'progress.range6Months', days: 182 },
+  { value: '1y', label: 'progress.rangeYear', days: 365 },
+  { value: 'all', label: 'progress.rangeAll' },
 ];
 const RANGE_STORAGE = 'lc-progress-range';
 function readRange(): RangeKey {
@@ -51,6 +52,7 @@ function Section({ id, title, children }: { id: string; title: string; children:
 
 export default function ProgressPage() {
   const nav = useNavigate();
+  const { t, language } = useT();
   const { db, account, accountReady } = useApp();
   const settings = account.settings;
   const today = todayISO(settings.timeZone);
@@ -124,11 +126,11 @@ export default function ProgressPage() {
     return observations({ sessions: data.sessions, activities: data.activities, measurements: data.measurements, today, weekStart: settings.weekStart, unit: settings.units.weight, plan, byId });
   }, [data, wk, today, settings.weekStart, settings.units.weight, byId]);
 
-  const header = { title: 'Progress', actions: <TopActions /> };
+  const header = { title: t('nav.progress'), actions: <TopActions /> };
   if (!data || !accountReady)
     return (
       <Page {...header}>
-        <Spinner label="Loading your progress" />
+        <Spinner label={t('progress.loading')} />
       </Page>
     );
 
@@ -138,9 +140,12 @@ export default function ProgressPage() {
   return (
     <Page {...header}>
       <div className="sticky top-0 z-10 -mx-4 px-4 py-2 bg-bg/95 backdrop-blur">
-        <Segmented label="Date range" value={range} onChange={setRange} options={RANGES.map((r) => ({ value: r.value, label: r.label }))} />
+        <Segmented label={t('progress.range')} value={range} onChange={setRange} options={RANGES.map((r) => ({ value: r.value, label: t(r.label) }))} />
         <p className="text-xs text-muted mt-1.5 px-1">
-          {formatDate(from, { day: 'numeric', month: 'short', year: 'numeric' })} – {formatDate(today, { day: 'numeric', month: 'short', year: 'numeric' })} · weeks start on {settings.weekStart === 1 ? 'Monday' : 'Sunday'}
+          {formatDate(from, { day: 'numeric', month: 'short', year: 'numeric' })} – {formatDate(today, { day: 'numeric', month: 'short', year: 'numeric' })} ·{' '}
+          {language === 'en'
+            ? `weeks start on ${t(settings.weekStart === 1 ? 'settings.monday' : 'settings.sunday')}`
+            : `${t('settings.weekStart')} ${t(settings.weekStart === 1 ? 'settings.monday' : 'settings.sunday')}`}
         </p>
       </div>
 
@@ -148,12 +153,12 @@ export default function ProgressPage() {
         <Card className="mt-4">
           <EmptyState
             illustration={<NoWorkoutsArt />}
-            title="Your progress starts with one session"
-            body="Charts, records and observations are built only from what you log. Nothing is estimated in advance."
+            title={t('progress.emptyTitle')}
+            body={t('progress.emptyHelp')}
             action={
               <div className="flex flex-col gap-2 w-full max-w-xs">
-                <Button variant="primary" icon={<Dumbbell className="size-4" />} onClick={() => nav('/train')}>Log your first workout</Button>
-                <Button icon={<Plus className="size-4" />} onClick={() => nav('/train/activity/new')}>Log an activity</Button>
+                <Button variant="primary" icon={<Dumbbell className="size-4" />} onClick={() => nav('/train')}>{t('progress.logFirst')}</Button>
+                <Button icon={<Plus className="size-4" />} onClick={() => nav('/train/activity/new')}>{t('progress.logActivity')}</Button>
               </div>
             }
           />
@@ -161,7 +166,7 @@ export default function ProgressPage() {
       ) : (
         obs.length > 0 && (
           <Card as="section" aria-labelledby="obs-title" className="p-4 mt-3">
-            <h2 id="obs-title" className="text-sm font-semibold mb-2">This week</h2>
+            <h2 id="obs-title" className="text-sm font-semibold mb-2">{t('progress.thisWeek')}</h2>
             <ul className="flex flex-col gap-1.5 text-sm">
               {obs.map((o) => (
                 <li key={o} className="flex gap-2">
@@ -174,27 +179,27 @@ export default function ProgressPage() {
         )
       )}
 
-      <Section id="p-consistency" title="Consistency">
+      <Section id="p-consistency" title={t('progress.consistency')}>
         <ConsistencySection d={data} />
       </Section>
-      <Section id="p-exercise" title="Exercise progress">
+      <Section id="p-exercise" title={t('progress.exerciseProgress')}>
         <ExerciseSection d={data} />
       </Section>
-      <Section id="p-volume" title="Volume & working sets">
+      <Section id="p-volume" title={t('progress.volumeSets')}>
         <VolumeSection d={data} />
       </Section>
-      <Section id="p-cardio" title="Cardio & activities">
+      <Section id="p-cardio" title={t('progress.activities')}>
         <CardioSection d={data} />
       </Section>
-      <Section id="p-body" title="Body">
+      <Section id="p-body" title={t('progress.body')}>
         <BodySection d={data} today={today} />
       </Section>
       {nutritionOn && (
-        <Section id="p-nutrition" title="Protein">
+        <Section id="p-nutrition" title={t('progress.protein')}>
           <NutritionSection d={data} proteinTargetG={proteinTargetG} />
         </Section>
       )}
-      <Section id="p-goals" title="Goals">
+      <Section id="p-goals" title={t('progress.goals')}>
         <GoalsSection d={data} proteinTargetG={proteinTargetG} />
       </Section>
     </Page>

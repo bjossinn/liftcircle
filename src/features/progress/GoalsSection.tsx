@@ -10,22 +10,48 @@ import type { UserGoal } from '@/domain/types';
 import { formatDate } from '@/lib/dates';
 import { exerciseName } from '@/data/catalog';
 import type { ProgressData } from './shared';
+import { t, useT, type Language, type MessageKey } from '@/i18n';
 
 type Kind = UserGoal['kind'];
-const KINDS: { value: Kind; label: string; unit: (w: string) => string; defaultTitle: string }[] = [
-  { value: 'sessions_per_week', label: 'Workouts per week', unit: () => 'workouts', defaultTitle: 'Train consistently' },
-  { value: 'exercise_load', label: 'Exercise load', unit: (w) => w, defaultTitle: 'Lift target' },
-  { value: 'bodyweight', label: 'Bodyweight', unit: (w) => w, defaultTitle: 'Bodyweight target' },
-  { value: 'protein_days', label: 'Protein target days per week', unit: () => 'days', defaultTitle: 'Hit protein most days' },
-  { value: 'cardio_minutes', label: 'Activity minutes per week', unit: () => 'min', defaultTitle: 'Move more' },
-  { value: 'custom', label: 'Custom', unit: () => '', defaultTitle: '' },
+/**
+ * Goal kinds. `defaultTitle` is a message key: the default title is stored as goal content in the language in use
+ * when the goal was saved (the user can edit it), so it is localized when filled in, never rewritten afterwards.
+ */
+const KINDS: { value: Kind; label: MessageKey; unit: (w: string) => string; defaultTitle: MessageKey | null }[] = [
+  { value: 'sessions_per_week', label: 'progress.goalWeeklyWorkouts', unit: () => t('progress.goalWorkoutsUnit'), defaultTitle: 'progress.goalConsistency' },
+  { value: 'exercise_load', label: 'progress.goalExerciseLoad', unit: (w) => w, defaultTitle: 'progress.goalLiftTarget' },
+  { value: 'bodyweight', label: 'progress.bodyweight', unit: (w) => w, defaultTitle: 'progress.goalBodyweight' },
+  { value: 'protein_days', label: 'progress.goalProteinDays', unit: () => t('progress.goalDaysUnit'), defaultTitle: 'progress.goalProteinDefault' },
+  // i18n: no approved Icelandic copy for the bare "min" unit
+  { value: 'cardio_minutes', label: 'progress.goalActivityMinutes', unit: () => 'min', defaultTitle: 'progress.goalMoveMore' },
+  { value: 'custom', label: 'progress.goalCustom', unit: () => '', defaultTitle: null },
 ];
 const kindInfo = (k: Kind) => KINDS.find((x) => x.value === k)!;
+const LANGS: Language[] = ['en', 'is'];
+/** The default title for a kind in the current language ('' for custom). */
+const defaultTitle = (k: Kind) => {
+  const key = kindInfo(k).defaultTitle;
+  return key ? t(key) : '';
+};
+/**
+ * The kind whose default title this is, in any language (stored titles may predate a language switch), else null.
+ * Exact match only, so user-authored titles are never mistaken for defaults.
+ */
+const defaultTitleKind = (title: string): Kind | null => {
+  for (const x of KINDS) if (x.defaultTitle && LANGS.some((l) => t(x.defaultTitle!, undefined, l) === title)) return x.value;
+  return null;
+};
+/** Display text for a stored title: an untouched default shows in the current language; anything else as stored. */
+const titleText = (title: string) => {
+  const k = defaultTitleKind(title);
+  return k ? defaultTitle(k) : title;
+};
 const usesWeight = (k: Kind) => k === 'exercise_load' || k === 'bodyweight';
 
 export function GoalsSection({ d, proteinTargetG }: { d: ProgressData; proteinTargetG?: number }) {
   const { db } = useApp();
   const toast = useToast();
+  const { t } = useT();
   const unit = d.settings.units.weight;
   const [edit, setEdit] = useState<UserGoal | 'new' | null>(null);
   const [kind, setKind] = useState<Kind>('sessions_per_week');
@@ -53,7 +79,7 @@ export function GoalsSection({ d, proteinTargetG }: { d: ProgressData; proteinTa
     setErrors({});
     if (g === 'new') {
       setKind('sessions_per_week');
-      setTitle(kindInfo('sessions_per_week').defaultTitle);
+      setTitle(defaultTitle('sessions_per_week'));
       setTarget(3);
       setExerciseId('');
       setDeadline('');
@@ -68,43 +94,44 @@ export function GoalsSection({ d, proteinTargetG }: { d: ProgressData; proteinTa
   };
 
   const changeKind = (k: Kind) => {
-    const wasDefault = !title.trim() || KINDS.some((x) => x.defaultTitle === title);
+    // Old English defaults and current localized defaults both count as "untouched".
+    const wasDefault = !title.trim() || defaultTitleKind(title) != null;
     setKind(k);
-    if (wasDefault) setTitle(kindInfo(k).defaultTitle);
+    if (wasDefault) setTitle(defaultTitle(k));
     setTarget(k === 'sessions_per_week' ? 3 : k === 'protein_days' ? 5 : k === 'cardio_minutes' ? 150 : null);
     setErrors({});
   };
 
   const save = async () => {
     const errs: Record<string, string> = {};
-    const t = title.trim() || (kind === 'exercise_load' && exerciseId ? `${exerciseName(exerciseId, d.byId)} target` : kindInfo(kind).defaultTitle);
-    if (!t) errs.title = 'Give your goal a name';
+    const name = title.trim() || (kind === 'exercise_load' && exerciseId ? t('progress.goalExerciseDefault', { exercise: exerciseName(exerciseId, d.byId) }) : defaultTitle(kind));
+    if (!name) errs.title = t('validation.goalName');
     if (kind !== 'custom') {
-      if (target == null || target <= 0) errs.target = 'Enter a target above zero';
-      else if (kind === 'protein_days' && target > 7) errs.target = 'A week has 7 days';
-      else if (kind === 'sessions_per_week' && target > 14) errs.target = 'Enter 14 or fewer';
-      else if (kind === 'cardio_minutes' && target > 3000) errs.target = 'Enter 3000 minutes or fewer';
+      if (target == null || target <= 0) errs.target = t('validation.positiveTarget');
+      else if (kind === 'protein_days' && target > 7) errs.target = t('validation.week7Days');
+      else if (kind === 'sessions_per_week' && target > 14) errs.target = t('validation.atMost14');
+      else if (kind === 'cardio_minutes' && target > 3000) errs.target = t('validation.atMost3000Minutes');
     }
-    if (kind === 'exercise_load' && !exerciseId) errs.exercise = 'Choose an exercise';
+    if (kind === 'exercise_load' && !exerciseId) errs.exercise = t('validation.chooseExercise');
     if (Object.keys(errs).length) return setErrors(errs);
     const tgt = kind === 'custom' ? 1 : usesWeight(kind) ? toKg(target!, unit) : Math.round(target!);
-    const fields = { title: t, kind, target: tgt, exerciseId: kind === 'exercise_load' ? exerciseId : undefined, deadline: deadline || undefined };
+    const fields = { title: name, kind, target: tgt, exerciseId: kind === 'exercise_load' ? exerciseId : undefined, deadline: deadline || undefined };
     try {
       if (edit === 'new') await saveRecord('goals', newRecord<Omit<UserGoal, 'id' | 'createdAt' | 'updatedAt'>>(fields), db);
       else if (edit) await saveRecord('goals', { ...edit, ...fields }, db);
       setEdit(null);
-      toast.show('Goal saved', { tone: 'success' });
+      toast.show(t('progress.goalSaved'), { tone: 'success' });
     } catch (e) {
-      toast.show(e instanceof StorageWriteError ? e.message : 'Couldn’t save the goal', { tone: 'error' });
+      toast.show(e instanceof StorageWriteError ? e.message : t('progress.goalSaveFailed'), { tone: 'error' });
     }
   };
 
   const setAchieved = async (g: UserGoal, achieved: boolean) => {
     try {
       await saveRecord('goals', { ...g, achievedAt: achieved ? Date.now() : undefined }, db);
-      toast.show(achieved ? 'Goal marked as achieved' : 'Goal reopened', { tone: 'success' });
+      toast.show(achieved ? t('progress.goalAchievedToast') : t('progress.goalReopened'), { tone: 'success' });
     } catch (e) {
-      toast.show(e instanceof StorageWriteError ? e.message : 'Couldn’t update the goal', { tone: 'error' });
+      toast.show(e instanceof StorageWriteError ? e.message : t('progress.goalUpdateFailed'), { tone: 'error' });
     }
   };
 
@@ -112,9 +139,9 @@ export function GoalsSection({ d, proteinTargetG }: { d: ProgressData; proteinTa
     if (!edit || edit === 'new') return;
     try {
       await deleteRecord('goals', edit.id, db);
-      toast.show('Goal deleted');
+      toast.show(t('progress.goalDeleted'));
     } catch (e) {
-      toast.show(e instanceof StorageWriteError ? e.message : 'Couldn’t delete the goal', { tone: 'error' });
+      toast.show(e instanceof StorageWriteError ? e.message : t('progress.goalDeleteFailed'), { tone: 'error' });
     }
     setConfirmDel(false);
     setEdit(null);
@@ -128,85 +155,86 @@ export function GoalsSection({ d, proteinTargetG }: { d: ProgressData; proteinTa
         <Card>
           <EmptyState
             icon={<Flag className="size-6" />}
-            title="No goals yet"
-            body="Set a goal like workouts per week, a lift target or weekly activity minutes. Progress is calculated from what you log."
-            action={<Button variant="primary" icon={<Plus className="size-4" />} onClick={() => open('new')}>Add a goal</Button>}
+            title={t('progress.goalsEmpty')}
+            body={t('progress.goalsEmptyHelp')}
+            action={<Button variant="primary" icon={<Plus className="size-4" />} onClick={() => open('new')}>{t('progress.addGoal')}</Button>}
           />
         </Card>
       ) : (
         <div className="flex flex-col gap-2">
           {goals.map((g) => {
             const p = goalProgress(g, ctx);
+            const shown = titleText(g.title);
             return (
               <Card key={g.id} as="article" className="p-4 flex flex-col gap-2">
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold truncate">{g.title}</h3>
+                    <h3 className="font-semibold truncate">{shown}</h3>
                     <p className="text-xs text-muted">
-                      {kindInfo(g.kind).label}
+                      {t(kindInfo(g.kind).label)}
                       {g.kind === 'exercise_load' && g.exerciseId ? ` · ${exerciseName(g.exerciseId, d.byId)}` : ''}
-                      {g.deadline ? ` · by ${formatDate(g.deadline, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                      {g.deadline ? ` · ${t('progress.goalDeadline', { date: formatDate(g.deadline, { day: 'numeric', month: 'short', year: 'numeric' }) })}` : ''}
                     </p>
                   </div>
-                  {g.achievedAt && <Badge tone="accent"><CheckCircle2 className="size-3" aria-hidden /> Achieved</Badge>}
-                  <IconButton label={`Edit goal ${g.title}`} size="sm" onClick={() => open(g)}>
+                  {g.achievedAt && <Badge tone="accent"><CheckCircle2 className="size-3" aria-hidden /> {t('progress.achieved')}</Badge>}
+                  <IconButton label={t('progress.editNamedGoal', { name: shown })} size="sm" onClick={() => open(g)}>
                     <Pencil className="size-4" />
                   </IconButton>
                 </div>
-                {p.fraction != null && <ProgressBar value={Math.round(p.fraction * 100)} max={100} label={`${g.title} progress`} />}
+                {p.fraction != null && <ProgressBar value={Math.round(p.fraction * 100)} max={100} label={t('progress.namedGoalProgress', { name: shown })} />}
                 <p className="text-sm text-muted">{p.text}</p>
                 {g.achievedAt ? (
-                  <Button size="sm" variant="ghost" className="self-start" icon={<RotateCcw className="size-4" />} onClick={() => setAchieved(g, false)}>Reopen</Button>
+                  <Button size="sm" variant="ghost" className="self-start" icon={<RotateCcw className="size-4" />} onClick={() => setAchieved(g, false)}>{t('progress.reopenGoal')}</Button>
                 ) : (
                   <Button size="sm" variant={p.reached ? 'primary' : 'outline'} className="self-start" icon={<CheckCircle2 className="size-4" />} onClick={() => setAchieved(g, true)}>
-                    {p.reached ? 'Target reached: mark achieved' : 'Mark achieved'}
+                    {p.reached ? t('progress.reachedMarkAchieved') : t('progress.markAchieved')}
                   </Button>
                 )}
               </Card>
             );
           })}
-          <Button variant="ghost" icon={<Plus className="size-4" />} onClick={() => open('new')} className="self-start">Add a goal</Button>
+          <Button variant="ghost" icon={<Plus className="size-4" />} onClick={() => open('new')} className="self-start">{t('progress.addGoal')}</Button>
         </div>
       )}
 
       <Sheet
         open={edit != null}
         onClose={() => setEdit(null)}
-        title={edit === 'new' ? 'New goal' : 'Edit goal'}
+        title={edit === 'new' ? t('progress.newGoal') : t('progress.editGoal')}
         footer={
           <>
-            {edit && edit !== 'new' && <Button variant="danger" className="mr-auto" onClick={() => setConfirmDel(true)}>Delete</Button>}
-            <Button variant="ghost" onClick={() => setEdit(null)}>Cancel</Button>
-            <Button variant="primary" onClick={save}>Save goal</Button>
+            {edit && edit !== 'new' && <Button variant="danger" className="mr-auto" onClick={() => setConfirmDel(true)}>{t('common.delete')}</Button>}
+            <Button variant="ghost" onClick={() => setEdit(null)}>{t('common.cancel')}</Button>
+            <Button variant="primary" onClick={save}>{t('progress.saveGoal')}</Button>
           </>
         }
       >
         <div className="flex flex-col gap-3">
-          <Select label="Type" value={kind} onChange={(e) => changeKind(e.target.value as Kind)}>
+          <Select label={t('progress.goalType')} value={kind} onChange={(e) => changeKind(e.target.value as Kind)}>
             {KINDS.map((k) => (
-              <option key={k.value} value={k.value}>{k.label}</option>
+              <option key={k.value} value={k.value}>{t(k.label)}</option>
             ))}
           </Select>
           {kind === 'exercise_load' && (
-            <Select label="Exercise" value={exerciseId} onChange={(e) => { setExerciseId(e.target.value); setErrors((x) => ({ ...x, exercise: '' })); }} error={errors.exercise || null}>
-              <option value="">Choose an exercise…</option>
+            <Select label={t('progress.exercise')} value={exerciseId} onChange={(e) => { setExerciseId(e.target.value); setErrors((x) => ({ ...x, exercise: '' })); }} error={errors.exercise || null}>
+              <option value="">{t('progress.chooseExercise')}</option>
               {exerciseOptions.map((e) => (
                 <option key={e.id} value={e.id}>{e.name}</option>
               ))}
             </Select>
           )}
-          <Input label="Goal name" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} error={errors.title || null} placeholder={kind === 'custom' ? 'e.g. Run a 10 km race' : undefined} />
+          <Input label={t('progress.goalName')} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} error={errors.title || null} placeholder={kind === 'custom' ? t('progress.goalNameExample') : undefined} />
           {kind !== 'custom' && (
             <NumberInput
-              label={kind === 'exercise_load' && selectedEx?.tracking === 'assisted' ? `Target assistance (${unit}): lower is better` : `Target (${kindInfo(kind).unit(unit)})`}
+              label={kind === 'exercise_load' && selectedEx?.tracking === 'assisted' ? t('progress.goalAssistanceTarget', { unit }) : t('progress.goalTarget', { unit: kindInfo(kind).unit(unit) })}
               hint={
                 kind === 'exercise_load'
-                  ? 'Compared with your heaviest completed working set (warm-ups excluded).'
+                  ? t('progress.goalLiftHelp')
                   : kind === 'bodyweight'
-                    ? 'Compared with your 7-day average.'
+                    ? t('progress.goalBodyweightHelp')
                     : kind === 'protein_days'
-                      ? 'Days this week where logged protein reached your target.'
-                      : 'Counted for the current week.'
+                      ? t('progress.goalProteinHelp')
+                      : t('progress.goalWeeklyHelp')
               }
               value={target}
               onChange={(v) => { setTarget(v); setErrors((x) => ({ ...x, target: '' })); }}
@@ -216,10 +244,10 @@ export function GoalsSection({ d, proteinTargetG }: { d: ProgressData; proteinTa
               error={errors.target || null}
             />
           )}
-          <Input label="Target date" hint="Optional" type="date" value={deadline} min={d.today} onChange={(e) => setDeadline(e.target.value)} />
+          <Input label={t('progress.goalDate')} hint={t('common.optional')} type="date" value={deadline} min={d.today} onChange={(e) => setDeadline(e.target.value)} />
         </div>
       </Sheet>
-      <ConfirmDialog open={confirmDel} title="Delete this goal?" confirmLabel="Delete" danger onConfirm={remove} onCancel={() => setConfirmDel(false)} />
+      <ConfirmDialog open={confirmDel} title={t('progress.deleteGoal')} confirmLabel={t('common.delete')} danger onConfirm={remove} onCancel={() => setConfirmDel(false)} />
     </>
   );
 }
