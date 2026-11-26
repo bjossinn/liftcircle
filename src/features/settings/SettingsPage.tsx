@@ -15,6 +15,7 @@ import { PushSection } from './PushSection';
 import { UpdateCheckRow } from './UpdateCheckRow';
 import { ThemeOptions } from '@/theme/ThemeOptions';
 import { effectiveThemeChoice, setDeviceThemeChoice } from '@/theme/theme';
+import { analyticsEnabled, clearAnalyticsQueue } from '@/analytics/analytics';
 
 export default function SettingsPage() {
   const nav = useNavigate();
@@ -198,6 +199,15 @@ export default function SettingsPage() {
             ))}
           </div>
         )}
+        <Toggle
+          label="Share product usage events"
+          description="On by default. Helps us see whether the app gets people training: a few milestones (first set logged, first workout finished, a second workout within a week, starting a workout, finishing setup) and which training assistant actions you use, with your account and the time. Never weights, reps, exercises, body measurements, food, injuries, notes, chat text, your name or email. Only sent while you’re signed in. Turn off to stop recording and delete events not yet sent."
+          checked={analyticsEnabled(s)}
+          onChange={async (v) => {
+            await set((x) => ({ ...x, analytics: v }));
+            if (!v) await clearAnalyticsQueue(db);
+          }}
+        />
       </Card>
 
       <SectionTitle>Notifications</SectionTitle>

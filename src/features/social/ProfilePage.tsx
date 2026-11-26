@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Ban, Check, ChevronLeft, Flag, MoreHorizontal, Pencil, Share2, ShieldCheck, UserCheck, UserMinus, UserPlus, Users, X } from 'lucide-react';
-import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, IconButton, Page, SectionTitle, Sheet, Spinner } from '@/components/ui';
+import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, IconButton, Notice, Page, SectionTitle, Sheet, Spinner } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { socialApi } from '@/backend/social';
 import { publicAppUrl } from '@/backend/supabase';
 import type { FriendStatus, ID, SocialProfile } from '@/domain/types';
-import { friendlyError } from '@/social/pendingPosts';
+import { friendlyError, usePendingPosts } from '@/social/pendingPosts';
 import { AccessNotice, Avatar, ReportSheet, shareLink, useSocialAccess } from './common';
-import { PostCard } from './PostCard';
+import { PendingPostCard, PostCard } from './PostCard';
 import { PAGE_SIZE, usePostList } from './usePostList';
 import { useMyProfile } from './useMyProfile';
 
@@ -25,6 +25,7 @@ export default function ProfilePage() {
         </IconButton>
       }
     >
+      {!username && <PendingUploads access={access} />}
       {access !== 'ok' ? (
         <AccessNotice access={access} what="Profiles" guestTitle={username ? `Connect with @${username}` : undefined} />
       ) : username ? (
@@ -33,6 +34,31 @@ export default function ProfilePage() {
         <MyProfile meId={meId!} />
       )}
     </Page>
+  );
+}
+
+/**
+ * Shares that haven't been published yet (queued offline, uploading or failed), with Retry and Cancel. Always on your
+ * own profile, so they can be recovered even when the Feed tab is switched off (socialFeed flag): the profile is the
+ * screen a share lands on in that case.
+ */
+export function PendingUploads({ access }: { access: string }) {
+  const pending = usePendingPosts();
+  if (pending.length === 0 || access === 'guest' || access === 'personal' || access === 'loading') return null;
+  const failed = pending.some((p) => p.status === 'error');
+  return (
+    <section aria-labelledby="pending-uploads-title" className="mb-4">
+      <SectionTitle id="pending-uploads-title">{failed ? 'Uploads that need attention' : 'Not posted yet'}</SectionTitle>
+      {access === 'expired' && <Notice className="mb-2">These will upload after you sign in again.</Notice>}
+      {access === 'offline' && <Notice className="mb-2">These will upload when you’re back online.</Notice>}
+      <ul className="flex flex-col gap-3">
+        {pending.map((p) => (
+          <li key={p.id}>
+            <PendingPostCard pending={p} />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -58,8 +84,15 @@ function ProfileHeader({ profile, children }: { profile: SocialProfile; children
   );
 }
 
-function UserPosts({ userId, meId, empty, onBlocked }: { userId: ID; meId: string; empty: string; onBlocked?: () => void }) {
+function UserPosts({ userId, meId, empty, onBlocked, reloadOn }: { userId: ID; meId: string; empty: string; onBlocked?: () => void; reloadOn?: number }) {
   const list = usePostList(`user:${meId}:${userId}`, (c) => socialApi.getUserPosts(userId, c, PAGE_SIZE));
+  // When a queued share finishes publishing (fewer pending), pull it into the list.
+  const prevReload = useRef(reloadOn);
+  const { refresh } = list;
+  useEffect(() => {
+    if (reloadOn != null && prevReload.current != null && reloadOn < prevReload.current) void refresh();
+    prevReload.current = reloadOn;
+  }, [reloadOn, refresh]);
   return (
     <section aria-labelledby="posts-title">
       <SectionTitle id="posts-title">Posts</SectionTitle>
@@ -103,6 +136,7 @@ function MyProfile({ meId }: { meId: string }) {
   const nav = useNavigate();
   const toast = useToast();
   const { profile, loading, error, reload } = useMyProfile(meId);
+  const pendingCount = usePendingPosts().length;
   const [moderator, setModerator] = useState(false);
   useEffect(() => {
     let off = false;
@@ -151,7 +185,7 @@ function MyProfile({ meId }: { meId: string }) {
           </Link>
         )}
       </ProfileHeader>
-      <UserPosts userId={profile.id} meId={meId} empty="Posts you share will appear here." />
+      <UserPosts userId={profile.id} meId={meId} empty="Posts you share will appear here." reloadOn={pendingCount} />
     </>
   );
 }

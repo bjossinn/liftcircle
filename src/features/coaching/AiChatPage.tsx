@@ -19,6 +19,7 @@ import { aiApi, type AiChatMessage } from '@/backend/ai';
 import type { AiAvailability, AiMessage, AiSettings, AiUsage, CoachingRelationship, ProgramProposal } from '@/backend/coachingContract';
 import { kvGet, kvSet } from '@/db/repo';
 import { useApp } from '@/state/app';
+import { trackAiAction } from '@/analytics/analytics';
 import { uuid } from '@/lib/id';
 import {
   AI_DRAFT_KEY, AI_HISTORY_CACHE_KEY, AI_MESSAGE_MAX, AI_PENDING_KEY, CHECKIN_REVIEW_TEXT, classifyAiError, isHardUnavailable, mergeConversation,
@@ -257,6 +258,12 @@ function Chat({
       });
       if (res.proposal) setProposals((m) => ({ ...m, [res.proposal!.id]: res.proposal! }));
       persistPending(null);
+      // Only the kind of action and its outcome: never the message, the reply or any of their content.
+      void trackAiAction(db, p.mode === 'checkin_review' ? 'checkin_review' : 'chat_message', 'sent');
+      if (res.proposal) void trackAiAction(db, 'program_proposal', 'proposed');
+      const reply = res.reply as AiChatMessage;
+      if (reply.weekPlan) void trackAiAction(db, 'week_plan', 'proposed');
+      if (reply.mealPlan) void trackAiAction(db, 'meal_plan', 'proposed');
       if (usage) setUsage({ requests: usage.requests + 1 });
     } catch (e) {
       if (isCancelled(e) || !stillMine()) return; // the pending copy stays in this account's storage: Retry later

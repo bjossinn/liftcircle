@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useApp, useDb } from '@/state/app';
 import { saveRecord, deleteRecord, alive } from '@/db/repo';
+import { trackSetLogged, trackWorkoutCompleted } from '@/analytics/analytics';
 import { useToast } from '@/components/toast';
 import { Badge, Button, ConfirmDialog, EmptyState, IconButton, Input, Segmented, Sheet, Spinner, Textarea, Toggle } from '@/components/ui';
 import type { CoachStyle, Exercise, Experience, ID, LoggedSet, SessionExercise, SetType, Settings, WeightUnit, WorkoutSession } from '@/domain/types';
@@ -249,6 +250,7 @@ export default function SessionPage() {
       }
       showErrors(null);
       if (outcome !== 'done') return; // undo: quiet
+      if (set.type !== 'warmup') void trackSetLogged(db, session.id); // first_set_logged milestone: no set data is recorded
       // A new personal record gets one brief celebration (Settings → Celebrations; never with reduced motion).
       if (settings.workout.celebrations !== false) {
         void db.sessions.get(session.id).then((latest) => {
@@ -279,6 +281,7 @@ export default function SessionPage() {
     setFinishOpen(false);
     clearSessionDrafts(finished.id);
     cancelRestPush(finished.id);
+    void trackWorkoutCompleted(db, finished.id); // first workout / second within 7 days: no workout data is recorded
     void maybeAutoShare({ session: finished }, { db, settings, byId }).then((shared) => {
       if (shared) toast.show('Queued to share with your chosen audience', { tone: 'success' });
     });

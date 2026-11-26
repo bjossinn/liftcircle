@@ -27,6 +27,7 @@ import {
 } from './steps';
 import { ResultStep, ReviewStep } from './result';
 import { startFirstWorkout } from './firstWorkout';
+import { trackOnboardingCompleted } from '@/analytics/analytics';
 
 const STEP_COMPONENTS: Partial<Record<StepKey, (p: StepProps) => JSX.Element>> = {
   welcome: WelcomeStep,
@@ -260,6 +261,7 @@ export default function OnboardingPage() {
       return;
     }
     // The plan is saved from here on: never stay on this screen (a retry would save it again).
+    void trackOnboardingCompleted(db, 'suggested');
     if (!start) {
       toast.show('Plan saved. Start your first workout whenever you’re ready.', { tone: 'success' });
       return finish('/');
@@ -304,6 +306,7 @@ export default function OnboardingPage() {
         settings: { ...acc.settings, units: a.units, nutritionEnabled: a.wantsNutrition },
         nutrition: a.wantsNutrition ? manualTargets(draft, null, null) : acc.nutrition,
       }));
+      void trackOnboardingCompleted(db, 'manual');
       toast.show('Program created: add your exercises', { tone: 'success' });
       await finish('/train/program');
     } catch (e) {

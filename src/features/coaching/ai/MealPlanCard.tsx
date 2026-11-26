@@ -10,6 +10,7 @@ import { Salad, Undo2 } from 'lucide-react';
 import { Badge, Button, Notice, Segmented } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { useApp } from '@/state/app';
+import { trackAiAction } from '@/analytics/analytics';
 import { kvGet, kvSet, newRecord, saveRecord } from '@/db/repo';
 import { formatDate, todayISO } from '@/lib/dates';
 import { displayMacro, MEAL_LABELS } from '@/domain/nutrition/recipes';
@@ -51,6 +52,7 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
       if (!r.alreadyApplied) {
         await saveRecord('meal_plans', existing ? ({ ...existing, ...r.plan } as MealPlan) : newRecord(r.plan), db);
         await kvSet(undoKey(s.id), r.snapshot, db).catch(() => undefined);
+        void trackAiAction(db, 'meal_plan', 'applied');
         toast.show(`Added to your meal plan (${r.touched.length} day${r.touched.length === 1 ? '' : 's'})`, { tone: 'success' });
       }
       then?.();
@@ -66,6 +68,7 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
     try {
       const snapshot = (await kvGet<PlanDay[]>(undoKey(s.id), db).catch(() => undefined)) ?? [];
       await saveRecord('meal_plans', undoMealPlanSuggestion(existing, s.id, snapshot), db);
+      void trackAiAction(db, 'meal_plan', 'reverted');
       toast.show('Meal plan put back as it was.');
     } catch {
       toast.show('Could not undo. Please try again.', { tone: 'error' });
