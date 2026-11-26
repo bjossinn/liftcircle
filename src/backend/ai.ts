@@ -7,7 +7,7 @@
  *
  * Errors are thrown as AiError (a BackendError) with `code` and, where relevant, `reason` / `usage`:
  *   network → offline · 503 ai_unavailable {reason: not_configured|provider_down} · 429 rate_limited ·
- *   409 ai_disabled|ai_paused · 401 auth. Proposal responses add details 'stale' | 'not_applicable' | ….
+ *   409 ai_disabled|ai_paused|in_progress (same message still being answered) · 401 auth. Proposal responses add details 'stale' | 'not_applicable' | ….
  */
 import type { ID } from '@/domain/types';
 import type { WeekPlan } from '@/domain/program/schedule';
@@ -70,6 +70,8 @@ async function mapInvokeError(error: unknown): Promise<BackendError> {
     const s = ctx.status;
     if (s === 401) return new AiError('Your session has expired. Please sign in again.', 'auth', 401);
     if (s === 429) return new AiError(body.error || 'You’ve reached today’s training assistant limit.', 'rate_limited', 429, 'rate_limited', body.usage);
+    // 1.0.3: the same message is still being answered (a replay); not a settings problem.
+    if (s === 409 && body.code === 'in_progress') return new AiError(body.error || 'Still answering this message.', 'in_progress', 409);
     if (s === 409) return new AiError(body.error || 'The training assistant is turned off.', body.code || 'ai_disabled', 409, 'disabled');
     if (s === 503 || body.code === 'ai_unavailable') {
       const reason: Unavailable = body.reason === 'not_configured' ? 'not_configured' : 'provider_down';
@@ -118,7 +120,8 @@ function toSettings(raw: Record<string, unknown> | null): AiSettings | null {
     },
     scopesChangedAt: (raw.scopesChangedAt as string | null) ?? null,
     profileNotes: typeof raw.profileNotes === 'string' ? raw.profileNotes : '',
-    coachStyle: raw.coachStyle === 'supportive' || raw.coachStyle === 'strict' ? raw.coachStyle : 'balanced',
+    // Supportive is the default (Nov 2026); a stored 'balanced' or 'strict' is the user's choice.
+    coachStyle: raw.coachStyle === 'balanced' || raw.coachStyle === 'strict' ? raw.coachStyle : 'supportive',
   };
 }
 
@@ -235,12 +238,13 @@ export const aiApi: AiApi = {
     return (rows ?? []).map(toMessage);
   },
 
-  async send(input: { id: ID; text: string; mode?: 'chat' | 'checkin_review' }) {
+  async send(input: { id: ID; text: string; mode?: 'chat' | 'checkin_review'; unsynced?: number }) {
     const r = await invoke<{ reply: Record<string, unknown>; proposal?: Record<string, unknown> | null }>({
       action: 'send',
       id: input.id,
       text: input.text,
       mode: input.mode ?? 'chat',
+      ...(input.unsynced ? { unsynced: input.unsynced } : {}),
     });
     return { reply: toMessage(r.reply), proposal: r.proposal ? toProposal(r.proposal) : null };
   },

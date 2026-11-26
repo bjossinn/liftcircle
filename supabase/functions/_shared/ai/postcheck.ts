@@ -6,7 +6,8 @@
  */
 import type { MealPlanAction, RecipeSuggestionsAction, WeekAdjustmentAction } from './types.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
-import { humanDate } from './humanDates.ts';
+import { humanDate, shortDate } from './humanDates.ts';
+import type { Lang } from './lang.ts';
 
 const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -22,7 +23,19 @@ export interface ProposalSummaryInput {
 }
 
 /* ------------------------------------------------------------------ one-line summaries */
-export function summarizeWeekPlan(a: WeekAdjustmentAction, today: string, weekStart: 0 | 1 = 1): string {
+// Icelandic (1.0.3): the same sentences when the user writes Icelandic. Button labels stay as the app shows them (the
+// app UI is English). Validator warnings are passed through as written (English) rather than dropped.
+const joinIs = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} og ${xs[xs.length - 1]}`);
+
+export function summarizeWeekPlan(a: WeekAdjustmentAction, today: string, weekStart: 0 | 1 = 1, lang: Lang = 'en'): string {
+  if (lang === 'is') {
+    const parts = a.sessions.map((s) => `**${s.name}** ${s.date === s.plannedDate ? 'verður áfram' : 'færist'} ${humanDate(s.date, today, weekStart, 'is')}`);
+    const skipped = a.skipped.map((s) => `**${s.name}**`);
+    const body = [...parts, ...(skipped.length ? [`${joinIs(skipped)} ${skipped.length === 1 ? 'fellur' : 'falla'} niður þessa viku`] : [])];
+    const head = body.length ? `Svona lítur vikan út: ${body.join(', ')}.` : 'Allt sem var á dagskrá þessa viku er búið.';
+    const note = a.warnings[0] ? ` ${a.warnings[0]}` : '';
+    return `${head}${note} Ýttu á **Apply to this week** til að nota það.`;
+  }
   const parts = a.sessions.map((s) => `**${s.name}** ${s.date === s.plannedDate ? 'stays on' : 'moves to'} ${humanDate(s.date, today, weekStart)}`);
   const skipped = a.skipped.map((s) => `**${s.name}**`);
   const body = [...parts, ...(skipped.length ? [`${skipped.join(' and ')} ${skipped.length === 1 ? 'is' : 'are'} skipped this week`] : [])];
@@ -31,19 +44,36 @@ export function summarizeWeekPlan(a: WeekAdjustmentAction, today: string, weekSt
   return `${head}${note} Tap **Apply to this week** to use it.`;
 }
 
-export function summarizeMealPlan(a: MealPlanAction, today: string, weekStart: 0 | 1 = 1): string {
+export function summarizeMealPlan(a: MealPlanAction, today: string, weekStart: 0 | 1 = 1, lang: Lang = 'en'): string {
   const first = a.days[0]?.date;
   const last = a.days[a.days.length - 1]?.date;
+  if (lang === 'is') {
+    const n = a.days.length;
+    const span = first && last && first !== last
+      ? `frá ${shortDate(first, 'is')} til ${shortDate(last, 'is')}` // "frá á morgun" doesn't work: plain dates in a range
+      : first ? humanDate(first, today, weekStart, 'is') : 'þessa viku';
+    const adj = a.warnings[0] ? ` ${a.warnings[0]}` : '';
+    return `Hér er matarplan fyrir ${n} ${n % 10 === 1 && n % 100 !== 11 ? 'dag' : 'daga'} (${span}) — ýttu á **Add to my meal plan** til að setja það inn í appið.${adj}`;
+  }
   const span = first && last && first !== last ? `${humanDate(first, today, weekStart)} to ${humanDate(last, today, weekStart)}` : first ? humanDate(first, today, weekStart) : 'this week';
   const adj = a.warnings[0] ? ` ${a.warnings[0]}` : '';
   return `Here's your meal plan for ${span} (${plural(a.days.length, 'day')}) — tap **Add to my meal plan** to put it in the app.${adj}`;
 }
 
-export function summarizeRecipes(a: RecipeSuggestionsAction): string {
+export function summarizeRecipes(a: RecipeSuggestionsAction, lang: Lang = 'en'): string {
+  if (lang === 'is') return a.recipes.length === 1 ? 'Hér er uppskrift sem passar — ýttu á hana til að opna hana.' : `Hér eru ${a.recipes.length} uppskriftir sem passa — ýttu á eina til að opna hana.`;
   return `Here ${a.recipes.length === 1 ? 'is a recipe' : `are ${a.recipes.length} recipes`} that fit — tap one to open it.`;
 }
 
-export function summarizeProposal(p: ProposalSummaryInput): string {
+export function summarizeProposal(p: ProposalSummaryInput, lang: Lang = 'en'): string {
+  if (lang === 'is') {
+    if (p.invalid) return 'Ég náði ekki að búa til plan sem passar við búnaðinn þinn og stillingarnar í þetta sinn — segðu mér hverju á að breyta og ég reyni aftur.';
+    const n = p.sessionsPerWeek;
+    const what = `**${p.name}** (${n} ${n % 10 === 1 && n % 100 !== 11 ? 'æfing' : 'æfingar'} á viku)`;
+    return p.target === 'for_coach_review'
+      ? `Ég hef sett saman ${what} sem tillögu sem þjálfarinn þinn fer yfir.`
+      : `Ég hef sett saman ${what} — ýttu á **Add to my program — review** til að skoða það og bæta því við.`;
+  }
   if (p.invalid) return 'I couldn’t build a plan that fits your equipment and settings this time — tell me what to change and I’ll try again.';
   const what = `**${p.name}** (${plural(p.sessionsPerWeek, 'session')} a week)`;
   return p.target === 'for_coach_review'

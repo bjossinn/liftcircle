@@ -5,7 +5,7 @@
  * you leave). The screen is kept awake while open where the browser supports the Screen Wake Lock API.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { CalendarPlus, Check, ChevronLeft, Clock, Minus, NotebookPen, Plus, Repeat2, Star } from 'lucide-react';
 import { Badge, Button, Card, EmptyState, IconButton, Notice, NumberInput, Page, SectionTitle, Select, Sheet, Stat, cx } from '@/components/ui';
 import { useToast } from '@/components/toast';
@@ -72,6 +72,19 @@ function TickRow({ checked, onChange, label, children, action }: { checked: bool
   );
 }
 
+/** Parse "from:to,from:to" into swaps the recipe itself offers (anything else is ignored). */
+export function linkSwaps(recipe: { ingredients: { ingredientId: ID }[]; substitutions: { ingredientId: ID; alternatives: ID[] }[] }, raw: string | null): Swap[] {
+  const out: Swap[] = [];
+  for (const pair of (raw ?? '').split(',').slice(0, 10)) {
+    const [from, to] = pair.split(':');
+    if (!from || !to || out.some((s) => s.from === from)) continue;
+    if (!INGREDIENTS_BY_ID.has(to) || !recipe.ingredients.some((i) => i.ingredientId === from)) continue;
+    if (!recipe.substitutions.some((s) => s.ingredientId === from && s.alternatives.includes(to))) continue;
+    out.push({ from, to });
+  }
+  return out;
+}
+
 function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
   const recipe = RECIPES_BY_ID.get(recipeId)!;
   const { account, updateAccount } = useApp();
@@ -84,7 +97,10 @@ function RecipeView({ recipeId, back }: { recipeId: ID; back: ReactNode }) {
     () => proteinFitSwaps(recipe, excluded, (i) => ingredientAllowed(i, { tags: diet.tags.filter((t) => t !== 'high_protein'), allergens: diet.allergens, disliked: diet.dislikedIngredientIds })) ?? [],
     [recipe, excluded, diet],
   );
-  const [swaps, setSwaps] = useState<Swap[]>(autoSwaps);
+  // Swaps from a training assistant recipe card (?swap=from:to,…, 1.0.3): only substitutes this recipe lists are taken.
+  const [params] = useSearchParams();
+  const linkedSwaps = useMemo(() => linkSwaps(recipe, params.get('swap')), [recipe, params]);
+  const [swaps, setSwaps] = useState<Swap[]>(() => [...linkedSwaps, ...autoSwaps.filter((a) => !linkedSwaps.some((l) => l.from === a.from))]);
   const [swapFor, setSwapFor] = useState<ID | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);

@@ -9,7 +9,7 @@
  * enabled & not paused (409) → idempotent replay of a stored exchange → daily limit (429) → context →
  * provider (≤ 3 rounds, tools) → proposal validation → atomic record.
  */
-import type { AiAction, AiDb, ApiMessage, ContentBlock, FetchLike, ProposalJson, StoredMessage } from './types.ts';
+import type { AiAction, AiDb, AiSettingsRow, ApiMessage, ContentBlock, FetchLike, ProposalJson, StoredMessage } from './types.ts';
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { buildContext } from './context.ts';
 // @ts-ignore see above
@@ -22,6 +22,8 @@ import { splitWhy, tidyReply, wordCount } from './reply.ts';
 import { validateOpenLinks } from './appGuide.ts';
 // @ts-ignore see above
 import { humanizeDates } from './humanDates.ts';
+// @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
+import { replyLang, type Lang } from './lang.ts';
 // @ts-ignore see above
 import { asksForMealPlan, buildMealPlanAction, mealPlanIntentFromText } from './meals.ts';
 // @ts-ignore see above
@@ -112,6 +114,17 @@ async function status(deps: CoachDeps, uid: string): Promise<CoachResult> {
   };
 }
 
+const SCOPE_IS: Record<string, string> = { profile: 'prófílinn þinn', training: 'æfingarnar þínar', measurements: 'mælingarnar þínar', nutrition: 'næringuna þína' };
+/** "Thanks — I can see your training now." in the reply language (exported for tests). */
+export function thanksLine(added: readonly string[], lang: Lang): string {
+  if (lang === 'is') {
+    const xs = added.map((k) => SCOPE_IS[k] ?? k);
+    const list = xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} og ${xs[xs.length - 1]}`;
+    return `Takk — nú sé ég ${list}.`;
+  }
+  return `Thanks — I can see your ${added.join(' and ')} now.`;
+}
+
 function textOf(content: ContentBlock[]): string {
   return content
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text' && typeof (b as { text?: unknown }).text === 'string')
@@ -121,10 +134,12 @@ function textOf(content: ContentBlock[]): string {
 }
 
 async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>): Promise<CoachResult> {
-  // Only these three fields are read from the request.
+  // Only these four fields are read from the request.
   const id = typeof body.id === 'string' ? body.id : '';
   const text = typeof body.text === 'string' ? body.text.trim() : '';
   const mode: 'chat' | 'checkin_review' = body.mode === 'checkin_review' ? 'checkin_review' : 'chat';
+  // Changes still only on the user's device after the app's pre-send sync (1.0.3 sync barrier); a count, nothing else.
+  const unsynced = Math.max(0, Math.min(1000, Math.round(Number(body.unsynced) || 0)));
   if (!UUID_RE.test(id)) return err(400, 'bad_request', 'A valid message id is required.');
   if (!text) return err(400, 'bad_request', 'Write a message first.');
   if (text.length > MAX_TEXT) return err(400, 'bad_request', `Messages can be at most ${MAX_TEXT} characters.`);
@@ -147,7 +162,19 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
 
   const limit = intEnv(deps, 'AI_DAILY_REQUEST_LIMIT', 40, 0, 10_000);
   try {
-    await deps.db.checkAndCountUsage(uid, limit);
+    // Reserve this message id and count it (1.0.3). A replay while the first request is still running must not start a
+    // second generation (double cost, and a second action card for the same message).
+    if (deps.db.beginRequest) {
+      const begun = await deps.db.beginRequest(uid, id, limit);
+      if (begun.status === 'duplicate') {
+        const again = await deps.db.getExchange(uid, id);
+        if (again) return { status: 200, body: { reply: again.reply, proposal: again.proposal ?? null, duplicate: true } };
+      }
+      if (begun.status !== 'started') {
+        deps.log?.('ai_in_progress', {});
+        return err(409, 'in_progress', 'Still answering this message. It will appear in a moment.', { reason: 'in_progress' });
+      }
+    } else await deps.db.checkAndCountUsage(uid, limit);
   } catch (e) {
     if ((e as { code?: string })?.code === 'PT429') {
       const usage = await usageFor(deps, uid).catch(() => null);
@@ -156,9 +183,52 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
     throw e;
   }
 
+  // Failure accounting (1.0.3): a request that fails gives its daily allowance back, and tokens from provider rounds that
+  // did complete are booked as FAILED usage — never as a successful exchange.
+  const tally = { inputTokens: 0, outputTokens: 0 };
+  let settled = false;
+  const fail = async () => {
+    if (settled) return;
+    settled = true;
+    try {
+      await deps.db.failRequest?.(uid, id, { ...tally, costUsd: estimateCostUsd(tally, deps.env('AI_PRICE_INPUT_PER_MTOK'), deps.env('AI_PRICE_OUTPUT_PER_MTOK')) });
+    } catch (e) {
+      deps.log?.('ai_fail_request_error', { code: (e as { code?: string })?.code ?? null });
+    }
+  };
+  const recordOnce = async <T,>(record: () => Promise<T>): Promise<T> => {
+    const r = await record();
+    settled = true; // stored: from here on the exchange counts as successful
+    return r;
+  };
+  try {
+    return await answer({ deps, uid, id, text, mode, unsynced, prov, settings, tally, fail, recordOnce });
+  } catch (e) {
+    await fail();
+    throw e;
+  }
+}
+
+/** Everything send() decided before the provider is called, plus the failure accounting hooks (1.0.3). */
+interface Answering {
+  deps: CoachDeps;
+  uid: string;
+  id: string;
+  text: string;
+  mode: 'chat' | 'checkin_review';
+  unsynced: number;
+  prov: NonNullable<ReturnType<typeof resolveProvider>>;
+  settings: AiSettingsRow;
+  tally: { inputTokens: number; outputTokens: number };
+  fail: () => Promise<void>;
+  recordOnce: <T>(record: () => Promise<T>) => Promise<T>;
+}
+
+async function answer(a: Answering): Promise<CoachResult> {
+  const { deps, uid, id, text, mode, unsynced, prov, settings, tally, fail, recordOnce } = a;
   const now = deps.now?.() ?? new Date();
   const started = Date.now();
-  const ctx = await buildContext({ db: deps.db, uid, settings, text, mode, now });
+  const ctx = await buildContext({ db: deps.db, uid, settings, text, mode, now, unsynced });
   const model = prov.model;
   const maxTokens = intEnv(deps, 'AI_MAX_OUTPUT_TOKENS', 1200, 64, 8192);
   const state: ToolState = { proposal: null, proposalAttempts: 0, weekPlan: null, weekAttempts: 0, mealPlan: null, mealPlanAttempts: 0, recipes: null };
@@ -197,6 +267,8 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
         { system: ctx.system, messages: conversation, tools: TOOL_DEFS, tool_choice: { type: last ? 'none' : 'auto' } },
       );
       usage = addUsage(usage, res.usage);
+      tally.inputTokens = usage.inputTokens;
+      tally.outputTokens = usage.outputTokens;
       if (typeof res.model === 'string') usedModel = res.model.slice(0, 100);
       const toolUses = res.content.filter((b): b is Extract<ContentBlock, { type: 'tool_use' }> => b.type === 'tool_use');
       if (res.stop_reason !== 'tool_use' || toolUses.length === 0 || last) {
@@ -219,6 +291,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   } catch (e) {
     if (e instanceof AiUnavailableError) {
       deps.log?.('ai_provider_error', { provider: prov.provider, kind: e.kind, status: e.status ?? null, reason: e.reason, rounds });
+      await fail();
       return err(503, 'ai_unavailable', e.message, { reason: e.reason });
     }
     throw e;
@@ -228,9 +301,13 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   const split = splitWhy(reply);
   let why = split.why ? tidyReply(split.why) || null : null;
   reply = tidyReply(split.answer);
+  // Server-written text follows the user's language (1.0.3): this message, else the open request, else earlier user
+  // messages (newest first), else the model's own reply (it answers in the user's language); English by default.
+  const earlier = ctx.messages.filter((m) => m.role === 'user' && typeof m.content === 'string').map((m) => m.content as string).reverse();
+  const lang = replyLang(text, ctx.openRequest?.text, ...earlier, reply);
   // Users never see ISO dates.
-  reply = humanizeDates(reply, ctx.today, ctx.facts.weekStart);
-  if (why) why = humanizeDates(why, ctx.today, ctx.facts.weekStart);
+  reply = humanizeDates(reply, ctx.today, ctx.facts.weekStart, lang);
+  if (why) why = humanizeDates(why, ctx.today, ctx.facts.weekStart, lang);
   // Full recipes belong on the recipe screen, not in chat (rule in the prompt; logged when the model ignores it).
   const fullRecipe = looksLikeFullRecipe(reply);
   if (fullRecipe) deps.log?.('ai_full_recipe_warning', { words: wordCount(reply) });
@@ -277,14 +354,14 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
       if (mealPlanConflict(reply, state.mealPlan, names)) replaced = 'meal_plan_conflict';
     } else if (proposalInfo && !proposalInfo.invalid && proposalConflict(reply, proposalInfo, ctx.today)) replaced = 'proposal_conflict';
   }
-  if (fallbackFailure) reply = `I couldn't build that meal plan with what you asked for: ${fallbackFailure}`;
+  if (fallbackFailure) reply = lang === 'is' ? `Ég gat ekki búið til matarplan með því sem þú baðst um: ${fallbackFailure}` : `I couldn't build that meal plan with what you asked for: ${fallbackFailure}`;
   if (replaced) {
     reply =
-      weekPlan ? summarizeWeekPlan(weekPlan, ctx.today, ctx.facts.weekStart)
-        : state.mealPlan ? summarizeMealPlan(state.mealPlan, ctx.today, ctx.facts.weekStart)
-          : summarizeProposal(proposalInfo!);
+      weekPlan ? summarizeWeekPlan(weekPlan, ctx.today, ctx.facts.weekStart, lang)
+        : state.mealPlan ? summarizeMealPlan(state.mealPlan, ctx.today, ctx.facts.weekStart, lang)
+          : summarizeProposal(proposalInfo!, lang);
     // Keep the acknowledgement the prompt asked for when sharing just changed.
-    if (ctx.sharingAdded.length) reply = `Thanks — I can see your ${ctx.sharingAdded.join(' and ')} now. ${reply}`;
+    if (ctx.sharingAdded.length) reply = `${thanksLine(ctx.sharingAdded, lang)} ${reply}`;
     deps.log?.('ai_reply_replaced', { reason: replaced });
   }
 
@@ -296,18 +373,18 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
   reply = links.text;
   if (!reply) {
     reply = weekPlan
-      ? summarizeWeekPlan(weekPlan, ctx.today, ctx.facts.weekStart)
+      ? summarizeWeekPlan(weekPlan, ctx.today, ctx.facts.weekStart, lang)
       : state.mealPlan
-        ? summarizeMealPlan(state.mealPlan, ctx.today, ctx.facts.weekStart)
+        ? summarizeMealPlan(state.mealPlan, ctx.today, ctx.facts.weekStart, lang)
         : proposalInfo
-          ? summarizeProposal(proposalInfo)
+          ? summarizeProposal(proposalInfo, lang)
           : state.recipes
-            ? summarizeRecipes(state.recipes)
-            : 'Sorry — I couldn’t put together a reply. Please try asking again.';
+            ? summarizeRecipes(state.recipes, lang)
+            : lang === 'is' ? 'Því miður náði ég ekki að setja saman svar. Prófaðu að spyrja aftur.' : 'Sorry — I couldn’t put together a reply. Please try asking again.';
   }
   reply = reply.slice(0, MAX_REPLY_CHARS);
   const cost = estimateCostUsd(usage, deps.env('AI_PRICE_INPUT_PER_MTOK'), deps.env('AI_PRICE_OUTPUT_PER_MTOK'));
-  const recorded = await deps.db.recordExchange(uid, {
+  const recorded = await recordOnce(() => deps.db.recordExchange(uid, {
     message: { id, content: text, mode },
     reply: { content: reply, grounding: ctx.grounding, model: usedModel, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, why, action },
     proposal: p
@@ -323,7 +400,7 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
         }
       : null,
     usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: cost },
-  });
+  }));
   deps.log?.('ai_send', {
     rounds,
     input_tokens: usage.inputTokens,

@@ -81,6 +81,24 @@ export function createSupabaseAiDb(user: SbClient, admin: SbClient): AiDb {
       if (error) throw new DbError(error.message || 'Usage check failed', error.code);
       return Number(data ?? 0);
     },
+    async beginRequest(uid, messageId, limit) {
+      const { data, error } = await admin.rpc('ai_begin_request', { p_user: uid, p_message_id: messageId, p_limit: limit });
+      if (error) {
+        // Before the 20261126 migration: no reservation, just count (the previous behaviour).
+        if (error.code === 'PGRST202' || error.code === '42883') {
+          await this.checkAndCountUsage(uid, limit);
+          return { status: 'started' };
+        }
+        throw new DbError(error.message || 'Usage check failed', error.code);
+      }
+      const st = (data as { status?: string } | null)?.status;
+      return st === 'duplicate' || st === 'in_progress' ? { status: st } : { status: 'started', remaining: Number((data as { remaining?: number })?.remaining ?? 0) };
+    },
+    async failRequest(uid, messageId, usage) {
+      const { error } = await admin.rpc('ai_fail_request', { p_user: uid, p_message_id: messageId, p_usage: usage });
+      // Best effort: an older database (no RPC) simply keeps the old behaviour.
+      if (error && error.code !== 'PGRST202' && error.code !== '42883') throw new DbError(error.message || 'Usage update failed', error.code);
+    },
     async getUsage(uid, day) {
       const r = await run<{ requests: number; input_tokens: number; output_tokens: number; cost_usd: number | null } | null>(
         user.from('ai_usage').select('requests, input_tokens, output_tokens, cost_usd').eq('user_id', uid).eq('day', day).maybeSingle(),

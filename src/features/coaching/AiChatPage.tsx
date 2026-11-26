@@ -29,9 +29,12 @@ import { buildWelcome, localHour, recentRecord } from './ai/welcome';
 import { WeekPlanCard } from './ai/WeekPlanCard';
 import { MealPlanCard } from './ai/MealPlanCard';
 import { RecipeCards } from './ai/RecipeCards';
+import { syncBeforeAi } from './ai/syncBarrier';
+import { sendWhileInProgress } from './ai/inProgress';
 import { Markdown } from './ai/markdown';
 import { extractOpenLinks } from '../../../supabase/functions/_shared/ai/appGuide';
 import { humanizeDates } from '../../../supabase/functions/_shared/ai/humanDates';
+import { detectLang } from '../../../supabase/functions/_shared/ai/lang';
 import { useActiveProgram, useAllActivities, useAllSessions } from '@/features/train/hooks';
 import { todayISO } from '@/lib/dates';
 import { useExercises } from '@/data/catalog';
@@ -222,7 +225,10 @@ function Chat({
     const sending: PendingSend = { ...p, status: 'sending', error: undefined };
     persistPending(sending);
     try {
-      const res = await aiApi.send({ id: p.id, text: p.text, mode: p.mode });
+      // Sync barrier: push this device's pending changes first (bounded wait), so the coach doesn't act on stale data.
+      const unsynced = await syncBeforeAi(db);
+      // A replay of a message still being answered waits for that answer (same id) instead of failing.
+      const res = await sendWhileInProgress(() => aiApi.send({ id: p.id, text: p.text, mode: p.mode, ...(unsynced ? { unsynced } : {}) }));
       const userMsg: AiMessage = { id: p.id, role: 'user', content: p.text, createdAt: p.createdAt, status: 'sent' };
       setHistory((h) => {
         const next = upsertMessages(h ?? [], [userMsg, res.reply]);
@@ -598,8 +604,10 @@ function MessageItem({
       </li>
     );
   }
-  const body = extractOpenLinks(humanizeDates(m.content, week.today));
-  const whyText = m.why ? extractOpenLinks(humanizeDates(m.why, week.today)).text : '';
+  // Dates in an Icelandic reply read Icelandic ("lau. 31. okt."), 1.0.3.
+  const lang = detectLang(m.content) ?? 'en';
+  const body = extractOpenLinks(humanizeDates(m.content, week.today, week.weekStart, lang));
+  const whyText = m.why ? extractOpenLinks(humanizeDates(m.why, week.today, week.weekStart, lang)).text : '';
   return (
     <li>
       <article aria-label="Training assistant message" className="max-w-[92%]">

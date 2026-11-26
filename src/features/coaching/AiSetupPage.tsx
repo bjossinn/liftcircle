@@ -47,7 +47,7 @@ export default function AiSetupPage() {
   const [original, setOriginal] = useState<Details | null>(null);
   const [notes, setNotes] = useState('');
   const [scopes, setScopes] = useState<AiScopes>(DEFAULT_SCOPES);
-  const [coachStyle, setCoachStyle] = useState<CoachStyle>(account.settings.coachStyle ?? 'balanced');
+  const [coachStyle, setCoachStyle] = useState<CoachStyle>(account.settings.coachStyle ?? 'supportive');
   const [consent, setConsent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

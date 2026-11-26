@@ -417,6 +417,35 @@ From the Claude + ChatGPT cross-review of 25 Nov 2026 (`tests/unit/aiCorrectness
 - **"Customize first" is now "Add and edit"**: it always added the plan before opening it (the meal plan screen has no
   draft mode); the label now says so, and Undo stays on the card.
 
+## 4e. Follow-ups (1.0.3, PR 1b)
+
+- **One generation per message.** `ai_begin_request` (migration `20261126000001`) reserves the message id while it is
+  answered: a replay of the same id gets 409 `in_progress` (no second generation, no second card, not counted); once
+  answered, a replay returns the stored reply (`duplicate`). The app waits on `in_progress` and asks again with the same
+  id (`features/coaching/ai/inProgress.ts`, about 2 minutes). A reservation older than 3 minutes counts as abandoned.
+- **Failed requests.** If a request fails (provider down, error, storing the answer failed), `ai_fail_request` gives the
+  daily allowance back (once, only while the reservation is held) and books tokens from rounds that did complete in
+  `ai_usage.failed_*` — never as a successful exchange. Until the migration is applied the function falls back to the
+  old counting (`ai_check_and_count_usage`, no refund).
+- **Training setup note.** With a saved typed plan the old "Training setup:" line in the notes is always replaced by
+  one built from the plan (days, session length, equipment); if it disagreed, the coach is told the plan is current and
+  to ask before relying on the old note.
+- **Sync barrier.** Before sending, the app pushes pending changes (bounded at 4 s, `syncBarrier.ts`) and sends how
+  many are still unsynced; the context then says the coach's view may be missing them (don't conclude a skip).
+- **Language.** Server-written text (summaries that replace a conflicting reply, the "thanks" line, the meal-plan
+  failure line, the fallback apology) and dates follow the user's language (`lang.ts`: this message, else the open
+  request, else earlier messages, else the model's reply; English by default). Icelandic dates read "lau. 31. okt.",
+  "í dag", "á morgun", "á laugardaginn". Button labels stay as the app shows them; validator warnings/reasons are
+  still English.
+- **Tiredness.** "Too tired" (EN/IS, not "tired of chicken") always gets a supportive answer with a lighter option and
+  rest as equal choices, in every coach style; the default style for new users is now **supportive**.
+- **"Pancakes without blueberries".** find_recipes leaves optional ingredients out, and swaps a non-optional
+  ingredient the request names for a substitute the recipe lists (never allergens, diet, proteins or the user's own
+  dislikes — those still exclude the recipe). The cards show "Without blueberries" / "X instead of Y", and Open and
+  Add to plan carry the swaps.
+- **Independent allergen fixture** (`tests/unit/aiAllergenFixture.test.ts`): allergen class words and specific foods
+  (EN + IS) specified by hand, so a word missing from the parser's dictionary can't also be missing from the check.
+
 ## 5. Testing status
 
 | What | How | Status |

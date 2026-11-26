@@ -234,9 +234,9 @@ async function main() {
     assert(p.paused && p.enabled, 'paused');
     ok(await rpc('alice', 'save_ai_settings', { p: J({ paused: false, scopes: { training: true } }) }), 'resume');
   });
-  await test('settings', 'coach style: defaults to balanced, saves a valid style, refuses unknown values, own row only, no direct write', async () => {
+  await test('settings', 'coach style: defaults to supportive (20261126), saves a valid style, refuses unknown values, own row only, no direct write', async () => {
     const before = ok(await rpc('alice', 'get_ai_settings'), 'get');
-    eq(before.coachStyle, 'balanced', 'default');
+    eq(before.coachStyle, 'supportive', 'default');
     const s = ok(await rpc('alice', 'save_ai_settings', { p: J({ coachStyle: 'strict' }) }), 'strict');
     eq(s.coachStyle, 'strict', 'saved');
     eq(s.scopesChangedAt, before.scopesChangedAt, 'style change does not touch scopes_changed_at');
@@ -350,6 +350,44 @@ async function main() {
     const n = await admin.query(`select requests from public.ai_usage where user_id = $1`, [U.bob]);
     eq(n.rows[0].requests, 2, 'not incremented past the limit');
     fails(await rpc('service', 'ai_check_and_count_usage', { p_user: [U.bob, '::uuid'], p_limit: 0 }), 'zero limit', /PT429|limit/);
+  });
+
+  /* ------------------------------------------------------------ PR 1b: reservation + failed requests (20261126000001) */
+  await test('usage-v5', 'begin_request reserves the message (replay → in_progress / duplicate); fail_request refunds once and books failed tokens', async () => {
+    const reqs = async () => Number((await admin.query(`select coalesce(sum(requests), 0) n from public.ai_usage where user_id = $1`, [U.eve])).rows[0].n);
+    const failed = async () => (await admin.query(`select coalesce(sum(failed_requests), 0)::int r, coalesce(sum(failed_input_tokens), 0)::int i, coalesce(sum(failed_output_tokens), 0)::int o from public.ai_usage where user_id = $1`, [U.eve])).rows[0];
+    const M1 = randomUUID();
+    const begin = (id, limit = 5) => rpc('service', 'ai_begin_request', { p_user: [U.eve, '::uuid'], p_message_id: [id, '::uuid'], p_limit: limit });
+    const r0 = await reqs();
+    eq(ok(await begin(M1), 'begin').status, 'started', 'first start');
+    eq(await reqs(), r0 + 1, 'counted once');
+    eq(ok(await begin(M1), 'replay').status, 'in_progress', 'replay while running');
+    eq(await reqs(), r0 + 1, 'replay not counted');
+    // The request fails after one round: allowance back, tokens booked as failed.
+    ok(await rpc('service', 'ai_fail_request', { p_user: [U.eve, '::uuid'], p_message_id: [M1, '::uuid'], p_usage: J({ inputTokens: 700, outputTokens: 50, costUsd: 0.002 }) }), 'fail');
+    eq(await reqs(), r0, 'refunded');
+    eq(await failed(), { r: 1, i: 700, o: 50 }, 'failed usage booked');
+    ok(await rpc('service', 'ai_fail_request', { p_user: [U.eve, '::uuid'], p_message_id: [M1, '::uuid'], p_usage: J({}) }), 'second fail');
+    eq(await reqs(), r0, 'no double refund');
+    // A failed request can be retried (same id) and counts again; once answered, a replay is 'duplicate'.
+    eq(ok(await begin(M1), 'retry').status, 'started', 'retry starts');
+    ok(await rpc('service', 'ai_record_exchange', withUser(U.eve, exchange(M1, 'hello'))), 'record');
+    eq(ok(await begin(M1), 'after answer').status, 'duplicate', 'answered → duplicate');
+    // Limit: a full day refuses; a failed request frees its slot.
+    const lim = (await reqs()) + 1;
+    const M2 = randomUUID();
+    eq(ok(await begin(M2, lim), 'at limit-1').status, 'started', 'last slot');
+    fails(await begin(randomUUID(), lim), 'over limit', /PT429|limit/);
+    ok(await rpc('service', 'ai_fail_request', { p_user: [U.eve, '::uuid'], p_message_id: [M2, '::uuid'], p_usage: null }), 'fail M2');
+    eq(ok(await begin(randomUUID(), lim), 'slot freed').status, 'started', 'failed request did not use up the allowance');
+    // Abandoned reservations (> 3 min) can start again; another user's id is refused.
+    await admin.query(`update public.ai_inflight set started_at = now() - interval '4 minutes' where message_id = $1`, [M2]);
+    eq(ok(await begin(M2, 100), 'stale').status, 'started', 'abandoned reservation restarts');
+    fails(await rpc('service', 'ai_begin_request', { p_user: [U.alice, '::uuid'], p_message_id: [M2, '::uuid'], p_limit: 100 }), 'other user', /already used/);
+    // Service role only.
+    fails(await rpc('eve', 'ai_begin_request', { p_user: [U.eve, '::uuid'], p_message_id: [randomUUID(), '::uuid'], p_limit: 5 }), 'client begin', /permission denied/);
+    fails(await rpc('eve', 'ai_fail_request', { p_user: [U.eve, '::uuid'], p_message_id: [M2, '::uuid'] }), 'client fail', /permission denied/);
+    fails(await as('eve', `select * from public.ai_inflight`), 'client reads inflight', /permission denied/);
   });
 
   /* ------------------------------------------------------------ v2: why + this-week action (20261030000002) */

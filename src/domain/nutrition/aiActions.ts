@@ -29,7 +29,13 @@ export interface MealPlanSuggestion {
 export interface RecipeSuggestions {
   kind: 'recipe_suggestions';
   id: string;
-  recipes: { id: ID; name: string; meal: MealSlot; totalMinutes: number; perServing: { kcal: number; protein_g: number; carbs_g: number; fat_g: number } }[];
+  recipes: {
+    id: ID; name: string; meal: MealSlot; totalMinutes: number; perServing: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
+    /** Optional ingredients left out (1.0.3). */
+    omit?: ID[];
+    /** Swaps the recipe is suggested with; only substitutes the recipe itself lists are kept. */
+    swaps?: { from: ID; to: ID }[];
+  }[];
 }
 
 const SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -79,12 +85,25 @@ export function toRecipeSuggestions(raw: unknown): RecipeSuggestions | null {
   const recipes = a.recipes.map(rec).filter((r): r is Record<string, unknown> => !!r && typeof r.id === 'string' && RECIPES_BY_ID.has(r.id)).slice(0, 5).map((r) => {
     const cat = RECIPES_BY_ID.get(String(r.id))!;
     const p = rec(r.perServing);
+    const omit = (Array.isArray(r.omit) ? r.omit : []).filter((x): x is string => typeof x === 'string' && cat.ingredients.some((i) => i.ingredientId === x && i.optional));
+    const swaps = (Array.isArray(r.swaps) ? r.swaps : [])
+      .map(rec)
+      .filter((x): x is Record<string, unknown> => !!x && typeof x.from === 'string' && typeof x.to === 'string')
+      .map((x) => ({ from: String(x.from), to: String(x.to) }))
+      .filter((x, k, all) =>
+        all.findIndex((y) => y.from === x.from) === k &&
+        INGREDIENTS_BY_ID.has(x.to) &&
+        cat.ingredients.some((i) => i.ingredientId === x.from) &&
+        cat.substitutions.some((s) => s.ingredientId === x.from && s.alternatives.includes(x.to)),
+      );
     return {
       id: cat.id,
       name: cat.name,
       meal: cat.meal,
       totalMinutes: num(r.totalMinutes, cat.prepMinutes + cat.cookMinutes),
       perServing: { kcal: num(p?.kcal), protein_g: num(p?.protein_g), carbs_g: num(p?.carbs_g), fat_g: num(p?.fat_g) },
+      ...(omit.length ? { omit } : {}),
+      ...(swaps.length ? { swaps } : {}),
     };
   });
   return recipes.length ? { kind: 'recipe_suggestions', id: a.id, recipes } : null;
