@@ -78,6 +78,7 @@ export async function mapInvokeError(error: unknown): Promise<BackendError> {
     // Item 10: stopped (the message id can't be reused), or sharing changed while the reply was written (discarded).
     if (s === 409 && body.code === 'request_cancelled') return new AiError(body.error || 'The reply was stopped.', 'request_cancelled', 409, 'cancelled', body.usage);
     if (s === 409 && body.code === 'sharing_changed') return new AiError(body.error || 'Your sharing settings changed.', 'sharing_changed', 409, 'sharing_changed');
+    if (s === 409 && body.code === 'training_not_shared') return new AiError(body.error || 'Training isn’t shared.', 'training_not_shared', 409);
     if (body.code === 'invalid_reply') return new AiError(body.error || 'The reply could not be checked.', 'invalid_reply', s, 'invalid_reply');
     if (s === 409) return new AiError(body.error || 'The training assistant is turned off.', body.code || 'ai_disabled', 409, 'disabled');
     if (s === 503 || body.code === 'ai_unavailable') {
@@ -138,29 +139,96 @@ const toResult = (r: { reply: Record<string, unknown>; proposal?: Record<string,
  * consumed normally. Resolves with the authoritative exchange; throws AiError for terminal errors, `request_cancelled`
  * for a settled Stop and StreamInterrupted when the stream ends without a terminal event.
  */
-async function streamSend(body: Record<string, unknown>, handlers: StreamHandlers, signal?: AbortSignal, fetchImpl: typeof fetch = fetch): Promise<SendResult> {
+/**
+ * Options for every item 10 call that is tied to a message: `expectedUserId` binds it to the account that wrote the
+ * message (review P1-1). The session is resolved and its user checked IMMEDIATELY before dispatch, with no await in
+ * between, so a message written under account A can never go out with account B's bearer token.
+ */
+export interface CallOptions {
+  expectedUserId?: string;
+  signal?: AbortSignal;
+  fetchImpl?: typeof fetch;
+  /** Control calls (cancel, request_status, JSON replay): give up after this long (default 20 s). */
+  timeoutMs?: number;
+}
+export const CONTROL_TIMEOUT_MS = 20_000;
+/** A stream that delivers nothing (not even heartbeats, sent every 12 s) for this long is treated as interrupted. */
+export const STREAM_INACTIVITY_MS = 45_000;
+/** No stream may stay open longer than this (the server's own budget is ~110 s). */
+export const STREAM_OVERALL_MS = 180_000;
+
+const abortError = () => Object.assign(new Error('Aborted.'), { name: 'AbortError' });
+
+/** The current session's token, only if it belongs to `expectedUserId` (when given). */
+export async function boundToken(expectedUserId: string | undefined): Promise<string> {
+  const { data } = await requireSupabase().auth.getSession();
+  const session = data.session;
+  if (!session?.access_token) throw new AiError('Your session has expired. Please sign in again.', 'auth', 401);
+  if (expectedUserId !== undefined && session.user?.id !== expectedUserId) {
+    throw new AiError('The signed-in account changed.', 'account_changed');
+  }
+  return session.access_token;
+}
+
+/** Authenticated POST to the ai-coach function, bound to the initiating account. */
+async function boundPost(body: Record<string, unknown>, accept: string, opts: CallOptions, timeoutMs?: number): Promise<Response> {
   if (!backendConfigured) throw new AiError('The training assistant isn’t set up on this server.', 'backend_missing', undefined, 'backend_missing');
   if (isOffline()) throw new AiError(OFFLINE, 'network', undefined, 'offline');
-  const { data } = await requireSupabase().auth.getSession();
-  const token = data.session?.access_token;
-  if (!token) throw new AiError('Your session has expired. Please sign in again.', 'auth', 401);
-  let res: Response;
+  if (opts.signal?.aborted) throw abortError();
+  const ctl = new AbortController();
+  const onAbort = () => ctl.abort();
+  opts.signal?.addEventListener('abort', onAbort);
+  const timer = timeoutMs ? setTimeout(() => ctl.abort(), timeoutMs) : null;
   try {
-    res = await fetchImpl(`${functionsBaseUrl()}/ai-coach`, {
+    const token = await boundToken(opts.expectedUserId);
+    if (opts.signal?.aborted) throw abortError();
+    // Dispatch right after the check (no await in between).
+    return await (opts.fetchImpl ?? fetch)(`${functionsBaseUrl()}/ai-coach`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, apikey: publishableApiKey(), 'content-type': 'application/json', accept: 'text/event-stream' },
-      body: JSON.stringify({ ...body, stream: true }),
-      signal,
+      headers: { authorization: `Bearer ${token}`, apikey: publishableApiKey(), 'content-type': 'application/json', accept },
+      body: JSON.stringify(body),
+      signal: ctl.signal,
     });
   } catch (e) {
-    if ((e as Error)?.name === 'AbortError') throw e;
+    if (e instanceof AiError) throw e;
+    if (opts.signal?.aborted) throw abortError();
+    if (ctl.signal.aborted) throw new AiError('The training assistant didn’t answer in time.', 'control_timeout');
     throw new AiError(OFFLINE, 'network', undefined, 'offline');
+  } finally {
+    if (timer) clearTimeout(timer);
+    opts.signal?.removeEventListener('abort', onAbort);
   }
-  return consumeStreamResponse(res, String(body.id ?? ''), handlers);
+}
+
+/** A JSON call (control request or JSON send), bound to the initiating account and bounded in time. */
+async function boundJson<T>(body: Record<string, unknown>, opts: CallOptions): Promise<T> {
+  const res = await boundPost(body, 'application/json', opts, opts.timeoutMs ?? CONTROL_TIMEOUT_MS);
+  if (!res.ok) throw await mapInvokeError({ context: res });
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new AiError('Couldn’t reach the training assistant. Please try again.', 'bad_response', res.status);
+  }
+}
+
+/**
+ * POST send with {stream:true} and Accept: text/event-stream over an authenticated fetch (never EventSource, never
+ * credentials in the URL). A JSON response (refusal before the stream, a duplicate, or a server without streaming) is
+ * consumed normally. Resolves with the authoritative exchange; throws AiError for terminal errors, `request_cancelled`
+ * for a settled Stop and StreamInterrupted when the stream ends (or stalls) without a terminal event.
+ */
+async function streamSend(body: Record<string, unknown>, handlers: StreamHandlers, opts: CallOptions = {}): Promise<SendResult> {
+  const res = await boundPost({ ...body, stream: true }, 'text/event-stream', opts);
+  return consumeStreamResponse(res, String(body.id ?? ''), handlers, { signal: opts.signal });
 }
 
 /** Exported for tests: turn the function's response (JSON or SSE) into the final result. */
-export async function consumeStreamResponse(res: Response, requestId: string, handlers: StreamHandlers): Promise<SendResult> {
+export async function consumeStreamResponse(
+  res: Response,
+  requestId: string,
+  handlers: StreamHandlers,
+  limits: { inactivityMs?: number; overallMs?: number; signal?: AbortSignal } = {},
+): Promise<SendResult> {
   const type = res.headers.get('content-type') ?? '';
   if (!res.ok) throw await mapInvokeError({ context: res });
   if (!type.includes('text/event-stream')) {
@@ -205,9 +273,24 @@ export async function consumeStreamResponse(res: Response, requestId: string, ha
     },
   });
   const reader = res.body.getReader();
+  const inactivityMs = limits.inactivityMs ?? STREAM_INACTIVITY_MS;
+  const overallEnd = Date.now() + (limits.overallMs ?? STREAM_OVERALL_MS);
+  /** One read, bounded by inactivity, the overall deadline and the caller's signal (review P2-5). */
+  const read = () =>
+    new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+      const wait = Math.max(0, Math.min(inactivityMs, overallEnd - Date.now()));
+      const timer = setTimeout(() => reject(new StreamInterrupted()), wait);
+      const onAbort = () => reject(abortError());
+      if (limits.signal?.aborted) return onAbort();
+      limits.signal?.addEventListener('abort', onAbort, { once: true });
+      reader.read().then(resolve, reject).finally(() => {
+        clearTimeout(timer);
+        limits.signal?.removeEventListener('abort', onAbort);
+      });
+    });
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      const { done, value } = await read();
       if (done) break;
       parser.push(value);
       if (box.terminal) break;
@@ -407,6 +490,14 @@ function toStatus(r: Record<string, unknown>): RequestStatusResult {
     ...(r.usage && typeof r.usage === 'object' ? { usage: r.usage as Partial<AiUsage> } : {}),
   };
 }
+async function sendJson(input: { id: ID; text: string; mode?: 'chat' | 'checkin_review'; unsynced?: number; workout?: WorkoutContext }, opts?: CallOptions) {
+  type R = { reply: Record<string, unknown>; proposal?: Record<string, unknown> | null; duplicate?: unknown; usage?: unknown };
+  // Bound to the initiating account when the caller says which (the chat always does; review P1-1). The JSON send
+  // waits for the whole answer, so it isn't cut off by the control timeout.
+  const r = opts?.expectedUserId !== undefined ? await boundJson<R>(sendBody(input), { ...opts, timeoutMs: opts.timeoutMs ?? STREAM_OVERALL_MS }) : await invoke<R>(sendBody(input));
+  return toResult(r);
+}
+
 const coreApi: AiApi = {
   async status() {
     if (!backendConfigured) return { available: false, reason: 'backend_missing' };
@@ -459,10 +550,7 @@ const coreApi: AiApi = {
     return (rows ?? []).map(toMessage);
   },
 
-  async send(input: { id: ID; text: string; mode?: 'chat' | 'checkin_review'; unsynced?: number; workout?: WorkoutContext }) {
-    const r = await invoke<{ reply: Record<string, unknown>; proposal?: Record<string, unknown> | null; duplicate?: unknown; usage?: unknown }>(sendBody(input));
-    return toResult(r);
-  },
+  send: sendJson,
 
   async clearHistory() {
     await rpc<number>('clear_ai_history');
@@ -486,19 +574,21 @@ const coreApi: AiApi = {
 /** The training assistant API: the AiApi contract plus the item 10 streaming and Stop calls (capability-gated). */
 export const aiApi = {
   ...coreApi,
+  /** The contract's send, plus account binding (`opts.expectedUserId`, review P1-1). */
+  send: sendJson,
   /** Item 10: the same send, streamed (only when the server's status says `stream`). See streamSend. */
-  sendStream(input: { id: ID; text: string; mode?: 'chat' | 'checkin_review'; unsynced?: number; workout?: WorkoutContext }, handlers: StreamHandlers, signal?: AbortSignal) {
-    return streamSend(sendBody(input), handlers, signal);
+  sendStream(input: { id: ID; text: string; mode?: 'chat' | 'checkin_review'; unsynced?: number; workout?: WorkoutContext }, handlers: StreamHandlers, opts: CallOptions = {}) {
+    return streamSend(sendBody(input), handlers, opts);
   },
 
   /** Item 10: Stop. 'cancel_requested' is not yet stopped: poll requestStatus until the server settles it. */
-  async cancel(id: ID): Promise<RequestStatusResult> {
-    return toStatus(await invoke<Record<string, unknown>>({ action: 'cancel', id, language: getLanguage() }));
+  async cancel(id: ID, opts: CallOptions = {}): Promise<RequestStatusResult> {
+    return toStatus(await boundJson<Record<string, unknown>>({ action: 'cancel', id, language: getLanguage() }, opts));
   },
 
   /** Item 10: where a message's reply stands (interrupted stream, lost Stop acknowledgement). Same message id. */
-  async requestStatus(id: ID): Promise<RequestStatusResult> {
-    return toStatus(await invoke<Record<string, unknown>>({ action: 'request_status', id, language: getLanguage() }));
+  async requestStatus(id: ID, opts: CallOptions = {}): Promise<RequestStatusResult> {
+    return toStatus(await boundJson<Record<string, unknown>>({ action: 'request_status', id, language: getLanguage() }, opts));
   },
 
 };

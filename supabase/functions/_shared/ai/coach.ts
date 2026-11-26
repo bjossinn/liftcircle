@@ -234,6 +234,13 @@ async function send(deps: CoachDeps, uid: string, body: Record<string, unknown>)
 
   const stored = await deps.db.getExchange(uid, id);
   if (stored) return done({ status: 200, body: { reply: stored.reply, proposal: stored.proposal ?? null, duplicate: true, usage: await usageFor(deps, uid).catch(() => null) } });
+  // A contextual workout request (it carries a workout snapshot, and its text was generated from that workout: exercise
+  // names, loads, targets) is refused while Training isn't shared: nothing reaches the provider, nothing is charged
+  // (review P1-2). The app keeps the user's own words on the device.
+  if (body.workout != null && !settings.scopes.training) {
+    deps.log?.('ai_workout_request_refused', {});
+    return done(err(409, 'training_not_shared', t('aiServer.session.trainingNotShared'), { reason: 'training_not_shared' }));
+  }
 
   const limit = intEnv(deps, 'AI_DAILY_REQUEST_LIMIT', 40, 0, 10_000);
   // This run's attempt id: only it may settle the request as failed (a newer attempt may have taken over).

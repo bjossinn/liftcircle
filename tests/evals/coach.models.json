@@ -1,5 +1,5 @@
 {
-  "note": "Explicit candidates for tests/live/coach-eval.mjs. Every field is required: no implicit provider selection and no silent model substitution (the runner fails a result whose response names a different model family). Prices are per million tokens, list prices as of the date given, no prompt caching assumed (cacheAssumption). Re-check the source pages before reporting costs. 'baseline' runs the handler from the pre-item-10 commit (single prompt, text replies). Nothing here changes the production model.",
+  "note": "Explicit candidates for tests/live/coach-eval.mjs. Every field is required: no implicit provider selection and no silent model substitution (the runner fails a result whose response names any model other than `model` or one of its documented `aliases`; exact match, never a prefix). Prices are per million tokens, list prices as of the date given, no prompt caching assumed (cacheAssumption). Re-check the source pages before reporting costs. 'baseline' runs the handler from the pre-item-10 commit (single prompt, text replies). Nothing here changes the production model.",
   "baselineRef": "f6c17901b36016f9e8b40fd404bb25a899fda4a2",
   "candidates": [
     {
@@ -10,7 +10,16 @@
       "model": "gpt-5-mini",
       "reasoningEffort": "low",
       "structuredOutput": "off",
-      "pricing": { "inputPerMTok": 0.25, "outputPerMTok": 2.0, "source": "https://openai.com/api/pricing/", "asOf": "2025-08-07", "cacheAssumption": "none" }
+      "pricing": {
+        "inputPerMTok": 0.25,
+        "outputPerMTok": 2.0,
+        "source": "https://openai.com/api/pricing/",
+        "asOf": "2025-08-07",
+        "cacheAssumption": "none"
+      },
+      "aliases": [
+        "gpt-5-mini-2025-08-07"
+      ]
     },
     {
       "id": "modular-gpt-5-mini-text",
@@ -20,7 +29,16 @@
       "model": "gpt-5-mini",
       "reasoningEffort": "low",
       "structuredOutput": "off",
-      "pricing": { "inputPerMTok": 0.25, "outputPerMTok": 2.0, "source": "https://openai.com/api/pricing/", "asOf": "2025-08-07", "cacheAssumption": "none" }
+      "pricing": {
+        "inputPerMTok": 0.25,
+        "outputPerMTok": 2.0,
+        "source": "https://openai.com/api/pricing/",
+        "asOf": "2025-08-07",
+        "cacheAssumption": "none"
+      },
+      "aliases": [
+        "gpt-5-mini-2025-08-07"
+      ]
     },
     {
       "id": "modular-gpt-5-mini-structured",
@@ -30,7 +48,16 @@
       "model": "gpt-5-mini",
       "reasoningEffort": "low",
       "structuredOutput": "on",
-      "pricing": { "inputPerMTok": 0.25, "outputPerMTok": 2.0, "source": "https://openai.com/api/pricing/", "asOf": "2025-08-07", "cacheAssumption": "none" }
+      "pricing": {
+        "inputPerMTok": 0.25,
+        "outputPerMTok": 2.0,
+        "source": "https://openai.com/api/pricing/",
+        "asOf": "2025-08-07",
+        "cacheAssumption": "none"
+      },
+      "aliases": [
+        "gpt-5-mini-2025-08-07"
+      ]
     },
     {
       "id": "gpt-5-medium-structured",
@@ -40,7 +67,16 @@
       "model": "gpt-5",
       "reasoningEffort": "medium",
       "structuredOutput": "on",
-      "pricing": { "inputPerMTok": 1.25, "outputPerMTok": 10.0, "source": "https://openai.com/api/pricing/", "asOf": "2025-08-07", "cacheAssumption": "none" }
+      "pricing": {
+        "inputPerMTok": 1.25,
+        "outputPerMTok": 10.0,
+        "source": "https://openai.com/api/pricing/",
+        "asOf": "2025-08-07",
+        "cacheAssumption": "none"
+      },
+      "aliases": [
+        "gpt-5-2025-08-07"
+      ]
     },
     {
       "id": "claude-sonnet-5-5-structured",
@@ -49,7 +85,14 @@
       "provider": "anthropic",
       "model": "claude-sonnet-5-5",
       "structuredOutput": "on",
-      "pricing": { "inputPerMTok": 2.0, "outputPerMTok": 10.0, "source": "https://platform.claude.com/docs/en/about-claude/pricing", "asOf": "2026-11-03", "cacheAssumption": "none" }
+      "pricing": {
+        "inputPerMTok": 2.0,
+        "outputPerMTok": 10.0,
+        "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+        "asOf": "2026-11-03",
+        "cacheAssumption": "none"
+      },
+      "aliases": []
     },
     {
       "id": "claude-opus-5-5-structured",
@@ -58,7 +101,15 @@
       "provider": "anthropic",
       "model": "claude-opus-5-5",
       "structuredOutput": "on",
-      "pricing": { "inputPerMTok": 4.0, "outputPerMTok": 20.0, "source": "https://platform.claude.com/docs/en/about-claude/pricing", "asOf": "2026-11-03", "cacheAssumption": "none" }
+      "pricing": {
+        "inputPerMTok": 4.0,
+        "outputPerMTok": 20.0,
+        "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+        "asOf": "2026-11-03",
+        "cacheAssumption": "none"
+      },
+      "aliases": []
     }
-  ]
+  ],
+  "requiredRepetitions": 3
 }

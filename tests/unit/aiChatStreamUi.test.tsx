@@ -100,8 +100,10 @@ async function sendText(t: string) {
 }
 /** A sendStream that reports phases/text and then waits until aborted (rejects) or released. */
 function controllableStream() {
-  const ctl: { handlers?: { onPhase?: (p: string) => void; onText?: (t: string) => void }; resolve?: (r: unknown) => void; reject?: (e: unknown) => void; signal?: AbortSignal } = {};
-  api.sendStream.mockImplementation((_input: unknown, handlers: typeof ctl.handlers, signal: AbortSignal) => {
+  const ctl: { expectedUserId?: string; handlers?: { onPhase?: (p: string) => void; onText?: (t: string) => void }; resolve?: (r: unknown) => void; reject?: (e: unknown) => void; signal?: AbortSignal } = {};
+  api.sendStream.mockImplementation((_input: unknown, handlers: typeof ctl.handlers, opts?: { signal?: AbortSignal; expectedUserId?: string }) => {
+    const signal = opts?.signal;
+    ctl.expectedUserId = opts?.expectedUserId;
     ctl.handlers = handlers;
     ctl.signal = signal;
     return new Promise((resolve, reject) => {
@@ -138,6 +140,7 @@ describe('streaming status line and preview', () => {
     render();
     await sendText('Should I train today?');
     await waitFor(() => expect(api.sendStream).toHaveBeenCalledTimes(1));
+    expect(s.expectedUserId).toBe('user-1'); // bound to the account that wrote it (review P1-1)
     act(() => s.handlers!.onPhase!('training'));
     expect(statusLine()).toMatch(/^Checking your training history…/);
     expect(button('Stop reply')).toBeTruthy();

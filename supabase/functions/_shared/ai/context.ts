@@ -585,6 +585,8 @@ export async function buildContext({ db, uid, settings, text, mode, now, unsynce
   const workout = rawWorkout && scopes.training ? rawWorkout : null;
   if (workout) controls.push(workoutInstruction(workout));
   else if (rawWorkout) {
+    // Not reached through the handler (it refuses workout requests without Training sharing, review P1-2); kept as a
+    // second line of defence for other callers.
     controls.push('The newest message was sent from the workout screen, but Training isn\'t shared, so you can\'t see that workout. Say so in one short clause, link the training assistant settings, and still give general help.');
   }
   if (mode === 'checkin_review') {

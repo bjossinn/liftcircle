@@ -709,14 +709,14 @@ describe('context: sharing, untrusted snapshot text, finished workouts, reply la
   it.each(casesOf('context'))('%s', async (_id, c) => {
     const e = c.expected;
     if (e.trainingSharing === false) {
-      // Training not shared: the snapshot is not sent to the model and no workout change is made.
+      // Training not shared: the contextual workout request is refused before anything reaches the model (review P1-2).
       expect(classifyRequest(c.text)).toBe('session_swap');
-      const { reply, requests } = await chat(c.text, [toolUse('propose_session_adjustment', { change: 'swap', session_exercise_id: 'se-bench', to_exercise_id: 'dumbbell-bench-press' }), text('Ég sé ekki æfinguna.')], {
+      const { requests, status, conv } = await chat(c.text, [toolUse('propose_session_adjustment', { change: 'swap', session_exercise_id: 'se-bench', to_exercise_id: 'dumbbell-bench-press' }), text('Ég sé ekki æfinguna.')], {
         scopes: { ...ALL, training: false }, body: { workout: live({ intent: 'swap' }) },
       });
-      expect(systemOf(requests[0])).not.toContain('Barbell bench press');
-      expect(systemOf(requests[0])).toMatch(/Training isn't shared, so you can't see that workout/);
-      expect(reply.action ?? null).toBeNull();
+      expect(status).toBe(409);
+      expect(requests).toHaveLength(0);
+      expect(conv.messages).toHaveLength(0);
     }
     if (e.trainingSharingRevoked) {
       // A training request before Training was revoked is never carried into the model's history or resumed.

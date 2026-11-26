@@ -171,6 +171,7 @@ export function classifyAiError(e: unknown): ClassifiedAiError {
   // Item 10 (approved copy; typed codes only, never the raw transport or provider text).
   if (code === 'invalid_reply') return out('failed', 'ai.error.invalidReply');
   if (code === 'sharing_changed') return out('failed', 'ai.chat.replyDiscardedPrivacy');
+  if (code === 'training_not_shared') return out('failed', 'ai.chat.trainingOffPending');
   if (code === 'request_cancelled') return out('failed', 'ai.chat.replyStopped');
   if (code === 'stream_interrupted' || code === 'stream_protocol') return out('failed', 'ai.chat.replyInterrupted');
   return out('failed', 'ai.error.failed');

@@ -169,8 +169,8 @@ const fast = { sleep: async () => undefined, delayMs: 0 };
 describe('reply flow', () => {
   it('streams only when the server says so; Stop only when it also supports cancel', async () => {
     const a = api();
-    await sendReply(a, { stream: true, cancel: false }, { id: ID, text: 'x' }, {}, new AbortController().signal);
-    await sendReply(a, undefined, { id: ID, text: 'x' }, {}, new AbortController().signal);
+    await sendReply(a, { stream: true, cancel: false }, async () => ({ id: ID, text: 'x' }), {}, new AbortController().signal);
+    await sendReply(a, undefined, async () => ({ id: ID, text: 'x' }), {}, new AbortController().signal);
     expect(a.calls).toEqual(['stream', 'send']);
     expect(canStream(a, { stream: true, cancel: false })).toBe(true);
     expect(canStop(a, { stream: true, cancel: false })).toBe(false);
@@ -203,13 +203,13 @@ describe('reply flow', () => {
   it('recovery after an interrupted stream uses the same id and never starts another generation', async () => {
     const a = api({ statuses: [{ state: 'running' }, { state: 'succeeded', result: result('Recovered.') }] });
     let waiting = 0;
-    const r = await recoverReply(a, { id: ID, text: 'x' }, { ...fast, statusSupported: true, onWaiting: () => (waiting += 1) });
+    const r = await recoverReply(a, async () => ({ id: ID, text: 'x' }), ID, { ...fast, statusSupported: true, onWaiting: () => (waiting += 1) });
     expect(r).toMatchObject({ kind: 'finished', result: { reply: { content: 'Recovered.' } } });
     expect(waiting).toBe(1);
     expect(a.calls.every((c) => c === `status:${ID}`)).toBe(true);
     // Without request_status (cancellation not deployed): the existing replay of the same id.
     const b = api();
-    expect(await recoverReply(b, { id: ID, text: 'x' }, { ...fast, statusSupported: false })).toMatchObject({ kind: 'finished', result: { reply: { content: 'Done.' } } });
+    expect(await recoverReply(b, async () => ({ id: ID, text: 'x' }), ID, { ...fast, statusSupported: false })).toMatchObject({ kind: 'finished', result: { reply: { content: 'Done.' } } });
     expect(b.calls).toEqual(['send']);
   });
 

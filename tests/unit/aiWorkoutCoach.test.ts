@@ -277,14 +277,17 @@ describe('MOCKED ai-coach: contextual requests from the workout', () => {
     expect(m.recorded[0].reply.action ?? null).toBeNull();
   });
 
-  it('Training not shared: the workout is never shown to the model and no change is offered', async () => {
+  it('Training not shared: a contextual workout request is refused; nothing reaches the provider or is charged (review P1-2)', async () => {
     const m = makeDb({ scopes: { profile: true, training: false, measurements: false, nutrition: false } });
     const { fetch, requests } = provider([toolUse('propose_session_adjustment', { change: 'shorten', minutes: 12 }), text('Training isn’t shared.')]);
-    await handleAiCoach(deps(m.db, fetch), U, sendW('Short on time', live()));
-    expect(requests[0].system).not.toMatch(/kind="workout"/);
-    expect(requests[0].system).not.toMatch(/Barbell bench press/);
-    expect(requests[0].system).toMatch(/Training isn't shared, so you can't see that workout/);
-    expect(m.recorded[0].reply.action ?? null).toBeNull();
+    // The generated contextual question names the exercise and the app's target.
+    const r = await handleAiCoach(deps(m.db, fetch), U, sendW('Explain this: why is my next target for Barbell bench press “62.5 kg × 8 reps”?', live()));
+    expect(r).toMatchObject({ status: 409, body: { code: 'training_not_shared', reason: 'training_not_shared' } });
+    expect(requests).toHaveLength(0);
+    expect(m.recorded).toHaveLength(0);
+    // The same user without a workout attached (their own words only) is answered normally.
+    const plain = await handleAiCoach(deps(m.db, provider([text('Sure.')]).fetch), U, { action: 'send', id: mid(9), text: 'Can you help me today?', mode: 'chat' });
+    expect(plain.status).toBe(200);
   });
 
   it('a malformed workout body is ignored like a normal message', async () => {

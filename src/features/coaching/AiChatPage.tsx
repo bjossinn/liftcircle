@@ -45,7 +45,7 @@ import {
 } from './ai/workoutContext';
 import { syncBeforeAi } from './ai/syncBarrier';
 import { isCancelled } from './ai/inProgress';
-import { canStop, previewText, recoverReply, sendReply, SLOW_AFTER_MS, stopReply, type SendInput, type Settled } from './ai/replyFlow';
+import { canStop, previewText, recoverReply, sendReply, SLOW_AFTER_MS, stopReply, type Prepare, type Settled } from './ai/replyFlow';
 import { Markdown } from './ai/markdown';
 import { extractOpenLinks, type GuideFeatures } from '../../../supabase/functions/_shared/ai/appGuide';
 import { isFeatureEnabled } from '@/config/featureFlags';
@@ -73,6 +73,8 @@ interface LiveReply {
   stopNote: MessageKey | null;
   slow: boolean;
   ctrl: AbortController;
+  /** A workout question: its flow stops as soon as Training sharing is turned off. */
+  workoutQuestion: boolean;
 }
 const LIVE_KEY: Record<LivePhase, MessageKey> = {
   syncing: 'ai.chat.status.syncing',
@@ -430,13 +432,14 @@ function Chat({
       setAnnounce(t('ai.chat.replyStopped'));
       return;
     }
+    if (r.kind === 'blocked') return persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING });
     persistPending({ ...p, status: 'failed', error: r.kind === 'failed' ? 'ai.chat.replyInterrupted' : 'ai.chat.replyUnconfirmed' });
   }
 
   async function run(p: PendingSend) {
     const mine = owner.current;
     if (p.userId && p.userId !== mine.userId) return;
-    // This send's own controller: Stop and leaving the chat abort it (reader, waits, sync); the server decides the rest.
+    // This send's own controller: Stop, leaving the chat and narrowed sharing abort it (reader, waits, sync).
     const ctrl = new AbortController();
     const onOwnerAbort = () => ctrl.abort();
     mine.ctrl.signal.addEventListener('abort', onOwnerAbort);
@@ -446,51 +449,62 @@ function Chat({
     const update = (f: (l: LiveReply) => LiveReply) => {
       if (active()) setLive((l) => (l && l.id === p.id ? f(l) : l));
     };
+    // Every request for this message is bound to the account that wrote it (review P1-1).
+    const flow = { expectedUserId: mine.userId };
+    const workoutQuestion = isWorkoutQuestion(p);
     setSendError(null);
     // A workout question (it names exercises and targets) is never sent while Training isn't shared.
-    if (isWorkoutQuestion(p) && !trainingRef.current) {
+    if (workoutQuestion && !trainingRef.current) {
       persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING });
       return;
     }
     const sending: PendingSend = { ...p, userId: mine.userId, status: 'sending', error: undefined };
     persistPending(sending);
-    setLive({ id: p.id, phase: 'syncing', preview: '', stopping: false, stopNote: null, slow: false, ctrl });
-    let input: SendInput = { id: p.id, text: p.text, mode: p.mode };
+    setLive({ id: p.id, phase: 'syncing', preview: '', stopping: false, stopNote: null, slow: false, ctrl, workoutQuestion });
+    let unsynced = 0;
+    /**
+     * The input for ONE attempt, rebuilt right before it goes out (first send, every in_progress retry, a recovery
+     * replay): Training sharing is re-checked and the workout snapshot rebuilt from the device each time (review P1-2).
+     */
+    const prepare: Prepare = async () => {
+      if (workoutQuestion && !trainingRef.current) return null;
+      const workout = p.request ? (await prepareCoachRequest(db, p.request, exerciseByIdRef.current))?.workout : undefined;
+      if (workoutQuestion && !trainingRef.current) return null; // switched off while the snapshot was built
+      return { id: p.id, text: p.text, mode: p.mode, ...(unsynced ? { unsynced } : {}), ...(workout ? { workout } : {}) };
+    };
+    const blockedByTraining = () => {
+      setLive(null);
+      persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING });
+    };
     try {
       // Sync barrier: push this device's pending changes first (bounded wait), so the coach doesn't act on stale data.
-      const unsynced = await syncBeforeAi(db);
+      unsynced = await syncBeforeAi(db);
       if (!active()) return; // stopped (the Stop handler settles it) or detached
-      // A workout attachment is rebuilt from the device right before each send (so a retry or a send after a reload
-      // carries the latest sets), and only while Training is shared.
-      const workout = p.request ? (await prepareCoachRequest(db, p.request, exerciseByIdRef.current))?.workout : undefined;
-      if (isWorkoutQuestion(p) && !trainingRef.current) {
-        setLive(null);
-        persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING }); // switched off while syncing: never sent
-        return;
-      }
-      if (!active()) return;
       update((l) => ({ ...l, phase: 'preparing' }));
-      input = { ...input, ...(unsynced ? { unsynced } : {}), ...(workout ? { workout } : {}) };
       // A replay of a message still being answered waits for that answer (same id) instead of failing. Streamed when the
       // server supports it; the preview is plain text of the finished, stored answer.
-      const res = await sendReply(aiApi, protocol, input, {
+      const res = await sendReply(aiApi, protocol, prepare, {
         onPhase: (phase) => update((l) => ({ ...l, phase })),
         onText: (text) => update((l) => ({ ...l, phase: 'receiving', preview: l.preview + text })),
-      }, signal);
+      }, signal, flow);
       if (!active()) return; // answered for the previous account: it's in that account's history (its Retry gets it back as a duplicate)
       finish(sending, res as SendResult);
     } catch (e) {
       if (!active() || isCancelled(e) || (e as Error)?.name === 'AbortError') return; // Stop / detach own the outcome
       const code = (e as { code?: unknown })?.code;
+      if (code === 'account_changed') return; // another account is signed in now: nothing goes out under it
+      if (code === 'training_not_shared') return blockedByTraining();
       if (code === 'request_cancelled') return settle(sending, { kind: 'stopped', usage: (e as { usage?: Partial<AiUsage> }).usage });
-      if (code === 'stream_interrupted' || code === 'stream_protocol') {
-        // EOF without a terminal event: unconfirmed. Check the SAME id (never a second generation for a slow stream).
+      if (code === 'stream_interrupted' || code === 'stream_protocol' || code === 'cancel_unconfirmed') {
+        // EOF / stall without a terminal event: unconfirmed. Check the SAME id (never a second generation for a slow stream).
         update((l) => ({ ...l, phase: 'reconnecting', preview: '' }));
         try {
-          const r = await recoverReply(aiApi, input, { signal, statusSupported: stopAllowed, onWaiting: () => update((l) => ({ ...l, phase: 'waiting' })) });
-          if (active()) settle(sending, r);
+          const r = await recoverReply(aiApi, prepare, p.id, { ...flow, signal, statusSupported: stopAllowed, onWaiting: () => update((l) => ({ ...l, phase: 'waiting' })) });
+          if (!active()) return;
+          if (r.kind === 'blocked') return blockedByTraining();
+          settle(sending, r);
         } catch {
-          // detached meanwhile
+          // detached, or the account changed meanwhile
         }
         return;
       }
@@ -516,6 +530,7 @@ function Chat({
     try {
       const r = await stopReply(aiApi, l.id, {
         signal: mine.ctrl.signal,
+        expectedUserId: mine.userId,
         onUnconfirmed: () => setLive((x) => (x && x.id === l.id ? { ...x, stopNote: 'ai.chat.stopUnconfirmed' } : x)),
       });
       if (owner.current !== mine || mine.ctrl.signal.aborted) return;
@@ -528,6 +543,19 @@ function Chat({
       // detached (left the chat / switched account): the pending message stays, with its id
     }
   }
+
+  // Training sharing narrowed while a workout question is in flight (review P1-2): stop that flow at once (no further
+  // attempt goes out), keep the message on the device as not sendable, and ask the server to stop it too.
+  useEffect(() => {
+    if (trainingOn) return;
+    const l = liveRef.current;
+    const p = pendingRef.current;
+    if (!l || !l.workoutQuestion || !p || p.id !== l.id) return;
+    l.ctrl.abort();
+    setLive(null);
+    persistPending({ ...p, status: 'failed', error: TRAINING_OFF_PENDING });
+    if (stopAllowed) void aiApi.cancel(l.id, { expectedUserId: owner.current.userId }).catch(() => undefined);
+  }, [trainingOn]); // eslint-disable-line react-hooks/exhaustive-deps -- reacts to the sharing change only
 
   const canCompose = loaded && !pending;
   // A draft with generated workout detail in it can't be sent while Training isn't shared (it stays on the device).
