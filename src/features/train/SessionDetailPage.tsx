@@ -120,6 +120,7 @@ export default function SessionDetailPage() {
                   <Trash2 className="size-4" />
                 </IconButton>
               </div>
+              {se.discomfort && se.sets.length === 0 && <p className="text-xs text-muted px-1 mt-1">Stopped with discomfort: no sets completed. Kept so its load isn’t increased next time.</p>}
               <div className="mt-1 space-y-1">
                 {se.sets.map((st, i) => (
                   <EditSetRow
@@ -276,7 +277,8 @@ function SaveTemplateSheet({ open, onClose, session, byId, catalog }: { open: bo
           <Button
             variant="primary"
             onClick={async () => {
-              const exercises: Prescription[] = session.exercises.map((se) => {
+              // Exercises stopped with discomfort before any set (sets: []) aren't part of what was done.
+              const exercises: Prescription[] = session.exercises.filter((se) => se.sets.length > 0).map((se) => {
                 const work = se.sets.filter((s) => s.type !== 'warmup');
                 const reps = work.map((s) => s.reps ?? 0).filter((r) => r > 0);
                 const ex = byId.get(se.exerciseId);

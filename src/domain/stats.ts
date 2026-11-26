@@ -111,6 +111,11 @@ export interface SessionSummary {
   timedSec: number;
 }
 
+/** Exercises with at least one logged set (an exercise kept only for its discomfort flag has none). */
+export function exercisesDone(s: Pick<WorkoutSession, 'exercises'>): number {
+  return s.exercises.filter((e) => e.sets.length > 0).length;
+}
+
 export function sessionDurationSec(s: WorkoutSession, now = Date.now()): number {
   const end = s.endedAt ?? s.pausedAt ?? now;
   return Math.max(0, Math.round((end - s.startedAt - (s.pausedTotalMs ?? 0)) / 1000));

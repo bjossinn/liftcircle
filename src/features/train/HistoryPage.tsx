@@ -9,7 +9,7 @@ import { useExercises } from '@/data/catalog';
 import { addDays, formatDate, formatMinutes, startOfWeek, todayISO, WEEKDAY_SHORT } from '@/lib/dates';
 import { activityLabel } from '@/domain/activities';
 import { formatDistance } from '@/domain/units';
-import { sessionDurationSec } from '@/domain/stats';
+import { exercisesDone, sessionDurationSec } from '@/domain/stats';
 import { NoWorkoutsArt } from '@/components/illustrations';
 
 type Kind = 'all' | 'workouts' | 'activities';
@@ -48,7 +48,7 @@ export default function HistoryPage() {
         date: s.date,
         sort: s.startedAt,
         title: s.name,
-        subtitle: `${formatMinutes(sessionDurationSec(s))} · ${s.exercises.length} exercise${s.exercises.length === 1 ? '' : 's'}`,
+        subtitle: `${formatMinutes(sessionDurationSec(s))} · ${exercisesDone(s)} exercise${exercisesDone(s) === 1 ? '' : 's'}`,
         search: [s.name, s.notes, ...names].join(' ').toLowerCase(),
         href: `/train/history/${s.id}`,
       });

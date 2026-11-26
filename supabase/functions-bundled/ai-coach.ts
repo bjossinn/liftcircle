@@ -1390,7 +1390,8 @@ function trainingSection(facts, active, sessions, goals, catalog2, today, week, 
       const mins = isNum(s.startedAt) && isNum(s.endedAt) ? Math.round((s.endedAt - s.startedAt - (s.pausedTotalMs ?? 0)) / 6e4) : null;
       const parts2 = (s.exercises ?? []).slice(0, 12).map((e) => {
         const ts = topSet(e.sets, unit);
-        return ts ? `${nameOf(e.exerciseId ?? "")} top set ${ts.label}${e.discomfort ? " [discomfort flagged]" : ""}` : null;
+        if (ts) return `${nameOf(e.exerciseId ?? "")} top set ${ts.label}${e.discomfort ? " [discomfort flagged]" : ""}`;
+        return e.discomfort ? `${nameOf(e.exerciseId ?? "")} no sets completed [discomfort flagged]` : null;
       }).filter(Boolean);
       lines.push(`- ${s.date} "${neutralize(clipText(s.name ?? "Workout", 60))}"${mins != null && mins > 0 ? ` (${mins} min)` : ""}: ${parts2.join("; ") || "no completed working sets"}`);
     }

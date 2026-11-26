@@ -247,13 +247,17 @@ export function validCompletedSetCount(s: S, byId?: Map<string, Exercise>): numb
   return s.exercises.reduce((n, e) => n + e.sets.filter((x) => isValidCompletedSet(x, byId?.get(e.exerciseId))).length, 0);
 }
 
-/** Finalize: keep completed sets only, drop exercises with nothing completed, stop timers. */
+/**
+ * Finalize: keep completed sets only, drop exercises with nothing completed, stop timers. An exercise flagged "Felt
+ * discomfort" is KEPT even with no completed sets (sets: []): the flag is what stops the next load increase
+ * (progression's discomfort rule), so stopping an exercise because it hurt must not erase it.
+ */
 export function finishSession(s: S, now: number): S {
   const resumed = s.pausedAt ? resumeSession(s, s.pausedAt) : s; // paused time doesn't count
   const endedAt = s.pausedAt ?? now;
   const exercises = resumed.exercises
     .map((e) => ({ ...e, sets: e.sets.filter((x) => x.completed) }))
-    .filter((e) => e.sets.length > 0)
+    .filter((e) => e.sets.length > 0 || e.discomfort)
     .map((e, i) => ({ ...e, order: i }));
   return { ...resumed, status: 'completed', endedAt, pausedAt: undefined, rest: undefined, exercises };
 }

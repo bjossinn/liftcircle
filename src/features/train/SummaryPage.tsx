@@ -112,7 +112,9 @@ function WorkoutSummary({ id }: { id: string }) {
                 {se.discomfort && <Badge tone="warn">Discomfort</Badge>}
               </div>
               <p className="text-xs text-muted mt-1">
-                {ex ? se.sets.map((s) => `${s.type === 'warmup' ? 'W ' : ''}${formatLoggedSet(s, ex, unit, account.settings.units.distance)}${isValidCompletedSet(s, ex) ? '' : ' (not counted)'}`).join(' · ') : `${se.sets.length} sets`}
+                {se.sets.length === 0
+                  ? 'No sets completed.'
+                  : ex ? se.sets.map((s) => `${s.type === 'warmup' ? 'W ' : ''}${formatLoggedSet(s, ex, unit, account.settings.units.distance)}${isValidCompletedSet(s, ex) ? '' : ' (not counted)'}`).join(' · ') : `${se.sets.length} sets`}
               </p>
               {target && (
                 <div className="text-xs mt-1" data-testid="next-target">
