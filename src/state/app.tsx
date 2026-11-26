@@ -5,6 +5,7 @@ import { saveRecord } from '@/db/repo';
 import type { AccountState } from '@/domain/types';
 import { defaultAccountState } from './defaults';
 import { backendConfigured, supabase } from '@/backend/supabase';
+import { effectiveLanguage, getLanguage, LanguageProvider } from '@/i18n';
 import { applyTheme, effectiveThemeChoice, resolveTheme, watchSystemTheme } from '@/theme/theme';
 
 export type AuthStatus = 'loading' | 'guest' | 'signed_in' | 'expired';
@@ -165,7 +166,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateAccount,
     finishSignOut,
   };
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  // Language (roadmap item 8): the account's saved choice; missing/unknown reads as English. Before the account row has
+  // loaded, keep the language last used on this device (src/i18n) so the first paint doesn't flash English.
+  const language = accountRow === undefined ? undefined : effectiveLanguage(account.settings.language);
+  return (
+    <Ctx.Provider value={value}>
+      <LanguageProvider language={language ?? getLanguage()}>{children}</LanguageProvider>
+    </Ctx.Provider>
+  );
 }
 
 export function useApp(): AppCtx {

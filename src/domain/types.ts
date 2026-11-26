@@ -533,7 +533,11 @@ export interface Settings {
   theme?: 'dark' | 'light' | 'system';
   weekStart: 0 | 1;
   timeZone: string;
-  language: 'en';
+  /**
+   * App language (roadmap item 8). Display only: changing it never changes units, time zone, week start or content.
+   * Old accounts store 'en'; a missing/unknown value reads as English (src/i18n effectiveLanguage).
+   */
+  language: 'en' | 'is';
   rest: { defaultSec: number; autoStart: boolean; sound: boolean; vibrate: boolean; keepAwake: boolean };
   workout: {
     showRir: boolean; defaultSets: number; plateIncrementKg: number; plateIncrementLb: number;

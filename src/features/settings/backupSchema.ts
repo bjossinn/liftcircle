@@ -272,6 +272,9 @@ const accountState = z.looseObject({
     theme: opt(str(16)),
     weekStart: opt(z.number().int().min(0).max(6)),
     timeZone: opt(str(64)),
+    // Optional (roadmap item 8). Old backups have none; an unknown value is accepted here and normalized to 'en' on
+    // restore (backup.ts) rather than rejecting otherwise valid data.
+    language: opt(str(16)),
     rest: opt(z.looseObject({ defaultSec: opt(nonNeg(3600)) })),
     workout: opt(z.looseObject({ defaultSets: opt(nonNeg(100)), plateIncrementKg: opt(nonNeg(100)), plateIncrementLb: opt(nonNeg(200)) })),
     notifications: opt(z.looseObject({})),

@@ -22,6 +22,7 @@
  *  6. Everything selected is written in ONE local transaction together with its sync queue entries: if any
  *     write fails, nothing changes.
  */
+import { effectiveLanguage } from '@/i18n';
 import { SYNCED_ENTITIES, type LiftDb, type SyncedEntity } from '@/db/db';
 import { saveRecordsAtomic, tableFor, type BulkWrite } from '@/db/repo';
 import type { AccountState, ActivityLog, Exercise, Measurement, Program, SyncFields, WorkoutSession } from '@/domain/types';
@@ -202,7 +203,14 @@ async function buildPlan(db: LiftDb, backup: ValidatedBackup, opts: ImportOption
       const local = (await tableFor(db, entity).get(rec.id)) as Rec | undefined;
 
       if (entity === 'account_state') {
-        const b = rec as unknown as AccountState;
+        // Language (roadmap item 8): an old backup has none and keeps this device's language; an unknown future value
+        // is normalized to English instead of rejecting the backup.
+        const raw = rec as unknown as AccountState;
+        const localLang = (local as unknown as AccountState | undefined)?.settings?.language;
+        const bLang = raw.settings?.language as unknown;
+        const b: AccountState = raw.settings
+          ? { ...raw, settings: { ...raw.settings, language: bLang === undefined ? effectiveLanguage(localLang) : effectiveLanguage(bLang) } }
+          : raw;
         if (!local) {
           singleton = { onDevice: false, differs: { settings: true, profile: true, nutrition: true, favorites: true } };
           row.newCount++;

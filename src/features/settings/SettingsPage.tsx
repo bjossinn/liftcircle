@@ -16,10 +16,12 @@ import { UpdateCheckRow } from './UpdateCheckRow';
 import { ThemeOptions } from '@/theme/ThemeOptions';
 import { effectiveThemeChoice, setDeviceThemeChoice } from '@/theme/theme';
 import { analyticsEnabled, clearAnalyticsQueue } from '@/analytics/analytics';
+import { effectiveLanguage, t as tFor, useT, type Language } from '@/i18n';
 
 export default function SettingsPage() {
   const nav = useNavigate();
   const toast = useToast();
+  const { t } = useT();
   const { account, updateAccount, auth, backendConfigured, db } = useApp();
   const s = account.settings;
   const set = (fn: (s: Settings) => Settings) => updateAccount((a) => ({ ...a, settings: fn(a.settings) })).catch((e) => toast.show((e as Error).message, { tone: 'error' }));
@@ -99,6 +101,24 @@ export default function SettingsPage() {
             void set((x) => ({ ...x, theme: v }));
           }}
         />
+      </Card>
+
+      <SectionTitle id="language-title">{t('settings.languageTitle')}</SectionTitle>
+      <Card className="p-4 space-y-3">
+        {/* Autonyms stay in their own language in both locales. Changes Settings.language only: units, time zone,
+            week start, theme and all saved content are untouched. */}
+        <Segmented<Language>
+          label={t('settings.languageAria')}
+          value={effectiveLanguage(s.language)}
+          onChange={(v) => {
+            void set((x) => ({ ...x, language: v })).then(() => toast.show(tFor('settings.languageSaved', undefined, v)));
+          }}
+          options={[
+            { value: 'en', label: <span lang="en">{t('settings.languageEnglish')}</span> },
+            { value: 'is', label: <span lang="is">{t('settings.languageIcelandic')}</span> },
+          ]}
+        />
+        <p className="text-xs text-muted">{t('settings.languageDescription')}</p>
       </Card>
 
       <SectionTitle>Units & display</SectionTitle>

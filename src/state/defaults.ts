@@ -1,6 +1,20 @@
 import type { AccountState, NutritionTargets, PrivateProfile, Settings } from '@/domain/types';
 import { deviceTimeZone } from '@/lib/dates';
 import { ACCOUNT_ROW_ID } from '@/db/db';
+import type { Language } from '@/i18n';
+
+/**
+ * Language for a brand-new account: Icelandic only when the browser's preferred language is Icelandic, else English.
+ * Used only when no account row exists yet; an existing account's saved language always wins.
+ */
+export function initialLanguage(): Language {
+  try {
+    const langs = typeof navigator === 'undefined' ? [] : navigator.languages?.length ? navigator.languages : [navigator.language];
+    return /^is(-|$)/i.test(langs[0] ?? '') ? 'is' : 'en';
+  } catch {
+    return 'en';
+  }
+}
 
 export const DEFAULT_SHARE_FIELDS = { duration: true, exerciseNames: true, weightsReps: false, volume: false, records: true };
 
@@ -9,7 +23,7 @@ export function defaultSettings(): Settings {
     units: { weight: 'kg', length: 'cm', distance: 'km' },
     weekStart: 1,
     timeZone: deviceTimeZone(),
-    language: 'en',
+    language: initialLanguage(),
     rest: { defaultSec: 120, autoStart: true, sound: true, vibrate: true, keepAwake: true },
     workout: { showRir: false, defaultSets: 3, plateIncrementKg: 2.5, plateIncrementLb: 5 },
     notifications: { friendRequests: true, likes: true, comments: true, coaching: true },
