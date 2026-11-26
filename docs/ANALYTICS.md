@@ -25,11 +25,14 @@ the local records and marked as done without being recorded.
   re-checked before sending.
 - **Server enforces the same allowlist** (`public.log_product_events`, migration
   `supabase/migrations/20261127000001_product_analytics.sql`): the user comes from the access token, invalid items are
-  skipped, at most 50 per call and 500 per user per day. The table has only `id, user_id, event_name, props,
+  skipped, at most 50 per call and exactly 500 per user per rolling day (calls for one user are serialized with an
+  advisory lock and stop at the remaining allowance). The table has only `id, user_id, event_name, props,
   occurred_at, received_at`; clients have no grant on it (nobody can read events back through the API). RLS is on with
   an insert-own-only policy as defence in depth. Deleting the account deletes the events.
 - **Opt-out**: Settings → Sharing & privacy → "Share product usage events" (`settings.analytics`, default on). Off:
-  nothing is recorded and queued events are deleted, never sent.
+  nothing is recorded and queued events are deleted, never sent. The runner watches the live account record, so an
+  opt-out arriving by sync or backup restore also deletes the queue, and consent and account are re-checked before
+  every batch of a flush already in progress.
 - **Guest and demo mode record nothing** (no account to send for).
 
 ## Transport
@@ -37,7 +40,8 @@ the local records and marked as done without being recorded.
 Events queue in the account's local database (`kv` keys `analytics:queue`, `analytics:milestones`; at most 200
 events) and are sent in batches by `AnalyticsRunner` (app shell) while signed in and online. If the migration isn't
 applied yet, the server errors or the device is offline, events stay queued with backoff; nothing is shown to the
-user and logging is never blocked.
+user and logging is never blocked. After a failure the runner arms a timer for when the backoff expires, so an idle
+app still retries.
 
 ## Tests
 

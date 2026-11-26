@@ -250,7 +250,7 @@ export default function SessionPage() {
       }
       showErrors(null);
       if (outcome !== 'done') return; // undo: quiet
-      if (set.type !== 'warmup') void trackSetLogged(db); // first_set_logged milestone: no set data is recorded
+      if (set.type !== 'warmup') void trackSetLogged(db, session.id); // first_set_logged milestone: no set data is recorded
       // A new personal record gets one brief celebration (Settings → Celebrations; never with reduced motion).
       if (settings.workout.celebrations !== false) {
         void db.sessions.get(session.id).then((latest) => {

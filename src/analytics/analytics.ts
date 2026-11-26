@@ -120,16 +120,19 @@ export async function clearAnalyticsQueue(db: LiftDb): Promise<void> {
 const workingSets = (s: WorkoutSession) => s.exercises.reduce((n, e) => n + e.sets.filter((x) => x.completed && x.type !== 'warmup').length, 0);
 
 /**
- * After a set was ticked in the logger: `first_set_logged` when the account has no finished workout with a working
- * set yet (so this is its first workout's first set). Reads only counts; nothing about the set itself is recorded.
+ * After a set was ticked in the logger: `first_set_logged` when the account has no OTHER finished workout with a
+ * working set (so this is its first workout's first set). `sessionId` is the workout the set was logged in: it is never
+ * counted as earlier history, even if it was finished before this read ran (tick a set, then Finish straight away).
+ * Reads only counts; nothing about the set itself is recorded.
  */
-export async function trackSetLogged(db: LiftDb): Promise<void> {
+export async function trackSetLogged(db: LiftDb, sessionId: string): Promise<void> {
   try {
     if (db.isGuest || (await isDone(db, 'first_set_logged'))) return;
     const sessions = (await db.sessions.toArray()).filter((s) => !s.deletedAt);
-    // Any finished workout with a working set means this account logged sets before: not a first.
-    if (sessions.some((s) => s.status === 'completed' && workingSets(s) > 0)) return void (await markDone(db, 'first_set_logged'));
-    if (sessions.some((s) => workingSets(s) > 0)) await track(db, 'first_set_logged');
+    // Another finished workout with a working set means this account logged sets before: not a first.
+    if (sessions.some((s) => s.id !== sessionId && s.status === 'completed' && workingSets(s) > 0)) return void (await markDone(db, 'first_set_logged'));
+    const current = sessions.find((s) => s.id === sessionId);
+    if (current && workingSets(current) > 0) await track(db, 'first_set_logged');
   } catch {
     /* never surfaces */
   }
@@ -193,13 +196,20 @@ export function setAnalyticsAccount(accountId: string | null) {
 
 let retryAt = 0;
 let failures = 0;
+const retryListeners = new Set<() => void>();
+function setRetryAt(t: number) {
+  retryAt = t;
+  retryListeners.forEach((l) => l());
+}
+/** When sending may be tried again after a failure (epoch ms; 0 = no backoff). */
+export const analyticsRetryAt = () => retryAt;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let flushing: Promise<void> | null = null;
 const isOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false;
 
 /** Tests only. */
 export function resetAnalyticsState() {
-  retryAt = 0;
+  setRetryAt(0);
   failures = 0;
   gateAccount = null;
   if (timer) clearTimeout(timer);
@@ -227,11 +237,13 @@ export function flushAnalytics(db: LiftDb): Promise<void> {
 }
 
 async function flushOnce(db: LiftDb) {
-  if (db.isGuest || !gateAccount || gateAccount !== db.accountKey) return;
-  if (!(await enabledFor(db))) return clearAnalyticsQueue(db);
   if (transport === defaultTransport && !backendConfigured) return;
-  if (!isOnline() || Date.now() < retryAt) return;
   for (let round = 0; round < MAX_QUEUE / BATCH_SIZE; round++) {
+    // Before EVERY batch: still this account, still consented (sync or a backup restore may have switched it off
+    // while an earlier batch was in flight: then delete the rest instead of sending it), online, not backing off.
+    if (db.isGuest || !gateAccount || gateAccount !== db.accountKey) return;
+    if (!(await enabledFor(db))) return clearAnalyticsQueue(db);
+    if (!isOnline() || Date.now() < retryAt) return;
     const queue = await readQueue(db);
     if (!queue.length) return;
     const batch = queue.slice(0, BATCH_SIZE);
@@ -246,10 +258,11 @@ async function flushOnce(db: LiftDb) {
     } catch (e) {
       failures++;
       // Missing migration: wait a long time. Anything else (5xx, network, expired session): exponential backoff.
-      retryAt = Date.now() + (isMissingBackend(e) ? 6 * 60 * 60_000 : Math.min(30 * 60_000, 30_000 * 2 ** (failures - 1)));
+      setRetryAt(Date.now() + (isMissingBackend(e) ? 6 * 60 * 60_000 : Math.min(30 * 60_000, 30_000 * 2 ** (failures - 1))));
       return;
     }
     failures = 0;
+    if (retryAt) setRetryAt(0);
     const sent = new Set(batch.map((e) => e?.id));
     await db.transaction('rw', db.kv, async () => {
       const q = await readQueue(db);
@@ -260,14 +273,48 @@ async function flushOnce(db: LiftDb) {
 
 /* ============================================================ runner */
 
-/** Keeps the queue moving: on sign-in, when coming back online and when the app becomes visible. */
+/**
+ * While a backoff is pending, keep one timer that flushes when it expires (an idle, visible app would otherwise
+ * never retry). Re-arms whenever the backoff changes. Returns the cleanup (unmount, opt-out, account change).
+ */
+export function armAnalyticsRetry(db: LiftDb, flush: (db: LiftDb) => Promise<void> = flushAnalytics): () => void {
+  let t: ReturnType<typeof setTimeout> | null = null;
+  const arm = () => {
+    if (t) clearTimeout(t);
+    t = null;
+    if (retryAt > 0) {
+      t = setTimeout(() => {
+        t = null;
+        void flush(db);
+      }, Math.max(0, retryAt - Date.now()) + 50);
+    }
+  };
+  retryListeners.add(arm);
+  arm();
+  return () => {
+    retryListeners.delete(arm);
+    if (t) clearTimeout(t);
+  };
+}
+
+/**
+ * Keeps the queue moving: on sign-in, when coming back online, when the app becomes visible and when a backoff
+ * expires. Watches the consent setting from the live account record, so a change from any source (Settings, sync
+ * from another device, a backup restore) is honoured: switched off → the queue is deleted and nothing is sent.
+ */
 export function AnalyticsRunner(): null {
-  const { db, auth, online } = useApp();
+  const { db, auth, online, account: acc } = useApp();
   const account = auth.status === 'signed_in' && auth.userId ? auth.userId : null;
+  const enabled = analyticsEnabled(acc.settings);
+  useEffect(() => {
+    if (!enabled) void clearAnalyticsQueue(db);
+  }, [db, enabled]);
   useEffect(() => {
     setAnalyticsAccount(account);
-    if (account && account === db.accountKey && online) void flushAnalytics(db);
-  }, [db, account, online]);
+    if (!enabled || !account || account !== db.accountKey) return;
+    if (online) void flushAnalytics(db);
+    return armAnalyticsRetry(db);
+  }, [db, account, online, enabled]);
   useEffect(() => {
     const onVisible = () => document.visibilityState === 'visible' && void flushAnalytics(db);
     document.addEventListener('visibilitychange', onVisible);

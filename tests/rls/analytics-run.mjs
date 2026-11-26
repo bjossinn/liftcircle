@@ -258,10 +258,81 @@ async function main() {
     fails(await as('service', `select public.log_product_events('[]'::jsonb)`), 'no uid', /Not signed in|permission denied/);
   });
 
-  await test('limits', 'daily abuse cap: after 500 rows a day further events are dropped quietly', async () => {
-    await admin.query(`insert into public.product_analytics_events (id, user_id, event_name, props, occurred_at)
-      select gen_random_uuid(), $1, 'workout_started', '{"source":"empty"}', now() from generate_series(1, 500)`, [U.eve]);
-    eq(ok(await rpc('eve', 'log_product_events', { p_events: J([ev('workout_started', { source: 'empty' })]) }), 'over cap'), 0, 'dropped');
+  const capUser = async () => {
+    const id = randomUUID();
+    await admin.query(`insert into auth.users (id, email, email_confirmed_at) values ($1, $2, now())`, [id, `cap-${id.slice(0, 8)}@example.test`]);
+    return id;
+  };
+  const preload = (user, count) => admin.query(`insert into public.product_analytics_events (id, user_id, event_name, props, occurred_at)
+    select gen_random_uuid(), $1, 'workout_started', '{"source":"empty"}', now() from generate_series(1, $2)`, [user, count]);
+  const countOf = async (user) => (await admin.query(`select count(*)::int n from public.product_analytics_events where user_id = $1`, [user])).rows[0].n;
+  const fifty = () => Array.from({ length: 50 }, () => ev('workout_started', { source: 'empty' }));
+
+  await test('limits', 'daily cap is exact: 499 existing + a 50-event batch stores 1 (total 500); at 500 nothing more', async () => {
+    const u = await capUser();
+    await preload(u, 499);
+    eq(ok(await rpc(u, 'log_product_events', { p_events: J(fifty()) }), '499+50'), 1, 'stored');
+    eq(await countOf(u), 500, 'total');
+    eq(ok(await rpc(u, 'log_product_events', { p_events: J(fifty()) }), 'at cap'), 0, 'dropped');
+    eq(await countOf(u), 500, 'still 500');
+  });
+
+  await test('limits', 'invalid or duplicate items do not use up the allowance', async () => {
+    const u = await capUser();
+    await preload(u, 498);
+    const dup = ev('workout_started', { source: 'empty' });
+    eq(ok(await rpc(u, 'log_product_events', { p_events: J([ev('chat_message', {}), dup, dup, ev('workout_started', { source: 'repeat' }), ev('workout_started', { source: 'template' })]) }), 'mixed'), 2, 'two valid new rows');
+    eq(await countOf(u), 500, 'total');
+  });
+
+  /** A separate connection acting as `user` for the whole session (no per-statement transaction wrapper). */
+  async function userConn(user) {
+    const c = new pg.Client({ host: 'localhost', port: PORT, user: 'postgres', database: 'postgres' });
+    await c.connect();
+    await c.query('set role authenticated');
+    await c.query(`select set_config('request.jwt.claims', $1, false)`, [JSON.stringify({ sub: user, role: 'authenticated', aud: 'authenticated' })]);
+    return c;
+  }
+  const call = async (c, events) => (await c.query(`select public.log_product_events($1::jsonb) as v`, [JSON.stringify(events)])).rows[0].v;
+
+  await test('limits', 'concurrent calls for the same user are serialized and never exceed the cap', async () => {
+    const u = await capUser();
+    await preload(u, 480);
+    const c1 = await userConn(u);
+    const c2 = await userConn(u);
+    try {
+      // c1 holds its (uncommitted) insert of 20 while c2 calls: c2 waits for the lock and then sees c1's rows.
+      await c1.query('begin');
+      eq(await call(c1, fifty()), 20, 'c1 stores the 20 left');
+      let c2done = false;
+      const p2 = call(c2, fifty()).then((v) => ((c2done = true), v));
+      await new Promise((r) => setTimeout(r, 300));
+      assert(!c2done, 'c2 must wait for c1 (per-user lock)');
+      await c1.query('commit');
+      eq(await p2, 0, 'c2 stores nothing after c1 committed');
+      eq(await countOf(u), 500, 'total 500');
+
+      // Many overlapping calls from both connections: still exactly at the cap.
+      const v = await capUser();
+      await preload(v, 400);
+      for (const c of [c1, c2]) await c.query(`select set_config('request.jwt.claims', $1, false)`, [JSON.stringify({ sub: v, role: 'authenticated', aud: 'authenticated' })]);
+      const three = async (c) => [await call(c, fifty()), await call(c, fifty()), await call(c, fifty())];
+      const stored = (await Promise.all([three(c1), three(c2)])).flat();
+      eq(stored.reduce((a, b) => a + b, 0), 100, 'stored in total');
+      eq(await countOf(v), 500, 'total 500');
+
+      // Another user is not blocked by this user's lock.
+      const w = await capUser();
+      await c1.query('begin');
+      await c1.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: v, role: 'authenticated', aud: 'authenticated' })]);
+      await call(c1, [ev('workout_started', { source: 'empty' })]);
+      await c2.query(`select set_config('request.jwt.claims', $1, false)`, [JSON.stringify({ sub: w, role: 'authenticated', aud: 'authenticated' })]);
+      eq(await call(c2, [ev('workout_started', { source: 'empty' })]), 1, 'other user not blocked');
+      await c1.query('commit');
+    } finally {
+      await c1.end();
+      await c2.end();
+    }
   });
 
   await test('retention', 'deleting the user removes their events', async () => {

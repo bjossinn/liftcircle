@@ -55,6 +55,8 @@ $$;
 /*
  * Record a batch of the caller's events (at most 50). Invalid items are skipped, not errors, so one bad event never
  * blocks the rest of a device's queue. Returns how many rows were newly stored (duplicates count as 0).
+ * At most 500 rows per user per rolling day: calls for the same user are serialized with a transaction-scoped advisory
+ * lock, and inserting stops as soon as the remaining allowance is used, so concurrent calls can't exceed it either.
  */
 create or replace function public.log_product_events(p_events jsonb) returns integer
 language plpgsql security definer set search_path = '' as $$
@@ -62,18 +64,21 @@ declare
   v_uid uuid := auth.uid();
   v_n integer := 0;
   v_rows integer;
+  v_left integer;
   v_at timestamptz;
   e jsonb;
 begin
   if v_uid is null then raise exception 'Not signed in' using errcode = '28000'; end if;
   if p_events is null or jsonb_typeof(p_events) <> 'array' then raise exception 'events must be an array' using errcode = '22023'; end if;
   if jsonb_array_length(p_events) > 50 then raise exception 'too many events in one call' using errcode = '22023'; end if;
-  -- Abuse guard: a real device sends a handful a day.
-  if (select count(*) from public.product_analytics_events where user_id = v_uid and received_at > now() - interval '1 day') >= 500 then
-    return 0;
-  end if;
+  -- Abuse guard: a real device sends a handful a day. One caller per user at a time (released at commit), then the
+  -- exact allowance left for the rolling day.
+  perform pg_advisory_xact_lock(hashtextextended('product_analytics:' || v_uid::text, 0));
+  v_left := 500 - (select count(*)::integer from public.product_analytics_events where user_id = v_uid and received_at > now() - interval '1 day');
+  if v_left <= 0 then return 0; end if;
 
   for e in select value from jsonb_array_elements(p_events) loop
+    exit when v_n >= v_left;
     continue when jsonb_typeof(e) <> 'object';
     continue when exists (select 1 from jsonb_object_keys(e) k where k not in ('id', 'name', 'props', 'occurred_at'));
     continue when coalesce(e ->> 'id', '') !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';

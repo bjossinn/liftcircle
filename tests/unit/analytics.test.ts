@@ -11,7 +11,7 @@ import type { WorkoutSession } from '@/domain/types';
 import { EVENT_NAMES, EVENT_SCHEMA, ONCE_EVENTS, sanitizeEvent } from '@/analytics/events';
 import {
   BATCH_SIZE, DONE_KEY, MAX_QUEUE, QUEUE_KEY, analyticsEnabled, clearAnalyticsQueue, flushAnalytics, isMissingBackend, resetAnalyticsState,
-  setAnalyticsAccount, setAnalyticsTransport, track, trackAiAction, trackSetLogged, trackWorkoutCompleted, trackWorkoutStarted, type QueuedEvent, type WireEvent,
+  analyticsRetryAt, armAnalyticsRetry, setAnalyticsAccount, setAnalyticsTransport, track, trackAiAction, trackSetLogged, trackWorkoutCompleted, trackWorkoutStarted, type QueuedEvent, type WireEvent,
 } from '@/analytics/analytics';
 
 let db: LiftDb;
@@ -131,7 +131,7 @@ describe('recording', () => {
     for (const key of ['guest', 'demo']) {
       const g = new LiftDb(key);
       expect(await track(g, 'first_set_logged')).toBe(false);
-      await trackSetLogged(g);
+      await trackSetLogged(g, 'x');
       await trackAiAction(g, 'chat_message', 'sent');
       expect(await queue(g)).toEqual([]);
       g.close();
@@ -169,7 +169,7 @@ describe('recording', () => {
     const broken = new LiftDb(`analytics-broken-${n}`);
     broken.close();
     await expect(track(broken, 'first_set_logged')).resolves.toBe(false);
-    await expect(trackSetLogged(broken)).resolves.toBeUndefined();
+    await expect(trackSetLogged(broken, 'x')).resolves.toBeUndefined();
     await expect(trackWorkoutCompleted(broken, 'x')).resolves.toBeUndefined();
   });
 });
@@ -179,19 +179,34 @@ describe('milestones from local records', () => {
     const active = session('a1', { status: 'active', endedAt: undefined });
     active.exercises[0].sets = [{ id: 'w', type: 'warmup', weightKg: 40, reps: 5, completed: true }];
     await db.sessions.put(active);
-    await trackSetLogged(db);
+    await trackSetLogged(db, 'a1');
     expect(await names()).toEqual([]); // warm-up only
     active.exercises[0].sets.push({ id: 's', type: 'normal', weightKg: 100, reps: 5, completed: true });
     await db.sessions.put(active);
-    await trackSetLogged(db);
-    await trackSetLogged(db);
+    await trackSetLogged(db, 'a1');
+    await trackSetLogged(db, 'a1');
     expect(await names()).toEqual(['first_set_logged']);
+  });
+
+  it('first_set_logged survives an immediate Finish: the read runs after the workout was already completed', async () => {
+    // Tick the first set, then Finish straight away: by the time the (delayed) milestone read runs, the same workout
+    // is stored as completed. It must not count as earlier history.
+    await db.sessions.put(session('w1'));
+    await trackSetLogged(db, 'w1');
+    expect(await names()).toEqual(['first_set_logged']);
+    // A different, earlier finished workout still means "not a first".
+    const other = new LiftDb(`analytics-race-${n}`);
+    await other.sessions.put(session('old'));
+    await other.sessions.put(session('w2', { endedAt: Date.parse('2026-11-21T11:00:00Z') }));
+    await trackSetLogged(other, 'w2');
+    expect(await names(other)).toEqual([]);
+    other.close();
   });
 
   it('first_set_logged never fires late for an account that already had workouts', async () => {
     await db.sessions.put(session('old'));
     await db.sessions.put(session('a1', { status: 'active', endedAt: undefined }));
-    await trackSetLogged(db);
+    await trackSetLogged(db, 'a1');
     expect(await names()).toEqual([]);
     expect((await db.kv.get(DONE_KEY))?.value).toContain('first_set_logged');
   });
@@ -294,6 +309,80 @@ describe('transport', () => {
     expect(await queue()).toEqual([]);
   });
 
+  it('consent switched off mid-flush (sync / backup restore): no further batch is sent and the queue is cleared', async () => {
+    for (let i = 0; i < 57; i++) await trackWorkoutStarted(db, 'empty');
+    const acc = defaultAccountState();
+    setAnalyticsTransport(async (events) => {
+      sent.push(events);
+      // While the first batch is in flight, another device's opt-out arrives through sync (it writes the account row).
+      if (sent.length === 1) await db.account.put({ ...acc, id: ACCOUNT_ROW_ID, settings: { ...acc.settings, analytics: false } });
+    });
+    setAnalyticsAccount(db.accountKey);
+    await flushAnalytics(db);
+    expect(sent.map((b) => b.length)).toEqual([50]);
+    expect(await queue()).toEqual([]);
+  });
+
+  it('account switched mid-flush: no further batch is sent for the old account', async () => {
+    for (let i = 0; i < 57; i++) await trackWorkoutStarted(db, 'empty');
+    setAnalyticsTransport(async (events) => {
+      sent.push(events);
+      setAnalyticsAccount('another-account');
+    });
+    setAnalyticsAccount(db.accountKey);
+    await flushAnalytics(db);
+    expect(sent.map((b) => b.length)).toEqual([50]);
+    expect((await queue()).length).toBe(7); // kept for when this account is signed in again
+  });
+
+  it('a backoff schedules its own retry: an idle app sends once the backoff expires', async () => {
+    let fail = true;
+    setAnalyticsTransport(async (events) => {
+      if (fail) throw Object.assign(new Error('Service unavailable'), { status: 503 });
+      sent.push(events);
+    });
+    await trackAiAction(db, 'week_plan', 'applied');
+    setAnalyticsAccount(db.accountKey);
+    await flushAnalytics(db);
+    expect(analyticsRetryAt()).toBeGreaterThan(Date.now());
+    fail = false;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      const flush = vi.fn((d: LiftDb) => flushAnalytics(d));
+      const stop = armAnalyticsRetry(db, flush);
+      vi.advanceTimersByTime(29_000);
+      expect(flush).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(2_000);
+      expect(flush).toHaveBeenCalledTimes(1);
+      await flush.mock.results[0].value;
+      expect(sent.flat().map((e) => e.name)).toEqual(['ai_action_used']);
+      expect(await queue()).toEqual([]);
+      expect(analyticsRetryAt()).toBe(0);
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the retry timer is cleaned up (unmount / opt-out / account change)', async () => {
+    setAnalyticsTransport(async () => {
+      throw Object.assign(new Error('Service unavailable'), { status: 503 });
+    });
+    await trackAiAction(db, 'week_plan', 'applied');
+    setAnalyticsAccount(db.accountKey);
+    await flushAnalytics(db);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      const flush = vi.fn(async () => undefined);
+      const stop = armAnalyticsRetry(db, flush);
+      stop();
+      vi.advanceTimersByTime(60 * 60_000);
+      expect(flush).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('sends in batches of at most BATCH_SIZE', async () => {
     for (let i = 0; i < BATCH_SIZE + 7; i++) await trackWorkoutStarted(db, 'empty');
     setAnalyticsAccount(db.accountKey);
@@ -309,7 +398,7 @@ describe('no health data, chat content or PII ever leaves the device', () => {
     await db.measurements.put({ id: 'm1', createdAt: 0, updatedAt: 0, kind: 'bodyweight', date: '2026-11-20', value: 82.5 } as never);
     const active = session('w1', { status: 'active', endedAt: undefined });
     await db.sessions.put(active);
-    await trackSetLogged(db);
+    await trackSetLogged(db, 'w1');
     await db.sessions.put(session('w1'));
     await trackWorkoutCompleted(db, 'w1');
     await db.sessions.put(session('w2', { endedAt: Date.parse('2026-11-23T11:00:00Z') }));
