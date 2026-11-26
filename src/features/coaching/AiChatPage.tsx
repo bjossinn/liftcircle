@@ -10,7 +10,7 @@
  * recipe cards (ai/RecipeCards.tsx). AI text and "Why this?" render as a safe Markdown subset (ai/markdown.tsx);
  * valid [[open:/path|Label]] markers become in-app buttons under the message. User messages stay plain text.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { ArrowUpRight, Bot, ClipboardCheck, CloudOff, MoreVertical, Pause, Play, RotateCcw, SendHorizontal, Settings2, Sparkles, Trash2, Lightbulb, Pencil, AlertTriangle } from 'lucide-react';
 import { Badge, Button, ConfirmDialog, IconButton, ListRow, Notice, Sheet, Spinner, cx } from '@/components/ui';
@@ -33,7 +33,8 @@ import { RecipeCards } from './ai/RecipeCards';
 import { syncBeforeAi } from './ai/syncBarrier';
 import { isCancelled, SendCancelled, sendWhileInProgress } from './ai/inProgress';
 import { Markdown } from './ai/markdown';
-import { extractOpenLinks } from '../../../supabase/functions/_shared/ai/appGuide';
+import { extractOpenLinks, type GuideFeatures } from '../../../supabase/functions/_shared/ai/appGuide';
+import { isFeatureEnabled } from '@/config/featureFlags';
 import { humanizeDates } from '../../../supabase/functions/_shared/ai/humanDates';
 import { detectLang } from '../../../supabase/functions/_shared/ai/lang';
 import { useActiveProgram, useAllActivities, useAllSessions } from '@/features/train/hooks';
@@ -43,6 +44,29 @@ import type { LiftDb } from '@/db/db';
 import type { ActivityLog, CoachStyle, Exercise, ID, ISODate, Program, WeightUnit, WorkoutSession } from '@/domain/types';
 import { AiBadge, AiGuest, AiUnavailable, availabilityCopy, BackButton, ShareButton, ShareWithCoachDialog } from './ai/parts';
 import { EmptyChatArt } from '@/components/illustrations';
+
+/** This build's switched-on areas, so links to hidden screens (find a coach, the feed) don't render as buttons. */
+const appFeatures = (): GuideFeatures => ({ coachMarketplace: isFeatureEnabled('coachMarketplace'), socialFeed: isFeatureEnabled('socialFeed') });
+
+/**
+ * How the chat is framed. Full screen (/coaching/ai): back button, no tab bar. Embedded (the Coach tab, /coach): no back
+ * button, an optional channel switcher (training assistant ↔ human coaching) under the title, and the composer sits
+ * just above the tab bar.
+ */
+interface ChatChrome {
+  embedded: boolean;
+  switcher?: ReactNode;
+}
+const ChatChromeContext = createContext<ChatChrome>({ embedded: false });
+
+/** The training assistant as the Coach tab's main screen (see CoachTabPage). */
+export function EmbeddedAiChat({ switcher }: { switcher?: ReactNode }) {
+  return (
+    <ChatChromeContext.Provider value={{ embedded: true, switcher }}>
+      <AiChatPage />
+    </ChatChromeContext.Provider>
+  );
+}
 
 export default function AiChatPage() {
   const nav = useNavigate();
@@ -101,17 +125,19 @@ export default function AiChatPage() {
 }
 
 function ChatShell({ children, menu }: { children: ReactNode; menu?: ReactNode }) {
+  const { embedded, switcher } = useContext(ChatChromeContext);
   return (
-    <div className="min-h-dvh flex flex-col">
+    <div className={cx('flex flex-col', embedded ? 'min-h-[calc(100dvh-57px-env(safe-area-inset-bottom))]' : 'min-h-dvh')}>
       <header className="sticky top-0 z-30 bg-bg/95 backdrop-blur border-b border-line pt-safe">
-        <div className="mx-auto max-w-2xl flex items-center gap-1 px-2 min-h-14">
-          <BackButton />
-          <div className="flex-1 min-w-0 flex items-center gap-2 px-1">
-            <h1 className="text-lg font-semibold truncate">Training assistant</h1>
+        <div className={cx('mx-auto max-w-2xl flex items-center gap-1 min-h-14', embedded ? 'pl-4 pr-2' : 'px-2')}>
+          {!embedded && <BackButton />}
+          <div className={cx('flex-1 min-w-0 flex items-center gap-2', !embedded && 'px-1')}>
+            <h1 className="text-lg font-semibold truncate">{embedded ? 'Coach' : 'Training assistant'}</h1>
             <AiBadge />
           </div>
           {menu}
         </div>
+        {embedded && switcher && <div className="mx-auto max-w-2xl px-3 pb-2">{switcher}</div>}
       </header>
       <div className="flex-1 flex flex-col mx-auto w-full max-w-2xl">{children}</div>
     </div>
@@ -129,6 +155,7 @@ function Chat({
   setUsage: (u: Partial<AiUsage>) => void;
 }) {
   const nav = useNavigate();
+  const { embedded } = useContext(ChatChromeContext);
   const toast = useToast();
   const { db, online, account, auth } = useApp();
   const userId = auth.userId;
@@ -424,7 +451,7 @@ function Chat({
                   pending={m.pending}
                   proposal={m.proposalId ? proposals[m.proposalId] : undefined}
                   coach={coach}
-                  onShare={() => setShare({ key: m.id, text: extractOpenLinks(m.content).text })}
+                  onShare={() => setShare({ key: m.id, text: extractOpenLinks(m.content, appFeatures()).text })}
                   onRetry={retry}
                   onEdit={editPending}
                   retryDisabled={blocked}
@@ -436,8 +463,8 @@ function Chat({
         <div ref={bottomRef} />
       </div>
 
-      {/* composer */}
-      <div className="sticky bottom-0 bg-bg/95 backdrop-blur border-t border-line px-3 pt-2 pb-safe">
+      {/* composer (embedded: just above the tab bar) */}
+      <div className={cx('sticky bg-bg/95 backdrop-blur border-t border-line px-3 pt-2', embedded ? 'bottom-[calc(57px+env(safe-area-inset-bottom))] z-30' : 'bottom-0 pb-safe')}>
         {canCompose && draft.trim() === '' && !blocked && (
           <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1" role="group" aria-label="Suggested questions">
             <button
@@ -634,8 +661,8 @@ function MessageItem({
   }
   // Dates in an Icelandic reply read Icelandic ("lau. 31. okt."), 1.0.3.
   const lang = detectLang(m.content) ?? 'en';
-  const body = extractOpenLinks(humanizeDates(m.content, week.today, week.weekStart, lang));
-  const whyText = m.why ? extractOpenLinks(humanizeDates(m.why, week.today, week.weekStart, lang)).text : '';
+  const body = extractOpenLinks(humanizeDates(m.content, week.today, week.weekStart, lang), appFeatures());
+  const whyText = m.why ? extractOpenLinks(humanizeDates(m.why, week.today, week.weekStart, lang), appFeatures()).text : '';
   return (
     <li>
       <article aria-label="Training assistant message" className="max-w-[92%]">

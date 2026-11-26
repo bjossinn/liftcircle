@@ -1,25 +1,34 @@
 import type { Page } from '@playwright/test';
 
 /**
- * Walk the onboarding wizard with defaults (3 lifting days, full gym, 60 min) and save the plan without starting a
+ * Walk the six onboarding questions with defaults (Mon/Wed/Fri, 60 min, gym) and save the plan without starting a
  * workout ("Save plan, start later"), landing on Today. "Accept & start" (straight into the logger) is covered in
- * onboarding.spec.ts.
+ * onboarding.spec.ts. Onboarding doesn't ask for a name; pass `name` to set it in Settings afterwards.
  */
-export async function completeOnboarding(page: Page, name = 'Tester') {
+export async function completeOnboarding(page: Page, name?: string) {
   await page.goto('/onboarding');
-  for (let i = 0; i < 20; i++) {
-    const step = await page.getByText(/Step \d+ of \d+/).innerText().catch(() => '');
-    if (step.startsWith('Step 2')) await page.getByLabel('What should we call you?').fill(name);
+  for (let i = 0; i < 12; i++) {
     const later = page.getByRole('button', { name: 'Save plan, start later' });
     if (await later.count()) {
       await later.click();
       await page.waitForURL((u) => u.pathname === '/');
+      if (name) await setName(page, name);
       return;
     }
     await page.getByRole('button', { name: /^(Get started|Continue|Build my plan)$/ }).last().click();
     await page.waitForTimeout(150);
   }
   throw new Error('Onboarding did not finish');
+}
+
+/** Set the private display name (Settings → Your name) and return to Today. */
+export async function setName(page: Page, name: string) {
+  await page.goto('/settings');
+  const input = page.getByLabel('Your name (private)');
+  await input.fill(name);
+  await input.blur();
+  await page.waitForTimeout(200);
+  await page.goto('/');
 }
 
 export async function startEmptyWithBench(page: Page) {

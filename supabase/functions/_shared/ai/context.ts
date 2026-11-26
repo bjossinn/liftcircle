@@ -20,7 +20,7 @@ import type {
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { computeWeekState, weekLines, type WeekState } from './week.ts';
 // @ts-ignore see above
-import { appGuideText, type KnownIds } from './appGuide.ts';
+import { appGuideText, type GuideFeatures, type KnownIds } from './appGuide.ts';
 // @ts-ignore see above
 import { dataStatusLines, nutritionStatus, type NutritionStatus } from './dataStatus.ts';
 // @ts-ignore see above
@@ -586,9 +586,11 @@ export interface BuildContextInput {
   now: Date;
   /** Changes the app couldn't sync before sending (sync barrier, 1.0.3). */
   unsynced?: number;
+  /** Switched-on product areas (coach marketplace, social feed): hidden ones are left out of the app guide. */
+  features?: GuideFeatures;
 }
 
-export async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0 }: BuildContextInput): Promise<BuiltContext> {
+export async function buildContext({ db, uid, settings, text, mode, now, unsynced = 0, features }: BuildContextInput): Promise<BuiltContext> {
   const scopes = settings.scopes;
   const [account, active, exercises] = await Promise.all([db.getAccountState(uid), db.getActiveProgram(uid), db.getExercises()]);
   const catalog = new Map(exercises.map((e) => [e.id, e]));
@@ -651,8 +653,8 @@ export async function buildContext({ db, uid, settings, text, mode, now, unsynce
       ? [`- Not synced yet: ${unsynced} recent change${unsynced === 1 ? '' : 's'} on the user's device (offline or still syncing) haven't reached you. Your view of their latest workouts and logs may be missing them: if that matters for this answer, say so in one short clause, and don't conclude they skipped or didn't log something.`]
       : []),
     '',
-    'App guide (path — what you do there (how to get there)); use these paths in [[open:…]] links:',
-    appGuideText(),
+    'App guide (path — what you do there (how to get there)); use these paths in [[open:…]] links. The app has four tabs (Today, Train, Coach, Progress), plus Feed only if listed below; Nutrition, Friends and Settings are reached from Profile (top right) or Today. Screens that are not listed are not available to this user — never point to them:',
+    appGuideText(features),
   );
   if (added.length) {
     parts.push('', `Sharing changed since your previous reply: the user now also shares ${added.map((k) => SCOPE_NAMES[k]).join(' and ')}. Start with a brief thanks (e.g. "Thanks — I can see your ${SCOPE_NAMES[added[0]]} now") and continue the open request right away.`);

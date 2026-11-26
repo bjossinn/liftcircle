@@ -66,6 +66,8 @@ export const router = createBrowserRouter([
       { path: '/auth', element: L(() => import('@/features/auth/AuthPage')) },
       { path: '/auth/callback', element: L(() => import('@/features/auth/AuthCallbackPage')) },
       { path: '/import-guest', element: L(() => import('@/features/auth/ImportGuestPage')) },
+      // Coach tab: the training assistant, with a switcher to human coaching (/coaching) for people who have it.
+      { path: '/coach', element: L(() => import('@/features/coaching/CoachTabPage')) },
       { path: '/coaching', element: L(() => import('@/features/coaching/CoachingHubPage')) },
       // Coach marketplace flag: browsing coaches and sending new requests. Existing relationships, the coach workspace,
       // applications and admin routes below are not gated.

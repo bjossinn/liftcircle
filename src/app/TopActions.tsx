@@ -1,9 +1,12 @@
 import { Link } from 'react-router';
-import { Bell, Settings, UserRound, Users } from 'lucide-react';
+import { Bell, UserRound } from 'lucide-react';
 import { useApp } from '@/state/app';
 import { useUnreadCount } from '@/features/social/useUnreadCount';
 
-/** Secondary navigation shown in the header of main tab pages. */
+/**
+ * Header actions on the main tab pages: Profile (the way to Nutrition, Friends and Settings), plus Notifications with an
+ * unread dot when signed in. Kept to two icons so the header stays calm.
+ */
 export function TopActions() {
   const { auth } = useApp();
   const unread = useUnreadCount();
@@ -12,21 +15,13 @@ export function TopActions() {
   return (
     <>
       {signedIn && (
-        <>
-          <Link to="/friends" className={cls} aria-label="Friends" title="Friends">
-            <Users className="size-5" />
-          </Link>
-          <Link to="/notifications" className={cls} aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'} title="Notifications">
-            <Bell className="size-5" />
-            {unread > 0 && <span className="absolute top-2.5 right-2.5 size-2 rounded-full bg-ember" aria-hidden />}
-          </Link>
-          <Link to="/profile" className={cls} aria-label="Your profile" title="Profile">
-            <UserRound className="size-5" />
-          </Link>
-        </>
+        <Link to="/notifications" className={cls} aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'} title="Notifications">
+          <Bell className="size-5" />
+          {unread > 0 && <span className="absolute top-2.5 right-2.5 size-2 rounded-full bg-ember" aria-hidden />}
+        </Link>
       )}
-      <Link to="/settings" className={cls} aria-label="Settings" title="Settings">
-        <Settings className="size-5" />
+      <Link to="/profile" className={cls} aria-label="Profile" title="Profile, nutrition, friends and settings">
+        <UserRound className="size-5" />
       </Link>
     </>
   );

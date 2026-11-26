@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { Ban, Check, ChevronLeft, Flag, MoreHorizontal, Pencil, Share2, ShieldCheck, UserCheck, UserMinus, UserPlus, Users, X } from 'lucide-react';
+import { Apple, Ban, Check, ChevronLeft, ChevronRight, Flag, MoreHorizontal, Pencil, Settings, Share2, ShieldCheck, UserCheck, UserMinus, UserPlus, Users, X } from 'lucide-react';
 import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, IconButton, Notice, Page, SectionTitle, Sheet, Spinner } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { socialApi } from '@/backend/social';
@@ -11,6 +11,7 @@ import { AccessNotice, Avatar, ReportSheet, shareLink, useSocialAccess } from '.
 import { PendingPostCard, PostCard } from './PostCard';
 import { PAGE_SIZE, usePostList } from './usePostList';
 import { useMyProfile } from './useMyProfile';
+import { useApp } from '@/state/app';
 
 export default function ProfilePage() {
   const { username } = useParams();
@@ -25,6 +26,7 @@ export default function ProfilePage() {
         </IconButton>
       }
     >
+      {!username && <ProfileShortcuts />}
       {!username && <PendingUploads access={access} />}
       {access !== 'ok' ? (
         <AccessNotice access={access} what="Profiles" guestTitle={username ? `Connect with @${username}` : undefined} />
@@ -34,6 +36,40 @@ export default function ProfilePage() {
         <MyProfile meId={meId!} />
       )}
     </Page>
+  );
+}
+
+/**
+ * Your own profile is also the hub for what isn't a tab: Nutrition, Friends and Settings. Shown for everyone (guests and
+ * the personal version too, where Friends is left out because it needs an account).
+ */
+export function ProfileShortcuts() {
+  const { account, backendConfigured } = useApp();
+  const nutritionOn = !!account?.settings?.nutritionEnabled && account.nutrition?.mode !== 'none';
+  const items = [
+    { to: '/nutrition', icon: Apple, title: 'Nutrition', subtitle: nutritionOn ? 'Protein, food log, recipes and meal plans' : 'Optional: protein target, food log, recipes' },
+    ...(backendConfigured ? [{ to: '/friends', icon: Users, title: 'Friends', subtitle: 'Friends and friend requests' }] : []),
+    { to: '/settings', icon: Settings, title: 'Settings', subtitle: 'Units, theme, workout, notifications, your data' },
+  ];
+  return (
+    <nav aria-label="Profile shortcuts" className="mb-4 rounded-2xl border border-line bg-surface card-shadow overflow-hidden">
+      <ul className="divide-y divide-line">
+        {items.map((it) => (
+          <li key={it.to}>
+            <Link to={it.to} className="flex items-center gap-3 px-4 min-h-14 py-2 hover:bg-surface-2">
+              <span className="size-9 rounded-xl bg-accent-soft text-accent flex items-center justify-center shrink-0">
+                <it.icon className="size-5" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium">{it.title}</span>
+                <span className="block text-xs text-muted truncate">{it.subtitle}</span>
+              </span>
+              <ChevronRight className="size-4 text-faint" aria-hidden />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
   );
 }
 

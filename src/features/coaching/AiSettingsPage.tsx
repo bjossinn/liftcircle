@@ -164,7 +164,7 @@ function SettingsBody({ provider, settings, usage, tokens, setSettings, back }: 
               </Button>
             ))}
           {state !== 'off' && (
-            <Button variant="ghost" icon={<MessageCircle className="size-4" />} onClick={() => nav('/coaching/ai')}>
+            <Button variant="ghost" icon={<MessageCircle className="size-4" />} onClick={() => nav('/coach')}>
               Open chat
             </Button>
           )}

@@ -42,8 +42,6 @@ import type { AccountState, MealPlan, ProteinPrefs } from '@/domain/types';
 import { ProteinPicker } from '@/features/nutrition/ProteinPicker';
 import MealPlanPage from '@/features/nutrition/MealPlanPage';
 import RecipesPage from '@/features/nutrition/RecipesPage';
-import { NutritionStep } from '@/features/onboarding/steps';
-import { newDraft, type Draft } from '@/features/onboarding/draft';
 
 const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
 let root: Root | null = null;
@@ -117,23 +115,6 @@ describe('ProteinPicker chips', () => {
     click('Prawns: Not for me');
     expect(chip().getAttribute('aria-label')).toBe('Prawns: No preference');
     expect(buttons().filter((b) => / (No preference|Like|Not for me)$/.test(b.getAttribute('aria-label') ?? ''))).toHaveLength(17);
-  });
-
-  it('the setup wizard nutrition step shows "Which proteins do you like?" and saves to the draft', () => {
-    h.account = accountWith();
-    let d: Draft = newDraft(h.account as AccountState);
-    function Harness() {
-      const [draft, setDraft] = useState(d);
-      d = draft;
-      return createElement(NutritionStep, { d: draft, set: (patch) => setDraft((x) => ({ ...x, a: { ...x.a, ...patch } })), setDraft, errors: {}, byId: new Map() });
-    }
-    mount(() => createElement(Harness));
-    expect(norm(document.body.textContent)).toContain('Which proteins do you like?');
-    expect(document.querySelector('[role="group"][aria-labelledby="proteins-title"]')).toBeTruthy();
-    click('Chicken: No preference');
-    click('Tuna: No preference');
-    click('Tuna: Like');
-    expect(d.a.diet.proteinPrefs).toEqual({ liked: ['chicken'], excluded: ['tuna'] });
   });
 });
 

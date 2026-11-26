@@ -111,7 +111,7 @@ export function ProposalDetail({
   async function askForUpdate() {
     const text = `My plan has changed. Please write an updated version of your suggestion “${p.program.name}” for my current plan.`;
     await kvSet(AI_DRAFT_KEY, text, db).catch(() => undefined);
-    nav('/coaching/ai');
+    nav('/coach');
   }
 
   const label = PROPOSAL_VIEW_LABEL[view];

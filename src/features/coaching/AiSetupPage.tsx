@@ -146,7 +146,7 @@ export default function AiSetupPage() {
       const saved = await aiApi.saveSettings({ enabled: true, paused: false, scopes, profileNotes: finalNotes, coachStyle, acceptConsent: true, provider: providerId });
       setSettings(saved);
       toast.show('Your training assistant is on', { tone: 'success' });
-      nav('/coaching/ai', { replace: true });
+      nav('/coach', { replace: true });
     } catch (e) {
       setError(classifyAiError(e).message);
     } finally {
@@ -181,7 +181,7 @@ export default function AiSetupPage() {
           {alreadyOn && (
             <Notice tone="accent" className="flex items-center gap-3">
               <span className="flex-1">Your training assistant is already on. You can review your choices here.</span>
-              <Button size="sm" variant="primary" onClick={() => nav('/coaching/ai')}>
+              <Button size="sm" variant="primary" onClick={() => nav('/coach')}>
                 Open chat
               </Button>
             </Notice>

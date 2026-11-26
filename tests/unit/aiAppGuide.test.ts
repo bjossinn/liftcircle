@@ -5,8 +5,9 @@
 import { describe, expect, it } from 'vitest';
 import ROUTES_SRC from '../../src/app/routes.tsx?raw';
 import {
-  APP_GUIDE, appGuideText, extractOpenLinks, GUIDE_IGNORED, matchGuidePath, MAX_OPEN_LINKS, validateOpenLinks,
+  APP_GUIDE, appGuideText, extractOpenLinks, GUIDE_FLAG_ENV, GUIDE_IGNORED, guideEntries, guideFeaturesFromEnv, matchGuidePath, MAX_OPEN_LINKS, validateOpenLinks,
 } from '../../supabase/functions/_shared/ai/appGuide';
+import { FLAG_ENV_VARS } from '../../src/config/featureFlags';
 
 const routePaths = [...ROUTES_SRC.matchAll(/path:\s*'([^']+)'/g)].map((m) => m[1]);
 
@@ -36,9 +37,10 @@ describe('app guide coverage', () => {
   });
 
   it('is compact: about one line per screen', () => {
-    const text = appGuideText();
-    expect(text.split('\n')).toHaveLength(APP_GUIDE.length);
-    expect(text.length).toBeLessThan(6000);
+    const all = { coachMarketplace: true, socialFeed: true };
+    expect(appGuideText(all).split('\n')).toHaveLength(APP_GUIDE.length);
+    expect(appGuideText(all).length).toBeLessThan(6000);
+    expect(appGuideText().split('\n')).toHaveLength(APP_GUIDE.filter((g) => !g.flag).length);
   });
 });
 
@@ -82,5 +84,69 @@ describe('in-app links', () => {
     const { text, links } = extractOpenLinks('I can’t see your nutrition yet.\n[[open:/coaching/ai/settings|Change what the coach can see]]\n[[open:/nowhere|X]]');
     expect(text).toBe('I can’t see your nutrition yet.');
     expect(links).toEqual([{ path: '/coaching/ai/settings', label: 'Change what the coach can see' }]);
+  });
+});
+
+describe('four-tab navigation (roadmap item 6)', () => {
+  const text = appGuideText();
+  const how = (p: string) => APP_GUIDE.find((g) => g.path === p)!.how;
+
+  it('describes the four tabs and the Profile header entry; no Nutrition or Coaching tab, no gear icon', () => {
+    for (const tab of ['Today tab', 'Train tab', 'Coach tab', 'Progress tab']) expect(text).toContain(tab);
+    expect(text).not.toMatch(/Nutrition tab|Coaching tab|Gear icon/);
+    expect(how('/coach')).toBe('Coach tab');
+    expect(how('/settings')).toMatch(/^Profile icon .*→ Settings$/);
+    expect(how('/friends')).toMatch(/^Profile icon .*→ Friends$/);
+    expect(how('/nutrition')).toMatch(/Today → Nutrition card/);
+    expect(how('/nutrition')).toMatch(/Profile icon .*→ Nutrition/);
+    expect(how('/onboarding')).toMatch(/Settings → Redo setup questions/);
+    expect(APP_GUIDE.find((g) => g.path === '/onboarding')!.what).toMatch(/Six setup questions/);
+    expect(how('/coaching/ai/settings')).toBe('Coach tab → ⋮ → Settings');
+  });
+
+  it('the training assistant chat is linkable at /coach (the tab) and /coaching/ai (full screen)', () => {
+    expect(matchGuidePath('/coach')).not.toBeNull();
+    expect(matchGuidePath('/coaching/ai')).not.toBeNull();
+  });
+});
+
+describe('hidden areas (coach marketplace, social feed) stay out of the guide and its links', () => {
+  it('defaults: both off, as in the app', () => {
+    expect(guideFeaturesFromEnv(() => undefined)).toEqual({ coachMarketplace: false, socialFeed: false });
+    const text = appGuideText();
+    expect(text).not.toContain('/feed —');
+    expect(text).not.toContain('Feed tab');
+    expect(text).not.toContain('/coaching/find');
+    expect(text).not.toMatch(/find a coach/i);
+    expect(text).toContain('/feed/new'); // sharing a workout still works with the feed off
+  });
+
+  it('switched on: the entries come back, with their tab/hub wording', () => {
+    const on = { coachMarketplace: true, socialFeed: true };
+    const text = appGuideText(on);
+    expect(text).toContain('- /feed — Social feed of friends’ workouts (Feed tab)');
+    expect(text).toContain('/coaching/find');
+    expect(guideEntries(on).find((g) => g.path === '/coaching')!.what).toMatch(/find a coach$/);
+    expect(guideEntries(on).find((g) => g.path === '/feed/new')!.how).toMatch(/^Feed tab → New post/);
+  });
+
+  it('links to hidden screens are refused on the server and never become buttons in the app', () => {
+    const msg = 'See your friends:\n[[open:/feed|Feed]]\n[[open:/coaching/find|Find a coach]]';
+    expect(validateOpenLinks(msg, {}).kept).toEqual([]);
+    expect(extractOpenLinks(msg).links).toEqual([]);
+    expect(validateOpenLinks(msg, {}, { socialFeed: true }).kept.map((k) => k.path)).toEqual(['/feed']);
+    expect(extractOpenLinks(msg, { socialFeed: true, coachMarketplace: true }).links.map((k) => k.path)).toEqual(['/feed', '/coaching/find']);
+    expect(matchGuidePath('/feed')).toBeNull();
+    expect(matchGuidePath('/feed', undefined, { socialFeed: true })).not.toBeNull();
+  });
+
+  it('the server reads the app’s flag names (with or without VITE_), same accepted values', () => {
+    expect(GUIDE_FLAG_ENV).toEqual({ coachMarketplace: 'ENABLE_COACH_MARKETPLACE', socialFeed: 'ENABLE_SOCIAL_FEED' });
+    for (const k of Object.keys(GUIDE_FLAG_ENV) as (keyof typeof GUIDE_FLAG_ENV)[]) expect(FLAG_ENV_VARS[k]).toBe(`VITE_${GUIDE_FLAG_ENV[k]}`);
+    const env = (vars: Record<string, string>) => (k: string) => vars[k];
+    expect(guideFeaturesFromEnv(env({ ENABLE_SOCIAL_FEED: 'true' }))).toEqual({ coachMarketplace: false, socialFeed: true });
+    expect(guideFeaturesFromEnv(env({ VITE_ENABLE_COACH_MARKETPLACE: ' YES ' }))).toEqual({ coachMarketplace: true, socialFeed: false });
+    expect(guideFeaturesFromEnv(env({ ENABLE_SOCIAL_FEED: 'off', VITE_ENABLE_SOCIAL_FEED: 'on' }))).toEqual({ coachMarketplace: false, socialFeed: false });
+    expect(guideFeaturesFromEnv(env({ ENABLE_SOCIAL_FEED: 'maybe' }))).toEqual({ coachMarketplace: false, socialFeed: false });
   });
 });

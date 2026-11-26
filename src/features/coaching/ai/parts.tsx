@@ -20,7 +20,7 @@ export function BackButton({ to }: { to?: string }) {
       onClick={() => {
         if (to) nav(to);
         else if (window.history.length > 1) nav(-1);
-        else nav('/coaching');
+        else nav('/coach');
       }}
     >
       <ChevronLeft />

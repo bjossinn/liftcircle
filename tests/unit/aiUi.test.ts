@@ -510,7 +510,8 @@ describe('AI chat v2 (MOCKED aiApi): greeting, Why this?, Apply to this week', (
     render(createElement(ToastProvider, null, createElement(MemoryRouter, { initialEntries: ['/coaching/ai/setup'] },
       createElement(Routes, null,
         createElement(Route, { path: '/coaching/ai/setup', element: createElement(AiSetupPage) }),
-        createElement(Route, { path: '/coaching/ai', element: createElement(AiChatPage) })))));
+        // Setup lands in the Coach tab (/coach), which opens the chat directly.
+        createElement(Route, { path: '/coach', element: createElement(AiChatPage) })))));
     fireEvent.click(await screen.findByRole('button', { name: 'Get started' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));

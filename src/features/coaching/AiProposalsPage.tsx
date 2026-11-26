@@ -148,7 +148,7 @@ export default function AiProposalsPage() {
           title="No suggestions yet"
           body="Ask the training assistant for help with your schedule or progression. If it proposes a plan change, it shows up here."
           action={
-            <Button variant="primary" icon={<MessageCircle className="size-4" />} onClick={() => nav('/coaching/ai')}>
+            <Button variant="primary" icon={<MessageCircle className="size-4" />} onClick={() => nav('/coach')}>
               Open training assistant
             </Button>
           }

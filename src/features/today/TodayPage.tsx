@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import clsx from 'clsx';
-import { Activity, CalendarClock, Check, ChevronRight, Dumbbell, Flame, Play, Plus, Timer } from 'lucide-react';
+import { Activity, Apple, CalendarClock, Check, ChevronRight, Dumbbell, Flame, Play, Plus, Timer } from 'lucide-react';
 import { useApp } from '@/state/app';
 import { Badge, Button, Card, ConfirmDialog, Page, ProgressBar, SectionTitle, Spinner } from '@/components/ui';
 import { TopActions } from '@/app/TopActions';
@@ -72,6 +72,7 @@ export default function TodayPage() {
   const isNew = !program && completed.length === 0 && activities.length === 0 && !account.profile.onboardedAt;
   const next = plan?.next;
   const name = account.profile.displayName;
+  const nutritionOn = settings.nutritionEnabled && account.nutrition.mode !== 'none';
 
   return (
     <Page title={name ? `${greeting()}, ${name}` : greeting()} actions={<TopActions />}>
@@ -246,11 +247,12 @@ export default function TodayPage() {
         )}
       </Card>
 
+      {/* Nutrition isn't a tab: with it on, today's protein/macros card; either way a quick action into /nutrition. */}
       <NutritionTodayCard />
 
       <SectionTitle>Quick actions</SectionTitle>
       <div className="grid grid-cols-2 gap-2">
-        <QuickLink to="/train" icon={<Dumbbell className="size-5" />} label="Train" />
+        <QuickLink to="/nutrition" icon={<Apple className="size-5" />} label={nutritionOn ? 'Nutrition' : 'Track protein'} />
         <QuickLink to="/train/activity/new" icon={<Plus className="size-5" />} label="Log activity" />
         <QuickLink to="/train/intervals" icon={<Timer className="size-5" />} label="Interval timer" />
         <QuickLink to="/progress" icon={<Activity className="size-5" />} label="Log bodyweight" />

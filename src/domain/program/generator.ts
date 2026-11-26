@@ -317,6 +317,36 @@ function fitToBudget(t: SessionTemplate, budget: number, byId: Map<ID, Exercise>
   return out;
 }
 
+/**
+ * Longer sessions (more than an hour): use the extra time for a little more work instead of leaving it empty. Adds one
+ * set at a time — main lifts first, then secondary lifts, then accessories — while the estimate stays within the
+ * budget. Per-exercise caps keep it sensible (newer lifters get at most one extra set per exercise).
+ */
+export const FILL_FROM_MINUTES = 61;
+function fillToBudget(t: SessionTemplate, budget: number, byId: Map<ID, Exercise>, beginner: boolean): SessionTemplate {
+  if (budget < FILL_FROM_MINUTES || t.trimmedExerciseIds?.length || !t.exercises.length) return t;
+  const exercises = t.exercises.map((e) => ({ ...e }));
+  const base = new Map(exercises.map((e) => [e.id, e.sets]));
+  const cap = (rx: Prescription) => Math.min(rx.priority === 1 ? 5 : 4, beginner ? (base.get(rx.id) ?? rx.sets) + 1 : Infinity);
+  const est = () => estimateWith({ ...t, exercises }, byId);
+  let added = true;
+  let guard = 0;
+  while (added && guard++ < 40) {
+    added = false;
+    // One pass per round, in priority order, so the extra sets are spread rather than piled on one lift.
+    for (const rx of [...exercises].sort((x, y) => x.priority - y.priority || x.sets - y.sets)) {
+      if (rx.sets >= cap(rx)) continue;
+      rx.sets += 1;
+      if (est() > budget) {
+        rx.sets -= 1;
+        continue;
+      }
+      added = true;
+    }
+  }
+  return { ...t, exercises, estimatedMinutes: est() };
+}
+
 /* =========================================================== template build */
 function buildLiftingTemplate(day: DayDef, split: SplitDef, ctx: Ctx, variant: number, weekUsed: Set<ID>, name?: string): { template: SessionTemplate; gaps: SlotDef[] } {
   const id = `${split.key}:${day.key}`;
@@ -337,7 +367,7 @@ function buildLiftingTemplate(day: DayDef, split: SplitDef, ctx: Ctx, variant: n
   }
   exercises.sort((x, y) => x.priority - y.priority);
   const template: SessionTemplate = { id, name: name ?? day.name, focus: day.focus, kind: 'lifting', exercises, estimatedMinutes: 0 };
-  return { template: fitToBudget(template, ctx.budget, ctx.byId), gaps };
+  return { template: fillToBudget(fitToBudget(template, ctx.budget, ctx.byId), ctx.budget, ctx.byId, ctx.beginner), gaps };
 }
 
 function walkTemplate(ctx: Ctx): SessionTemplate {
