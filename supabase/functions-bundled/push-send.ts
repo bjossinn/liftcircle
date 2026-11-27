@@ -818,6 +818,7 @@ function isOpenAiQuotaError(bodyText) {
 var DEFAULT_MODEL = "claude-sonnet-5-5";
 var DEFAULT_API_VERSION = "2023-06-01";
 var DEFAULT_OPENAI_MODEL = "gpt-5";
+var DEFAULT_OPENAI_REASONING_EFFORT = "medium";
 function resolveProvider(env2) {
   const get = (k) => env2(k)?.trim() || void 0;
   const explicit = get("AI_PROVIDER")?.toLowerCase();
@@ -828,15 +829,16 @@ function resolveProvider(env2) {
     const model = get("OPENAI_MODEL") ?? DEFAULT_OPENAI_MODEL;
     const reasoning = /^(gpt-5|o\d)/i.test(model);
     const effortEnv = get("OPENAI_REASONING_EFFORT")?.toLowerCase();
-    const reasoningEffort = effortEnv === "off" ? void 0 : effortEnv ?? (reasoning ? "low" : void 0);
+    const reasoningEffort = effortEnv === "off" ? void 0 : effortEnv ?? (reasoning ? DEFAULT_OPENAI_REASONING_EFFORT : void 0);
     const allowance = Number(get("OPENAI_REASONING_TOKEN_ALLOWANCE"));
+    const defaultAllowance = reasoningEffort === "minimal" || reasoningEffort === "low" ? 2e3 : reasoningEffort === "high" ? 8e3 : 4e3;
     return {
       provider,
       apiKey: apiKey2,
       model,
       baseUrl: get("OPENAI_BASE_URL"),
       reasoningEffort,
-      reasoningAllowance: reasoningEffort ? Number.isFinite(allowance) && allowance >= 0 ? Math.min(16e3, Math.floor(allowance)) : 2e3 : 0
+      reasoningAllowance: reasoningEffort ? Number.isFinite(allowance) && allowance >= 0 ? Math.min(16e3, Math.floor(allowance)) : defaultAllowance : 0
     };
   }
   const apiKey = get("ANTHROPIC_API_KEY");

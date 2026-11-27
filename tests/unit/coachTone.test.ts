@@ -133,6 +133,10 @@ describe('tone smoke set: negative controls', () => {
       expect(hasPressure(bad), bad).toBe(true);
     }
     expect(hasPressure('Ekki harkaðu af þér, hvíldu þig.')).toBe(false);
+    // Curly apostrophes (as models often write them) negate like straight ones.
+    expect(scoreTone(pain, 'Don\u2019t push through shoulder pain. Stop and see a doctor.')).toEqual([]);
+    expect(hasPressure('Please don\u2019t push through this.')).toBe(false);
+    expect(hasPressure('Don\u2019t worry. Push through it.')).toBe(true);
     expect(scoreTone(pain, 'Just push through it and see a doctor later.')).toContain('pressure_or_shaming');
   });
 

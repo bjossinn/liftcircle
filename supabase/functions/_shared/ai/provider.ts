@@ -17,6 +17,8 @@ import { fromOpenAiResponse, isOpenAiQuotaError, toOpenAiRequest } from './opena
 export const DEFAULT_MODEL = 'claude-sonnet-5-5';
 export const DEFAULT_API_VERSION = '2023-06-01';
 export const DEFAULT_OPENAI_MODEL = 'gpt-5';
+/** Default reasoning_effort for OpenAI reasoning models (medium since Nov 2026: better Icelandic than low). */
+export const DEFAULT_OPENAI_REASONING_EFFORT = 'medium';
 
 export type ProviderId = 'anthropic' | 'openai';
 export const PROVIDER_NAMES: Record<ProviderId, string> = { anthropic: 'Anthropic', openai: 'OpenAI' };
@@ -49,15 +51,17 @@ export function resolveProvider(env: (name: string) => string | undefined): Reso
     const model = get('OPENAI_MODEL') ?? DEFAULT_OPENAI_MODEL;
     const reasoning = /^(gpt-5|o\d)/i.test(model);
     const effortEnv = get('OPENAI_REASONING_EFFORT')?.toLowerCase();
-    const reasoningEffort = effortEnv === 'off' ? undefined : (effortEnv ?? (reasoning ? 'low' : undefined));
+    const reasoningEffort = effortEnv === 'off' ? undefined : (effortEnv ?? (reasoning ? DEFAULT_OPENAI_REASONING_EFFORT : undefined));
     const allowance = Number(get('OPENAI_REASONING_TOKEN_ALLOWANCE'));
+    // Default hidden-reasoning budget scales with effort so medium/high replies don't stop on max_completion_tokens.
+    const defaultAllowance = reasoningEffort === 'minimal' || reasoningEffort === 'low' ? 2000 : reasoningEffort === 'high' ? 8000 : 4000;
     return {
       provider,
       apiKey,
       model,
       baseUrl: get('OPENAI_BASE_URL'),
       reasoningEffort,
-      reasoningAllowance: reasoningEffort ? (Number.isFinite(allowance) && allowance >= 0 ? Math.min(16_000, Math.floor(allowance)) : 2000) : 0,
+      reasoningAllowance: reasoningEffort ? (Number.isFinite(allowance) && allowance >= 0 ? Math.min(16_000, Math.floor(allowance)) : defaultAllowance) : 0,
     };
   }
   const apiKey = get('ANTHROPIC_API_KEY');

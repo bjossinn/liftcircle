@@ -39,8 +39,10 @@ const IS_CHARS = /[áðéíóúýþæöÁÐÉÍÓÚÝÞÆÖ]/;
 
 /** True when a pressure phrase appears that is not negated just before it. */
 export function hasPressure(reply: string): boolean {
-  for (const m of reply.matchAll(PRESSURE)) {
-    const before = reply.slice(0, m.index).split(/[.!?\n]/).at(-1) ?? '';
+  // Curly apostrophes (Don’t) count as straight ones; same length, so match indexes are unchanged.
+  const text = reply.replace(/[\u2018\u2019\u02BC]/g, "'");
+  for (const m of text.matchAll(PRESSURE)) {
+    const before = text.slice(0, m.index).split(/[.!?\n]/).at(-1) ?? '';
     if (!NEGATED.test(before)) return true;
   }
   return false;

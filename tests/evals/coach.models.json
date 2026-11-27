@@ -1,5 +1,5 @@
 {
-  "note": "Explicit candidates for tests/live/coach-eval.mjs. Every field is required: no implicit provider selection and no silent model substitution (the runner fails a result whose response names any model other than `model` or one of its documented `aliases`; exact match, never a prefix). Prices are per million tokens, list prices as of the date given, no prompt caching assumed (cacheAssumption). Re-check the source pages before reporting costs. 'baseline' runs the handler from the pre-item-10 commit (single prompt, text replies). Nothing here changes the production model; the production OpenAI default is gpt-5 with low reasoning (gpt-5-low-structured), with the gpt-5-mini baseline and gpt-5-medium kept for comparison.",
+  "note": "Explicit candidates for tests/live/coach-eval.mjs. Every field is required: no implicit provider selection and no silent model substitution (the runner fails a result whose response names any model other than `model` or one of its documented `aliases`; exact match, never a prefix). Prices are per million tokens, list prices as of the date given, no prompt caching assumed (cacheAssumption). Re-check the source pages before reporting costs. 'baseline' runs the handler from the pre-item-10 commit (single prompt, text replies). Nothing here changes the production model; the production OpenAI default is gpt-5 with medium reasoning (gpt-5-medium-structured), with the gpt-5-mini baseline and gpt-5 low kept for comparison.",
   "baselineRef": "f6c17901b36016f9e8b40fd404bb25a899fda4a2",
   "candidates": [
     {
@@ -61,7 +61,7 @@
     },
     {
       "id": "gpt-5-low-structured",
-      "label": "Production default (coach voice v1): GPT-5, low reasoning, Structured Outputs",
+      "label": "Faster/cheaper override (coach voice v1 default until Nov 2026): GPT-5, low reasoning, Structured Outputs",
       "source": "current",
       "provider": "openai",
       "model": "gpt-5",
@@ -80,7 +80,7 @@
     },
     {
       "id": "gpt-5-medium-structured",
-      "label": "Candidate: GPT-5, medium reasoning",
+      "label": "Production default: GPT-5, medium reasoning, Structured Outputs",
       "source": "current",
       "provider": "openai",
       "model": "gpt-5",
