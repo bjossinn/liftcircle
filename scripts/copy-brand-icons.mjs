@@ -13,4 +13,7 @@ const FILES = [
   'hard-earned-maskable-512.png'
 ];
 for (const f of FILES) copyFileSync(`brand/hard-earned/assets/${f}`, `public/icons/${f}`);
-console.log(`Copied ${FILES.length} icons to public/icons/`);
+// iOS Safari also probes /apple-touch-icon.png at the site root (ignoring the <link> tag in some flows). Without a real
+// file there, the SPA fallback (`/* /index.html 200`) would answer with HTML, so keep an exact root copy too.
+copyFileSync('brand/hard-earned/assets/apple-touch-icon-180.png', 'public/apple-touch-icon.png');
+console.log(`Copied ${FILES.length} icons to public/icons/ (+ root apple-touch-icon.png)`);
