@@ -480,7 +480,7 @@ Migration `20261129000001_coach_push.sql` (additive), `_shared/push/copy.ts`, `_
   always supportive; no guilt, compensation, prescriptions, targets, numbers or claims about skipping; no emoji except
   one optional trailing 💪 or 🙌 on `workout_reminder`). Its model is independent of the chat default
   (`resolvePushModel`: with OpenAI `PUSH_COPY_MODEL` default `gpt-5-mini`, `PUSH_COPY_REASONING_EFFORT` default
-  `minimal`, `PUSH_COPY_REASONING_TOKEN_ALLOWANCE` default 512). It needs
+  `minimal` for gpt-5/-mini/-nano and `low` for models that reject it, `PUSH_COPY_REASONING_TOKEN_ALLOWANCE` default 512). It needs
   `PUSH_AI_COPY=on` (off by default until the live evaluation `node tests/live/push-copy-live.mjs` has been reviewed),
   the assistant enabled and not paused, consent for the configured provider and the Training (workout/missed) or
   Nutrition (food) scope; otherwise there is no model call. The flag also gates cached generated text and the final

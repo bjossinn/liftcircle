@@ -1137,6 +1137,8 @@ var COPY_TIMEOUT_MS = 3e3;
 var DEFAULT_PUSH_OPENAI_MODEL = "gpt-5-mini";
 var DEFAULT_PUSH_REASONING_EFFORT = "minimal";
 var DEFAULT_PUSH_REASONING_ALLOWANCE = 512;
+var FALLBACK_PUSH_REASONING_EFFORT = "low";
+var MINIMAL_EFFORT_MODELS = /^gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$/i;
 var WORKOUT_REMINDER_EMOJIS = ["\u{1F4AA}", "\u{1F64C}"];
 var COPY_MIN_BUDGET_MS = 1200;
 var KEYS = {
@@ -1224,7 +1226,7 @@ var COPY_SYSTEM = [
   "Only invite the person to open the app when it suits them; do not name any exercise, activity, food, drink, meal, amount or body part.",
   `The body is plain text, one sentence or two short ones, at most ${COPY_MAX_CODE_POINTS} characters, with no links, numbers, markdown or quotes.`,
   'Emoji: follow the "emoji" field exactly. For "kind": "workout_reminder" you may end with one \u{1F4AA} or \u{1F64C}; missed_nudge and food_unlogged stay emoji-free.',
-  "Tone: always warm, supportive and low-pressure. The person decides if and when to act.",
+  "Tone: lightly upbeat, warm, supportive and low-pressure, like a friendly nudge; never hype. The person decides if and when to act.",
   "Never use guilt or shame, never suggest compensating or making up for anything, never prescribe exercises, durations, foods, calories or targets,",
   "and never state or imply that the person skipped, missed or failed to train or eat (you do not know that).",
   "Do not mention names, workouts, foods, body measurements or health. Write in the requested language only; for Icelandic, write natural, correct Icelandic."
@@ -1235,7 +1237,9 @@ function resolvePushModel(env2, provider) {
   const model = get("PUSH_COPY_MODEL") ?? DEFAULT_PUSH_OPENAI_MODEL;
   const reasoning = /^(gpt-5|o\d)/i.test(model);
   const effortEnv = get("PUSH_COPY_REASONING_EFFORT")?.toLowerCase();
-  const reasoningEffort = !reasoning || effortEnv === "off" ? void 0 : effortEnv ?? DEFAULT_PUSH_REASONING_EFFORT;
+  const minimalOk = MINIMAL_EFFORT_MODELS.test(model);
+  const requested = effortEnv ?? (minimalOk ? DEFAULT_PUSH_REASONING_EFFORT : FALLBACK_PUSH_REASONING_EFFORT);
+  const reasoningEffort = !reasoning || effortEnv === "off" ? void 0 : requested === "minimal" && !minimalOk ? FALLBACK_PUSH_REASONING_EFFORT : requested;
   const raw = get("PUSH_COPY_REASONING_TOKEN_ALLOWANCE");
   const n = raw ? Number(raw) : NaN;
   const allowance = Number.isFinite(n) && n >= 0 ? Math.min(DEFAULT_PUSH_REASONING_ALLOWANCE, Math.floor(n)) : DEFAULT_PUSH_REASONING_ALLOWANCE;

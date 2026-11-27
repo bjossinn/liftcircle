@@ -12,7 +12,7 @@ Supabase project **LiftCircle** (display name, unchanged: renaming it is an owne
   natural Icelandic register, a **calm safety voice** (no emojis, jokes, hype or pressure) for pain, exhaustion,
   distress, medical concerns and crisis in every style, and rewritten styles (Supportive stays the default; Strict is
   firm without scolding and never questions pain or tiredness).
-- Reminder push copy keeps its own model (`gpt-5-mini`, `minimal` reasoning, 512 tokens; `PUSH_COPY_MODEL` /
+- Reminder push copy keeps its own model (`gpt-5-mini`, `minimal` reasoning, 512 tokens; overrides such as gpt-5.1 get `low`, never `minimal`; `PUSH_COPY_MODEL` /
   `PUSH_COPY_REASONING_EFFORT` / `PUSH_COPY_REASONING_TOKEN_ALLOWANCE` override). Only the workout reminder may end with
   one 💪 or 🙌; missed-workout and food nudges stay emoji-free. Still off unless `PUSH_AI_COPY=on`.
 - Dashboard bundles regenerated: `supabase/functions-bundled/ai-coach.ts` and `push-send.ts`. Deploys on merge.

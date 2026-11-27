@@ -516,6 +516,29 @@ describe('coach reminders: push model defaults and the narrow emoji policy', () 
     expect(resolvePushModel(a, resolveProvider(a)!)).toEqual({ model: 'claude-sonnet-5-5', reasoningEffort: undefined, reasoningAllowance: 0 });
   });
 
+  it('"minimal" is the default only for gpt-5 / gpt-5-mini / gpt-5-nano; gpt-5.1+ and o-series overrides get a compatible effort', () => {
+    const r = (over: Record<string, string>) => {
+      const e = (k: string) => ({ OPENAI_API_KEY: 'k', ...over })[k];
+      return resolvePushModel(e, resolveProvider(e)!);
+    };
+    for (const m of ['gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5-mini-2025-08-07']) expect(r({ PUSH_COPY_MODEL: m }).reasoningEffort, m).toBe('minimal');
+    for (const m of ['gpt-5.1', 'gpt-5.1-mini', 'gpt-5.2', 'gpt-5-pro', 'o4-mini']) {
+      expect(r({ PUSH_COPY_MODEL: m }), m).toEqual({ model: m, reasoningEffort: 'low', reasoningAllowance: 512 });
+      // An explicit "minimal" is never sent to a model that rejects it; other explicit efforts are kept.
+      expect(r({ PUSH_COPY_MODEL: m, PUSH_COPY_REASONING_EFFORT: 'minimal' }).reasoningEffort, m).toBe('low');
+    }
+    expect(r({ PUSH_COPY_MODEL: 'gpt-5.1', PUSH_COPY_REASONING_EFFORT: 'none' }).reasoningEffort).toBe('none');
+    expect(r({ PUSH_COPY_MODEL: 'gpt-5.1', PUSH_COPY_REASONING_EFFORT: 'off' })).toMatchObject({ reasoningEffort: undefined, reasoningAllowance: 0 });
+  });
+
+  it('override-only payload: PUSH_COPY_MODEL=gpt-5.1 sends reasoning_effort "low", never "minimal"', async () => {
+    const p = provider('{"body":"Open Today when it suits you."}');
+    const r = await writeCopy({ env: env({ OPENAI_MODEL: '', PUSH_COPY_MODEL: 'gpt-5.1' }), fetch: p.fetch }, 'workout_reminder', 'en', AI_OK, 3000);
+    expect(r.source).toBe('ai');
+    expect(p.calls[0].body).toMatchObject({ model: 'gpt-5.1', reasoning_effort: 'low', max_completion_tokens: 160 + 512 });
+    expect(JSON.stringify(p.calls[0].body)).not.toContain('minimal');
+  });
+
   it('the request uses the push defaults (gpt-5-mini, minimal, 160 + 512 tokens) and carries the reminder kind', async () => {
     for (const [over, model, effort, max] of [
       [{ OPENAI_MODEL: '' }, 'gpt-5-mini', 'minimal', 160 + 512],
@@ -543,6 +566,7 @@ describe('coach reminders: push model defaults and the narrow emoji policy', () 
     await writeCopy({ env: env(), fetch: p.fetch }, 'workout_reminder', 'en', AI_OK, 3000);
     const system = (p.calls[0].body.messages as { role: string; content: string }[]).find((x) => x.role === 'system')!.content;
     expect(system).not.toMatch(/no emoji/i);
+    expect(system).toMatch(/Tone: lightly upbeat, warm, supportive and low-pressure, like a friendly nudge; never hype\./);
     expect(system).toMatch(/workout_reminder.*💪 or 🙌/);
   });
 

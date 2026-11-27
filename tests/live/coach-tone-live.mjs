@@ -11,8 +11,10 @@
  * Icelandic) review. This is a tone smoke check, not the 30-case eval (tests/live/coach-eval.mjs). Synthetic text only.
  *
  * Env: OPENAI_API_KEY or ANTHROPIC_API_KEY (+ AI_PROVIDER, OPENAI_MODEL, OPENAI_REASONING_EFFORT, ANTHROPIC_MODEL).
- * LC_TONE_STYLES=supportive,balanced,strict (default all). Without a key it prints BLOCKED and exits 0; exit 1 when any
- * reply fails the deterministic tone checks.
+ * LC_TONE_STYLES=supportive,balanced,strict (default all; an empty or unknown selection is BLOCKED).
+ * Exit codes: 0 = every reply PASSED; 1 = at least one reply FAILED the tone checks (blank, refused and truncated
+ * replies fail); 2 = BLOCKED (no key, no provider, bad style selection) or ERROR (provider errors, no failures) — never
+ * reported as a pass.
  */
 import { build } from 'esbuild';
 import path from 'node:path';
@@ -21,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
   console.log('BLOCKED: set OPENAI_API_KEY or ANTHROPIC_API_KEY (and optionally AI_PROVIDER / *_MODEL) to run the live tone smoke test.');
-  process.exit(0);
+  process.exit(2);
 }
 const load = async (rel) =>
   import(
@@ -31,21 +33,28 @@ const load = async (rel) =>
   );
 const { resolveProvider, createMessage } = await load('supabase/functions/_shared/ai/provider.ts');
 const { staticInstructions, COACH_STYLES, PROMPT_VERSION } = await load('supabase/functions/_shared/ai/prompts/index.ts');
-const { TONE_CASES, scoreTone } = await load('tests/evals/coach.tone.ts');
+const { TONE_CASES, scoreTone, parseToneStyles } = await load('tests/evals/coach.tone.ts');
 
 const provider = resolveProvider((k) => process.env[k]);
 if (!provider) {
   console.log('BLOCKED: the configured provider has no key.');
-  process.exit(0);
+  process.exit(2);
 }
-const styles = (process.env.LC_TONE_STYLES ?? COACH_STYLES.join(',')).split(',').map((s) => s.trim()).filter((s) => COACH_STYLES.includes(s));
+const styles = parseToneStyles(process.env.LC_TONE_STYLES, COACH_STYLES);
+if (!styles) {
+  console.log(`BLOCKED: LC_TONE_STYLES must list one or more of ${COACH_STYLES.join(', ')} (got "${process.env.LC_TONE_STYLES}").`);
+  process.exit(2);
+}
 console.log(`Provider ${provider.provider}, model ${provider.model} (reasoning ${provider.reasoningEffort ?? 'none'}), prompt ${PROMPT_VERSION}, styles ${styles.join(', ')}\n`);
-let failed = false;
+let failed = 0;
+let errors = 0;
+let passed = 0;
 for (const style of styles) {
   const system = `${staticInstructions({ style, output: 'text' })}\n\nToday is ${new Date().toISOString().slice(0, 10)}. The user has shared no training or nutrition data for this check.`;
   for (const c of TONE_CASES) {
     const t0 = Date.now();
     let reply = '';
+    let meta = {};
     try {
       const res = await createMessage(
         { provider: provider.provider, apiKey: provider.apiKey, model: provider.model, baseUrl: provider.baseUrl, apiVersion: provider.apiVersion,
@@ -53,16 +62,24 @@ for (const style of styles) {
         { system, messages: [{ role: 'user', content: c.prompt }] },
       );
       reply = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
+      meta = { stopReason: res.stop_reason ?? null, refusal: res.refusal ?? null };
     } catch (e) {
-      failed = true;
-      console.log(`FAIL  ${style.padEnd(10)} ${c.id.padEnd(18)} provider error (${e?.kind ?? 'unknown'})`);
+      errors++;
+      console.log(`ERROR ${style.padEnd(10)} ${c.id.padEnd(18)} provider error (${e?.kind ?? 'unknown'})`);
       continue;
     }
-    const bad = scoreTone(c, reply);
-    if (bad.length) failed = true;
+    const bad = scoreTone(c, reply, meta);
+    if (bad.length) failed++;
+    else passed++;
     console.log(`${bad.length ? 'FAIL' : 'PASS'}  ${style.padEnd(10)} ${c.id.padEnd(18)} ${Date.now() - t0} ms${bad.length ? `  (${bad.join(', ')})` : ''}`);
     console.log(`        “${reply.replace(/\n+/g, ' / ')}”`);
   }
 }
 console.log('\nReview the Icelandic replies with a native speaker: natural word order, correct inflections, no literal English hype.');
-process.exit(failed ? 1 : 0);
+console.log(`Summary: ${passed} passed, ${failed} failed, ${errors} errored.`);
+if (failed) process.exit(1);
+if (errors || passed === 0) {
+  console.log('ERROR: not every reply could be scored; this run is not a pass.');
+  process.exit(2);
+}
+process.exit(0);

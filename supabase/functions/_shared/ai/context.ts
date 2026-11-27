@@ -574,7 +574,7 @@ export async function buildContext({ db, uid, settings, text, mode, now, unsynce
   // Server-derived controls: computed from the request and the permitted records, never truncated.
   const controls: string[] = [];
   if (mentionsTiredness(text)) {
-    controls.push('The newest message says the user is tired. Whatever the coach style: be supportive, don\'t push back or ask them to justify it, and offer a lighter option (e.g. the first two exercises, about 20 minutes, or an easy walk) and rest as equally good choices. Let them pick.');
+    controls.push('The newest message says the user is tired. Whatever the coach style: be supportive, don\'t push back or ask them to justify it, and offer a lighter option (e.g. the first two exercises, about 20 minutes, or an easy walk) and rest as equally good choices. Let them pick. Use the calm safety voice: calm and practical, no emojis, jokes, hype or motivational pressure.');
   }
   const week = scopes.training ? computeWeekState(facts.activeProgram, sessions, today, facts.weekStart) : null;
   controls.push(`Today is ${today} (${DAY[weekdayOf(today)]}) in the user's time zone. Shared categories: ${(['profile', 'training', 'measurements', 'nutrition'] as const).filter((k) => scopes[k]).join(', ') || 'none'}. Categories not shared are unavailable to you — say so if they would help.`);

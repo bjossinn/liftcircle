@@ -41,6 +41,10 @@ export const COPY_TIMEOUT_MS = 3000;
 export const DEFAULT_PUSH_OPENAI_MODEL = 'gpt-5-mini';
 export const DEFAULT_PUSH_REASONING_EFFORT = 'minimal';
 export const DEFAULT_PUSH_REASONING_ALLOWANCE = 512;
+/** Push effort for reasoning models that don't accept "minimal" (gpt-5.1+, o-series). */
+export const FALLBACK_PUSH_REASONING_EFFORT = 'low';
+/** gpt-5, gpt-5-mini, gpt-5-nano (optionally date-pinned): the only models that accept reasoning_effort "minimal". */
+const MINIMAL_EFFORT_MODELS = /^gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$/i;
 /** The only emoji generated copy may carry: one, trailing, on workout_reminder. */
 export const WORKOUT_REMINDER_EMOJIS: readonly string[] = ['💪', '🙌'];
 
@@ -172,7 +176,7 @@ export const COPY_SYSTEM = [
   'Only invite the person to open the app when it suits them; do not name any exercise, activity, food, drink, meal, amount or body part.',
   `The body is plain text, one sentence or two short ones, at most ${COPY_MAX_CODE_POINTS} characters, with no links, numbers, markdown or quotes.`,
   'Emoji: follow the "emoji" field exactly. For "kind": "workout_reminder" you may end with one 💪 or 🙌; missed_nudge and food_unlogged stay emoji-free.',
-  'Tone: always warm, supportive and low-pressure. The person decides if and when to act.',
+  'Tone: lightly upbeat, warm, supportive and low-pressure, like a friendly nudge; never hype. The person decides if and when to act.',
   'Never use guilt or shame, never suggest compensating or making up for anything, never prescribe exercises, durations, foods, calories or targets,',
   'and never state or imply that the person skipped, missed or failed to train or eat (you do not know that).',
   'Do not mention names, workouts, foods, body measurements or health. Write in the requested language only; for Icelandic, write natural, correct Icelandic.',
@@ -186,7 +190,8 @@ export interface PushModel {
 
 /**
  * The reminder-copy model, resolved independently of the chat defaults: an OpenAI deployment uses PUSH_COPY_MODEL
- * (default gpt-5-mini) with PUSH_COPY_REASONING_EFFORT (default minimal; "off" sends none) and
+ * (default gpt-5-mini) with PUSH_COPY_REASONING_EFFORT (default minimal for gpt-5 / gpt-5-mini / gpt-5-nano, which
+ * accept it; low for any other reasoning model such as gpt-5.1+ or o-series, which do not; "off" sends none) and
  * PUSH_COPY_REASONING_TOKEN_ALLOWANCE (default 512, capped at 512). Non-reasoning models get no reasoning fields.
  * Anthropic keeps PUSH_COPY_MODEL or the configured chat model (no reasoning fields either way).
  * Shared with tests/live/push-copy-live.mjs.
@@ -197,7 +202,10 @@ export function resolvePushModel(env: (name: string) => string | undefined, prov
   const model = get('PUSH_COPY_MODEL') ?? DEFAULT_PUSH_OPENAI_MODEL;
   const reasoning = /^(gpt-5|o\d)/i.test(model);
   const effortEnv = get('PUSH_COPY_REASONING_EFFORT')?.toLowerCase();
-  const reasoningEffort = !reasoning || effortEnv === 'off' ? undefined : (effortEnv ?? DEFAULT_PUSH_REASONING_EFFORT);
+  // "minimal" exists only on the original GPT-5 family; later models (gpt-5.1+: none/low/medium/high) and o-series reject it.
+  const minimalOk = MINIMAL_EFFORT_MODELS.test(model);
+  const requested = effortEnv ?? (minimalOk ? DEFAULT_PUSH_REASONING_EFFORT : FALLBACK_PUSH_REASONING_EFFORT);
+  const reasoningEffort = !reasoning || effortEnv === 'off' ? undefined : requested === 'minimal' && !minimalOk ? FALLBACK_PUSH_REASONING_EFFORT : requested;
   const raw = get('PUSH_COPY_REASONING_TOKEN_ALLOWANCE');
   const n = raw ? Number(raw) : NaN;
   const allowance = Number.isFinite(n) && n >= 0 ? Math.min(DEFAULT_PUSH_REASONING_ALLOWANCE, Math.floor(n)) : DEFAULT_PUSH_REASONING_ALLOWANCE;

@@ -173,10 +173,11 @@ and then the concrete recommendation. One friendly closing check-in question is 
 message); `tidyReply` keeps it and still strips filler ("Great question!") and generic offers. The `[[why]]` split is
 unchanged.
 
-**Accountability.** When the user wants to skip, or this week's state shows skipped/missed sessions, the coach asks
-what's going on, pushes back on weak reasons ("too tired", "no time", "don't feel like it"), offers a minimum version
-("just the first two exercises, 20 minutes") and reminds them of their goal and what they've already done this week.
-How firmly depends on the **coach style** (`ai_settings.coach_style`, `STYLE_RULES`): Supportive (the default; warm,
+**Accountability.** When the user wants to skip, or this week's state shows skipped/missed sessions, the coach
+responds to ordinary reluctance ("no time", "don't feel like it") with a realistic minimum version ("just the first two
+exercises, 20 minutes"), connects it to their goal and what they've already done this week, and respects their choice.
+Tiredness, pain and poor sleep are never "weak reasons": they get the calm safety voice, a lighter option and rest as
+equally good choices, in every style (§4e, §4h). How firmly depends on the **coach style** (`ai_settings.coach_style`, `STYLE_RULES`): Supportive (the default; warm,
 upbeat encouragement with no pressure), Balanced (light accountability, a realistic minimum tied to the user's goal),
 Strict (opt-in; energetic, direct, firm accountability without scolding). Since coach voice v1 (§4h) no style pushes
 back on tiredness or pain or uses "no excuses" rhetoric. Unknown/missing values mean Supportive.
@@ -604,7 +605,8 @@ Spec (verbatim, with the approved English and Icelandic copy): `docs/specs/item1
 - **Calm safety voice** (`prompts/safety.ts`, in every style). Pain, injury, discomfort, illness, exhaustion, sleep
   deprivation, grief, overwhelm, body-image or eating distress, medical concerns or crisis → calm, empathetic and
   practical, with no emojis, jokes, hype or motivational pressure; safety wins over brevity and style. The crisis
-  exception (`identity.ts`), the tiredness control and the "tired of chicken" exception are unchanged.
+  exception (`identity.ts`) and the "tired of chicken" exception are unchanged; the tiredness control now also asks
+  for the calm safety voice (no emojis, jokes, hype or pressure).
 - **Styles.** Supportive stays the default (warm, upbeat, no pressure; the minimum version is an option; rest and
   declined suggestions accepted warmly). Balanced: light accountability, a realistic minimum tied to the user's stated
   goal, adapts to the time available. Strict (opt-in): energetic, direct, firm accountability rather than scolding;
@@ -612,10 +614,11 @@ Spec (verbatim, with the approved English and Icelandic copy): `docs/specs/item1
 - **Budgets.** Module targets `response` 400 and `safety` 260 words; the static instructions stay under a bounded
   1,450-word ceiling (`STATIC_WORD_CEILING`) in every style and output format. No safety rule was removed.
 - **Reminder push copy is independent of the chat model** (`_shared/push/copy.ts` `resolvePushModel`). With OpenAI it
-  uses `PUSH_COPY_MODEL` (default `gpt-5-mini`), `PUSH_COPY_REASONING_EFFORT` (default `minimal`; `off` sends none) and
+  uses `PUSH_COPY_MODEL` (default `gpt-5-mini`), `PUSH_COPY_REASONING_EFFORT` (default `minimal` for gpt-5 /
+  gpt-5-mini / gpt-5-nano; `low` for models that reject `minimal`, such as gpt-5.1+ or o-series; `off` sends none) and
   `PUSH_COPY_REASONING_TOKEN_ALLOWANCE` (default and cap 512), so changing `OPENAI_MODEL` never upgrades it silently.
   Non-reasoning models get no reasoning fields; 3 s timeout, no retries and the deterministic fallback are unchanged.
-  Emoji policy: only `workout_reminder` may end with ONE optional 💪 or 🙌; missed-workout and food nudges stay
+  Push tone is lightly upbeat (a friendly nudge, never hype). Emoji policy: only `workout_reminder` may end with ONE optional 💪 or 🙌; missed-workout and food nudges stay
   emoji-free and low-pressure. `validateCopy(raw, language, kind)` enforces it (the emoji counts toward the 140 code
   points; only that trailing emoji is exempt from the content checks) in `writeCopy()` and `finalizeCopy()`, cached
   copy included. `PUSH_AI_COPY`, consent, sharing, scheduling and quota rules are unchanged.
@@ -636,7 +639,7 @@ Spec (verbatim, with the approved English and Icelandic copy): `docs/specs/item1
 | Scheduler week plans: overrides only, baseline/history untouched, next-week reversion, stale/expired/week-changed, idempotent + undo, coach plan | `npx vitest run tests/unit/schedule.test.ts` | passing (21) |
 | Chat UI, **MOCKED** aiApi: welcome on empty conversation and after setup, no duplicates across refresh/two tabs and no send, unshared training, resume, collapsed "Why this?", Apply/Undo, stale plan | `npx vitest run tests/unit/aiUi.test.ts tests/unit/aiWelcome.test.ts` | passing (18 + 5) |
 | DB v2: why/action stored, replayed, listed; unknown action kinds dropped; client can't call/write | `node tests/rls/ai-run.mjs` | passing (18 checks) |
-| v3 server logic, **MOCKED** provider: personality/accountability rules, every style reaches the prompt, Strict + "too tired" → pushback + minimum version, Strict + "my knee hurts" → safety wins, rest day ≠ skipping, scope section for every style, off-topic redirect survives `tidyReply`, closing question kept | `npx vitest run tests/unit/aiCoachV2.test.ts` | passing (28 incl. v2) |
+| v3 server logic, **MOCKED** provider: personality/accountability rules, every style reaches the prompt, Strict + "too tired" → supportive, lighter option and rest (no pushback), Strict + "my knee hurts" → safety wins, rest day ≠ skipping, scope section for every style, off-topic redirect survives `tidyReply`, closing question kept | `npx vitest run tests/unit/aiCoachV2.test.ts` | passing (28 incl. v2) |
 | Welcome v3 (time of day, first name, training/rest day, missed session per style, PR) and quick-reply chips (**MOCKED** aiApi) | `npx vitest run tests/unit/aiWelcome.test.ts tests/unit/aiUi.test.ts` | passing (10 + 19) |
 | Coach cheers: picker (situations × styles, discomfort, no repeats, warm-ups, ≤ 12 words, no food/weight words) and logger UI (popup on ✓, none on undo, rest-over names the next set once, background return, toggle off) | `npx vitest run tests/unit/coachCheers.test.ts tests/unit/coachCheersUi.test.ts`, `npx playwright test tests/e2e/coach-cheers.spec.ts` | passing (15 + 8 + 1 e2e) |
 | DB v3: coach_style default, save/refuse, own row only, no direct write | `node tests/rls/ai-run.mjs` (now also in CI) | see PR CI |
