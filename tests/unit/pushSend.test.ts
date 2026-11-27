@@ -14,6 +14,7 @@ import { authorizePush, processCoachJob, processJob, quietUntil, runPushSend, zo
 import {
   COPY_MAX_CODE_POINTS,
   DEFAULT_PUSH_OPENAI_MODEL,
+  DEFAULT_PUSH_REASONING_EFFORT,
   fallbackBody,
   finalizeCopy,
   resolvePushModel,
@@ -487,17 +488,18 @@ describe('coach reminders: the model writes only the body', () => {
 
 describe('coach reminders: push model defaults and the narrow emoji policy', () => {
   it('push copy has its own OpenAI defaults: changing the chat model never changes reminder copy', () => {
-    expect(DEFAULT_OPENAI_MODEL).toBe('gpt-5');
-    expect(DEFAULT_PUSH_OPENAI_MODEL).toBe('gpt-5-mini');
-    for (const chat of [undefined, 'gpt-5', 'gpt-5-mini', 'gpt-4.1-mini']) {
+    expect(DEFAULT_OPENAI_MODEL).toBe('gpt-5.4');
+    expect(DEFAULT_PUSH_OPENAI_MODEL).toBe('gpt-5.4-mini');
+    expect(DEFAULT_PUSH_REASONING_EFFORT).toBe('none');
+    for (const chat of [undefined, 'gpt-5.4', 'gpt-5.5', 'gpt-5-mini', 'gpt-4.1-mini']) {
       const e = (k: string) => ({ OPENAI_API_KEY: 'k', ...(chat ? { OPENAI_MODEL: chat } : {}) })[k];
       const p = resolveProvider(e)!;
-      expect(p.model).toBe(chat ?? 'gpt-5');
-      expect(resolvePushModel(e, p), String(chat)).toEqual({ model: 'gpt-5-mini', reasoningEffort: 'minimal', reasoningAllowance: 512 });
+      expect(p.model).toBe(chat ?? 'gpt-5.4');
+      expect(resolvePushModel(e, p), String(chat)).toEqual({ model: 'gpt-5.4-mini', reasoningEffort: 'none', reasoningAllowance: 0 });
     }
     // The chat effort env does not leak into push either.
     const e2 = (k: string) => ({ OPENAI_API_KEY: 'k', OPENAI_REASONING_EFFORT: 'high', OPENAI_REASONING_TOKEN_ALLOWANCE: '8000' })[k];
-    expect(resolvePushModel(e2, resolveProvider(e2)!)).toEqual({ model: 'gpt-5-mini', reasoningEffort: 'minimal', reasoningAllowance: 512 });
+    expect(resolvePushModel(e2, resolveProvider(e2)!)).toEqual({ model: 'gpt-5.4-mini', reasoningEffort: 'none', reasoningAllowance: 0 });
   });
 
   it('explicit push overrides still apply; non-reasoning models get no reasoning fields; the allowance never exceeds 512', () => {
@@ -505,44 +507,53 @@ describe('coach reminders: push model defaults and the narrow emoji policy', () 
       const e = (k: string) => ({ OPENAI_API_KEY: 'k', ...over })[k];
       return resolvePushModel(e, resolveProvider(e)!);
     };
-    expect(r({ PUSH_COPY_MODEL: 'gpt-5-nano' })).toEqual({ model: 'gpt-5-nano', reasoningEffort: 'minimal', reasoningAllowance: 512 });
-    expect(r({ PUSH_COPY_REASONING_EFFORT: 'low' })).toMatchObject({ reasoningEffort: 'low' });
-    expect(r({ PUSH_COPY_REASONING_EFFORT: 'off' })).toEqual({ model: 'gpt-5-mini', reasoningEffort: undefined, reasoningAllowance: 0 });
-    expect(r({ PUSH_COPY_REASONING_TOKEN_ALLOWANCE: '256' })).toMatchObject({ reasoningAllowance: 256 });
-    expect(r({ PUSH_COPY_REASONING_TOKEN_ALLOWANCE: '4000' })).toMatchObject({ reasoningAllowance: 512 });
+    expect(r({ PUSH_COPY_MODEL: 'gpt-5.5' })).toEqual({ model: 'gpt-5.5', reasoningEffort: 'none', reasoningAllowance: 0 });
+    expect(r({ PUSH_COPY_REASONING_EFFORT: 'low' })).toEqual({ model: 'gpt-5.4-mini', reasoningEffort: 'low', reasoningAllowance: 512 });
+    expect(r({ PUSH_COPY_REASONING_EFFORT: 'off' })).toEqual({ model: 'gpt-5.4-mini', reasoningEffort: undefined, reasoningAllowance: 0 });
+    expect(r({ PUSH_COPY_REASONING_EFFORT: 'low', PUSH_COPY_REASONING_TOKEN_ALLOWANCE: '256' })).toMatchObject({ reasoningAllowance: 256 });
+    expect(r({ PUSH_COPY_REASONING_EFFORT: 'low', PUSH_COPY_REASONING_TOKEN_ALLOWANCE: '4000' })).toMatchObject({ reasoningAllowance: 512 });
+    // An explicit allowance still wins with "none" (capped at 512).
+    expect(r({ PUSH_COPY_REASONING_TOKEN_ALLOWANCE: '128' })).toEqual({ model: 'gpt-5.4-mini', reasoningEffort: 'none', reasoningAllowance: 128 });
     expect(r({ PUSH_COPY_MODEL: 'gpt-4.1-mini', PUSH_COPY_REASONING_EFFORT: 'low' })).toEqual({ model: 'gpt-4.1-mini', reasoningEffort: undefined, reasoningAllowance: 0 });
     // Anthropic: the push override or the configured model, never reasoning fields.
     const a = (k: string) => ({ ANTHROPIC_API_KEY: 'k', ANTHROPIC_MODEL: 'claude-sonnet-5-5' })[k];
     expect(resolvePushModel(a, resolveProvider(a)!)).toEqual({ model: 'claude-sonnet-5-5', reasoningEffort: undefined, reasoningAllowance: 0 });
   });
 
-  it('"minimal" is the default only for gpt-5 / gpt-5-mini / gpt-5-nano; gpt-5.1+ and o-series overrides get a compatible effort', () => {
+  it('"none" (the default) and "minimal" are mapped to what each model accepts', () => {
     const r = (over: Record<string, string>) => {
       const e = (k: string) => ({ OPENAI_API_KEY: 'k', ...over })[k];
       return resolvePushModel(e, resolveProvider(e)!);
     };
-    for (const m of ['gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5-mini-2025-08-07']) expect(r({ PUSH_COPY_MODEL: m }).reasoningEffort, m).toBe('minimal');
-    for (const m of ['gpt-5.1', 'gpt-5.1-mini', 'gpt-5.2', 'gpt-5-pro', 'o4-mini']) {
+    // The original GPT-5 family rejects "none" and gets "minimal" (with the 512 allowance).
+    for (const m of ['gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5-mini-2025-08-07']) {
+      expect(r({ PUSH_COPY_MODEL: m }), m).toEqual({ model: m, reasoningEffort: 'minimal', reasoningAllowance: 512 });
+    }
+    // gpt-5.1+ reject "minimal": an explicit "minimal" becomes "none".
+    for (const m of ['gpt-5.1', 'gpt-5.4-mini', 'gpt-5.5']) {
+      expect(r({ PUSH_COPY_MODEL: m }), m).toEqual({ model: m, reasoningEffort: 'none', reasoningAllowance: 0 });
+      expect(r({ PUSH_COPY_MODEL: m, PUSH_COPY_REASONING_EFFORT: 'minimal' }), m).toEqual({ model: m, reasoningEffort: 'none', reasoningAllowance: 0 });
+    }
+    // Models that take neither get "low".
+    for (const m of ['gpt-5-pro', 'o4-mini']) {
       expect(r({ PUSH_COPY_MODEL: m }), m).toEqual({ model: m, reasoningEffort: 'low', reasoningAllowance: 512 });
-      // An explicit "minimal" is never sent to a model that rejects it; other explicit efforts are kept.
       expect(r({ PUSH_COPY_MODEL: m, PUSH_COPY_REASONING_EFFORT: 'minimal' }).reasoningEffort, m).toBe('low');
     }
-    expect(r({ PUSH_COPY_MODEL: 'gpt-5.1', PUSH_COPY_REASONING_EFFORT: 'none' }).reasoningEffort).toBe('none');
     expect(r({ PUSH_COPY_MODEL: 'gpt-5.1', PUSH_COPY_REASONING_EFFORT: 'off' })).toMatchObject({ reasoningEffort: undefined, reasoningAllowance: 0 });
   });
 
-  it('override-only payload: PUSH_COPY_MODEL=gpt-5.1 sends reasoning_effort "low", never "minimal"', async () => {
+  it('override-only payload: PUSH_COPY_MODEL=gpt-5-mini sends "minimal", never the "none" it rejects', async () => {
     const p = provider('{"body":"Open Today when it suits you."}');
-    const r = await writeCopy({ env: env({ OPENAI_MODEL: '', PUSH_COPY_MODEL: 'gpt-5.1' }), fetch: p.fetch }, 'workout_reminder', 'en', AI_OK, 3000);
+    const r = await writeCopy({ env: env({ OPENAI_MODEL: '', PUSH_COPY_MODEL: 'gpt-5-mini' }), fetch: p.fetch }, 'workout_reminder', 'en', AI_OK, 3000);
     expect(r.source).toBe('ai');
-    expect(p.calls[0].body).toMatchObject({ model: 'gpt-5.1', reasoning_effort: 'low', max_completion_tokens: 160 + 512 });
-    expect(JSON.stringify(p.calls[0].body)).not.toContain('minimal');
+    expect(p.calls[0].body).toMatchObject({ model: 'gpt-5-mini', reasoning_effort: 'minimal', max_completion_tokens: 160 + 512 });
   });
 
-  it('the request uses the push defaults (gpt-5-mini, minimal, 160 + 512 tokens) and carries the reminder kind', async () => {
+  it('the request uses the push defaults (gpt-5.4-mini, none, 160 tokens) and carries the reminder kind', async () => {
     for (const [over, model, effort, max] of [
-      [{ OPENAI_MODEL: '' }, 'gpt-5-mini', 'minimal', 160 + 512],
-      [{ OPENAI_MODEL: 'gpt-5' }, 'gpt-5-mini', 'minimal', 160 + 512],
+      [{ OPENAI_MODEL: '' }, 'gpt-5.4-mini', 'none', 160],
+      [{ OPENAI_MODEL: 'gpt-5.4' }, 'gpt-5.4-mini', 'none', 160],
+      [{ PUSH_COPY_REASONING_EFFORT: 'low' }, 'gpt-5.4-mini', 'low', 160 + 512],
       [{ PUSH_COPY_MODEL: 'gpt-4.1-mini' }, 'gpt-4.1-mini', undefined, 160],
     ] as const) {
       const p = provider('{"body":"Open Today when it suits you."}');

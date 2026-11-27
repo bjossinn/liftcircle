@@ -1,5 +1,5 @@
 {
-  "note": "Explicit candidates for tests/live/coach-eval.mjs. Every field is required: no implicit provider selection and no silent model substitution (the runner fails a result whose response names any model other than `model` or one of its documented `aliases`; exact match, never a prefix). Prices are per million tokens, list prices as of the date given, no prompt caching assumed (cacheAssumption). Re-check the source pages before reporting costs. 'baseline' runs the handler from the pre-item-10 commit (single prompt, text replies). Nothing here changes the production model; the production OpenAI default is gpt-5 with medium reasoning (gpt-5-medium-structured), with the gpt-5-mini baseline and gpt-5 low kept for comparison.",
+  "note": "Explicit candidates for tests/live/coach-eval.mjs. Every field is required: no implicit provider selection and no silent model substitution (the runner fails a result whose response names any model other than `model` or one of its documented `aliases`; exact match, never a prefix). Prices are per million tokens, list prices as of the date given, no prompt caching assumed (cacheAssumption). Re-check the source pages before reporting costs. 'baseline' runs the handler from the pre-item-10 commit (single prompt, text replies). Nothing here changes the production model; the production OpenAI default is gpt-5.4 with medium reasoning (gpt-5.4-medium-structured; gpt-5 and gpt-5-mini retire 2026-12-11), with the gpt-5-mini baseline, gpt-5 low and gpt-5 medium kept for comparison until then.",
   "baselineRef": "f6c17901b36016f9e8b40fd404bb25a899fda4a2",
   "candidates": [
     {
@@ -80,7 +80,7 @@
     },
     {
       "id": "gpt-5-medium-structured",
-      "label": "Production default: GPT-5, medium reasoning, Structured Outputs",
+      "label": "Previous production default (until Nov 2026; retires 2026-12-11): GPT-5, medium reasoning, Structured Outputs",
       "source": "current",
       "provider": "openai",
       "model": "gpt-5",
@@ -95,6 +95,25 @@
       },
       "aliases": [
         "gpt-5-2025-08-07"
+      ]
+    },
+    {
+      "id": "gpt-5.4-medium-structured",
+      "label": "Production default: GPT-5.4, medium reasoning, Structured Outputs",
+      "source": "current",
+      "provider": "openai",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "structuredOutput": "on",
+      "pricing": {
+        "inputPerMTok": 2.5,
+        "outputPerMTok": 15.0,
+        "source": "https://developers.openai.com/api/docs/models/gpt-5.4",
+        "asOf": "2026-03-05",
+        "cacheAssumption": "none"
+      },
+      "aliases": [
+        "gpt-5.4-2026-03-05"
       ]
     },
     {

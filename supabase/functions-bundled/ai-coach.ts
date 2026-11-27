@@ -5067,8 +5067,18 @@ function isOpenAiQuotaError(bodyText) {
 // supabase/functions/_shared/ai/provider.ts
 var DEFAULT_MODEL = "claude-sonnet-5-5";
 var DEFAULT_API_VERSION = "2023-06-01";
-var DEFAULT_OPENAI_MODEL = "gpt-5";
+var DEFAULT_OPENAI_MODEL = "gpt-5.4";
 var DEFAULT_OPENAI_REASONING_EFFORT = "medium";
+var isOpenAiReasoningModel = (model) => /^(gpt-5|o\d)/i.test(model);
+var MINIMAL_EFFORT_MODELS = /^gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$/i;
+var NONE_EFFORT_MODELS = /^gpt-5\.\d+(?!\S*-pro)/i;
+function compatibleReasoningEffort(model, effort) {
+  if (effort !== "minimal" && effort !== "none") return effort;
+  const minimalOk = MINIMAL_EFFORT_MODELS.test(model);
+  const noneOk = NONE_EFFORT_MODELS.test(model);
+  if (effort === "minimal") return minimalOk ? "minimal" : noneOk ? "none" : "low";
+  return noneOk ? "none" : minimalOk ? "minimal" : "low";
+}
 var PROVIDER_NAMES = { anthropic: "Anthropic", openai: "OpenAI" };
 function resolveProvider(env2) {
   const get = (k) => env2(k)?.trim() || void 0;
@@ -5078,11 +5088,12 @@ function resolveProvider(env2) {
     const apiKey2 = get("OPENAI_API_KEY");
     if (!apiKey2) return null;
     const model = get("OPENAI_MODEL") ?? DEFAULT_OPENAI_MODEL;
-    const reasoning = /^(gpt-5|o\d)/i.test(model);
+    const reasoning = isOpenAiReasoningModel(model);
     const effortEnv = get("OPENAI_REASONING_EFFORT")?.toLowerCase();
-    const reasoningEffort = effortEnv === "off" ? void 0 : effortEnv ?? (reasoning ? DEFAULT_OPENAI_REASONING_EFFORT : void 0);
+    const requested = effortEnv === "off" ? void 0 : effortEnv ?? (reasoning ? DEFAULT_OPENAI_REASONING_EFFORT : void 0);
+    const reasoningEffort = requested && reasoning ? compatibleReasoningEffort(model, requested) : requested;
     const allowance = Number(get("OPENAI_REASONING_TOKEN_ALLOWANCE"));
-    const defaultAllowance = reasoningEffort === "minimal" || reasoningEffort === "low" ? 2e3 : reasoningEffort === "high" ? 8e3 : 4e3;
+    const defaultAllowance = reasoningEffort === "none" ? 0 : reasoningEffort === "minimal" || reasoningEffort === "low" ? 2e3 : reasoningEffort === "high" ? 8e3 : 4e3;
     return {
       provider,
       apiKey: apiKey2,

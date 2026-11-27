@@ -817,8 +817,18 @@ function isOpenAiQuotaError(bodyText) {
 // supabase/functions/_shared/ai/provider.ts
 var DEFAULT_MODEL = "claude-sonnet-5-5";
 var DEFAULT_API_VERSION = "2023-06-01";
-var DEFAULT_OPENAI_MODEL = "gpt-5";
+var DEFAULT_OPENAI_MODEL = "gpt-5.4";
 var DEFAULT_OPENAI_REASONING_EFFORT = "medium";
+var isOpenAiReasoningModel = (model) => /^(gpt-5|o\d)/i.test(model);
+var MINIMAL_EFFORT_MODELS = /^gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$/i;
+var NONE_EFFORT_MODELS = /^gpt-5\.\d+(?!\S*-pro)/i;
+function compatibleReasoningEffort(model, effort) {
+  if (effort !== "minimal" && effort !== "none") return effort;
+  const minimalOk = MINIMAL_EFFORT_MODELS.test(model);
+  const noneOk = NONE_EFFORT_MODELS.test(model);
+  if (effort === "minimal") return minimalOk ? "minimal" : noneOk ? "none" : "low";
+  return noneOk ? "none" : minimalOk ? "minimal" : "low";
+}
 function resolveProvider(env2) {
   const get = (k) => env2(k)?.trim() || void 0;
   const explicit = get("AI_PROVIDER")?.toLowerCase();
@@ -827,11 +837,12 @@ function resolveProvider(env2) {
     const apiKey2 = get("OPENAI_API_KEY");
     if (!apiKey2) return null;
     const model = get("OPENAI_MODEL") ?? DEFAULT_OPENAI_MODEL;
-    const reasoning = /^(gpt-5|o\d)/i.test(model);
+    const reasoning = isOpenAiReasoningModel(model);
     const effortEnv = get("OPENAI_REASONING_EFFORT")?.toLowerCase();
-    const reasoningEffort = effortEnv === "off" ? void 0 : effortEnv ?? (reasoning ? DEFAULT_OPENAI_REASONING_EFFORT : void 0);
+    const requested = effortEnv === "off" ? void 0 : effortEnv ?? (reasoning ? DEFAULT_OPENAI_REASONING_EFFORT : void 0);
+    const reasoningEffort = requested && reasoning ? compatibleReasoningEffort(model, requested) : requested;
     const allowance = Number(get("OPENAI_REASONING_TOKEN_ALLOWANCE"));
-    const defaultAllowance = reasoningEffort === "minimal" || reasoningEffort === "low" ? 2e3 : reasoningEffort === "high" ? 8e3 : 4e3;
+    const defaultAllowance = reasoningEffort === "none" ? 0 : reasoningEffort === "minimal" || reasoningEffort === "low" ? 2e3 : reasoningEffort === "high" ? 8e3 : 4e3;
     return {
       provider,
       apiKey: apiKey2,
@@ -1136,11 +1147,9 @@ var COACH_KINDS = ["workout_reminder", "missed_nudge", "food_unlogged"];
 var isCoachKind = (k) => COACH_KINDS.includes(k);
 var COPY_MAX_CODE_POINTS = 140;
 var COPY_TIMEOUT_MS = 3e3;
-var DEFAULT_PUSH_OPENAI_MODEL = "gpt-5-mini";
-var DEFAULT_PUSH_REASONING_EFFORT = "minimal";
+var DEFAULT_PUSH_OPENAI_MODEL = "gpt-5.4-mini";
+var DEFAULT_PUSH_REASONING_EFFORT = "none";
 var DEFAULT_PUSH_REASONING_ALLOWANCE = 512;
-var FALLBACK_PUSH_REASONING_EFFORT = "low";
-var MINIMAL_EFFORT_MODELS = /^gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$/i;
 var WORKOUT_REMINDER_EMOJIS = ["\u{1F4AA}", "\u{1F64C}"];
 var COPY_MIN_BUDGET_MS = 1200;
 var KEYS = {
@@ -1237,14 +1246,12 @@ function resolvePushModel(env2, provider) {
   const get = (k) => env2(k)?.trim() || void 0;
   if (provider.provider !== "openai") return { model: get("PUSH_COPY_MODEL") ?? provider.model, reasoningEffort: void 0, reasoningAllowance: 0 };
   const model = get("PUSH_COPY_MODEL") ?? DEFAULT_PUSH_OPENAI_MODEL;
-  const reasoning = /^(gpt-5|o\d)/i.test(model);
   const effortEnv = get("PUSH_COPY_REASONING_EFFORT")?.toLowerCase();
-  const minimalOk = MINIMAL_EFFORT_MODELS.test(model);
-  const requested = effortEnv ?? (minimalOk ? DEFAULT_PUSH_REASONING_EFFORT : FALLBACK_PUSH_REASONING_EFFORT);
-  const reasoningEffort = !reasoning || effortEnv === "off" ? void 0 : requested === "minimal" && !minimalOk ? FALLBACK_PUSH_REASONING_EFFORT : requested;
+  const reasoningEffort = !isOpenAiReasoningModel(model) || effortEnv === "off" ? void 0 : compatibleReasoningEffort(model, effortEnv ?? DEFAULT_PUSH_REASONING_EFFORT);
   const raw = get("PUSH_COPY_REASONING_TOKEN_ALLOWANCE");
   const n = raw ? Number(raw) : NaN;
-  const allowance = Number.isFinite(n) && n >= 0 ? Math.min(DEFAULT_PUSH_REASONING_ALLOWANCE, Math.floor(n)) : DEFAULT_PUSH_REASONING_ALLOWANCE;
+  const fallbackAllowance = reasoningEffort === "none" ? 0 : DEFAULT_PUSH_REASONING_ALLOWANCE;
+  const allowance = Number.isFinite(n) && n >= 0 ? Math.min(DEFAULT_PUSH_REASONING_ALLOWANCE, Math.floor(n)) : fallbackAllowance;
   const reasoningAllowance = reasoningEffort ? allowance : 0;
   return { model, reasoningEffort, reasoningAllowance };
 }

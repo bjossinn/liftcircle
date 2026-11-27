@@ -14,7 +14,7 @@
  * no database.
  *
  * The reminder model is resolved exactly as in production (copy.ts resolvePushModel: with OpenAI, PUSH_COPY_MODEL default
- * gpt-5-mini, minimal reasoning, 512 reasoning tokens; independent of OPENAI_MODEL). Emoji policy (validateCopy): only
+ * gpt-5.4-mini, no reasoning ("none"), 0 reasoning tokens; independent of OPENAI_MODEL). Emoji policy (validateCopy): only
  * workout_reminder may end with one 💪 or 🙌; missed and food nudges must be emoji-free (checked again below).
  *
  * Env: OPENAI_API_KEY or ANTHROPIC_API_KEY (+ AI_PROVIDER, *_MODEL, PUSH_COPY_MODEL, PUSH_COPY_REASONING_EFFORT,

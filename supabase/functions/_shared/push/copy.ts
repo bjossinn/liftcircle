@@ -13,8 +13,8 @@
  *  - Emoji: none, except ONE optional trailing 💪 or 🙌 on workout_reminder (the whole text still counts toward the 140
  *    code points; only that trailing emoji is exempt from the content checks). Missed-workout and food nudges stay
  *    emoji-free and low-pressure.
- *  - Model: independent of the chat default. With OpenAI, PUSH_COPY_MODEL (default gpt-5-mini) with
- *    PUSH_COPY_REASONING_EFFORT (default minimal) and PUSH_COPY_REASONING_TOKEN_ALLOWANCE (default 512); non-reasoning
+ *  - Model: independent of the chat default. With OpenAI, PUSH_COPY_MODEL (default gpt-5.4-mini) with
+ *    PUSH_COPY_REASONING_EFFORT (default none) and PUSH_COPY_REASONING_TOKEN_ALLOWANCE (0 for none, else 512); non-reasoning
  *    models get no reasoning fields. Changing OPENAI_MODEL never changes reminder copy.
  *  - One attempt per event, 3-second total timeout, no retries, small output and reasoning budget. Any failure →
  *    the approved fallback. Usage is reported as counts; bodies are never logged. Nothing here touches chat history or
@@ -23,7 +23,7 @@
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { sharedT, type Language } from '../i18n/core.ts';
 // @ts-ignore see above
-import { createMessage, resolveProvider, type ProviderId } from '../ai/provider.ts';
+import { compatibleReasoningEffort, createMessage, isOpenAiReasoningModel, resolveProvider, type ProviderId } from '../ai/provider.ts';
 // @ts-ignore see above
 import { consentedProvider } from '../ai/consent.ts';
 // @ts-ignore see above
@@ -38,13 +38,11 @@ export const isCoachKind = (k: string): k is CoachKind => (COACH_KINDS as readon
 export const COPY_MAX_CODE_POINTS = 140;
 export const COPY_TIMEOUT_MS = 3000;
 /** Push copy defaults (OpenAI), deliberately separate from the chat defaults in ../ai/provider.ts. */
-export const DEFAULT_PUSH_OPENAI_MODEL = 'gpt-5-mini';
-export const DEFAULT_PUSH_REASONING_EFFORT = 'minimal';
+export const DEFAULT_PUSH_OPENAI_MODEL = 'gpt-5.4-mini';
+/** "none" since gpt-5.4-mini (~1.1 s, well inside COPY_TIMEOUT_MS); mapped per model by compatibleReasoningEffort. */
+export const DEFAULT_PUSH_REASONING_EFFORT = 'none';
+/** Hidden-reasoning allowance (and its cap) for any effort other than "none", which gets 0 by default. */
 export const DEFAULT_PUSH_REASONING_ALLOWANCE = 512;
-/** Push effort for reasoning models that don't accept "minimal" (gpt-5.1+, o-series). */
-export const FALLBACK_PUSH_REASONING_EFFORT = 'low';
-/** gpt-5, gpt-5-mini, gpt-5-nano (optionally date-pinned): the only models that accept reasoning_effort "minimal". */
-const MINIMAL_EFFORT_MODELS = /^gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$/i;
 /** The only emoji generated copy may carry: one, trailing, on workout_reminder. */
 export const WORKOUT_REMINDER_EMOJIS: readonly string[] = ['💪', '🙌'];
 
@@ -190,9 +188,10 @@ export interface PushModel {
 
 /**
  * The reminder-copy model, resolved independently of the chat defaults: an OpenAI deployment uses PUSH_COPY_MODEL
- * (default gpt-5-mini) with PUSH_COPY_REASONING_EFFORT (default minimal for gpt-5 / gpt-5-mini / gpt-5-nano, which
- * accept it; low for any other reasoning model such as gpt-5.1+ or o-series, which do not; "off" sends none) and
- * PUSH_COPY_REASONING_TOKEN_ALLOWANCE (default 512, capped at 512). Non-reasoning models get no reasoning fields.
+ * (default gpt-5.4-mini) with PUSH_COPY_REASONING_EFFORT (default none; compatibleReasoningEffort maps none/minimal to
+ * what the model accepts: minimal on gpt-5 / gpt-5-mini / gpt-5-nano, low on o-series; "off" sends no effort) and
+ * PUSH_COPY_REASONING_TOKEN_ALLOWANCE (default 0 for none and 512 otherwise, capped at 512). Non-reasoning models get
+ * no reasoning fields.
  * Anthropic keeps PUSH_COPY_MODEL or the configured chat model (no reasoning fields either way).
  * Shared with tests/live/push-copy-live.mjs.
  */
@@ -200,15 +199,13 @@ export function resolvePushModel(env: (name: string) => string | undefined, prov
   const get = (k: string) => env(k)?.trim() || undefined;
   if (provider.provider !== 'openai') return { model: get('PUSH_COPY_MODEL') ?? provider.model, reasoningEffort: undefined, reasoningAllowance: 0 };
   const model = get('PUSH_COPY_MODEL') ?? DEFAULT_PUSH_OPENAI_MODEL;
-  const reasoning = /^(gpt-5|o\d)/i.test(model);
   const effortEnv = get('PUSH_COPY_REASONING_EFFORT')?.toLowerCase();
-  // "minimal" exists only on the original GPT-5 family; later models (gpt-5.1+: none/low/medium/high) and o-series reject it.
-  const minimalOk = MINIMAL_EFFORT_MODELS.test(model);
-  const requested = effortEnv ?? (minimalOk ? DEFAULT_PUSH_REASONING_EFFORT : FALLBACK_PUSH_REASONING_EFFORT);
-  const reasoningEffort = !reasoning || effortEnv === 'off' ? undefined : requested === 'minimal' && !minimalOk ? FALLBACK_PUSH_REASONING_EFFORT : requested;
+  const reasoningEffort =
+    !isOpenAiReasoningModel(model) || effortEnv === 'off' ? undefined : compatibleReasoningEffort(model, effortEnv ?? DEFAULT_PUSH_REASONING_EFFORT);
   const raw = get('PUSH_COPY_REASONING_TOKEN_ALLOWANCE');
   const n = raw ? Number(raw) : NaN;
-  const allowance = Number.isFinite(n) && n >= 0 ? Math.min(DEFAULT_PUSH_REASONING_ALLOWANCE, Math.floor(n)) : DEFAULT_PUSH_REASONING_ALLOWANCE;
+  const fallbackAllowance = reasoningEffort === 'none' ? 0 : DEFAULT_PUSH_REASONING_ALLOWANCE;
+  const allowance = Number.isFinite(n) && n >= 0 ? Math.min(DEFAULT_PUSH_REASONING_ALLOWANCE, Math.floor(n)) : fallbackAllowance;
   const reasoningAllowance = reasoningEffort ? allowance : 0;
   return { model, reasoningEffort, reasoningAllowance };
 }
