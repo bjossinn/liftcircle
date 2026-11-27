@@ -185,8 +185,8 @@ describe('MOCKED ai-coach v2: response style instructions', () => {
     expect(SYSTEM_RULES).toMatch(/celebrate real effort and progress without inventing achievements or exaggerating results/);
     expect(SYSTEM_RULES).toMatch(/Avoid canned praise, forced slang, pet names and sales-pitch hype/);
     expect(SYSTEM_RULES).not.toMatch(/Voice: warm, clear and steady/);
-    expect(SYSTEM_RULES).toMatch(/Emojis: use 0–2 natural emojis per ordinary reply/);
-    expect(SYSTEM_RULES).toMatch(/never a quota; never replace advice, numbers or warnings with them\. The calm safety rule overrides this/);
+    expect(SYSTEM_RULES).toMatch(/Emojis: include 1–2 natural, fitting emojis in every ordinary reply/);
+    expect(SYSTEM_RULES).toMatch(/Never replace advice, numbers or warnings with them\. The calm safety rule overrides this/);
     expect(SYSTEM_RULES).toMatch(/Calm safety voice: .* No emojis, jokes, hype or motivational pressure/);
     expect(SYSTEM_RULES).toMatch(/use their first name only if they gave it/);
     expect(SYSTEM_RULES).toMatch(/React briefly to what they said/);

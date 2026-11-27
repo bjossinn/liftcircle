@@ -65,13 +65,13 @@ describe('six prompt modules', () => {
     expect(MODULE_TARGETS).toMatchObject({ response: 400, safety: 260 });
   });
 
-  it('coach voice v1: upbeat voice, optional emojis and the calm safety voice in every style and output format, with safety, cards and language controls kept', () => {
+  it('coach voice v1: upbeat voice, 1–2 natural emojis and the calm safety voice in every style and output format, with safety, cards and language controls kept', () => {
     for (const style of COACH_STYLES) for (const output of OUTPUTS) {
       const text = staticInstructions({ style, output });
       const at = `${style}/${output}`;
       // Voice and emoji policy
       expect(text, at).toContain('- Voice: upbeat, energetic, warm and fun, like a thoughtful training buddy.');
-      expect(text, at).toContain('- Emojis: use 0–2 natural emojis per ordinary reply, such as 💪, 🔥 or 🙌. They are optional, never a quota;');
+      expect(text, at).toContain('- Emojis: include 1–2 natural, fitting emojis in every ordinary reply, varied to fit the topic and not the same one every time,');
       expect(text, at).toContain('The calm safety rule overrides this.');
       // Calm safety voice, and it sits in the safety block that overrides the style
       expect(text, at).toContain(
@@ -112,7 +112,7 @@ describe('six prompt modules', () => {
   });
 
   it('has a stable version and a hash that changes with the static text', () => {
-    expect(PROMPT_VERSION).toBe('2026-11-27.coach-voice-v1');
+    expect(PROMPT_VERSION).toBe('2026-11-27.coach-voice-v2');
     const a = promptHash(staticInstructions({ style: 'supportive', output: 'text' }));
     expect(a).toMatch(/^[0-9a-f]{14}$/);
     expect(promptHash(staticInstructions({ style: 'supportive', output: 'text' }))).toBe(a);

@@ -144,8 +144,8 @@ describe('MOCKED ai-coach v4: shorter, formatted answers', () => {
       expect(ctx.system, style).toContain(`Coach style: ${style.toUpperCase()}`);
       // Coach voice v1: the upbeat voice and the optional-emoji rule never loosen the concise card rules.
       expect(ctx.system, style).toMatch(/Voice: upbeat, energetic, warm and fun, like a thoughtful training buddy/);
-      expect(ctx.system, style).toMatch(/Emojis: use 0–2 natural emojis per ordinary reply/);
-      expect(ctx.system, style).toMatch(/never replace advice, numbers or warnings with them/);
+      expect(ctx.system, style).toMatch(/Emojis: include 1–2 natural, fitting emojis in every ordinary reply/);
+      expect(ctx.system, style).toMatch(/Never replace advice, numbers or warnings with them/);
       expect(ctx.system, style).toMatch(/Cards are authoritative: when a card comes with your reply, don't restate its contents; one short line pointing to its button/);
       expect(ctx.system, style).toMatch(/Actions are suggestions the user reviews: never say something was added, changed or applied/);
       expect(ctx.system, style).toMatch(/Calm safety voice: .* No emojis, jokes, hype or motivational pressure/);

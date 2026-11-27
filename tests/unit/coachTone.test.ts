@@ -61,7 +61,7 @@ describe('tone smoke set: prompt controls', () => {
     for (const style of COACH_STYLES) {
       const { system } = await buildContext({ db: db(), uid: 'u', settings: settings(style), text: c.prompt, mode: 'chat', now: NOW });
       expect(system, style).toMatch(/Calm safety voice: .* No emojis, jokes, hype or motivational pressure\. Safety takes priority over brevity and style\./);
-      expect(system, style).toMatch(/Emojis: use 0–2 natural emojis per ordinary reply/);
+      expect(system, style).toMatch(/Emojis: include 1–2 natural, fitting emojis in every ordinary reply/);
       expect(system, style).toMatch(/Crisis exception: if the user mentions a crisis, self-harm/);
       expect(system, style).toContain(`Coach style: ${style.toUpperCase()}`);
       const tiredControl = /The newest message says the user is tired\. Whatever the coach style: be supportive/;

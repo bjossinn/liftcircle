@@ -27,7 +27,7 @@ export { asCoachStyle, COACH_STYLES, DEFAULT_COACH_STYLE, SAFETY, STYLE_RULES, t
 export { OUTPUT_FORMAT, type OutputMode } from './response.ts';
 
 /** Bump when any module's wording changes (recorded with eval results and in the content-free send log). */
-export const PROMPT_VERSION = '2026-11-27.coach-voice-v1';
+export const PROMPT_VERSION = '2026-11-27.coach-voice-v2';
 
 export type PromptModule = 'identity' | 'safety' | 'grounding' | 'training' | 'nutrition' | 'response';
 /** Approximate word targets per module (the safety module includes the selected coach style). */

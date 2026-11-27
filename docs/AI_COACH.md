@@ -268,7 +268,7 @@ messages are stored unchanged.
 bullets or 2 short paragraphs, texting-a-client voice (no preambles, no repeating the question, no caveat lists), detail
 after `[[why]]` or an offer ("Want the full breakdown?"); longer only on request or for a full program/meal plan (bold
 day/session names, short lists). Formatting the app supports is spelled out (bold for key numbers and names, short
-lists, italic rarely, no headings/tables/code blocks; since coach voice v1, 0–2 optional emojis per ordinary reply and
+lists, italic rarely, no headings/tables/code blocks; since coach voice v2, 1–2 natural emojis in every ordinary reply and
 none in calm safety replies, §4h). `tidyReply` leaves Markdown markers and emojis untouched.
 
 **App guide.** `supabase/functions/_shared/ai/appGuide.ts` (shared with the app) has one line per main screen (path,
@@ -589,7 +589,7 @@ Spec (verbatim, with the approved English and Icelandic copy): `docs/specs/item1
 
 ## 4h. Coach voice v1 (Nov 2026): GPT-5 default and an upbeat, emoji-friendly persona
 
-`PROMPT_VERSION` `2026-11-27.coach-voice-v1`.
+`PROMPT_VERSION` `2026-11-27.coach-voice-v2` (v2 only changes the emoji rule from "0–2, optional" to "1–2 in every ordinary reply": with the optional wording, gpt-5.4 produced no emojis at all).
 
 - **Model.** `DEFAULT_OPENAI_MODEL` is `gpt-5` (was `gpt-5-mini`). It shipped at `low` reasoning effort (2,000-token
   allowance); after the owner tested the Icelandic replies the default is `medium` (`DEFAULT_OPENAI_REASONING_EFFORT`,
@@ -599,7 +599,7 @@ Spec (verbatim, with the approved English and Icelandic copy): `docs/specs/item1
 - **Voice** (`prompts/response.ts`). Upbeat, energetic, warm and fun, like a thoughtful training buddy; reacts to what
   the user said, celebrates real effort without inventing or exaggerating achievements, light humour when it fits; no
   canned praise, forced slang, pet names or sales hype; plain words, no em dashes; at most one question.
-- **Emojis.** 0–2 natural emojis per ordinary reply (💪, 🔥, 🙌…), optional and never a quota, never in place of
+- **Emojis.** 1–2 natural, fitting emojis in every ordinary reply, varied to the topic (💪, 🔥, 🙌, 🏃, 🥗, ✨, 😴 for a rest day…), never in place of
   advice, numbers or warnings. `tidyReply()` keeps them (it only strips fillers and generic offers).
 - **Icelandic.** "Sound like a person from Iceland texting": natural word order, correct inflections, everyday gym
   language; "Vel gert!", "Flott hjá þér!" and "Tökum þetta skref fyrir skref." are register examples, not stock
