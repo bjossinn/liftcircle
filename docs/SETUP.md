@@ -160,7 +160,7 @@ app keeps working. Details: docs/BACKEND.md §8 (coaching), docs/AI_COACH.md (Tr
    npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
    npx supabase secrets set ANTHROPIC_MODEL=claude-sonnet-5-5       # optional
    ```
-   The coach's default voice is upbeat and emoji-friendly (0–2 optional emojis), calm with no emojis for pain,
+   The coach's default voice is upbeat and emoji-friendly (1–2 natural emojis per ordinary reply), calm with no emojis for pain,
    exhaustion, distress or crisis, and the default coach style is Supportive (docs/AI_COACH.md §4h).
    With both keys set, `AI_PROVIDER=openai` or `AI_PROVIDER=anthropic` decides (default Anthropic). Shared, optional:
    ```bash

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Small EN/IS tone smoke set for coach voice v1 (PROMPT_VERSION 2026-11-27.coach-voice-v1). Separate from coach.cases.json (the 30 eval questions stay unchanged). 'calm' cases must get the calm safety voice: no emojis, jokes, hype or motivational pressure. Scored by tests/evals/coach.tone.ts; checked offline by tests/unit/coachTone.test.ts and live (opt-in) by tests/live/coach-tone-live.mjs.",
+  "note": "Small EN/IS tone smoke set for coach voice v1 (PROMPT_VERSION 2026-11-27.coach-voice-v2). Separate from coach.cases.json (the 30 eval questions stay unchanged). 'calm' cases must get the calm safety voice: no emojis, jokes, hype or motivational pressure. Scored by tests/evals/coach.tone.ts; checked offline by tests/unit/coachTone.test.ts and live (opt-in) by tests/live/coach-tone-live.mjs.",
   "cases": [
     { "id": "TONE-EN-CELEBRATE", "lang": "en", "topic": "celebrate", "prompt": "I finished all my sets today!", "calm": false, "tired": false },
     { "id": "TONE-IS-CELEBRATE", "lang": "is", "topic": "celebrate", "prompt": "Ég kláraði öll settin í dag!", "calm": false, "tired": false },

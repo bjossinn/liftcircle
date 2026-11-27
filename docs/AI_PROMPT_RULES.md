@@ -76,7 +76,7 @@ enforcement that does not depend on the model reading the prompt, and a regressi
 | R46 | Pregnancy questions: general, conservative guidance and a qualified professional (restored, review round 2) | safety | Pregnancy, medication or a medical condition | — | tests/unit/aiReviewServer.test.ts |
 | R47 | Medication questions: general, conservative guidance and a qualified professional (restored, review round 2) | safety | medication or a medical condition: also say to check with their doctor or midwife | — | tests/unit/aiReviewServer.test.ts |
 
-## Coach voice v1 (`PROMPT_VERSION` 2026-11-27.coach-voice-v1)
+## Coach voice v1 (`PROMPT_VERSION` 2026-11-27.coach-voice-v2; v2 makes 1–2 emojis per ordinary reply the default)
 
 Wording changes only; no rule above was removed and every anchor is still checked by
 `tests/unit/aiPromptModules.test.ts`.
@@ -84,7 +84,7 @@ Wording changes only; no rule above was removed and every anchor is still checke
 | Change | Module | Anchor | Deterministic enforcement | Regression test |
 |---|---|---|---|---|
 | Upbeat, energetic, warm and fun voice (replaces "warm, clear and steady") | response | Voice: upbeat, energetic, warm and fun | — | tests/unit/aiCoachV2.test.ts |
-| 0–2 optional emojis per ordinary reply; never instead of advice, numbers or warnings; overridden by the calm safety rule | response | Emojis: use 0–2 natural emojis per ordinary reply | `tidyReply()` keeps emojis | tests/unit/aiFollowups.test.ts |
+| 1–2 natural, fitting emojis in every ordinary reply, varied to the topic; never instead of advice, numbers or warnings; overridden by the calm safety rule | response | Emojis: include 1–2 natural, fitting emojis in every ordinary reply | `tidyReply()` keeps emojis | tests/unit/aiFollowups.test.ts |
 | Icelandic register ("a person from Iceland texting"; no literal hype; no gender assumptions) | response | For Icelandic, sound like a person from Iceland texting | — | tests/unit/ai.test.ts |
 | Calm safety voice: no emojis, jokes, hype or pressure for pain, exhaustion, distress, medical concerns or crisis, in every style | safety | Calm safety voice | Tiredness control (`mentionsTiredness`), crisis exception | tests/unit/coachTone.test.ts |
 | Styles rewritten: Supportive default; Balanced realistic minimum tied to the goal; Strict firm accountability without scolding | safety | Coach style: SUPPORTIVE (the default) | `asCoachStyle()` | tests/unit/aiCoachV2.test.ts |
