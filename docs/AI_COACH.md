@@ -19,9 +19,9 @@ the app sends the user through setup again.
 | Variable | Default | Meaning |
 |---|---|---|
 | `OPENAI_API_KEY` | — | Platform API key (platform.openai.com). Billed separately from ChatGPT subscriptions. 401/403 → `not_configured`. |
-| `OPENAI_MODEL` | `gpt-5` (since coach voice v1, Nov 2026; was `gpt-5-mini`) | Any Chat Completions model your key can use; check the models list on the OpenAI Platform. Set `gpt-5-mini` to go back to the cheaper model. Reminder push copy does **not** follow this setting (`PUSH_COPY_MODEL`, §4h). |
-| `OPENAI_REASONING_EFFORT` | `low` for `gpt-5*`/`o*` models, otherwise not sent | Sent as `reasoning_effort`. `off` never sends it (needed for models that reject the parameter). |
-| `OPENAI_REASONING_TOKEN_ALLOWANCE` | `2000` when an effort is sent | Added to `AI_MAX_OUTPUT_TOKENS` for `max_completion_tokens`, because hidden reasoning tokens count against that limit (and are billed as output). |
+| `OPENAI_MODEL` | `gpt-5` (since coach voice v1, Nov 2026; was `gpt-5-mini`) | Any Chat Completions model your key can use; check the models list on the OpenAI Platform. Set `gpt-5-mini` (with `OPENAI_REASONING_EFFORT=low`) for the faster, cheaper model with weaker Icelandic. Reminder push copy does **not** follow this setting (`PUSH_COPY_MODEL`, §4h). |
+| `OPENAI_REASONING_EFFORT` | `medium` for `gpt-5*`/`o*` models (since Nov 2026, for better Icelandic; was `low`), otherwise not sent | Sent as `reasoning_effort`. `low` is a faster, cheaper override (weaker Icelandic). `off` never sends it (needed for models that reject the parameter). |
+| `OPENAI_REASONING_TOKEN_ALLOWANCE` | By effort when one is sent: `2000` for `minimal`/`low`, `4000` for `medium` (and any other value), `8000` for `high`; an explicit value wins, capped at `16000` | Added to `AI_MAX_OUTPUT_TOKENS` for `max_completion_tokens`, because hidden reasoning tokens count against that limit (and are billed as output). |
 | `OPENAI_BASE_URL` | `https://api.openai.com` | Override only for a proxy/gateway (must serve `/v1/chat/completions`). |
 
 An OpenAI `429 insufficient_quota` (no credits / billing limit) is not retried and shows as "unavailable";
@@ -46,8 +46,8 @@ The Anthropic variables below apply only when Anthropic is the provider.
    the Deploy Supabase workflow.
 3. **Set the secrets** (Dashboard → Edge Functions → Secrets, or CLI):
    ```sh
-   supabase secrets set OPENAI_API_KEY=sk-...                  # OpenAI (default model gpt-5, low reasoning)
-   # optional: supabase secrets set OPENAI_MODEL=gpt-5-mini   # cheaper, weaker Icelandic
+   supabase secrets set OPENAI_API_KEY=sk-...                  # OpenAI (default model gpt-5, medium reasoning)
+   # optional, faster/cheaper with weaker Icelandic: OPENAI_REASONING_EFFORT=low, or OPENAI_MODEL=gpt-5-mini OPENAI_REASONING_EFFORT=low
    # or: supabase secrets set ANTHROPIC_API_KEY=sk-ant-... ANTHROPIC_MODEL=claude-sonnet-5-5
    # optional
    supabase secrets set AI_DAILY_REQUEST_LIMIT=40 AI_MAX_OUTPUT_TOKENS=1200 \
@@ -394,8 +394,8 @@ switch; in Icelandic, write natural Icelandic (cases, everyday gym words, "102,5
 translation of English; keep exercise, recipe and program names as they appear in the data (the app is in English) so
 the user can find them; link labels in the user's language; every rule applies in every language. The prompt itself
 and the context data stay English. Quality still depends mostly on the model: `gpt-5-mini` at `low` effort writes
-weak Icelandic, so since coach voice v1 (§4h) the OpenAI default is `gpt-5` at `low` effort. `OPENAI_REASONING_EFFORT=medium`
-(§1) is still available at a higher cost and latency per message.
+weak Icelandic, so since coach voice v1 (§4h) the OpenAI default is `gpt-5`, and since the owner's Icelandic review
+(Nov 2026) at `medium` effort. `OPENAI_REASONING_EFFORT=low` (§1) is a faster, cheaper override with weaker Icelandic.
 
 ## 4d. Correctness fixes (1.0.2)
 
@@ -590,8 +590,9 @@ Spec (verbatim, with the approved English and Icelandic copy): `docs/specs/item1
 
 `PROMPT_VERSION` `2026-11-27.coach-voice-v1`.
 
-- **Model.** `DEFAULT_OPENAI_MODEL` is `gpt-5` (was `gpt-5-mini`), keeping `low` reasoning effort, the 2,000-token
-  reasoning allowance, the `OPENAI_MODEL` / `OPENAI_REASONING_EFFORT` / `OPENAI_REASONING_TOKEN_ALLOWANCE` overrides,
+- **Model.** `DEFAULT_OPENAI_MODEL` is `gpt-5` (was `gpt-5-mini`). It shipped at `low` reasoning effort (2,000-token
+  allowance); after the owner tested the Icelandic replies the default is `medium` (`DEFAULT_OPENAI_REASONING_EFFORT`,
+  4,000-token allowance; `low` keeps 2,000, `high` gets 8,000). Kept: the `OPENAI_MODEL` / `OPENAI_REASONING_EFFORT` / `OPENAI_REASONING_TOKEN_ALLOWANCE` overrides,
   timeouts, retries and the error/refund handling. Streaming is unchanged: `text_delta` still carries only the final,
   validated, stored answer, never raw model tokens.
 - **Voice** (`prompts/response.ts`). Upbeat, energetic, warm and fun, like a thoughtful training buddy; reacts to what
@@ -622,11 +623,12 @@ Spec (verbatim, with the approved English and Icelandic copy): `docs/specs/item1
   emoji-free and low-pressure. `validateCopy(raw, language, kind)` enforces it (the emoji counts toward the 140 code
   points; only that trailing emoji is exempt from the content checks) in `writeCopy()` and `finalizeCopy()`, cached
   copy included. `PUSH_AI_COPY`, consent, sharing, scheduling and quota rules are unchanged.
-- **Evals.** `tests/evals/coach.models.json` adds `gpt-5-low-structured` (the new default) next to the `gpt-5-mini`
-  baseline and `gpt-5-medium`; the 30 eval questions are unchanged. A separate EN/IS tone smoke set
+- **Evals.** `tests/evals/coach.models.json` adds `gpt-5-low-structured` (now the faster/cheaper override) next to the
+  `gpt-5-mini` baseline and `gpt-5-medium-structured` (the production default); the 30 eval questions are unchanged. A separate EN/IS tone smoke set
   (`tests/evals/coach.tone.json`, scored by `coach.tone.ts`; offline `tests/unit/coachTone.test.ts`, live opt-in
   `node tests/live/coach-tone-live.mjs`) covers a completed-sets celebration, 3-hour sleep exhaustion, shoulder pain
-  on bench, food boredom and a crisis message (calm, no emojis).
+  on bench, food boredom and a crisis message (calm, no emojis). The pressure check treats curly apostrophes
+  (`Don’t push through…`) like straight ones.
 
 ## 5. Testing status
 

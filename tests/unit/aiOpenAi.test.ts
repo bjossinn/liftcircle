@@ -86,13 +86,23 @@ const oaTool = (name: string, args: unknown) => ({
 });
 
 describe('provider selection (MOCKED env)', () => {
-  it('uses OpenAI when only OPENAI_API_KEY is set, with a reasoning-friendly default (gpt-5, low, 2000)', () => {
+  it('uses OpenAI when only OPENAI_API_KEY is set, with a reasoning-friendly default (gpt-5, medium, 4000)', () => {
     expect(DEFAULT_OPENAI_MODEL).toBe('gpt-5');
     const p = resolveProvider((k) => ({ OPENAI_API_KEY: 'sk-x' })[k]);
-    expect(p).toMatchObject({ provider: 'openai', model: 'gpt-5', reasoningEffort: 'low', reasoningAllowance: 2000 });
+    expect(p).toMatchObject({ provider: 'openai', model: 'gpt-5', reasoningEffort: 'medium', reasoningAllowance: 4000 });
   });
-  it('an explicit OPENAI_MODEL=gpt-5-mini override still works, with the same low effort and allowance', () => {
-    expect(resolveProvider((k) => ({ OPENAI_API_KEY: 'sk-x', OPENAI_MODEL: 'gpt-5-mini' })[k])).toMatchObject({
+  it('an explicit OPENAI_REASONING_EFFORT=low keeps the 2000-token allowance; high gets 8000; explicit allowances and the cap still win', () => {
+    const r = (env: Record<string, string>) => resolveProvider((k) => ({ OPENAI_API_KEY: 'sk-x', ...env })[k]);
+    expect(r({ OPENAI_REASONING_EFFORT: 'low' })).toMatchObject({ model: 'gpt-5', reasoningEffort: 'low', reasoningAllowance: 2000 });
+    expect(r({ OPENAI_REASONING_EFFORT: 'minimal' })).toMatchObject({ reasoningEffort: 'minimal', reasoningAllowance: 2000 });
+    expect(r({ OPENAI_REASONING_EFFORT: 'high' })).toMatchObject({ reasoningEffort: 'high', reasoningAllowance: 8000 });
+    expect(r({ OPENAI_REASONING_TOKEN_ALLOWANCE: '3000' })).toMatchObject({ reasoningEffort: 'medium', reasoningAllowance: 3000 });
+    expect(r({ OPENAI_REASONING_TOKEN_ALLOWANCE: '99999' })).toMatchObject({ reasoningAllowance: 16_000 });
+    expect(r({ OPENAI_REASONING_EFFORT: 'off' })).toMatchObject({ reasoningEffort: undefined, reasoningAllowance: 0 });
+    expect(r({ OPENAI_MODEL: 'gpt-4o' })).toMatchObject({ model: 'gpt-4o', reasoningEffort: undefined, reasoningAllowance: 0 });
+  });
+  it('an explicit OPENAI_MODEL=gpt-5-mini + OPENAI_REASONING_EFFORT=low override still works (2000 allowance)', () => {
+    expect(resolveProvider((k) => ({ OPENAI_API_KEY: 'sk-x', OPENAI_MODEL: 'gpt-5-mini', OPENAI_REASONING_EFFORT: 'low' })[k])).toMatchObject({
       provider: 'openai', model: 'gpt-5-mini', reasoningEffort: 'low', reasoningAllowance: 2000,
     });
     expect(resolveProvider((k) => ({ OPENAI_API_KEY: 'sk-x', OPENAI_MODEL: 'gpt-5-mini', OPENAI_REASONING_EFFORT: 'medium', OPENAI_REASONING_TOKEN_ALLOWANCE: '4000' })[k])).toMatchObject({
@@ -164,17 +174,17 @@ describe('Training assistant end to end with OpenAI (MOCKED provider)', () => {
     expect(requests[0]!.url).toBe('https://api.openai.com/v1/chat/completions');
     expect(requests[0]!.headers.authorization).toBe('Bearer sk-openai-test');
     expect(requests[0]!.headers).not.toHaveProperty('x-api-key');
-    expect(requests[0]!.body).toMatchObject({ model: 'gpt-5', max_completion_tokens: 1200 + 2000, reasoning_effort: 'low', tool_choice: 'auto' });
+    expect(requests[0]!.body).toMatchObject({ model: 'gpt-5', max_completion_tokens: 1200 + 4000, reasoning_effort: 'medium', tool_choice: 'auto' });
     const second = requests[1]!.body.messages as { role: string; tool_call_id?: string }[];
     expect(second.at(-1)).toMatchObject({ role: 'tool', tool_call_id: 'call_1' });
     expect(second[0]).toMatchObject({ role: 'system' });
     expect(recorded[0]!.reply).toMatchObject({ content: 'Try goblet squats.', model: 'gpt-5-2025-08-07', inputTokens: 1500, outputTokens: 210 });
   });
 
-  it('an explicit OPENAI_MODEL=gpt-5-mini deployment sends gpt-5-mini with the same reasoning budget', async () => {
+  it('an explicit OPENAI_MODEL=gpt-5-mini + low effort deployment sends gpt-5-mini with the low reasoning budget', async () => {
     const { db: d } = db();
     const { fetch, requests } = mockFetch([oaText('Try goblet squats.')]);
-    const res = await handleAiCoach(deps(d, fetch, { OPENAI_API_KEY: 'sk-openai-test', OPENAI_MODEL: 'gpt-5-mini' }), UID, { action: 'send', id: MSG, text: 'What can replace squats?' });
+    const res = await handleAiCoach(deps(d, fetch, { OPENAI_API_KEY: 'sk-openai-test', OPENAI_MODEL: 'gpt-5-mini', OPENAI_REASONING_EFFORT: 'low' }), UID, { action: 'send', id: MSG, text: 'What can replace squats?' });
     expect(res.status).toBe(200);
     expect(requests[0]!.body).toMatchObject({ model: 'gpt-5-mini', max_completion_tokens: 1200 + 2000, reasoning_effort: 'low' });
   });

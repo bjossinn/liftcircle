@@ -478,7 +478,8 @@ Migration `20261129000001_coach_push.sql` (additive), `_shared/push/copy.ts`, `_
   pending and retried on refresh, and the device is never re-subscribed meanwhile.
 * **Copy** (`copy.ts`): the model writes only `{ "body" }` (≤ 140 code points, plain text, requested language,
   always supportive; no guilt, compensation, prescriptions, targets, numbers or claims about skipping; no emoji except
-  one optional trailing 💪 or 🙌 on `workout_reminder`). Its model is independent of the chat default
+  one optional trailing 💪 or 🙌 on `workout_reminder`). Its model is independent of the chat default (`ai-coach`: OpenAI `gpt-5` at `medium`
+  reasoning with a 4,000-token reasoning allowance, docs/AI_COACH.md §1)
   (`resolvePushModel`: with OpenAI `PUSH_COPY_MODEL` default `gpt-5-mini`, `PUSH_COPY_REASONING_EFFORT` default
   `minimal` for gpt-5/-mini/-nano and `low` for models that reject it, `PUSH_COPY_REASONING_TOKEN_ALLOWANCE` default 512). It needs
   `PUSH_AI_COPY=on` (off by default until the live evaluation `node tests/live/push-copy-live.mjs` has been reviewed),

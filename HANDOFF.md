@@ -3,9 +3,23 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 27 Nov 2026: Training assistant default reasoning is now `medium`
+
+- After the owner tested Icelandic replies from coach voice v1, the OpenAI default is `gpt-5` with
+  `OPENAI_REASONING_EFFORT=medium` (was `low`) and a 4,000-token reasoning allowance (was 2,000), so medium replies
+  don't stop on `max_completion_tokens`. Explicit secrets still win: `OPENAI_REASONING_EFFORT=low` (2,000 tokens) or
+  `OPENAI_MODEL=gpt-5-mini OPENAI_REASONING_EFFORT=low` are the faster, cheaper overrides; `off` sends no effort;
+  `OPENAI_REASONING_TOKEN_ALLOWANCE` overrides the allowance (cap 16,000). If `OPENAI_REASONING_EFFORT=low` is set as
+  a function secret, remove it to get `medium`. Higher cost and latency per message; no migration.
+- Reminder push copy is unchanged (`gpt-5-mini`, `minimal`, 512).
+- Tone smoke scorer: curly apostrophes (`Don’t push through…`) now count as negation.
+- Dashboard bundles regenerated: `ai-coach.ts` and `push-send.ts`. Deploys on merge.
+- Details: docs/AI_COACH.md §1, §4c, §4h.
+
 ## 27 Nov 2026: Coach voice v1 — GPT-5 default and an upbeat, emoji-friendly persona
 
-- The training assistant's OpenAI default is now `gpt-5` at `low` reasoning (2,000 reasoning tokens), was `gpt-5-mini`.
+- The training assistant's OpenAI default is now `gpt-5` at `low` reasoning (2,000 reasoning tokens), was `gpt-5-mini`
+  (since raised to `medium`, see above).
   If `OPENAI_MODEL` is set as a function secret it still wins: to actually get the upgrade, remove it or set it to
   `gpt-5`; to go back, set `OPENAI_MODEL=gpt-5-mini`. Costs more per message than gpt-5-mini; no migration.
 - New prompt (`PROMPT_VERSION` `2026-11-27.coach-voice-v1`): upbeat, warm and fun voice with 0–2 optional emojis,
@@ -64,7 +78,7 @@ Supabase project **LiftCircle** (display name, unchanged: renaming it is an owne
 - The assistant's prompt now says to reply in the user's language and to write natural Icelandic (docs/AI_COACH.md §4c).
 - Deploys with Deploy Supabase on merge; no migration.
 - Owner choice: the default model was `gpt-5-mini` at `low` reasoning, which is weak at Icelandic. Superseded by coach
-  voice v1 (27 Nov 2026): the default is now `gpt-5` at `low`; `OPENAI_REASONING_EFFORT=medium` remains optional.
+  voice v1 (27 Nov 2026): the default became `gpt-5` at `low`, and is now `gpt-5` at `medium` (`low` is the cheaper override).
 
 ## 31 Oct 2026: Hard Earned rebrand (v1.0.0), PR waiting for your review
 

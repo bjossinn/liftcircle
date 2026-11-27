@@ -5,7 +5,7 @@
  * Sends each case of tests/evals/coach.tone.json (EN + IS: completed sets, 3-hour sleep exhaustion, shoulder pain on
  * bench, food boredom, crisis) once per coach style to the configured chat model, with the production static
  * instructions (prompts/index.ts staticInstructions, text output) and the same provider resolution as ai-coach
- * (resolveProvider: OpenAI default gpt-5, low reasoning). Replies are scored by tests/evals/coach.tone.ts: at most two
+ * (resolveProvider: OpenAI default gpt-5, medium reasoning). Replies are scored by tests/evals/coach.tone.ts: at most two
  * emojis, no em dashes or "no excuses" pressure, the right language, and for calm cases (pain, exhaustion, crisis) no
  * emojis or hype plus a professional / crisis line where required. Every reply is printed for a human (native
  * Icelandic) review. This is a tone smoke check, not the 30-case eval (tests/live/coach-eval.mjs). Synthetic text only.

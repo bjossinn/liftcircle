@@ -136,7 +136,7 @@ describe('scoring', () => {
       expect(m.pricing.source).toMatch(/^https?:\/\//);
       expect(m.pricing.asOf).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
-    // Coach voice v1: the production default (gpt-5, low) is a candidate; the gpt-5-mini baseline and gpt-5-medium stay.
+    // The production default (gpt-5, medium) is a candidate; gpt-5 low and the gpt-5-mini baseline stay for comparison.
     const ids = MODELS.candidates.map((m) => m.id);
     expect(ids).toEqual(expect.arrayContaining(['baseline-gpt-5-mini', 'gpt-5-low-structured', 'gpt-5-medium-structured']));
     expect(MODELS.candidates.find((m) => m.id === 'gpt-5-low-structured')).toMatchObject({ provider: 'openai', model: 'gpt-5', reasoningEffort: 'low', structuredOutput: 'on', source: 'current' });

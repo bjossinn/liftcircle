@@ -149,8 +149,8 @@ app keeps working. Details: docs/BACKEND.md §8 (coaching), docs/AI_COACH.md (Tr
    the API is billed separately per token from prepaid credits on the OpenAI Platform. Set a usage limit there.
    ```bash
    npx supabase secrets set OPENAI_API_KEY=sk-...                   # alone, this selects OpenAI
-   npx supabase secrets set OPENAI_MODEL=gpt-5 OPENAI_REASONING_EFFORT=low   # optional; these are the defaults
-   # Rollback only (cheaper, weaker Icelandic): npx supabase secrets set OPENAI_MODEL=gpt-5-mini
+   npx supabase secrets set OPENAI_MODEL=gpt-5 OPENAI_REASONING_EFFORT=medium   # optional; these are the defaults
+   # Faster/cheaper overrides (weaker Icelandic): OPENAI_REASONING_EFFORT=low, or OPENAI_MODEL=gpt-5-mini OPENAI_REASONING_EFFORT=low
    npx supabase secrets set PUSH_COPY_MODEL=gpt-5-mini              # optional; reminder copy has its own default (gpt-5-mini, minimal reasoning) and never follows OPENAI_MODEL
    ```
    **Anthropic** (platform.claude.com → API keys; a Claude.ai subscription doesn't include API access either):
