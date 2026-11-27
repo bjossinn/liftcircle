@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { handleAiCoach, type CoachDeps } from '../../supabase/functions/_shared/ai/coach';
 import { compatibleReasoningEffort, createMessage, DEFAULT_OPENAI_MODEL, DEFAULT_OPENAI_REASONING_EFFORT, isOpenAiReasoningModel, resolveProvider } from '../../supabase/functions/_shared/ai/provider';
-import { fromOpenAiResponse, isOpenAiQuotaError, toOpenAiRequest } from '../../supabase/functions/_shared/ai/openai';
+import { chatCompletionsReasoningEffort, fromOpenAiResponse, isOpenAiQuotaError, toOpenAiRequest } from '../../supabase/functions/_shared/ai/openai';
 import type { AiDb, AiSettingsRow, FetchLike, RecordExchangeInput, StoredMessage } from '../../supabase/functions/_shared/ai/types';
 import { classifyAiError, consentOutdated, providerLabel, settingsActive } from '@/features/coaching/ai/model';
 import { followSchema } from './helpers/schemaModel';
@@ -86,11 +86,11 @@ const oaTool = (name: string, args: unknown) => ({
 });
 
 describe('provider selection (MOCKED env)', () => {
-  it('uses OpenAI when only OPENAI_API_KEY is set, with a reasoning-friendly default (gpt-5.4, medium, 4000)', () => {
+  it('uses OpenAI when only OPENAI_API_KEY is set, with a tools-compatible default (gpt-5.4, none, 0)', () => {
     expect(DEFAULT_OPENAI_MODEL).toBe('gpt-5.4');
-    expect(DEFAULT_OPENAI_REASONING_EFFORT).toBe('medium');
+    expect(DEFAULT_OPENAI_REASONING_EFFORT).toBe('none');
     const p = resolveProvider((k) => ({ OPENAI_API_KEY: 'sk-x' })[k]);
-    expect(p).toMatchObject({ provider: 'openai', model: 'gpt-5.4', reasoningEffort: 'medium', reasoningAllowance: 4000 });
+    expect(p).toMatchObject({ provider: 'openai', model: 'gpt-5.4', reasoningEffort: 'none', reasoningAllowance: 0 });
   });
   it('an explicit OPENAI_REASONING_EFFORT=low keeps the 2000-token allowance; high gets 8000; none gets 0; explicit allowances and the cap still win', () => {
     const r = (env: Record<string, string>) => resolveProvider((k) => ({ OPENAI_API_KEY: 'sk-x', ...env })[k]);
@@ -98,12 +98,13 @@ describe('provider selection (MOCKED env)', () => {
     expect(r({ OPENAI_REASONING_EFFORT: 'high' })).toMatchObject({ reasoningEffort: 'high', reasoningAllowance: 8000 });
     expect(r({ OPENAI_REASONING_EFFORT: 'none' })).toMatchObject({ model: 'gpt-5.4', reasoningEffort: 'none', reasoningAllowance: 0 });
     expect(r({ OPENAI_REASONING_EFFORT: 'NONE' })).toMatchObject({ reasoningEffort: 'none', reasoningAllowance: 0 });
-    expect(r({ OPENAI_REASONING_TOKEN_ALLOWANCE: '3000' })).toMatchObject({ reasoningEffort: 'medium', reasoningAllowance: 3000 });
+    expect(r({ OPENAI_REASONING_TOKEN_ALLOWANCE: '3000' })).toMatchObject({ reasoningEffort: 'none', reasoningAllowance: 3000 });
     expect(r({ OPENAI_REASONING_TOKEN_ALLOWANCE: '99999' })).toMatchObject({ reasoningAllowance: 16_000 });
     expect(r({ OPENAI_REASONING_EFFORT: 'off' })).toMatchObject({ reasoningEffort: undefined, reasoningAllowance: 0 });
     expect(r({ OPENAI_MODEL: 'gpt-4o' })).toMatchObject({ model: 'gpt-4o', reasoningEffort: undefined, reasoningAllowance: 0 });
     expect(r({ OPENAI_MODEL: 'gpt-5.5', OPENAI_REASONING_EFFORT: 'low' })).toMatchObject({ model: 'gpt-5.5', reasoningEffort: 'low', reasoningAllowance: 2000 });
-    expect(r({ OPENAI_MODEL: 'gpt-5.5' })).toMatchObject({ model: 'gpt-5.5', reasoningEffort: 'medium', reasoningAllowance: 4000 });
+    expect(r({ OPENAI_MODEL: 'gpt-5.5' })).toMatchObject({ model: 'gpt-5.5', reasoningEffort: 'none', reasoningAllowance: 0 });
+    expect(r({ OPENAI_REASONING_EFFORT: 'medium' })).toMatchObject({ model: 'gpt-5.4', reasoningEffort: 'medium', reasoningAllowance: 4000 });
   });
   it('"minimal" and "none" are mapped to what the model accepts (minimal: gpt-5/-mini/-nano only; none: gpt-5.1+)', () => {
     const r = (env: Record<string, string>) => resolveProvider((k) => ({ OPENAI_API_KEY: 'sk-x', ...env })[k]);
@@ -154,6 +155,21 @@ describe('provider selection (MOCKED env)', () => {
 });
 
 describe('OpenAI translation (pure)', () => {
+  it('REGRESSION: gpt-5.4+ with tools in /v1/chat/completions always gets reasoning_effort "none" (else HTTP 400)', () => {
+    const tools = [{ name: 't', description: 'd', input_schema: { type: 'object', properties: {} } }];
+    const base = { system: 'S', messages: [{ role: 'user' as const, content: 'hi' }] };
+    for (const model of ['gpt-5.4', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini', 'gpt-5.5', 'gpt-5.6', 'gpt-5.10']) {
+      for (const effort of ['low', 'medium', 'high', 'xhigh', 'none']) {
+        const req = toOpenAiRequest({ ...base, tools, tool_choice: { type: 'auto' } }, { model, maxTokens: 100, reasoningEffort: effort, responseFormat: { name: 'r', schema: { type: 'object' } } });
+        expect(req, `${model}/${effort}`).toMatchObject({ reasoning_effort: 'none', tool_choice: 'auto', response_format: { type: 'json_schema' } });
+      }
+      // No tools: the configured effort is kept. No effort (OPENAI_REASONING_EFFORT=off): still omitted.
+      expect(toOpenAiRequest(base, { model, maxTokens: 100, reasoningEffort: 'medium' })).toMatchObject({ reasoning_effort: 'medium' });
+      expect(toOpenAiRequest({ ...base, tools }, { model, maxTokens: 100 })).not.toHaveProperty('reasoning_effort');
+    }
+    // Older models (and -pro, which rejects "none") are untouched.
+    for (const model of ['gpt-5', 'gpt-5-mini', 'gpt-5.1', 'gpt-5.2', 'gpt-5.4-pro', 'o4-mini']) expect(chatCompletionsReasoningEffort(model, 'medium', true), model).toBe('medium');
+  });
   it('maps system, tool calls and tool results to Chat Completions messages and functions', () => {
     const req = toOpenAiRequest(
       {
@@ -205,7 +221,7 @@ describe('Training assistant end to end with OpenAI (MOCKED provider)', () => {
     expect(requests[0]!.url).toBe('https://api.openai.com/v1/chat/completions');
     expect(requests[0]!.headers.authorization).toBe('Bearer sk-openai-test');
     expect(requests[0]!.headers).not.toHaveProperty('x-api-key');
-    expect(requests[0]!.body).toMatchObject({ model: 'gpt-5.4', max_completion_tokens: 1200 + 4000, reasoning_effort: 'medium', tool_choice: 'auto' });
+    expect(requests[0]!.body).toMatchObject({ model: 'gpt-5.4', max_completion_tokens: 1200, reasoning_effort: 'none', tool_choice: 'auto' });
     const second = requests[1]!.body.messages as { role: string; tool_call_id?: string }[];
     expect(second.at(-1)).toMatchObject({ role: 'tool', tool_call_id: 'call_1' });
     expect(second[0]).toMatchObject({ role: 'system' });
@@ -227,6 +243,22 @@ describe('Training assistant end to end with OpenAI (MOCKED provider)', () => {
     expect(res.status).toBe(200);
     expect(requests[0]!.body).toMatchObject({ model: 'gpt-5.5', max_completion_tokens: 1200, reasoning_effort: 'none' });
   });
+
+  for (const effort of ['low', 'medium', 'high']) {
+    it(`REGRESSION (HTTP 400 hotfix): gpt-5.4 with tools sends reasoning_effort "none" even with OPENAI_REASONING_EFFORT=${effort}`, async () => {
+      const { db: d } = db();
+      const { fetch, requests } = mockFetch([oaTool('exercise_alternatives', { exercise_id: 'goblet-squat' }), oaText('Try goblet squats.')]);
+      const env = { OPENAI_API_KEY: 'sk-openai-test', OPENAI_MODEL: 'gpt-5.4', OPENAI_REASONING_EFFORT: effort };
+      const res = await handleAiCoach(deps(d, fetch, env), UID, { action: 'send', id: MSG, text: 'What can replace squats?' });
+      expect(res.status).toBe(200);
+      expect(requests[0]!.url).toBe('https://api.openai.com/v1/chat/completions');
+      for (const r of requests) {
+        expect(r.body.tools).toBeTruthy();
+        // The coerced request reasons not at all, so no hidden-reasoning allowance is added either.
+        expect(r.body).toMatchObject({ model: 'gpt-5.4', reasoning_effort: 'none', max_completion_tokens: 1200 });
+      }
+    });
+  }
 
   it('status names the provider and says whether the stored consent covers it', async () => {
     const { fetch } = mockFetch([]);

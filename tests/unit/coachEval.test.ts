@@ -138,8 +138,9 @@ describe('scoring', () => {
     }
     // The production default (gpt-5.4, medium) is a candidate; gpt-5 low/medium and the gpt-5-mini baseline stay for comparison.
     const ids = MODELS.candidates.map((m) => m.id);
-    expect(ids).toEqual(expect.arrayContaining(['baseline-gpt-5-mini', 'gpt-5-low-structured', 'gpt-5-medium-structured', 'gpt-5.4-medium-structured']));
+    expect(ids).toEqual(expect.arrayContaining(['baseline-gpt-5-mini', 'gpt-5-low-structured', 'gpt-5-medium-structured', 'gpt-5.4-medium-structured', 'gpt-5.4-none-structured']));
     expect(MODELS.candidates.find((m) => m.id === 'gpt-5.4-medium-structured')).toMatchObject({ provider: 'openai', model: 'gpt-5.4', reasoningEffort: 'medium', structuredOutput: 'on', source: 'current' });
+    expect(MODELS.candidates.find((m) => m.id === 'gpt-5.4-none-structured')).toMatchObject({ provider: 'openai', model: 'gpt-5.4', reasoningEffort: 'none', structuredOutput: 'on', source: 'current' });
     expect(MODELS.candidates.find((m) => m.id === 'gpt-5-low-structured')).toMatchObject({ provider: 'openai', model: 'gpt-5', reasoningEffort: 'low', structuredOutput: 'on', source: 'current' });
     expect(MODELS.candidates.find((m) => m.id === 'baseline-gpt-5-mini')).toMatchObject({ model: 'gpt-5-mini', source: 'baseline' });
     expect(EVAL_CASES).toHaveLength(30);

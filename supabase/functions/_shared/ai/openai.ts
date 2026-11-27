@@ -59,14 +59,31 @@ export function toOpenAiTools(tools: readonly unknown[] | undefined) {
   });
 }
 
+/** gpt-5.4 and later minor versions (gpt-5.4*, gpt-5.5*, gpt-5.10*, …; any -mini/-nano/date suffix), not -pro. */
+const TOOLS_NEED_NO_REASONING_MODELS = /^gpt-5\.(?:[4-9]|\d{2,})(?!\S*-pro)/i;
+
+/**
+ * The reasoning_effort actually sent to /v1/chat/completions. gpt-5.4+ rejects function tools combined with any
+ * reasoning_effort other than "none" there (HTTP 400: "Function tools with reasoning_effort are not supported …
+ * use /v1/responses or set reasoning_effort to 'none'"). So when tools are present on such a model the effort is
+ * coerced to "none", whatever OPENAI_REASONING_EFFORT says (low/medium/high can never cause that 400). An absent
+ * effort (OPENAI_REASONING_EFFORT=off) stays absent. Using real reasoning with tools on gpt-5.4+ requires migrating
+ * this adapter to /v1/responses.
+ */
+export function chatCompletionsReasoningEffort(model: string, effort: string | undefined, hasTools: boolean): string | undefined {
+  if (!effort || !hasTools || !TOOLS_NEED_NO_REASONING_MODELS.test(model)) return effort;
+  return 'none';
+}
+
 export function toOpenAiRequest(req: InternalRequest, opts: { model: string; maxTokens: number; reasoningEffort?: string; responseFormat?: InternalRequest['responseFormat'] }) {
   const tools = toOpenAiTools(req.tools);
   const choice = req.tool_choice?.type === 'any' ? 'required' : req.tool_choice?.type;
+  const reasoningEffort = chatCompletionsReasoningEffort(opts.model, opts.reasoningEffort, tools.length > 0);
   return {
     model: opts.model,
     messages: toOpenAiMessages(req.system, req.messages),
     max_completion_tokens: opts.maxTokens,
-    ...(opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
+    ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
     ...(tools.length ? { tools, ...(choice ? { tool_choice: choice } : {}) } : {}),
     // Structured Outputs for the final text (item 10). Tool schemas stay non-strict (optional/nested parameters).
     ...(opts.responseFormat ? { response_format: { type: 'json_schema', json_schema: { name: opts.responseFormat.name, strict: true, schema: opts.responseFormat.schema } } } : {}),
