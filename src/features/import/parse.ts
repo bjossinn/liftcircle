@@ -2,7 +2,7 @@
 import { parseCsv } from './csv';
 import { isHevyTable, parseHevy } from './hevy';
 import { isStrongTable, parseStrong } from './strong';
-import { WorkoutImportError, type ImportSource, type ParsedImport } from './types';
+import { WorkoutImportError, type ImportSource, type ParseOptions, type ParsedImport } from './types';
 
 /** Largest export we read (a decade of daily Strong workouts is a few MB). */
 export const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
@@ -15,11 +15,11 @@ export function detectSource(headers: string[]): ImportSource | null {
 }
 
 /** Parse a Strong or Hevy CSV export. Throws WorkoutImportError for unknown formats and files without workouts. */
-export function parseWorkoutCsv(text: string): ParsedImport {
+export function parseWorkoutCsv(text: string, opts: ParseOptions = {}): ParsedImport {
   const table = parseCsv(text);
   const source = detectSource(table.headers);
   if (!source) throw new WorkoutImportError('unknown_format');
-  const parsed = source === 'hevy' ? parseHevy(table) : parseStrong(table);
+  const parsed = source === 'hevy' ? parseHevy(table, opts) : parseStrong(table, opts);
   if (!parsed.workouts.length) throw new WorkoutImportError('empty');
   return parsed;
 }

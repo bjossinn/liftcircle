@@ -24,10 +24,10 @@ import { uuid } from '@/lib/id';
 import { zonedToUtc } from '@/domain/pushSchedule';
 import { toKg } from '@/domain/units';
 import { defaultIncrement, normalizeText } from '@/data/exerciseMeta';
-import { sanitizeImportedSession } from '@/domain/setValidation';
+import { sanitizeImportedSession, setFieldsFor, validateLoggedSet } from '@/domain/setValidation';
 import { t } from '@/i18n';
 import { createMatcher, matchKey, qualifierEquipment, splitQualifier } from './matching';
-import type { ImportDistanceUnit, ImportSource, ImportStart, ParsedImport, ParsedSet, ParsedWorkout } from './types';
+import type { ImportDistanceUnit, ImportSource, ImportStart, ParsedExercise, ParsedImport, ParsedSet, ParsedWorkout } from './types';
 
 export interface ImportOptions {
   timeZone: string;
@@ -66,6 +66,8 @@ export interface WorkoutImportPlan {
   created: ExerciseLine[];
   /** The file doesn't say whether weights are kg or lb (the preview asks). */
   unitNeeded: boolean;
+  /** The file's slash dates could be day/month or month/day (the preview asks; Import waits for an answer). */
+  dayOrderNeeded: boolean;
   skippedRows: number;
   /** Sets with impossible values, imported as not done / not recorded. */
   repairedSets: number;
@@ -89,8 +91,13 @@ export function uuidFromHex(hex: string): string {
   return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20, 32)}`;
 }
 
-/** The stable key "source|start time" of a workout (independent of the time zone or unit chosen at import). */
-export const importKey = (source: ImportSource, w: Pick<ParsedWorkout, 'startKey'>) => `${source}|${w.startKey.trim()}`;
+/**
+ * The stable key "source|start time" of a workout: the start as read from the file (local wall-clock time, or the UTC
+ * instant). Independent of the time zone or unit chosen at import; a different day/month choice gives a different key,
+ * so a wrongly read date can be deleted and imported again with the right order.
+ */
+export const importKey = (source: ImportSource, w: Pick<ParsedWorkout, 'start'>) =>
+  `${source}|${'local' in w.start ? w.start.local : new Date(w.start.epochMs).toISOString()}`;
 
 /** Stable workout id: hash of source, start time and every exercise and set value as written in the file. */
 export async function workoutHashId(source: ImportSource, w: ParsedWorkout): Promise<string> {
@@ -118,6 +125,15 @@ const DIST_M: Record<ImportDistanceUnit, number> = { km: 1000, mi: 1609.344, m: 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
 const usesLoad = (ex: Exercise) => ex.load !== 'none';
+
+export const APP_NAME: Record<ImportSource, string> = { strong: 'Strong', hevy: 'Hevy' };
+
+/** True when sets of `ex` can hold every value `s` recorded (weight, reps, distance, time). RPE is always kept. */
+export function canStore(ex: Exercise, s: ParsedSet): boolean {
+  const f = setFieldsFor(ex);
+  const has = (v: number | null) => v != null && v > 0;
+  return (!has(s.weight) || f.includes('weight')) && (!has(s.reps) || f.includes('reps')) && (!has(s.distance) || f.includes('distance')) && (!has(s.durationSec) || f.includes('duration'));
+}
 
 function toLoggedSet(s: ParsedSet, ex: Exercise, file: ParsedImport, opts: ImportOptions, at: number): LoggedSet {
   const unit = s.weightUnit ?? file.weightUnit ?? opts.weightUnit;
@@ -181,12 +197,17 @@ export function inferCustomExercise(name: string, sets: ParsedSet[], id: string,
   else if (hasReps && weighted) [tracking, load] = ['bodyweight_plus', 'added'];
   else if (hasReps && hasWeight) [tracking, load] = ['weight_reps', equipment[0] === 'dumbbell' ? 'per_hand' : equipment[0] === 'machine' || equipment[0] === 'cable' ? 'stack' : 'total'];
   else if (hasReps) [tracking, load] = ['reps', 'none'];
+  // Loaded carries / sled pushes / weighted holds: distance and/or time with a load (distance_time keeps all three).
+  else if (hasWeight && (hasDistance || hasTime)) [tracking, load] = ['distance_time', equipment[0] === 'dumbbell' || equipment[0] === 'kettlebell' ? 'per_hand' : 'total'];
   else if (hasDistance) [tracking, load] = ['distance_time', 'none'];
   else if (hasTime) [tracking, load] = ['duration', 'none'];
   else [tracking, load] = ['weight_reps', 'total'];
   const norm = ` ${normalizeText(name)} `;
   const guess = PATTERNS.find(([re]) => re.test(norm));
   const [pattern, primaryMuscles, category] = guess ? [guess[1], guess[2], guess[3]] : (['isolation_upper', ['full_body'], 'isolation'] as const);
+  // Unloaded distance work is cardio; a loaded carry or sled keeps its guessed pattern (carry by default).
+  const cardio = tracking === 'distance_time' && load === 'none';
+  const loadedCarry = tracking === 'distance_time' && load !== 'none' && !guess;
   return {
     id,
     createdAt: now,
@@ -194,10 +215,10 @@ export function inferCustomExercise(name: string, sets: ParsedSet[], id: string,
     custom: true,
     name: name.trim().slice(0, 120),
     aliases: [],
-    category: tracking === 'distance_time' ? 'cardio' : category,
-    primaryMuscles: [...(tracking === 'distance_time' ? (['cardio'] as MuscleGroup[]) : primaryMuscles)],
+    category: cardio ? 'cardio' : category,
+    primaryMuscles: [...(cardio ? (['cardio'] as MuscleGroup[]) : primaryMuscles)],
     secondaryMuscles: [],
-    pattern: tracking === 'distance_time' ? 'conditioning' : pattern,
+    pattern: cardio ? 'conditioning' : loadedCarry ? 'carry' : pattern,
     equipment,
     difficulty: 1,
     tracking,
@@ -237,47 +258,105 @@ export async function readExistingState(db: LiftDb): Promise<ExistingState> {
 /**
  * Build the import plan (pure apart from hashing): which workouts are new, how exercises map, which custom exercises
  * to create, and the finished session records. `library` = bundled exercises + the user's live custom exercises.
+ *
+ * Every exercise block must be able to hold what its sets recorded (`blockFits`): a library match that would drop a
+ * recorded weight, reps, distance or time, or that would turn valid sets into not-done ones (rep-count Mountain
+ * Climbers on a timed exercise), is replaced for that block by a compatible custom variant named
+ * "<export name> (<app>)", inferred from those sets and reused by later imports.
  */
 export async function buildImportPlan(file: ParsedImport, library: Exercise[], existing: ExistingState, opts: ImportOptions): Promise<WorkoutImportPlan> {
   const now = opts.now ?? Date.now();
   const matcher = createMatcher(library);
+  const keyOf = (name: string) => matchKey(name) || name.trim();
+  const customByKey = new Map(library.filter((e) => e.custom).map((e) => [matchKey(e.name), e] as const));
+  const newIds = new Set<string>();
+  const newCustomId = async (seed: string) => {
+    const hashed = uuidFromHex(await sha256Hex(seed));
+    // Never overwrite a renamed or deleted custom exercise that happens to have this id.
+    const id = existing.customIds.has(hashed) || newIds.has(hashed) ? uuid() : hashed;
+    newIds.add(id);
+    return id;
+  };
 
-  // 1. Map every distinct export name once.
+  // 1. One candidate per distinct export name: the library match, or a new custom exercise inferred from all its sets.
   const setsByName = new Map<string, ParsedSet[]>();
-  for (const w of file.workouts) for (const e of w.exercises) setsByName.set(matchKey(e.name) || e.name, [...(setsByName.get(matchKey(e.name) || e.name) ?? []), ...e.sets]);
-  const resolved = new Map<string, { exercise: Exercise; isNew: boolean; name: string }>();
+  for (const w of file.workouts) for (const e of w.exercises) setsByName.set(keyOf(e.name), [...(setsByName.get(keyOf(e.name)) ?? []), ...e.sets]);
+  const candidates = new Map<string, Exercise>();
+  const created: CustomExercise[] = [];
   for (const w of file.workouts) {
     for (const e of w.exercises) {
-      const k = matchKey(e.name) || e.name;
-      if (resolved.has(k)) continue;
+      const k = keyOf(e.name);
+      if (candidates.has(k)) continue;
       const hit = matcher.match(e.name);
-      if (hit) resolved.set(k, { exercise: hit, isNew: false, name: e.name.trim() });
+      if (hit) candidates.set(k, hit);
       else {
-        const hashed = uuidFromHex(await sha256Hex(`hard-earned-import-exercise-v1|${k}`));
-        const id = existing.customIds.has(hashed) ? uuid() : hashed; // never overwrite a renamed or deleted custom exercise
-        resolved.set(k, { exercise: inferCustomExercise(e.name, setsByName.get(k) ?? [], id, now), isNew: true, name: e.name.trim() });
+        const c = inferCustomExercise(e.name, setsByName.get(k) ?? [], await newCustomId(`hard-earned-import-exercise-v1|${k}`), now);
+        candidates.set(k, c);
+        created.push(c);
       }
     }
   }
-  const byId = new Map<string, Exercise>([...library.map((e) => [e.id, e] as const), ...[...resolved.values()].map((r) => [r.exercise.id, r.exercise] as const)]);
 
-  // 2. Build sessions; split into new and already imported.
+  // 2. Blocks the candidate can't represent get a compatible variant (one per export name).
+  const at = 0;
+  const blockFits = (ex: Exercise, sets: ParsedSet[], variant: Exercise) =>
+    sets.every((s) => {
+      if (!canStore(ex, s)) return false;
+      if (validateLoggedSet(toLoggedSet(s, ex, file, opts, at), ex, { mode: 'record' }).ok) return true;
+      // Invalid either way (e.g. fractional reps) → the source data is the problem, not the mapping.
+      return !validateLoggedSet(toLoggedSet(s, variant, file, opts, at), variant, { mode: 'record' }).ok;
+    });
+  const misfit = new Map<string, ParsedSet[]>();
+  const misfitBlocks = new Set<ParsedExercise>();
+  for (const w of file.workouts) {
+    for (const e of w.exercises) {
+      const k = keyOf(e.name);
+      const probe = inferCustomExercise(e.name, e.sets, 'probe', now);
+      if (blockFits(candidates.get(k)!, e.sets, probe)) continue;
+      misfitBlocks.add(e);
+      misfit.set(k, [...(misfit.get(k) ?? []), ...e.sets]);
+    }
+  }
+  const variants = new Map<string, Exercise>();
+  for (const [k, sets] of misfit) {
+    const exportName = file.workouts.flatMap((w) => w.exercises).find((e) => keyOf(e.name) === k)!.name.trim();
+    const inferred = inferCustomExercise(exportName, sets, 'probe', now);
+    let chosen: Exercise | null = null;
+    for (let n = 1; n < 50 && !chosen; n++) {
+      const name = `${exportName} (${APP_NAME[file.source]}${n > 1 ? ` ${n}` : ''})`;
+      const prior = customByKey.get(matchKey(name));
+      if (prior) {
+        if (sets.every((s) => canStore(prior, s))) chosen = prior;
+        continue;
+      }
+      const v: CustomExercise = { ...inferred, name, id: await newCustomId(`hard-earned-import-variant-v1|${file.source}|${k}|${n}`) };
+      created.push(v);
+      chosen = v;
+    }
+    variants.set(k, chosen ?? candidates.get(k)!);
+  }
+  const exerciseFor = (e: ParsedExercise) => (misfitBlocks.has(e) ? variants.get(keyOf(e.name))! : candidates.get(keyOf(e.name))!);
+  const byId = new Map<string, Exercise>([...library.map((e) => [e.id, e] as const), ...created.map((c) => [c.id, c] as const)]);
+
+  // 3. Build sessions; split into new and already imported.
   const sessions: WorkoutSession[] = [];
   const seenIds = new Set<string>();
   let alreadyImported = 0;
   let repairedSets = 0;
   let setsFound = 0;
   const dates: ISODate[] = [];
-  const lineCounts = new Map<string, number>();
+  const lines = new Map<string, ExerciseLine & { isNew: boolean }>();
   for (const w of file.workouts) {
     const startedAt = startEpoch(w.start, opts.timeZone);
     const date = localDate(startedAt, opts.timeZone);
     dates.push(date);
-    const setCount = w.exercises.reduce((n, e) => n + e.sets.length, 0);
-    setsFound += setCount;
+    setsFound += w.exercises.reduce((n, e) => n + e.sets.length, 0);
     for (const e of w.exercises) {
-      const k = matchKey(e.name) || e.name;
-      lineCounts.set(k, (lineCounts.get(k) ?? 0) + e.sets.length);
+      const ex = exerciseFor(e);
+      const lk = `${keyOf(e.name)}\u0000${ex.id}`;
+      const line = lines.get(lk) ?? { name: e.name.trim(), exerciseId: ex.id, exerciseName: ex.name, sets: 0, isNew: newIds.has(ex.id) };
+      line.sets += e.sets.length;
+      lines.set(lk, line);
     }
     const id = await workoutHashId(file.source, w);
     const key = importKey(file.source, w);
@@ -289,7 +368,7 @@ export async function buildImportPlan(file: ParsedImport, library: Exercise[], e
     let endedAt = w.end ? startEpoch(w.end, opts.timeZone) : w.durationSec ? startedAt + w.durationSec * 1000 : undefined;
     if (endedAt != null && !(endedAt > startedAt)) endedAt = undefined;
     const exercises: SessionExercise[] = w.exercises.map((e, i) => {
-      const ex = resolved.get(matchKey(e.name) || e.name)!.exercise;
+      const ex = exerciseFor(e);
       return {
         id: uuid(),
         exerciseId: ex.id,
@@ -319,20 +398,13 @@ export async function buildImportPlan(file: ParsedImport, library: Exercise[], e
     sessions.push(session);
   }
 
-  // 3. Custom exercises used by the new workouts; exercise lists for the preview.
+  // 4. Custom exercises used by the new workouts; exercise lists for the preview.
   const usedIds = new Set(sessions.flatMap((s) => s.exercises.map((e) => e.exerciseId)));
-  const customExercises: CustomExercise[] = [];
-  const matched: ExerciseLine[] = [];
-  const created: ExerciseLine[] = [];
-  for (const [k, r] of resolved) {
-    const line = { name: r.name, exerciseId: r.exercise.id, exerciseName: r.exercise.name, sets: lineCounts.get(k) ?? 0 };
-    if (!r.isNew) matched.push(line);
-    else if (usedIds.has(r.exercise.id)) {
-      created.push(line);
-      customExercises.push(r.exercise as CustomExercise);
-    }
-  }
-  const byName = (a: ExerciseLine, b: ExerciseLine) => a.name.localeCompare(b.name);
+  const customExercises = created.filter((c) => usedIds.has(c.id));
+  const strip = ({ isNew: _n, ...l }: ExerciseLine & { isNew: boolean }): ExerciseLine => l;
+  const byName = (a: ExerciseLine, b: ExerciseLine) => a.name.localeCompare(b.name) || a.exerciseName.localeCompare(b.exerciseName);
+  const matched = [...lines.values()].filter((l) => !l.isNew).map(strip).sort(byName);
+  const createdLines = [...lines.values()].filter((l) => l.isNew && usedIds.has(l.exerciseId)).map(strip).sort(byName);
   const allSets = sessions.flatMap((s) => s.exercises.flatMap((e) => e.sets));
   const sortedDates = [...dates].sort();
   return {
@@ -345,9 +417,10 @@ export async function buildImportPlan(file: ParsedImport, library: Exercise[], e
     warmupSets: allSets.filter((s) => s.type === 'warmup').length,
     from: sortedDates[0],
     to: sortedDates[sortedDates.length - 1],
-    matched: matched.sort(byName),
-    created: created.sort(byName),
+    matched,
+    created: createdLines,
     unitNeeded: file.weightUnit == null && file.workouts.some((w) => w.exercises.some((e) => e.sets.some((s) => s.weight != null && s.weight !== 0 && !s.weightUnit))),
+    dayOrderNeeded: file.dayOrderNeeded,
     skippedRows: file.skippedRows,
     repairedSets,
     sessions: sessions.sort((a, b) => a.startedAt - b.startedAt),

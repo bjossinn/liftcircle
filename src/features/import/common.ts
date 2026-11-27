@@ -1,6 +1,6 @@
 /** Helpers shared by the Strong and Hevy parsers: header lookup, dates, durations and row grouping. */
 import { headerKey, type CsvTable } from './csv';
-import type { ImportDistanceUnit, ImportStart, ParsedExercise, ParsedSet, ParsedWorkout } from './types';
+import { WorkoutImportError, type ImportDistanceUnit, type ImportStart, type ParsedExercise, type ParsedSet, type ParsedWorkout } from './types';
 import type { WeightUnit } from '@/domain/types';
 
 /** Index of the first header matching any of `names` (compared with `headerKey`), or -1. */
@@ -36,14 +36,57 @@ function localStart(y: number, mo: number, d: number, h = 0, mi = 0, s = 0, ampm
   return { local: `${y}-${pad(mo)}-${pad(d)}T${pad(h)}:${pad(mi)}:${pad(s)}` };
 }
 
+/** How slash dates ("01/02/2024") are written in a file: day first or month first. */
+export type DayOrder = 'dmy' | 'mdy';
+
+const SLASH_DATE = /^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\b/;
+
+/**
+ * Decide the slash-date order for a whole file from its unambiguous dates (a first number > 12 means day first, a
+ * second number > 12 means month first). Never guessed per row, so "01/02/2024" and "13/02/2024" in one file are both
+ * read day first.
+ *  - `order`: the order to use (from the file, else `chosen`, else null).
+ *  - `ambiguous`: the file has slash dates but none of them tells the order: the person must choose.
+ *  - `conflict`: the file has dates that can only be day first AND dates that can only be month first.
+ */
+export function resolveDayOrder(raws: Iterable<string>, chosen?: DayOrder): { order: DayOrder | null; ambiguous: boolean; conflict: boolean; slash: boolean } {
+  let dmy = false;
+  let mdy = false;
+  let slash = false;
+  for (const raw of raws) {
+    const m = SLASH_DATE.exec(raw);
+    if (!m) continue;
+    slash = true;
+    if (+m[1] > 12) dmy = true;
+    if (+m[2] > 12) mdy = true;
+  }
+  if (dmy && mdy) return { order: null, ambiguous: false, conflict: true, slash };
+  if (dmy || mdy) return { order: dmy ? 'dmy' : 'mdy', ambiguous: false, conflict: false, slash };
+  return { order: slash ? (chosen ?? null) : null, ambiguous: slash, conflict: false, slash };
+}
+
+/**
+ * The slash-date order a parser reads a file with. Throws WorkoutImportError('date_order') when the file mixes
+ * day-first and month-first dates. When the file can't tell, the person's choice is used; until they choose, day first
+ * is used for the preview only (`needed` keeps Import disabled until they confirm).
+ */
+export function fileDayOrder(raws: Iterable<string>, chosen?: DayOrder): { order: DayOrder | undefined; needed: boolean } {
+  const r = resolveDayOrder(raws, chosen);
+  if (r.conflict) throw new WorkoutImportError('date_order');
+  if (!r.slash) return { order: undefined, needed: false };
+  return { order: r.order ?? 'dmy', needed: r.ambiguous };
+}
+
 /**
  * A workout start time from an export cell. Supported:
  *  - "2024-01-15 08:30:00", "2024-01-15T08:30", "2024/01/15 8:30" (local wall-clock time)
  *  - "2024-01-15T08:30:00Z" / "+00:00" offsets (an instant)
  *  - "15 Jan 2024, 08:30" (Hevy), "Jan 15, 2024, 8:30 AM"
- *  - "15.01.2024 08:30" (European), "1/15/2024 8:30 AM" / "15/1/2024 08:30" (day first when the first number > 12)
+ *  - "15.01.2024 08:30" (European, day first)
+ *  - slash dates "1/15/2024 8:30 AM" / "15/1/2024 08:30": the order is decided for the WHOLE file (resolveDayOrder) and
+ *    passed in as `dayOrder`; without one, a slash date is read only when it is unambiguous (a number > 12).
  */
-export function parseStart(raw: string): ImportStart | null {
+export function parseStart(raw: string, dayOrder?: DayOrder): ImportStart | null {
   const s = raw.trim().replace(/\s+/g, ' ');
   if (!s) return null;
   let m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?\s?(Z|[+-]\d{2}:?\d{2})$/i.exec(s);
@@ -67,7 +110,9 @@ export function parseStart(raw: string): ImportStart | null {
   if (m) return localStart(+m[3], +m[2], +m[1], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0));
   m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ ,]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s?(am|pm)?)?$/i.exec(s);
   if (m) {
-    const dayFirst = +m[1] > 12;
+    const order = dayOrder ?? (+m[1] > 12 ? 'dmy' : +m[2] > 12 ? 'mdy' : null);
+    if (!order) return null;
+    const dayFirst = order === 'dmy';
     return localStart(+m[3], dayFirst ? +m[2] : +m[1], dayFirst ? +m[1] : +m[2], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0), m[7]);
   }
   return null;

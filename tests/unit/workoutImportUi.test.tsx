@@ -35,7 +35,21 @@ async function render(language: Language = 'en') {
   el = document.createElement('div');
   document.body.append(el);
   root = createRoot(el);
-  await act(async () => root!.render(createElement(ToastProvider, null, createElement(LanguageProvider, { language, children: createElement(WorkoutImportSection) }))));
+  await act(async () => root!.render(tree(language)));
+}
+const tree = (language: Language = 'en') => createElement(ToastProvider, null, createElement(LanguageProvider, { language, children: createElement(WorkoutImportSection) }));
+
+/** Another account becomes the open database (e.g. signed in as B in another tab), without remounting the section. */
+async function switchDb(next: LiftDb) {
+  h.app = { ...(h.app as object), db: next };
+  await act(async () => root!.render(tree()));
+}
+
+async function freshDb() {
+  const d = new LiftDb(`00000000-eeee-4eee-8eee-0000000000${String(++n).padStart(2, '0')}`);
+  await d.delete();
+  await d.open();
+  return d;
 }
 
 const text = () => document.body.textContent?.replace(/\s+/g, ' ') ?? '';
@@ -52,9 +66,9 @@ async function waitFor(check: () => boolean, label: string) {
   throw new Error(`Timed out waiting for: ${label}\n${text()}`);
 }
 
-async function chooseFile(content: string, name = 'export.csv') {
+async function chooseFile(content: string | File | object, name = 'export.csv') {
   const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-  const file = new File([content], name, { type: 'text/csv' });
+  const file = typeof content === 'string' ? new File([content], name, { type: 'text/csv' }) : content;
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
   await act(async () => {
     input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -147,5 +161,79 @@ describe('workout import flow', () => {
     await act(async () => button('Flytja inn 2 æfingar')!.click());
     await waitFor(() => text().includes('2 æfingar fluttar inn'), 'toast');
     expect(await db.sessions.count()).toBe(2);
+  });
+});
+
+describe('account boundaries', () => {
+  it('an open preview from account A is dropped when account B becomes current; nothing is written to either', async () => {
+    const a = db;
+    await render();
+    await chooseFile(fixture('hevy.csv'));
+    await waitFor(() => !!button('Import 2 workouts'), 'preview in A');
+    const b = await freshDb();
+    await switchDb(b);
+    expect(document.querySelector('[data-testid="workout-import-preview"]')).toBeNull();
+    expect(button(/^Import \d/)).toBeNull();
+    // Give any re-plan a chance to run: it must not bring A's file back against B.
+    for (let i = 0; i < 5; i++) await act(async () => new Promise((r) => setTimeout(r, 20)));
+    expect(document.querySelector('[data-testid="workout-import-preview"]')).toBeNull();
+    expect(await b.sessions.count()).toBe(0);
+    expect(await b.customExercises.count()).toBe(0);
+    expect(await b.outbox.count()).toBe(0);
+    expect(await a.sessions.count()).toBe(0);
+    b.close();
+  });
+
+  it('a file still being read when the account changes is discarded, never previewed or imported into B', async () => {
+    await render();
+    let finish!: (text: string) => void;
+    const slow = { name: 'strong.csv', size: 2000, type: 'text/csv', text: () => new Promise<string>((r) => (finish = r)) };
+    await chooseFile(slow);
+    const b = await freshDb();
+    await switchDb(b);
+    await act(async () => finish(fixture('strong.csv')));
+    for (let i = 0; i < 5; i++) await act(async () => new Promise((r) => setTimeout(r, 20)));
+    expect(document.querySelector('[data-testid="workout-import-preview"]')).toBeNull();
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(await b.sessions.count()).toBe(0);
+    expect(await b.customExercises.count()).toBe(0);
+    // B can still import its own file normally.
+    await chooseFile(fixture('hevy.csv'));
+    await waitFor(() => !!button('Import 2 workouts'), 'preview in B');
+    await act(async () => button('Import 2 workouts')!.click());
+    await waitFor(() => text().includes('Imported 2 workouts'), 'toast');
+    expect(await b.sessions.count()).toBe(2);
+    expect(await db.sessions.count()).toBe(0);
+    b.close();
+  });
+});
+
+describe('ambiguous slash dates', () => {
+  const csv = 'Date,Workout Name,Exercise Name,Set Order,Weight (kg),Reps\n01/02/2024 10:00,A,Squat (Barbell),1,100,5\n03/04/2024 10:00,B,Squat (Barbell),1,100,5';
+
+  it('asks day/month vs month/day and waits for the answer before importing', async () => {
+    await render();
+    await chooseFile(csv);
+    await waitFor(() => text().includes('How are dates written in this file?'), 'question');
+    const radios = [...document.querySelectorAll('[role="radio"]')] as HTMLElement[];
+    const mdy = radios.find((r) => r.textContent?.includes('Month/day'))!;
+    expect(radios.filter((r) => r.textContent?.includes('/')).every((r) => r.getAttribute('aria-checked') === 'false')).toBe(true);
+    expect(button('Import 2 workouts')!.disabled).toBe(true);
+    expect(text()).not.toContain('From ');
+    await act(async () => mdy.click());
+    await waitFor(() => text().includes('From 2 Jan 2024 to 4 Mar 2024') && !button('Import 2 workouts')!.disabled, 'month first');
+    await act(async () => button('Import 2 workouts')!.click());
+    await waitFor(() => text().includes('Imported 2 workouts'), 'toast');
+    expect((await db.sessions.toArray()).map((s) => s.date).sort()).toEqual(['2024-01-02', '2024-03-04']);
+  });
+
+  it('does not ask when the file proves the order, and rejects files that mix both', async () => {
+    await render();
+    await chooseFile('Date,Workout Name,Exercise Name,Set Order,Weight (kg),Reps\n01/02/2024 10:00,A,Squat (Barbell),1,100,5\n13/02/2024 10:00,B,Squat (Barbell),1,100,5');
+    await waitFor(() => text().includes('From 1 Feb 2024 to 13 Feb 2024'), 'day first');
+    expect(text()).not.toContain('How are dates written');
+    await chooseFile('Date,Workout Name,Exercise Name,Set Order,Weight (kg),Reps\n13/02/2024 10:00,A,Squat (Barbell),1,100,5\n02/14/2024 10:00,B,Squat (Barbell),1,100,5');
+    await waitFor(() => !!document.querySelector('[role="alert"]'), 'error');
+    expect(document.querySelector('[role="alert"]')!.textContent).toContain('mixes day/month and month/day dates');
   });
 });

@@ -53,11 +53,22 @@ export interface ParsedImport {
   workouts: ParsedWorkout[];
   /** Data rows that couldn't be used (no date, no exercise, rest-timer rows…). */
   skippedRows: number;
+  /**
+   * Slash dates ("01/02/2024") whose order the file doesn't reveal: the preview asks day/month vs month/day.
+   * `dayOrder` is the order the workouts were read with (the chosen one, or the default until the person chooses).
+   */
+  dayOrderNeeded: boolean;
+  dayOrder?: 'dmy' | 'mdy';
+}
+
+export interface ParseOptions {
+  /** Order for ambiguous slash dates, chosen in the preview. */
+  dayOrder?: 'dmy' | 'mdy';
 }
 
 /** A file that isn't a supported export, or holds no workouts. `code` maps to a translated message. */
 export class WorkoutImportError extends Error {
-  constructor(readonly code: 'unknown_format' | 'empty' | 'too_large' | 'unreadable') {
+  constructor(readonly code: 'unknown_format' | 'empty' | 'too_large' | 'unreadable' | 'date_order') {
     super(code);
   }
 }

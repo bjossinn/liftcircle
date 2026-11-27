@@ -12,6 +12,10 @@ Supabase project **LiftCircle** (display name, unchanged: renaming it is an owne
   `imported.key` (source + start time) exists on the device, even deleted, is skipped. Sessions carry an optional
   `imported` field (payload only; no migration, no backend change).
 - Imports bypass the logger, so no cheers, auto-share, analytics "first workout" events or push sends.
+- Review fixes: an exercise block whose library match can't hold the recorded values (weight on a timed exercise,
+  rep-count Mountain Climbers) gets a compatible custom variant "<name> (Strong|Hevy)"; loaded carries/holds keep their
+  weight. Slash dates use one order per file (from unambiguous dates; otherwise the preview asks; mixed files are
+  rejected). The file, preview and write are bound to the account database they started in.
 - Code: `src/features/import/`. New EN/IS strings under `import.*` (Icelandic awaits native review). Details:
   docs/USER_GUIDE.md "Backups & your data".
 

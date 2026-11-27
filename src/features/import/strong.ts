@@ -9,8 +9,8 @@
  * skipped and counted. Plain Strong exports state no weight unit: the preview then asks which unit the file uses.
  */
 import { parseNumber, type CsvTable } from './csv';
-import { WorkoutGrouper, cell, column, distanceUnitOf, hasValues, parseDuration, parseStart, weightUnitOf } from './common';
-import type { ImportDistanceUnit, ParsedImport, ParsedSet } from './types';
+import { WorkoutGrouper, cell, column, distanceUnitOf, fileDayOrder, hasValues, parseDuration, parseStart, weightUnitOf } from './common';
+import type { ImportDistanceUnit, ParseOptions, ParsedImport, ParsedSet } from './types';
 import type { WeightUnit } from '@/domain/types';
 
 export function isStrongTable(t: CsvTable): boolean {
@@ -20,7 +20,7 @@ export function isStrongTable(t: CsvTable): boolean {
 const WEIGHT_HEADERS = ['weight', 'weight (kg)', 'weight (kgs)', 'weight (lbs)', 'weight (lb)'];
 const DISTANCE_HEADERS = ['distance', 'distance (km)', 'distance (mi)', 'distance (m)', 'distance (meters)', 'distance (miles)'];
 
-export function parseStrong(t: CsvTable): ParsedImport {
+export function parseStrong(t: CsvTable, opts: ParseOptions = {}): ParsedImport {
   const c = {
     date: column(t, 'date'),
     name: column(t, 'workout name'),
@@ -42,6 +42,7 @@ export function parseStrong(t: CsvTable): ParsedImport {
   const headerDistanceUnit: ImportDistanceUnit | null = c.distance >= 0 ? (distanceUnitOf(t.headers[c.distance].replace(/^distance/i, '')) ?? null) : null;
   const durationPlain = c.duration >= 0 && /min/i.test(t.headers[c.duration]) ? 'min' : 'sec';
 
+  const days = fileDayOrder(t.rows.map((r) => cell(r, c.date)), opts.dayOrder);
   const g = new WorkoutGrouper();
   let skipped = 0;
   const rowUnits = new Set<WeightUnit>();
@@ -50,7 +51,7 @@ export function parseStrong(t: CsvTable): ParsedImport {
   for (const row of t.rows) {
     const dateRaw = cell(row, c.date);
     const exName = cell(row, c.exercise);
-    const start = parseStart(dateRaw);
+    const start = parseStart(dateRaw, days.order);
     const order = cell(row, c.order).toUpperCase();
     let type: ParsedSet['type'] | null;
     if (order === '' || /^\d+$/.test(order) || order === 'F') type = 'normal';
@@ -98,5 +99,7 @@ export function parseStrong(t: CsvTable): ParsedImport {
     distanceUnit: headerDistanceUnit ?? (rowDistUnits.size === 1 ? [...rowDistUnits][0] : null),
     workouts: g.result(),
     skippedRows: skipped,
+    dayOrderNeeded: days.needed,
+    ...(days.order ? { dayOrder: days.order } : {}),
   };
 }

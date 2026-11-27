@@ -108,7 +108,7 @@ export default function DataPage() {
       </Card>
 
       <SectionTitle id="import">{t('import.title')}</SectionTitle>
-      <WorkoutImportSection />
+      <WorkoutImportSection key={db.accountKey} />
 
       <SectionTitle>{t('settings.restoreBackup')}</SectionTitle>
       <RestoreSection />

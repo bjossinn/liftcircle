@@ -61,7 +61,7 @@ describe('preview plan', () => {
     expect(push).toMatchObject({ name: 'Push Day', status: 'completed', date: '2024-01-15', timeZone: 'Atlantic/Reykjavik', pausedTotalMs: 0, notes: 'Good session, slept well' });
     expect(push.startedAt).toBe(Date.UTC(2024, 0, 15, 7, 45, 12));
     expect(push.endedAt).toBe(push.startedAt + 3900 * 1000);
-    expect(push.imported).toEqual({ source: 'strong', key: 'strong|2024-01-15 07:45:12', importedAt: 1_700_000_000_000 });
+    expect(push.imported).toEqual({ source: 'strong', key: 'strong|2024-01-15T07:45:12', importedAt: 1_700_000_000_000 });
     expect(push.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     const bench = push.exercises[0];
     expect(bench.exerciseId).toBe('barbell-bench-press');
@@ -140,7 +140,7 @@ describe('stable ids and dedupe', () => {
     const changed = { ...w, exercises: [{ ...w.exercises[0], sets: [{ ...w.exercises[0].sets[0], reps: 11 }] }] };
     expect(await workoutHashId('strong', changed)).not.toBe(await workoutHashId('strong', w));
     expect(await workoutHashId('hevy', w)).not.toBe(await workoutHashId('strong', w));
-    expect(importKey('strong', w)).toBe('strong|2024-01-15 07:45:12');
+    expect(importKey('strong', w)).toBe('strong|2024-01-15T07:45:12');
     expect(uuidFromHex('f'.repeat(64))).toBe('ffffffff-ffff-5fff-bfff-ffffffffffff');
   });
 
@@ -228,5 +228,116 @@ describe('writing', () => {
     expect(await db.sessions.count()).toBe(0);
     expect(await db.customExercises.count()).toBe(0);
     expect(await db.outbox.count()).toBe(0);
+  });
+});
+
+describe('recorded values survive the mapping', () => {
+  const header = 'Date,Workout Name,Exercise Name,Set Order,Weight (kg),Reps,Distance (m),Seconds';
+  const row = (date: string, name: string, w: number, r: number, d: number, sec: number) => `${date},A,${name},1,${w},${r},${d},${sec}`;
+  const D1 = '2024-01-01 10:00:00';
+  const D2 = '2024-01-03 10:00:00';
+  const setOf = (plan: Awaited<ReturnType<typeof buildImportPlan>>, date: string, name: string) => {
+    const s = plan.sessions.find((x) => x.imported!.key === `strong|${date.replace(' ', 'T')}`)!;
+    const all = [...EXERCISES, ...plan.customExercises];
+    const i = parseWorkoutCsv(csv).workouts.find((w) => w.startKey === date)!.exercises.findIndex((e) => e.name === name);
+    const se = s.exercises[i];
+    return { set: se.sets[0], exercise: all.find((e) => e.id === se.exerciseId)! };
+  };
+  const csv = [
+    header,
+    row(D1, 'Suitcase Carry (Dumbbell)', 20, 0, 30, 30),
+    row(D1, 'Sled Push', 100, 0, 20, 0),
+    row(D1, 'Weighted Plank', 10, 0, 0, 60),
+    row(D1, 'Farmers Walk', 32, 0, 40, 45),
+    row(D1, 'Mountain Climbers', 0, 20, 0, 0),
+    row(D1, 'Jumping Jacks', 0, 30, 0, 0),
+    row(D1, 'Pull Up', 10, 5, 0, 0),
+    row(D2, 'Mountain Climbers', 0, 0, 0, 45),
+    row(D2, 'Pull Up', 0, 8, 0, 0),
+  ].join('\n');
+
+  it('keeps loaded carries, sleds and weighted holds with their weight, distance and time, all completed', async () => {
+    const plan = await buildImportPlan(parseWorkoutCsv(csv), EXERCISES, EMPTY, UTC);
+    const carry = setOf(plan, D1, 'Suitcase Carry (Dumbbell)');
+    expect(carry.exercise.id).toBe('suitcase-carry');
+    expect(carry.set).toMatchObject({ weightKg: 20, entered: { value: 20, unit: 'kg' }, distanceM: 30, durationSec: 30, completed: true });
+    const farmer = setOf(plan, D1, 'Farmers Walk');
+    expect(farmer.exercise.id).toBe('farmer-carry');
+    expect(farmer.set).toMatchObject({ weightKg: 32, distanceM: 40, durationSec: 45, completed: true });
+    const sled = setOf(plan, D1, 'Sled Push');
+    expect(sled.exercise).toMatchObject({ custom: true, name: 'Sled Push', tracking: 'distance_time', load: 'total' });
+    expect(sled.set).toMatchObject({ weightKg: 100, distanceM: 20, completed: true });
+    const plank = setOf(plan, D1, 'Weighted Plank');
+    expect(plank.exercise).toMatchObject({ custom: true, tracking: 'distance_time' });
+    expect(plank.exercise.load).not.toBe('none');
+    expect(plank.set).toMatchObject({ weightKg: 10, durationSec: 60, completed: true });
+    expect(plan.repairedSets).toBe(0);
+  });
+
+  it('rep-count Mountain Climbers / Jumping Jacks and a loaded Pull Up get compatible variants; matching blocks stay on the library', async () => {
+    const plan = await buildImportPlan(parseWorkoutCsv(csv), EXERCISES, EMPTY, UTC);
+    const mc = setOf(plan, D1, 'Mountain Climbers');
+    expect(mc.exercise).toMatchObject({ custom: true, name: 'Mountain Climbers (Strong)', tracking: 'reps' });
+    expect(mc.set).toMatchObject({ reps: 20, completed: true });
+    const jj = setOf(plan, D1, 'Jumping Jacks');
+    expect(jj.exercise).toMatchObject({ custom: true, name: 'Jumping Jacks (Strong)', tracking: 'reps' });
+    expect(jj.set).toMatchObject({ reps: 30, completed: true });
+    const pu = setOf(plan, D1, 'Pull Up');
+    expect(pu.exercise).toMatchObject({ custom: true, name: 'Pull Up (Strong)', tracking: 'weight_reps' });
+    expect(pu.set).toMatchObject({ weightKg: 10, reps: 5, completed: true });
+    // The timed Mountain Climbers block and the bodyweight Pull Up block fit the library exercises.
+    expect(setOf(plan, D2, 'Mountain Climbers').exercise.id).toBe('mountain-climber');
+    expect(setOf(plan, D2, 'Mountain Climbers').set).toMatchObject({ durationSec: 45, completed: true });
+    expect(setOf(plan, D2, 'Pull Up').exercise.id).toBe('pull-up');
+    // Preview: the same export name is listed as matched and as a new variant.
+    expect(plan.matched.map((l) => [l.name, l.exerciseId])).toContainEqual(['Mountain Climbers', 'mountain-climber']);
+    expect(plan.created.map((l) => [l.name, l.exerciseName])).toContainEqual(['Mountain Climbers', 'Mountain Climbers (Strong)']);
+    expect(plan.repairedSets).toBe(0);
+  });
+
+  it('variants are reused by a later import, not duplicated', async () => {
+    const db = await fresh();
+    await applyWorkoutImport(db, await planWorkoutImport(db, parseWorkoutCsv(csv), await library(db), UTC));
+    const customs = await db.customExercises.count();
+    await db.sessions.clear();
+    const again = await planWorkoutImport(db, parseWorkoutCsv(csv), await library(db), UTC);
+    expect(again.customExercises).toEqual([]);
+    expect(again.matched.map((l) => l.exerciseName)).toContain('Mountain Climbers (Strong)');
+    await applyWorkoutImport(db, again);
+    expect(await db.customExercises.count()).toBe(customs);
+  });
+
+  it('every fixture: no recorded weight, reps, distance or time is dropped, and no valid set becomes not done', async () => {
+    for (const name of ['strong.csv', 'strong-eu.csv', 'hevy.csv', 'hevy-lbs.csv']) {
+      const file = parseWorkoutCsv(fixture(name));
+      const plan = await buildImportPlan(file, EXERCISES, EMPTY, { ...UTC, now: 1 });
+      const all = new Map([...EXERCISES, ...plan.customExercises].map((e) => [e.id, e]));
+      const byStart = new Map(plan.sessions.map((s) => [s.startedAt, s]));
+      for (const w of file.workouts) {
+        const session = byStart.get(Date.parse(`${'local' in w.start ? w.start.local : ''}Z`))!;
+        w.exercises.forEach((e, i) =>
+          e.sets.forEach((src, j) => {
+            const out = session.exercises[i].sets[j];
+            const label = `${name}: ${e.name} #${j + 1}`;
+            const ex = all.get(session.exercises[i].exerciseId)!;
+            if ((src.weight ?? 0) > 0) expect(out.weightKg, label).not.toBeNull();
+            if ((src.reps ?? 0) > 0) expect(out.reps, label).toBe(src.reps);
+            if ((src.distance ?? 0) > 0) expect(out.distanceM, label).not.toBeNull();
+            if ((src.durationSec ?? 0) > 0) expect(out.durationSec, label).toBe(src.durationSec);
+            expect(out.completed, label).toBe(true);
+            expect(ex, label).toBeDefined();
+          }),
+        );
+      }
+    }
+  });
+
+  it('day/month choice changes the dates and the dedupe key, so a wrong choice can be corrected', async () => {
+    const amb = 'Date,Workout Name,Exercise Name,Set Order,Weight,Reps\n01/02/2024 10:00,A,Squat (Barbell),1,100,5';
+    const dmy = await buildImportPlan(parseWorkoutCsv(amb, { dayOrder: 'dmy' }), EXERCISES, EMPTY, UTC);
+    const mdy = await buildImportPlan(parseWorkoutCsv(amb, { dayOrder: 'mdy' }), EXERCISES, EMPTY, UTC);
+    expect(dmy).toMatchObject({ dayOrderNeeded: true, from: '2024-02-01' });
+    expect(mdy.from).toBe('2024-01-02');
+    expect(dmy.sessions[0].id).not.toBe(mdy.sessions[0].id);
   });
 });

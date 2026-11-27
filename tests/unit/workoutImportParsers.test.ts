@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { detectDelimiter, parseCsv, parseCsvRows, parseNumber } from '@/features/import/csv';
-import { parseDuration, parseStart } from '@/features/import/common';
+import { parseDuration, parseStart, resolveDayOrder } from '@/features/import/common';
 import { detectSource, parseWorkoutCsv } from '@/features/import/parse';
 import { WorkoutImportError } from '@/features/import/types';
 
@@ -75,6 +75,10 @@ describe('numbers, dates and durations', () => {
     expect(parseStart('Feb 3, 2024, 12:05 AM')).toEqual({ local: '2024-02-03T00:05:00' });
     expect(parseStart('04.03.2024 06:30')).toEqual({ local: '2024-03-04T06:30:00' });
     expect(parseStart('25/12/2023 10:00')).toEqual({ local: '2023-12-25T10:00:00' });
+    // Ambiguous slash dates are never guessed per row: they need the file's order.
+    expect(parseStart('01/02/2024 10:00')).toBeNull();
+    expect(parseStart('01/02/2024 10:00', 'dmy')).toEqual({ local: '2024-02-01T10:00:00' });
+    expect(parseStart('01/02/2024 10:00', 'mdy')).toEqual({ local: '2024-01-02T10:00:00' });
     expect(parseStart('2024-01-15T07:45:12Z')).toEqual({ epochMs: Date.UTC(2024, 0, 15, 7, 45, 12) });
     expect(parseStart('2024-01-15 07:45:12+0100')).toEqual({ epochMs: Date.UTC(2024, 0, 15, 6, 45, 12) });
     expect(parseStart('2024-02-31 10:00')).toBeNull();
@@ -202,5 +206,53 @@ describe('Hevy export', () => {
     expect(p.workouts[0].start).toEqual({ local: '2024-02-03T18:15:00' });
     expect(p.workouts[0].exercises[0].sets.map((s) => s.weight)).toEqual([60, 60]);
     expect(p.workouts[0].exercises[1].sets[0]).toMatchObject({ distance: 1.5, durationSec: 720 });
+  });
+});
+
+describe('slash-date order is decided for the whole file', () => {
+  const strong = (dates: string[]) =>
+    ['Date,Workout Name,Exercise Name,Set Order,Weight,Reps', ...dates.map((d, i) => `${d},W${i},Squat (Barbell),1,100,5`)].join('\n');
+  const starts = (csv: string, opts = {}) => parseWorkoutCsv(csv, opts).workouts.map((w) => ('local' in w.start ? w.start.local.slice(0, 10) : ''));
+
+  it('resolveDayOrder: unambiguous dates decide; none → ambiguous; both kinds → conflict', () => {
+    expect(resolveDayOrder(['01/02/2024', '13/02/2024'])).toMatchObject({ order: 'dmy', ambiguous: false, conflict: false });
+    expect(resolveDayOrder(['02/01/2024', '02/13/2024'])).toMatchObject({ order: 'mdy', ambiguous: false });
+    expect(resolveDayOrder(['01/02/2024', '03/04/2024'])).toMatchObject({ order: null, ambiguous: true });
+    expect(resolveDayOrder(['01/02/2024'], 'mdy')).toMatchObject({ order: 'mdy', ambiguous: true });
+    expect(resolveDayOrder(['13/02/2024', '02/13/2024'])).toMatchObject({ conflict: true });
+    expect(resolveDayOrder(['2024-02-01 10:00'])).toMatchObject({ order: null, ambiguous: false, slash: false });
+  });
+
+  it('a DD/MM file with mixed ambiguous and unambiguous dates reads every date day first', () => {
+    const csv = strong(['01/02/2024 10:00', '13/02/2024 10:00', '05/03/2024 18:30']);
+    expect(starts(csv)).toEqual(['2024-02-01', '2024-02-13', '2024-03-05']);
+    expect(parseWorkoutCsv(csv).dayOrderNeeded).toBe(false);
+    expect(parseWorkoutCsv(csv).dayOrder).toBe('dmy');
+    // An explicit (wrong) choice can't override what the file proves.
+    expect(starts(csv, { dayOrder: 'mdy' })).toEqual(['2024-02-01', '2024-02-13', '2024-03-05']);
+  });
+
+  it('the MM/DD counterpart reads every date month first', () => {
+    const csv = strong(['02/01/2024 10:00', '02/13/2024 10:00', '03/05/2024 6:30 PM']);
+    expect(starts(csv)).toEqual(['2024-02-01', '2024-02-13', '2024-03-05']);
+    expect(parseWorkoutCsv(csv)).toMatchObject({ dayOrderNeeded: false, dayOrder: 'mdy' });
+  });
+
+  it('a file where every date is ambiguous asks, and follows the choice', () => {
+    const csv = strong(['01/02/2024 10:00', '03/04/2024 10:00']);
+    expect(parseWorkoutCsv(csv)).toMatchObject({ dayOrderNeeded: true, dayOrder: 'dmy' });
+    expect(starts(csv, { dayOrder: 'dmy' })).toEqual(['2024-02-01', '2024-04-03']);
+    expect(starts(csv, { dayOrder: 'mdy' })).toEqual(['2024-01-02', '2024-03-04']);
+  });
+
+  it('rejects a file that mixes day-first and month-first dates', () => {
+    expect(errorCode(() => parseWorkoutCsv(strong(['13/02/2024 10:00', '02/14/2024 10:00'])))).toBe('date_order');
+  });
+
+  it('Hevy: the end_time column counts as evidence too', () => {
+    const csv = 'title,start_time,end_time,exercise_title,set_type,weight_kg,reps\nA,01/02/2024 23:00,13/02/2024 00:10,Squat (Barbell),normal,100,5';
+    const p = parseWorkoutCsv(csv);
+    expect(p.dayOrderNeeded).toBe(false);
+    expect(p.workouts[0].start).toEqual({ local: '2024-02-01T23:00:00' });
   });
 });

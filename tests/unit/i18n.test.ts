@@ -15,9 +15,9 @@ describe('dictionaries', () => {
   const enKeys = Object.keys(EN).sort();
   const isKeys = Object.keys(IS).sort();
 
-  it('have the same 3225 keys in English and Icelandic', () => {
+  it('have the same 3230 keys in English and Icelandic', () => {
     expect(enKeys).toEqual(isKeys);
-    expect(enKeys).toHaveLength(3225);
+    expect(enKeys).toHaveLength(3230);
   });
 
   it('have no empty values and the same placeholder names in both languages', () => {

@@ -7,8 +7,8 @@
  * "15 Jan 2024, 08:30" (local time) and are read in the account's time zone.
  */
 import { parseNumber, type CsvTable } from './csv';
-import { WorkoutGrouper, cell, column, hasValues, parseStart } from './common';
-import type { ImportDistanceUnit, ParsedImport, ParsedSet } from './types';
+import { WorkoutGrouper, cell, column, fileDayOrder, hasValues, parseStart } from './common';
+import type { ImportDistanceUnit, ParseOptions, ParsedImport, ParsedSet } from './types';
 import type { WeightUnit } from '@/domain/types';
 
 export function isHevyTable(t: CsvTable): boolean {
@@ -22,7 +22,7 @@ function setType(raw: string): ParsedSet['type'] {
   return 'normal';
 }
 
-export function parseHevy(t: CsvTable): ParsedImport {
+export function parseHevy(t: CsvTable, opts: ParseOptions = {}): ParsedImport {
   const kg = column(t, 'weight_kg');
   const lbs = column(t, 'weight_lbs', 'weight_lb');
   const km = column(t, 'distance_km');
@@ -46,12 +46,13 @@ export function parseHevy(t: CsvTable): ParsedImport {
     rpe: column(t, 'rpe'),
   };
 
+  const days = fileDayOrder(t.rows.flatMap((r) => [cell(r, c.start), cell(r, c.end)]), opts.dayOrder);
   const g = new WorkoutGrouper();
   let skipped = 0;
   for (const row of t.rows) {
     const startRaw = cell(row, c.start);
     const exName = cell(row, c.exercise);
-    const start = parseStart(startRaw);
+    const start = parseStart(startRaw, days.order);
     if (!start || !exName) {
       skipped++;
       continue;
@@ -59,7 +60,7 @@ export function parseHevy(t: CsvTable): ParsedImport {
     const title = cell(row, c.title);
     const w = g.workout(`${startRaw}\u0000${title}`, () => {
       const endRaw = cell(row, c.end);
-      const end = endRaw ? parseStart(endRaw) : null;
+      const end = endRaw ? parseStart(endRaw, days.order) : null;
       const description = cell(row, c.description);
       return { name: title, start, startKey: startRaw, ...(end ? { end } : {}), ...(description ? { notes: description } : {}), exercises: [] };
     });
@@ -82,5 +83,5 @@ export function parseHevy(t: CsvTable): ParsedImport {
     }
     ex.sets.push(set);
   }
-  return { source: 'hevy', weightUnit, distanceUnit, workouts: g.result(), skippedRows: skipped };
+  return { source: 'hevy', weightUnit, distanceUnit, workouts: g.result(), skippedRows: skipped, dayOrderNeeded: days.needed, ...(days.order ? { dayOrder: days.order } : {}) };
 }
