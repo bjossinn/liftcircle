@@ -477,14 +477,17 @@ Migration `20261129000001_coach_push.sql` (additive), `_shared/push/copy.ts`, `_
   account-bound delete, where the one-argument delete is used after re-checking the session) the deletion is kept
   pending and retried on refresh, and the device is never re-subscribed meanwhile.
 * **Copy** (`copy.ts`): the model writes only `{ "body" }` (≤ 140 code points, plain text, requested language,
-  always supportive; no guilt, compensation, prescriptions, targets, numbers or claims about skipping). It needs
+  always supportive; no guilt, compensation, prescriptions, targets, numbers or claims about skipping; no emoji except
+  one optional trailing 💪 or 🙌 on `workout_reminder`). Its model is independent of the chat default
+  (`resolvePushModel`: with OpenAI `PUSH_COPY_MODEL` default `gpt-5-mini`, `PUSH_COPY_REASONING_EFFORT` default
+  `minimal` for gpt-5/-mini/-nano and `low` for models that reject it, `PUSH_COPY_REASONING_TOKEN_ALLOWANCE` default 512). It needs
   `PUSH_AI_COPY=on` (off by default until the live evaluation `node tests/live/push-copy-live.mjs` has been reviewed),
   the assistant enabled and not paused, consent for the configured provider and the Training (workout/missed) or
   Nutrition (food) scope; otherwise there is no model call. The flag also gates cached generated text and the final
   dispatch. One attempt per event: `prepare` commits an attempt marker (`copy_attempted_at`) before any model call and
   the copy is stored with the final check, so a retry reuses the stored copy or — if the attempt was interrupted before
   it was saved — the fallback, and never calls the model again; a language or consent change switches to the current-language fallback. 3 s total, no
-  retries; any failure or rejected output (guilt, prescriptions of exercises or food, targets, numbers, emoji, wrong
+  retries; any failure or rejected output (guilt, prescriptions of exercises or food, targets, numbers, emoji outside that one allowance, wrong
   language…) → the approved fallback (`push.coach*.body`). The live evaluation also judges each generated text
   semantically against the contract; a verdict counts only with all eight fields as booleans
   (`_shared/push/judge.ts`). Chat history and the chat daily allowance are not touched; logs

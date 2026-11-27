@@ -817,7 +817,7 @@ function isOpenAiQuotaError(bodyText) {
 // supabase/functions/_shared/ai/provider.ts
 var DEFAULT_MODEL = "claude-sonnet-5-5";
 var DEFAULT_API_VERSION = "2023-06-01";
-var DEFAULT_OPENAI_MODEL = "gpt-5-mini";
+var DEFAULT_OPENAI_MODEL = "gpt-5";
 function resolveProvider(env2) {
   const get = (k) => env2(k)?.trim() || void 0;
   const explicit = get("AI_PROVIDER")?.toLowerCase();
@@ -1134,6 +1134,12 @@ var COACH_KINDS = ["workout_reminder", "missed_nudge", "food_unlogged"];
 var isCoachKind = (k) => COACH_KINDS.includes(k);
 var COPY_MAX_CODE_POINTS = 140;
 var COPY_TIMEOUT_MS = 3e3;
+var DEFAULT_PUSH_OPENAI_MODEL = "gpt-5-mini";
+var DEFAULT_PUSH_REASONING_EFFORT = "minimal";
+var DEFAULT_PUSH_REASONING_ALLOWANCE = 512;
+var FALLBACK_PUSH_REASONING_EFFORT = "low";
+var MINIMAL_EFFORT_MODELS = /^gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$/i;
+var WORKOUT_REMINDER_EMOJIS = ["\u{1F4AA}", "\u{1F64C}"];
 var COPY_MIN_BUDGET_MS = 1200;
 var KEYS = {
   workout_reminder: { title: "push.coachWorkout.title", body: "push.coachWorkout.body" },
@@ -1178,7 +1184,7 @@ var FORBIDDEN = [
 function aiCopyEnabled(env2) {
   return env2?.("PUSH_AI_COPY")?.trim().toLowerCase() === "on";
 }
-function validateCopy(raw, language) {
+function validateCopy(raw, language, kind) {
   let parsed;
   try {
     parsed = JSON.parse(raw.trim());
@@ -1192,11 +1198,24 @@ function validateCopy(raw, language) {
   if (typeof body !== "string") return null;
   const text = body.trim();
   if (!text || text !== body || /[\r\n\t]/.test(text) || codePoints(text) > COPY_MAX_CODE_POINTS) return null;
-  if (FORBIDDEN.some((re) => re.test(text))) return null;
-  const detected = detectLang(text);
-  if (language === "is" ? !IS_CHARS.test(text) || detected === "en" : IS_CHARS.test(text) || detected === "is") return null;
+  const content = kind === "workout_reminder" ? stripTrailingEmoji(text) : text;
+  if (!content) return null;
+  if (FORBIDDEN.some((re) => re.test(content))) return null;
+  const detected = detectLang(content);
+  if (language === "is" ? !IS_CHARS.test(content) || detected === "en" : IS_CHARS.test(content) || detected === "is") return null;
   return text;
 }
+function stripTrailingEmoji(text) {
+  for (const e of WORKOUT_REMINDER_EMOJIS) {
+    if (text.endsWith(e)) return text.slice(0, -e.length).trimEnd();
+  }
+  return text;
+}
+var EMOJI_RULE = {
+  workout_reminder: "optional: at most one emoji, \u{1F4AA} or \u{1F64C}, only at the very end; no other emoji",
+  missed_nudge: "none",
+  food_unlogged: "none"
+};
 var TOPIC = {
   workout_reminder: "a planned training day today; invite them to open Today in the app to see their workout",
   missed_nudge: "a planned workout from yesterday that is still open; plans change, invite them to open Today and choose what works",
@@ -1205,12 +1224,28 @@ var TOPIC = {
 var COPY_SYSTEM = [
   'You write the body text of one push notification for a fitness app. Reply with exactly one JSON object: {"body": "..."} and nothing else.',
   "Only invite the person to open the app when it suits them; do not name any exercise, activity, food, drink, meal, amount or body part.",
-  `The body is plain text, one sentence or two short ones, at most ${COPY_MAX_CODE_POINTS} characters, with no emoji, links, numbers, markdown or quotes.`,
-  "Tone: always warm, supportive and low-pressure. The person decides if and when to act.",
+  `The body is plain text, one sentence or two short ones, at most ${COPY_MAX_CODE_POINTS} characters, with no links, numbers, markdown or quotes.`,
+  'Emoji: follow the "emoji" field exactly. For "kind": "workout_reminder" you may end with one \u{1F4AA} or \u{1F64C}; missed_nudge and food_unlogged stay emoji-free.',
+  "Tone: lightly upbeat, warm, supportive and low-pressure, like a friendly nudge; never hype. The person decides if and when to act.",
   "Never use guilt or shame, never suggest compensating or making up for anything, never prescribe exercises, durations, foods, calories or targets,",
   "and never state or imply that the person skipped, missed or failed to train or eat (you do not know that).",
   "Do not mention names, workouts, foods, body measurements or health. Write in the requested language only; for Icelandic, write natural, correct Icelandic."
 ].join(" ");
+function resolvePushModel(env2, provider) {
+  const get = (k) => env2(k)?.trim() || void 0;
+  if (provider.provider !== "openai") return { model: get("PUSH_COPY_MODEL") ?? provider.model, reasoningEffort: void 0, reasoningAllowance: 0 };
+  const model = get("PUSH_COPY_MODEL") ?? DEFAULT_PUSH_OPENAI_MODEL;
+  const reasoning = /^(gpt-5|o\d)/i.test(model);
+  const effortEnv = get("PUSH_COPY_REASONING_EFFORT")?.toLowerCase();
+  const minimalOk = MINIMAL_EFFORT_MODELS.test(model);
+  const requested = effortEnv ?? (minimalOk ? DEFAULT_PUSH_REASONING_EFFORT : FALLBACK_PUSH_REASONING_EFFORT);
+  const reasoningEffort = !reasoning || effortEnv === "off" ? void 0 : requested === "minimal" && !minimalOk ? FALLBACK_PUSH_REASONING_EFFORT : requested;
+  const raw = get("PUSH_COPY_REASONING_TOKEN_ALLOWANCE");
+  const n = raw ? Number(raw) : NaN;
+  const allowance = Number.isFinite(n) && n >= 0 ? Math.min(DEFAULT_PUSH_REASONING_ALLOWANCE, Math.floor(n)) : DEFAULT_PUSH_REASONING_ALLOWANCE;
+  const reasoningAllowance = reasoningEffort ? allowance : 0;
+  return { model, reasoningEffort, reasoningAllowance };
+}
 async function writeCopy(deps, kind, language, ai, budgetMs) {
   const fb = fallbackCopy(kind, language);
   const provider = resolveProvider(deps.env);
@@ -1220,17 +1255,17 @@ async function writeCopy(deps, kind, language, ai, budgetMs) {
   const timeout = Math.min(COPY_TIMEOUT_MS, Math.floor(budgetMs));
   if (!(timeout >= COPY_MIN_BUDGET_MS)) return { ...fb, reason: "budget", modelCalled: false };
   const now = deps.now ?? Date.now;
-  const effort = deps.env("PUSH_COPY_REASONING_EFFORT")?.trim().toLowerCase();
+  const pm = resolvePushModel(deps.env, provider);
   try {
     const res = await createMessage(
       {
         provider: provider.provider,
         apiKey: provider.apiKey,
-        model: deps.env("PUSH_COPY_MODEL")?.trim() || provider.model,
+        model: pm.model,
         baseUrl: provider.baseUrl,
         apiVersion: provider.apiVersion,
-        reasoningEffort: provider.reasoningEffort ? effort === "off" ? void 0 : effort || provider.reasoningEffort : void 0,
-        reasoningAllowance: provider.reasoningEffort ? Math.min(provider.reasoningAllowance ?? 0, 512) : 0,
+        reasoningEffort: pm.reasoningEffort,
+        reasoningAllowance: pm.reasoningAllowance,
         maxTokens: 160,
         timeoutMs: timeout,
         maxRetries: 0,
@@ -1244,7 +1279,9 @@ async function writeCopy(deps, kind, language, ai, budgetMs) {
           {
             role: "user",
             content: JSON.stringify({
+              kind,
               reminder: TOPIC[kind],
+              emoji: EMOJI_RULE[kind],
               language: language === "is" ? "Icelandic (is)" : "English (en)",
               tone: "supportive",
               reference: fb.body
@@ -1255,7 +1292,7 @@ async function writeCopy(deps, kind, language, ai, budgetMs) {
     );
     const usage = { inputTokens: Number(res.usage?.input_tokens) || 0, outputTokens: Number(res.usage?.output_tokens) || 0 };
     const text = res.content.filter((b) => b.type === "text").map((b) => b.text).join("");
-    const body = res.stop_reason === "max_tokens" ? null : validateCopy(text, language);
+    const body = res.stop_reason === "max_tokens" ? null : validateCopy(text, language, kind);
     if (!body) return { ...fb, reason: "invalid", modelCalled: true, usage };
     return { title: fb.title, body, language, source: "ai", modelCalled: true, usage };
   } catch {
@@ -1265,7 +1302,7 @@ async function writeCopy(deps, kind, language, ai, budgetMs) {
 function finalizeCopy(kind, copy, language, aiStillAllowed) {
   if (copy && copy.language === language && typeof copy.body === "string" && copy.body) {
     if (copy.source === "fallback" && copy.body === fallbackBody(kind, language)) return fallbackCopy(kind, language);
-    if (copy.source === "ai" && aiStillAllowed && validateCopy(JSON.stringify({ body: copy.body }), language) === copy.body) {
+    if (copy.source === "ai" && aiStillAllowed && validateCopy(JSON.stringify({ body: copy.body }), language, kind) === copy.body) {
       return { title: coachTitle(kind, language), body: copy.body, language, source: "ai" };
     }
   }

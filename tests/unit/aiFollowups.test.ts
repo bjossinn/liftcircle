@@ -5,7 +5,7 @@
  *  3. a failed request gives its daily allowance back;
  *  5. sync barrier: the app syncs (bounded) before sending, and tells the server what is still unsynced;
  *  6. Icelandic summaries and dates;
- *  7. "too tired" is detected (EN + IS) without catching "tired of chicken";
+ *  7. "too tired" is detected (EN + IS) without catching "tired of chicken" (coach voice v1: tidyReply keeps emojis);
  *  8. "pancakes without blueberries" → pancakes, with the optional blueberries left out (and swaps carried to the card).
  * (4, the refreshed "Training setup" note, and the style rules for 7 are in aiCoachV2.test.ts; 9 is aiAllergenFixture.test.ts.)
  */
@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { handleAiCoach, thanksLine, type CoachDeps } from '../../supabase/functions/_shared/ai/coach';
 import { perServingMacros, runTool, type ToolState } from '../../supabase/functions/_shared/ai/tools';
 import { mentionsTiredness } from '../../supabase/functions/_shared/ai/conversation';
+import { tidyReply } from '../../supabase/functions/_shared/ai/reply';
 import { createSupabaseAiDb, type SbClient } from '../../supabase/functions/_shared/ai/supabaseDb';
 import { detectLang, replyLang } from '../../supabase/functions/_shared/ai/lang';
 import { humanDate, humanizeDates, shortDate } from '../../supabase/functions/_shared/ai/humanDates';
@@ -424,8 +425,19 @@ describe('7. "too tired" detection', () => {
     ['I’m too tired today', true], ['so exhausted, should I train?', true], ['feeling drained', true], ['completely wiped out', true],
     ['Ég er of þreytt í dag', true], ['ég er þreyttur', true], ['alveg búin á því', true], ['uppgefin eftir vinnuna', true],
     ['I’m tired of chicken', false], ['sick and tired of oats', false], ['ég er þreytt á kjúklingi', false], ['Make me a meal plan', false], ['retired athlete', false],
+    ['Ég svaf í þrjá tíma og er alveg búinn á því.', true], ['Ég er orðinn þreyttur á kjúklingi.', false], ['I’m getting tired of chicken', false],
   ])('%s → %s', (t, expected) => {
     expect(mentionsTiredness(t)).toBe(expected);
+  });
+
+  it('tidyReply preserves emojis (coach voice v1) while still stripping generic boilerplate', () => {
+    expect(tidyReply('Vel gert! Öll settin kláruð 💪🔥')).toBe('Vel gert! Öll settin kláruð 💪🔥');
+    expect(tidyReply('Great question! Chicken fatigue is real 😄 Want to try turkey this week?\n\nI hope this helps!')).toBe(
+      'Chicken fatigue is real 😄 Want to try turkey this week?',
+    );
+    expect(tidyReply('Absolutely! Nice work 🙌\n\nLet me know if there’s anything else.')).toBe('Nice work 🙌');
+    // Emoji-only check-ins and ZWJ/variation-selector sequences survive untouched.
+    expect(tidyReply('Flott hjá þér! 🏋️‍♀️ ❤️')).toBe('Flott hjá þér! 🏋️‍♀️ ❤️');
   });
 });
 

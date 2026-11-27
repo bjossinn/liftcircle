@@ -181,14 +181,19 @@ const ctxFor = (d: Data, text = 'I can only train twice this week') => buildCont
 describe('MOCKED ai-coach v2: response style instructions', () => {
   it('system rules: warm trainer personality, short texting-style answers (40–90 words), at most one closing check-in question, and temporary requests stay temporary', () => {
     // Six-part prompt (item 10): docs/AI_PROMPT_RULES.md maps each earlier instruction to these phrases.
-    expect(SYSTEM_RULES).toMatch(/Voice: warm, clear and steady/);
+    expect(SYSTEM_RULES).toMatch(/Voice: upbeat, energetic, warm and fun, like a thoughtful training buddy/);
+    expect(SYSTEM_RULES).toMatch(/celebrate real effort and progress without inventing achievements or exaggerating results/);
+    expect(SYSTEM_RULES).toMatch(/Avoid canned praise, forced slang, pet names and sales-pitch hype/);
+    expect(SYSTEM_RULES).not.toMatch(/Voice: warm, clear and steady/);
+    expect(SYSTEM_RULES).toMatch(/Emojis: use 0–2 natural emojis per ordinary reply/);
+    expect(SYSTEM_RULES).toMatch(/never a quota; never replace advice, numbers or warnings with them\. The calm safety rule overrides this/);
+    expect(SYSTEM_RULES).toMatch(/Calm safety voice: .* No emojis, jokes, hype or motivational pressure/);
     expect(SYSTEM_RULES).toMatch(/use their first name only if they gave it/);
     expect(SYSTEM_RULES).toMatch(/React briefly to what they said/);
     expect(SYSTEM_RULES).toMatch(/Never invent workouts, numbers, records, achievements or history/);
     expect(SYSTEM_RULES).toMatch(/default 40–90 words, the answer first/);
     expect(SYSTEM_RULES).not.toMatch(/60–120 words/);
-    expect(SYSTEM_RULES).toMatch(/don't repeat setup questions/);
-    expect(SYSTEM_RULES).toMatch(/instead of handing decisions back/);
+    expect(SYSTEM_RULES).toMatch(/Decide from the data; do not repeat setup questions/);
     expect(SYSTEM_RULES).toMatch(/At most one question per message/);
     expect(SYSTEM_RULES).not.toMatch(/Don't end answers with a question/);
     expect(SYSTEM_RULES).not.toMatch(/40–100 words/);
@@ -484,14 +489,15 @@ describe('MOCKED ai-coach v3: coach styles reach the prompt', () => {
     const { system, messages } = await ctxFor(styled('strict'), 'I’m too tired, skipping today');
     expect(String(messages.at(-1)?.content)).toBe('I’m too tired, skipping today');
     expect(system).toMatch(/Coach style: STRICT/);
-    expect(system).toMatch(/Push back firmly on "no time" or "don't feel like it" \(never on tiredness\)/);
+    expect(system).toMatch(/Never question pain or tiredness, shame them, or use "no excuses" rhetoric/);
+    expect(system).not.toMatch(/Push back firmly/);
     expect(system).not.toMatch(/reasons like "too tired"/);
     expect(system).toMatch(/Tiredness \(tired, fatigued, exhausted, drained, .*in any language\) is never a weak reason: be supportive, never ask them to justify it/);
     expect(system).toMatch(/The newest message says the user is tired\. Whatever the coach style: be supportive/);
-    expect(system).toMatch(/minimum version as the plan \("first two exercises, 20 minutes/);
     expect(system).toMatch(/offer a lighter option \("just the first two exercises, 20 minutes" or an easy walk\) and rest as equally good choices/);
-    expect(system).toMatch(/remind them of their goal and this week's work/i);
+    expect(system).toMatch(/propose a realistic minimum and a clear next step; the user still decides/);
     expect(system).toMatch(/Never shame, guilt-trip or insult/);
+    expect(system).toMatch(/Calm safety voice: for pain, injury, discomfort, illness, exhaustion, sleep deprivation/);
   });
 
   it('Strict + "my knee hurts": the safety rule wins over the style (rest/adjust, professional), stated as overriding every style', async () => {
@@ -500,7 +506,8 @@ describe('MOCKED ai-coach v3: coach styles reach the prompt', () => {
     expect(safety).toBeGreaterThan(-1);
     expect(system).toMatch(/Pain, injury, discomfort, illness, dizziness, chest pain or pressure, unusual exhaustion, poor sleep \(a newborn, night shifts\), grief or feeling overwhelmed: never push/);
     expect(system).toMatch(/suggest a doctor, physio or other professional/);
-    expect(STYLE_RULES.strict).toMatch(/never on tiredness/);
+    expect(STYLE_RULES.strict).toMatch(/Never question pain or tiredness/);
+    expect(system).toMatch(/be calm, empathetic and practical in every style\. No emojis, jokes, hype or motivational pressure\. Safety takes priority over brevity and style\./);
     // The safety limits come before the (only) style block, which is bound by them.
     expect(safety).toBeLessThan(system.indexOf('Coach style: STRICT'));
     expect(system).toMatch(/Never prescribe extra or compensatory exercise for food, missed sessions or weight/);
@@ -522,12 +529,18 @@ describe('MOCKED ai-coach v3: coach styles reach the prompt', () => {
 
   it('accountability rules: ask what is going on, push back on weak reasons, minimum version, goal + this week', () => {
     // Accountability lives in the selected style only (item 10: the prompt carries one style, bound by the safety limits).
-    expect(STYLE_RULES.balanced).toMatch(/For a weak reason to skip \("no time", "don't feel like it"\), ask what's going on, suggest the minimum version and remind them of their goal/);
-    expect(STYLE_RULES.strict).toMatch(/Push back firmly on "no time" or "don't feel like it" \(never on tiredness\)/);
+    expect(STYLE_RULES.supportive).toBe(
+      'Coach style: SUPPORTIVE (the default). Warm, upbeat encouragement with no pressure. Offer the minimum version as an option, not an obligation; accept rest or a declined suggestion warmly. Never make the user justify tiredness.',
+    );
+    expect(STYLE_RULES.balanced).toBe(
+      "Coach style: BALANCED. Warm, upbeat encouragement with light accountability. For ordinary reluctance, suggest a realistic minimum and connect it to the user's stated goal. If time is limited, adapt to the time available. Respect their choice; never push through tiredness.",
+    );
+    expect(STYLE_RULES.strict).toBe(
+      'Coach style: STRICT (opt-in). Energetic, direct and concise, with firm accountability rather than scolding. For ordinary reluctance, propose a realistic minimum and a clear next step; the user still decides. Never question pain or tiredness, shame them, or use "no excuses" rhetoric.',
+    );
     expect(SYSTEM_RULES).toMatch(/Tiredness .* is never a weak reason/);
-    expect(STYLE_RULES.supportive).toMatch(/never push/);
-    expect(STYLE_RULES.supportive).toMatch(/offer the minimum version as an option and accept their answer warmly/);
-    expect(STYLE_RULES.balanced).toMatch(/light accountability/);
+    // No style scolds or pushes through tiredness; the old firm push-back wording is gone.
+    for (const st of COACH_STYLES) expect(STYLE_RULES[st], st).not.toMatch(/Push back firmly|Start now|no excuses\b(?!" rhetoric)/);
   });
 });
 

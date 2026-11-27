@@ -10,6 +10,12 @@
  *  - Off unless the function secret PUSH_AI_COPY=on (set it after the live EN/IS evaluation, tests/live/push-copy-live.mjs).
  *  - Needs: a configured provider, the training assistant enabled and not paused, consent for the configured provider,
  *    and the Training (workout / missed) or Nutrition (food) sharing scope. Otherwise zero model calls.
+ *  - Emoji: none, except ONE optional trailing 💪 or 🙌 on workout_reminder (the whole text still counts toward the 140
+ *    code points; only that trailing emoji is exempt from the content checks). Missed-workout and food nudges stay
+ *    emoji-free and low-pressure.
+ *  - Model: independent of the chat default. With OpenAI, PUSH_COPY_MODEL (default gpt-5-mini) with
+ *    PUSH_COPY_REASONING_EFFORT (default minimal) and PUSH_COPY_REASONING_TOKEN_ALLOWANCE (default 512); non-reasoning
+ *    models get no reasoning fields. Changing OPENAI_MODEL never changes reminder copy.
  *  - One attempt per event, 3-second total timeout, no retries, small output and reasoning budget. Any failure →
  *    the approved fallback. Usage is reported as counts; bodies are never logged. Nothing here touches chat history or
  *    the chat daily allowance.
@@ -31,6 +37,17 @@ export const isCoachKind = (k: string): k is CoachKind => (COACH_KINDS as readon
 
 export const COPY_MAX_CODE_POINTS = 140;
 export const COPY_TIMEOUT_MS = 3000;
+/** Push copy defaults (OpenAI), deliberately separate from the chat defaults in ../ai/provider.ts. */
+export const DEFAULT_PUSH_OPENAI_MODEL = 'gpt-5-mini';
+export const DEFAULT_PUSH_REASONING_EFFORT = 'minimal';
+export const DEFAULT_PUSH_REASONING_ALLOWANCE = 512;
+/** Push effort for reasoning models that don't accept "minimal" (gpt-5.1+, o-series). */
+export const FALLBACK_PUSH_REASONING_EFFORT = 'low';
+/** gpt-5, gpt-5-mini, gpt-5-nano (optionally date-pinned): the only models that accept reasoning_effort "minimal". */
+const MINIMAL_EFFORT_MODELS = /^gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$/i;
+/** The only emoji generated copy may carry: one, trailing, on workout_reminder. */
+export const WORKOUT_REMINDER_EMOJIS: readonly string[] = ['💪', '🙌'];
+
 /** Below this much remaining worker time there is no model call (fallback). */
 export const COPY_MIN_BUDGET_MS = 1200;
 
@@ -110,7 +127,7 @@ export function aiCopyEnabled(env: ((name: string) => string | undefined) | null
  * Validates the model output. Returns the body, or null (→ fallback). The output must be EXACTLY a JSON object with one
  * string field "body": plain single-line text, 1–140 code points, in `language`, without forbidden content.
  */
-export function validateCopy(raw: string, language: Language): string | null {
+export function validateCopy(raw: string, language: Language, kind: CoachKind): string | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw.trim());
@@ -124,12 +141,29 @@ export function validateCopy(raw: string, language: Language): string | null {
   if (typeof body !== 'string') return null;
   const text = body.trim();
   if (!text || text !== body || /[\r\n\t]/.test(text) || codePoints(text) > COPY_MAX_CODE_POINTS) return null;
-  if (FORBIDDEN.some((re) => re.test(text))) return null;
+  // Emoji policy: only workout_reminder may end with ONE permitted emoji; only that emoji is exempt from the checks.
+  const content = kind === 'workout_reminder' ? stripTrailingEmoji(text) : text;
+  if (!content) return null;
+  if (FORBIDDEN.some((re) => re.test(content))) return null;
   // Language: Icelandic text needs Icelandic letters; English text must not have them (nor read as Icelandic).
-  const detected = detectLang(text);
-  if (language === 'is' ? !IS_CHARS.test(text) || detected === 'en' : IS_CHARS.test(text) || detected === 'is') return null;
+  const detected = detectLang(content);
+  if (language === 'is' ? !IS_CHARS.test(content) || detected === 'en' : IS_CHARS.test(content) || detected === 'is') return null;
   return text;
 }
+
+/** "… today 💪" → "… today"; anything else unchanged (so a second or different emoji still fails the checks). */
+function stripTrailingEmoji(text: string): string {
+  for (const e of WORKOUT_REMINDER_EMOJIS) {
+    if (text.endsWith(e)) return text.slice(0, -e.length).trimEnd();
+  }
+  return text;
+}
+
+const EMOJI_RULE: Record<CoachKind, string> = {
+  workout_reminder: 'optional: at most one emoji, 💪 or 🙌, only at the very end; no other emoji',
+  missed_nudge: 'none',
+  food_unlogged: 'none',
+};
 
 const TOPIC: Record<CoachKind, string> = {
   workout_reminder: 'a planned training day today; invite them to open Today in the app to see their workout',
@@ -140,12 +174,44 @@ const TOPIC: Record<CoachKind, string> = {
 export const COPY_SYSTEM = [
   'You write the body text of one push notification for a fitness app. Reply with exactly one JSON object: {"body": "..."} and nothing else.',
   'Only invite the person to open the app when it suits them; do not name any exercise, activity, food, drink, meal, amount or body part.',
-  `The body is plain text, one sentence or two short ones, at most ${COPY_MAX_CODE_POINTS} characters, with no emoji, links, numbers, markdown or quotes.`,
-  'Tone: always warm, supportive and low-pressure. The person decides if and when to act.',
+  `The body is plain text, one sentence or two short ones, at most ${COPY_MAX_CODE_POINTS} characters, with no links, numbers, markdown or quotes.`,
+  'Emoji: follow the "emoji" field exactly. For "kind": "workout_reminder" you may end with one 💪 or 🙌; missed_nudge and food_unlogged stay emoji-free.',
+  'Tone: lightly upbeat, warm, supportive and low-pressure, like a friendly nudge; never hype. The person decides if and when to act.',
   'Never use guilt or shame, never suggest compensating or making up for anything, never prescribe exercises, durations, foods, calories or targets,',
   'and never state or imply that the person skipped, missed or failed to train or eat (you do not know that).',
   'Do not mention names, workouts, foods, body measurements or health. Write in the requested language only; for Icelandic, write natural, correct Icelandic.',
 ].join(' ');
+
+export interface PushModel {
+  model: string;
+  reasoningEffort?: string;
+  reasoningAllowance: number;
+}
+
+/**
+ * The reminder-copy model, resolved independently of the chat defaults: an OpenAI deployment uses PUSH_COPY_MODEL
+ * (default gpt-5-mini) with PUSH_COPY_REASONING_EFFORT (default minimal for gpt-5 / gpt-5-mini / gpt-5-nano, which
+ * accept it; low for any other reasoning model such as gpt-5.1+ or o-series, which do not; "off" sends none) and
+ * PUSH_COPY_REASONING_TOKEN_ALLOWANCE (default 512, capped at 512). Non-reasoning models get no reasoning fields.
+ * Anthropic keeps PUSH_COPY_MODEL or the configured chat model (no reasoning fields either way).
+ * Shared with tests/live/push-copy-live.mjs.
+ */
+export function resolvePushModel(env: (name: string) => string | undefined, provider: { provider: ProviderId; model: string }): PushModel {
+  const get = (k: string) => env(k)?.trim() || undefined;
+  if (provider.provider !== 'openai') return { model: get('PUSH_COPY_MODEL') ?? provider.model, reasoningEffort: undefined, reasoningAllowance: 0 };
+  const model = get('PUSH_COPY_MODEL') ?? DEFAULT_PUSH_OPENAI_MODEL;
+  const reasoning = /^(gpt-5|o\d)/i.test(model);
+  const effortEnv = get('PUSH_COPY_REASONING_EFFORT')?.toLowerCase();
+  // "minimal" exists only on the original GPT-5 family; later models (gpt-5.1+: none/low/medium/high) and o-series reject it.
+  const minimalOk = MINIMAL_EFFORT_MODELS.test(model);
+  const requested = effortEnv ?? (minimalOk ? DEFAULT_PUSH_REASONING_EFFORT : FALLBACK_PUSH_REASONING_EFFORT);
+  const reasoningEffort = !reasoning || effortEnv === 'off' ? undefined : requested === 'minimal' && !minimalOk ? FALLBACK_PUSH_REASONING_EFFORT : requested;
+  const raw = get('PUSH_COPY_REASONING_TOKEN_ALLOWANCE');
+  const n = raw ? Number(raw) : NaN;
+  const allowance = Number.isFinite(n) && n >= 0 ? Math.min(DEFAULT_PUSH_REASONING_ALLOWANCE, Math.floor(n)) : DEFAULT_PUSH_REASONING_ALLOWANCE;
+  const reasoningAllowance = reasoningEffort ? allowance : 0;
+  return { model, reasoningEffort, reasoningAllowance };
+}
 
 export interface CopyDeps {
   env: (name: string) => string | undefined;
@@ -173,17 +239,17 @@ export async function writeCopy(deps: CopyDeps, kind: CoachKind, language: Langu
   const timeout = Math.min(COPY_TIMEOUT_MS, Math.floor(budgetMs));
   if (!(timeout >= COPY_MIN_BUDGET_MS)) return { ...fb, reason: 'budget', modelCalled: false };
   const now = deps.now ?? Date.now;
-  const effort = deps.env('PUSH_COPY_REASONING_EFFORT')?.trim().toLowerCase();
+  const pm = resolvePushModel(deps.env, provider);
   try {
     const res = await createMessage(
       {
         provider: provider.provider,
         apiKey: provider.apiKey,
-        model: deps.env('PUSH_COPY_MODEL')?.trim() || provider.model,
+        model: pm.model,
         baseUrl: provider.baseUrl,
         apiVersion: provider.apiVersion,
-        reasoningEffort: provider.reasoningEffort ? (effort === 'off' ? undefined : effort || provider.reasoningEffort) : undefined,
-        reasoningAllowance: provider.reasoningEffort ? Math.min(provider.reasoningAllowance ?? 0, 512) : 0,
+        reasoningEffort: pm.reasoningEffort,
+        reasoningAllowance: pm.reasoningAllowance,
         maxTokens: 160,
         timeoutMs: timeout,
         maxRetries: 0,
@@ -197,7 +263,9 @@ export async function writeCopy(deps: CopyDeps, kind: CoachKind, language: Langu
           {
             role: 'user',
             content: JSON.stringify({
+              kind,
               reminder: TOPIC[kind],
+              emoji: EMOJI_RULE[kind],
               language: language === 'is' ? 'Icelandic (is)' : 'English (en)',
               tone: 'supportive',
               reference: fb.body,
@@ -208,7 +276,7 @@ export async function writeCopy(deps: CopyDeps, kind: CoachKind, language: Langu
     );
     const usage = { inputTokens: Number(res.usage?.input_tokens) || 0, outputTokens: Number(res.usage?.output_tokens) || 0 };
     const text = res.content.filter((b): b is { type: 'text'; text: string } => b.type === 'text').map((b) => b.text).join('');
-    const body = res.stop_reason === 'max_tokens' ? null : validateCopy(text, language);
+    const body = res.stop_reason === 'max_tokens' ? null : validateCopy(text, language, kind);
     if (!body) return { ...fb, reason: 'invalid', modelCalled: true, usage };
     return { title: fb.title, body, language, source: 'ai', modelCalled: true, usage };
   } catch {
@@ -223,7 +291,7 @@ export async function writeCopy(deps: CopyDeps, kind: CoachKind, language: Langu
 export function finalizeCopy(kind: CoachKind, copy: { body: string; language: string; source: string } | null | undefined, language: Language, aiStillAllowed: boolean): FinalCopy {
   if (copy && copy.language === language && typeof copy.body === 'string' && copy.body) {
     if (copy.source === 'fallback' && copy.body === fallbackBody(kind, language)) return fallbackCopy(kind, language);
-    if (copy.source === 'ai' && aiStillAllowed && validateCopy(JSON.stringify({ body: copy.body }), language) === copy.body) {
+    if (copy.source === 'ai' && aiStillAllowed && validateCopy(JSON.stringify({ body: copy.body }), language, kind) === copy.body) {
       return { title: coachTitle(kind, language), body: copy.body, language, source: 'ai' };
     }
   }

@@ -5,8 +5,9 @@
 //   x-push-secret: <PUSH_CRON_SECRET>
 // Secrets: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (mailto:…), PUSH_CRON_SECRET.
 // Coach reminder copy (optional) reuses the training assistant's provider secrets (AI_PROVIDER, OPENAI_API_KEY /
-// ANTHROPIC_API_KEY, …); generated wording is used only with PUSH_AI_COPY=on, PUSH_COPY_MODEL / PUSH_COPY_REASONING_EFFORT
-// override the model for reminder copy only. Without them every reminder uses the approved fallback text.
+// ANTHROPIC_API_KEY, …); generated wording is used only with PUSH_AI_COPY=on. Its model is independent of the chat
+// default: with OpenAI, PUSH_COPY_MODEL (default gpt-5-mini), PUSH_COPY_REASONING_EFFORT (default minimal) and
+// PUSH_COPY_REASONING_TOKEN_ALLOWANCE (default 512). Without PUSH_AI_COPY every reminder uses the approved fallback text.
 // The logic lives in ../_shared/push/send.ts (tested with a mocked push service); this file only wires env,
 // the service-role client and fetch.
 import { handler, HttpError, json } from '../_shared/http.ts';

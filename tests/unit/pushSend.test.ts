@@ -11,7 +11,17 @@
 import { describe, expect, it } from 'vitest';
 import { b64urlDecode, b64urlEncode, encryptPayload, sendWebPush, vapidAuthorization } from '../../supabase/functions/_shared/push/webpush';
 import { authorizePush, processCoachJob, processJob, quietUntil, runPushSend, zonedToUtc, type CachedCopy as CachedCopyT, type CheckResult, type DueJob, type JobResult, type PushDb } from '../../supabase/functions/_shared/push/send';
-import { COPY_MAX_CODE_POINTS, fallbackBody, validateCopy, writeCopy, type CoachKind } from '../../supabase/functions/_shared/push/copy';
+import {
+  COPY_MAX_CODE_POINTS,
+  DEFAULT_PUSH_OPENAI_MODEL,
+  fallbackBody,
+  finalizeCopy,
+  resolvePushModel,
+  validateCopy,
+  writeCopy,
+  type CoachKind,
+} from '../../supabase/functions/_shared/push/copy';
+import { DEFAULT_OPENAI_MODEL, resolveProvider } from '../../supabase/functions/_shared/ai/provider';
 import { judgeProblems } from '../../supabase/functions/_shared/push/judge';
 import { SHARED_EN } from '../../supabase/functions/_shared/i18n/messages.en';
 import { SHARED_IS } from '../../supabase/functions/_shared/i18n/messages.is';
@@ -267,7 +277,7 @@ describe('coach reminders: deterministic checks around the copy', () => {
         const s = service({});
         await processCoachJob({ db: memoryDb([], () => ({ status: 'ok', language: lang })).db, send: s.send, now: () => NOW }, coachJob({ kind }), 10_000);
         expect(sentBody(s)).toEqual({ title: dict[`${key}.title`], body: dict[`${key}.body`], url, tag });
-        expect(validateCopy(JSON.stringify({ body: dict[`${key}.body`] }), lang)).toBe(dict[`${key}.body`]);
+        expect(validateCopy(JSON.stringify({ body: dict[`${key}.body`] }), lang, kind)).toBe(dict[`${key}.body`]);
       }
     }
   });
@@ -364,7 +374,9 @@ describe('coach reminders: the model writes only the body', () => {
       '{"body":"Eat more calories."}',
       '{"body":"Try some squats today."}',
       '{"body":"Have a glass of water and stretch."}',
-      '{"body":"Open Today when it suits you 💪"}',
+      '{"body":"Open Today when it suits you 🔥"}', // not a permitted emoji
+      '{"body":"Open Today 💪 when it suits you."}', // permitted emoji, but not trailing
+      '{"body":"Open Today when it suits you 💪💪"}', // more than one
       '{"body":"You should open Today now."}',
     ];
     for (const reply of [...bad, 'error', 500, 429] as const) {
@@ -375,7 +387,7 @@ describe('coach reminders: the model writes only the body', () => {
     }
     expect(COPY_MAX_CODE_POINTS).toBe(140);
     for (const bad of ['Gerðu nokkrar hnébeygjur í dag.', 'Borðaðu meira prótein í kvöld.', 'Opnaðu Í dag þegar þér hentar 🙂', 'Þú slepptir æfingu í gær.']) {
-      expect(validateCopy(JSON.stringify({ body: bad }), 'is'), bad).toBeNull();
+      expect(validateCopy(JSON.stringify({ body: bad }), 'is', 'workout_reminder'), bad).toBeNull();
     }
     const started = Date.now();
     const slow = provider('timeout');
@@ -470,6 +482,144 @@ describe('coach reminders: the model writes only the body', () => {
     const m = memoryDb([], (_id, st) => (st === 'dispatch' ? { status: 'lost' } : { status: 'ok', language: 'is', ai: AI_OK }));
     await processCoachJob({ db: m.db, send: service({}).send, now: () => NOW, copy: { env: env(), fetch: q.fetch } }, coachJob(), 10_000);
     expect(m.stored).toEqual([{ body: SHARED_IS['push.coachWorkout.body'], language: 'is', source: 'fallback' }]);
+  });
+});
+
+describe('coach reminders: push model defaults and the narrow emoji policy', () => {
+  it('push copy has its own OpenAI defaults: changing the chat model never changes reminder copy', () => {
+    expect(DEFAULT_OPENAI_MODEL).toBe('gpt-5');
+    expect(DEFAULT_PUSH_OPENAI_MODEL).toBe('gpt-5-mini');
+    for (const chat of [undefined, 'gpt-5', 'gpt-5-mini', 'gpt-4.1-mini']) {
+      const e = (k: string) => ({ OPENAI_API_KEY: 'k', ...(chat ? { OPENAI_MODEL: chat } : {}) })[k];
+      const p = resolveProvider(e)!;
+      expect(p.model).toBe(chat ?? 'gpt-5');
+      expect(resolvePushModel(e, p), String(chat)).toEqual({ model: 'gpt-5-mini', reasoningEffort: 'minimal', reasoningAllowance: 512 });
+    }
+    // The chat effort env does not leak into push either.
+    const e2 = (k: string) => ({ OPENAI_API_KEY: 'k', OPENAI_REASONING_EFFORT: 'high', OPENAI_REASONING_TOKEN_ALLOWANCE: '8000' })[k];
+    expect(resolvePushModel(e2, resolveProvider(e2)!)).toEqual({ model: 'gpt-5-mini', reasoningEffort: 'minimal', reasoningAllowance: 512 });
+  });
+
+  it('explicit push overrides still apply; non-reasoning models get no reasoning fields; the allowance never exceeds 512', () => {
+    const r = (over: Record<string, string>) => {
+      const e = (k: string) => ({ OPENAI_API_KEY: 'k', ...over })[k];
+      return resolvePushModel(e, resolveProvider(e)!);
+    };
+    expect(r({ PUSH_COPY_MODEL: 'gpt-5-nano' })).toEqual({ model: 'gpt-5-nano', reasoningEffort: 'minimal', reasoningAllowance: 512 });
+    expect(r({ PUSH_COPY_REASONING_EFFORT: 'low' })).toMatchObject({ reasoningEffort: 'low' });
+    expect(r({ PUSH_COPY_REASONING_EFFORT: 'off' })).toEqual({ model: 'gpt-5-mini', reasoningEffort: undefined, reasoningAllowance: 0 });
+    expect(r({ PUSH_COPY_REASONING_TOKEN_ALLOWANCE: '256' })).toMatchObject({ reasoningAllowance: 256 });
+    expect(r({ PUSH_COPY_REASONING_TOKEN_ALLOWANCE: '4000' })).toMatchObject({ reasoningAllowance: 512 });
+    expect(r({ PUSH_COPY_MODEL: 'gpt-4.1-mini', PUSH_COPY_REASONING_EFFORT: 'low' })).toEqual({ model: 'gpt-4.1-mini', reasoningEffort: undefined, reasoningAllowance: 0 });
+    // Anthropic: the push override or the configured model, never reasoning fields.
+    const a = (k: string) => ({ ANTHROPIC_API_KEY: 'k', ANTHROPIC_MODEL: 'claude-sonnet-5-5' })[k];
+    expect(resolvePushModel(a, resolveProvider(a)!)).toEqual({ model: 'claude-sonnet-5-5', reasoningEffort: undefined, reasoningAllowance: 0 });
+  });
+
+  it('"minimal" is the default only for gpt-5 / gpt-5-mini / gpt-5-nano; gpt-5.1+ and o-series overrides get a compatible effort', () => {
+    const r = (over: Record<string, string>) => {
+      const e = (k: string) => ({ OPENAI_API_KEY: 'k', ...over })[k];
+      return resolvePushModel(e, resolveProvider(e)!);
+    };
+    for (const m of ['gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5-mini-2025-08-07']) expect(r({ PUSH_COPY_MODEL: m }).reasoningEffort, m).toBe('minimal');
+    for (const m of ['gpt-5.1', 'gpt-5.1-mini', 'gpt-5.2', 'gpt-5-pro', 'o4-mini']) {
+      expect(r({ PUSH_COPY_MODEL: m }), m).toEqual({ model: m, reasoningEffort: 'low', reasoningAllowance: 512 });
+      // An explicit "minimal" is never sent to a model that rejects it; other explicit efforts are kept.
+      expect(r({ PUSH_COPY_MODEL: m, PUSH_COPY_REASONING_EFFORT: 'minimal' }).reasoningEffort, m).toBe('low');
+    }
+    expect(r({ PUSH_COPY_MODEL: 'gpt-5.1', PUSH_COPY_REASONING_EFFORT: 'none' }).reasoningEffort).toBe('none');
+    expect(r({ PUSH_COPY_MODEL: 'gpt-5.1', PUSH_COPY_REASONING_EFFORT: 'off' })).toMatchObject({ reasoningEffort: undefined, reasoningAllowance: 0 });
+  });
+
+  it('override-only payload: PUSH_COPY_MODEL=gpt-5.1 sends reasoning_effort "low", never "minimal"', async () => {
+    const p = provider('{"body":"Open Today when it suits you."}');
+    const r = await writeCopy({ env: env({ OPENAI_MODEL: '', PUSH_COPY_MODEL: 'gpt-5.1' }), fetch: p.fetch }, 'workout_reminder', 'en', AI_OK, 3000);
+    expect(r.source).toBe('ai');
+    expect(p.calls[0].body).toMatchObject({ model: 'gpt-5.1', reasoning_effort: 'low', max_completion_tokens: 160 + 512 });
+    expect(JSON.stringify(p.calls[0].body)).not.toContain('minimal');
+  });
+
+  it('the request uses the push defaults (gpt-5-mini, minimal, 160 + 512 tokens) and carries the reminder kind', async () => {
+    for (const [over, model, effort, max] of [
+      [{ OPENAI_MODEL: '' }, 'gpt-5-mini', 'minimal', 160 + 512],
+      [{ OPENAI_MODEL: 'gpt-5' }, 'gpt-5-mini', 'minimal', 160 + 512],
+      [{ PUSH_COPY_MODEL: 'gpt-4.1-mini' }, 'gpt-4.1-mini', undefined, 160],
+    ] as const) {
+      const p = provider('{"body":"Open Today when it suits you."}');
+      const r = await writeCopy({ env: env(over), fetch: p.fetch }, 'workout_reminder', 'en', AI_OK, 3000);
+      expect(r.source).toBe('ai');
+      expect(p.calls[0].body.model).toBe(model);
+      expect(p.calls[0].body.reasoning_effort).toBe(effort);
+      expect(p.calls[0].body.max_completion_tokens).toBe(max);
+      const user = JSON.parse((p.calls[0].body.messages as { role: string; content: string }[]).find((x) => x.role === 'user')!.content);
+      expect(user).toMatchObject({ kind: 'workout_reminder', tone: 'supportive' });
+      expect(user.emoji).toMatch(/💪 or 🙌/);
+    }
+    for (const kind of ['missed_nudge', 'food_unlogged'] as const) {
+      const p = provider('{"body":"Open Today when it suits you."}');
+      await writeCopy({ env: env(), fetch: p.fetch }, kind, 'en', AI_OK, 3000);
+      const user = JSON.parse((p.calls[0].body.messages as { role: string; content: string }[]).find((x) => x.role === 'user')!.content);
+      expect(user).toMatchObject({ kind, emoji: 'none' });
+    }
+    // The system prompt no longer has a blanket "no emoji" rule that contradicts the workout allowance.
+    const p = provider('{"body":"Open Today when it suits you."}');
+    await writeCopy({ env: env(), fetch: p.fetch }, 'workout_reminder', 'en', AI_OK, 3000);
+    const system = (p.calls[0].body.messages as { role: string; content: string }[]).find((x) => x.role === 'system')!.content;
+    expect(system).not.toMatch(/no emoji/i);
+    expect(system).toMatch(/Tone: lightly upbeat, warm, supportive and low-pressure, like a friendly nudge; never hype\./);
+    expect(system).toMatch(/workout_reminder.*💪 or 🙌/);
+  });
+
+  it('workout_reminder allows exactly one trailing 💪 or 🙌; missed and food nudges allow none', () => {
+    const v = (body: string, kind: CoachKind, lang: 'en' | 'is' = 'en') => validateCopy(JSON.stringify({ body }), lang, kind);
+    expect(v('Your workout is ready in Today when it suits you 💪', 'workout_reminder')).toBe('Your workout is ready in Today when it suits you 💪');
+    expect(v('Your workout is ready in Today when it suits you. 🙌', 'workout_reminder')).toBe('Your workout is ready in Today when it suits you. 🙌');
+    expect(v('Æfing dagsins bíður þín í Í dag þegar þér hentar 💪', 'workout_reminder', 'is')).toBe('Æfing dagsins bíður þín í Í dag þegar þér hentar 💪');
+    for (const bad of [
+      'Your workout is ready in Today 🔥',
+      'Your workout is ready in Today 💪🙌',
+      '💪 Your workout is ready in Today.',
+      'Your 💪 workout is ready in Today.',
+      'Your workout is ready 🙂',
+      '💪',
+      'You skipped yesterday 💪', // the trailing emoji never exempts forbidden content
+    ]) expect(v(bad, 'workout_reminder'), bad).toBeNull();
+    for (const kind of ['missed_nudge', 'food_unlogged'] as const) {
+      expect(v('Open the app whenever it suits you.', kind)).toBe('Open the app whenever it suits you.');
+      for (const e of ['💪', '🙌', '🔥']) expect(v(`Open the app whenever it suits you ${e}`, kind), `${kind} ${e}`).toBeNull();
+    }
+  });
+
+  it('the trailing emoji counts toward the 140 code-point limit', () => {
+    const base = 'Open Today when it suits you, your planned session is there and ready. ';
+    const text139 = (base + base).slice(0, 138).trimEnd().padEnd(138, 'a');
+    expect([...`${text139} 💪`].length).toBe(140);
+    expect(validateCopy(JSON.stringify({ body: `${text139} 💪` }), 'en', 'workout_reminder')).toBe(`${text139} 💪`);
+    const text140 = `${text139}a`;
+    expect([...`${text140} 💪`].length).toBe(141);
+    expect(validateCopy(JSON.stringify({ body: text140 }), 'en', 'workout_reminder')).not.toBeNull();
+    expect(validateCopy(JSON.stringify({ body: `${text140} 💪` }), 'en', 'workout_reminder')).toBeNull();
+  });
+
+  it('cached generated copy is validated against the same per-kind policy at dispatch; consent still applies', () => {
+    const withEmoji = { body: 'Your workout is ready in Today when it suits you 💪', language: 'en', source: 'ai' };
+    expect(finalizeCopy('workout_reminder', withEmoji, 'en', true)).toMatchObject({ body: withEmoji.body, source: 'ai' });
+    expect(finalizeCopy('workout_reminder', withEmoji, 'en', false)).toMatchObject({ body: SHARED_EN['push.coachWorkout.body'], source: 'fallback' });
+    expect(finalizeCopy('missed_nudge', withEmoji, 'en', true)).toMatchObject({ body: SHARED_EN['push.coachMissed.body'], source: 'fallback' });
+    expect(finalizeCopy('food_unlogged', withEmoji, 'en', true)).toMatchObject({ body: SHARED_EN['push.coachFood.body'], source: 'fallback' });
+    const fire = { ...withEmoji, body: 'Your workout is ready in Today 🔥' };
+    expect(finalizeCopy('workout_reminder', fire, 'en', true)).toMatchObject({ source: 'fallback' });
+  });
+
+  it('a generated missed or food nudge with an emoji falls back to the approved text', async () => {
+    for (const [kind, key] of [['missed_nudge', 'push.coachMissed.body'], ['food_unlogged', 'push.coachFood.body']] as const) {
+      const p = provider('{"body":"Open the app whenever it suits you 💪"}');
+      const r = await writeCopy({ env: env(), fetch: p.fetch }, kind, 'en', AI_OK, 3000);
+      expect([r.source, r.body, r.reason]).toEqual(['fallback', SHARED_EN[key], 'invalid']);
+    }
+    const p = provider('{"body":"Open the app whenever it suits you 💪"}');
+    const r = await writeCopy({ env: env(), fetch: p.fetch }, 'workout_reminder', 'en', AI_OK, 3000);
+    expect([r.source, r.body]).toEqual(['ai', 'Open the app whenever it suits you 💪']);
   });
 });
 

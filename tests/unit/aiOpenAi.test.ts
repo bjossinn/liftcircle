@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { handleAiCoach, type CoachDeps } from '../../supabase/functions/_shared/ai/coach';
-import { createMessage, resolveProvider } from '../../supabase/functions/_shared/ai/provider';
+import { createMessage, DEFAULT_OPENAI_MODEL, resolveProvider } from '../../supabase/functions/_shared/ai/provider';
 import { fromOpenAiResponse, isOpenAiQuotaError, toOpenAiRequest } from '../../supabase/functions/_shared/ai/openai';
 import type { AiDb, AiSettingsRow, FetchLike, RecordExchangeInput, StoredMessage } from '../../supabase/functions/_shared/ai/types';
 import { classifyAiError, consentOutdated, providerLabel, settingsActive } from '@/features/coaching/ai/model';
@@ -74,21 +74,30 @@ const deps = (d: AiDb, fetch: FetchLike, env: Record<string, string> = { OPENAI_
 });
 
 const oaText = (text: string, usage = { prompt_tokens: 800, completion_tokens: 150 }) => ({
-  body: { id: 'chatcmpl-1', model: 'gpt-5-mini-2025-08-07', choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: text } }], usage },
+  body: { id: 'chatcmpl-1', model: 'gpt-5-2025-08-07', choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: text } }], usage },
 });
 const oaTool = (name: string, args: unknown) => ({
   body: {
     id: 'chatcmpl-0',
-    model: 'gpt-5-mini-2025-08-07',
+    model: 'gpt-5-2025-08-07',
     choices: [{ finish_reason: 'tool_calls', message: { role: 'assistant', content: null, tool_calls: [{ id: 'call_1', type: 'function', function: { name, arguments: JSON.stringify(args) } }] } }],
     usage: { prompt_tokens: 700, completion_tokens: 60 },
   },
 });
 
 describe('provider selection (MOCKED env)', () => {
-  it('uses OpenAI when only OPENAI_API_KEY is set, with a reasoning-friendly default', () => {
+  it('uses OpenAI when only OPENAI_API_KEY is set, with a reasoning-friendly default (gpt-5, low, 2000)', () => {
+    expect(DEFAULT_OPENAI_MODEL).toBe('gpt-5');
     const p = resolveProvider((k) => ({ OPENAI_API_KEY: 'sk-x' })[k]);
-    expect(p).toMatchObject({ provider: 'openai', model: 'gpt-5-mini', reasoningEffort: 'low', reasoningAllowance: 2000 });
+    expect(p).toMatchObject({ provider: 'openai', model: 'gpt-5', reasoningEffort: 'low', reasoningAllowance: 2000 });
+  });
+  it('an explicit OPENAI_MODEL=gpt-5-mini override still works, with the same low effort and allowance', () => {
+    expect(resolveProvider((k) => ({ OPENAI_API_KEY: 'sk-x', OPENAI_MODEL: 'gpt-5-mini' })[k])).toMatchObject({
+      provider: 'openai', model: 'gpt-5-mini', reasoningEffort: 'low', reasoningAllowance: 2000,
+    });
+    expect(resolveProvider((k) => ({ OPENAI_API_KEY: 'sk-x', OPENAI_MODEL: 'gpt-5-mini', OPENAI_REASONING_EFFORT: 'medium', OPENAI_REASONING_TOKEN_ALLOWANCE: '4000' })[k])).toMatchObject({
+      model: 'gpt-5-mini', reasoningEffort: 'medium', reasoningAllowance: 4000,
+    });
   });
   it('AI_PROVIDER picks explicitly; a missing key for the chosen provider means not configured', () => {
     expect(resolveProvider((k) => ({ OPENAI_API_KEY: 'a', ANTHROPIC_API_KEY: 'b' })[k])?.provider).toBe('anthropic');
@@ -155,11 +164,19 @@ describe('Training assistant end to end with OpenAI (MOCKED provider)', () => {
     expect(requests[0]!.url).toBe('https://api.openai.com/v1/chat/completions');
     expect(requests[0]!.headers.authorization).toBe('Bearer sk-openai-test');
     expect(requests[0]!.headers).not.toHaveProperty('x-api-key');
-    expect(requests[0]!.body).toMatchObject({ model: 'gpt-5-mini', max_completion_tokens: 1200 + 2000, reasoning_effort: 'low', tool_choice: 'auto' });
+    expect(requests[0]!.body).toMatchObject({ model: 'gpt-5', max_completion_tokens: 1200 + 2000, reasoning_effort: 'low', tool_choice: 'auto' });
     const second = requests[1]!.body.messages as { role: string; tool_call_id?: string }[];
     expect(second.at(-1)).toMatchObject({ role: 'tool', tool_call_id: 'call_1' });
     expect(second[0]).toMatchObject({ role: 'system' });
-    expect(recorded[0]!.reply).toMatchObject({ content: 'Try goblet squats.', model: 'gpt-5-mini-2025-08-07', inputTokens: 1500, outputTokens: 210 });
+    expect(recorded[0]!.reply).toMatchObject({ content: 'Try goblet squats.', model: 'gpt-5-2025-08-07', inputTokens: 1500, outputTokens: 210 });
+  });
+
+  it('an explicit OPENAI_MODEL=gpt-5-mini deployment sends gpt-5-mini with the same reasoning budget', async () => {
+    const { db: d } = db();
+    const { fetch, requests } = mockFetch([oaText('Try goblet squats.')]);
+    const res = await handleAiCoach(deps(d, fetch, { OPENAI_API_KEY: 'sk-openai-test', OPENAI_MODEL: 'gpt-5-mini' }), UID, { action: 'send', id: MSG, text: 'What can replace squats?' });
+    expect(res.status).toBe(200);
+    expect(requests[0]!.body).toMatchObject({ model: 'gpt-5-mini', max_completion_tokens: 1200 + 2000, reasoning_effort: 'low' });
   });
 
   it('status names the provider and says whether the stored consent covers it', async () => {
