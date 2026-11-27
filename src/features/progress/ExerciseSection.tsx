@@ -1,48 +1,32 @@
 import { useMemo, useState, type ReactElement } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Trophy } from 'lucide-react';
-import { Button, Card, EmptyState, ListRow, Select } from '@/components/ui';
+import { Card, ListRow, Select } from '@/components/ui';
 import { RECORD_KIND_LABELS, e1rmEligible, exerciseSeries, exercisesWithHistory, personalRecords } from '@/domain/stats';
 import { fromKg, round } from '@/domain/units';
-import { exerciseName } from '@/data/catalog';
 import { formatDate, formatDuration } from '@/lib/dates';
-import { ChartFigure, ChartTip, Legend, axisProps, chartAnimation, num, seriesLine, shortDate, useChartColors } from './charts';
+import { ChartFigure, ChartTip, Legend, PeriodEmpty, axisProps, chartAnimation, num, seriesLine, shortDate, useChartColors } from './charts';
 import { loadText, useT } from '@/i18n';
-import { conventionNote, type ProgressData } from './shared';
+import { conventionNote, exerciseLabel, type ProgressData } from './shared';
+import { validChoice } from './visibility';
 
 export function ExerciseSection({ d }: { d: ProgressData }) {
   const c = useChartColors();
-  const nav = useNavigate();
-  const { t, tp, language } = useT();
+  const { t, tp } = useT();
   const unit = d.settings.units.weight;
   const ids = useMemo(() => exercisesWithHistory(d.sessions), [d.sessions]);
   const [picked, setPicked] = useState<string>('');
-  const id = picked && ids.includes(picked) ? picked : ids[0];
+  // Validated against the exercises that still have history (edits, tombstones, account changes).
+  const id = validChoice(picked, ids);
   const ex = id ? d.byId.get(id) : undefined;
 
   const series = useMemo(() => (id ? exerciseSeries(d.rangeSessions, id, ex) : []), [d.rangeSessions, id, ex]);
-  // English keeps "1 session" (singular); Icelandic copy is count-neutral.
-  const enOne = language === 'en' && series.length === 1;
   const records = useMemo(() => (ex ? personalRecords(d.sessions, ex, unit) : []), [d.sessions, ex, unit]);
 
-  if (!ids.length)
-    return (
-      <Card>
-        <EmptyState
-          icon={<Trophy className="size-6" />}
-          title={t('progress.exerciseEmptyTitle')}
-          body={t('progress.exerciseEmptyHelp')}
-          action={
-            <Button variant="primary" onClick={() => nav('/train')}>
-              {t('progress.logFirst')}
-            </Button>
-          }
-        />
-      </Card>
-    );
+  if (!id) return null; // the section is only shown when some exercise has history
 
-  const sorted = [...ids].sort((a, b) => exerciseName(a, d.byId).localeCompare(exerciseName(b, d.byId)));
+  const sorted = [...ids].sort((a, b) => exerciseLabel(a, d.byId).localeCompare(exerciseLabel(b, d.byId)));
   const tracking = ex?.tracking ?? 'weight_reps';
   const w = (kg: number | null) => (kg == null ? null : round(fromKg(kg, unit), 1));
 
@@ -70,23 +54,20 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
   );
 
   if (tracking === 'weight_reps' || tracking === 'bodyweight_plus') {
-    const eligible = ex ? e1rmEligible(ex) : false;
+    const tops = data.filter((x) => x.top != null);
+    // Only series with actual values: no load chart without recorded load, no e1RM line without an estimate.
+    const eligible = ex ? e1rmEligible(ex) && data.some((x) => x.e1rm != null) : false;
     legend = [{ label: t(tracking === 'bodyweight_plus' ? 'progress.topAddedLoad' : 'progress.topSetWeight'), color: c.series[0], series: 0 }];
     if (eligible) legend.push({ label: t('progress.estimated1rm'), color: c.series[1], series: 1 });
-    const tops = data.filter((x) => x.top != null);
     summary = tops.length
-      ? (enOne
-          ? `Top working set went from ${tops[0].top} ${unit} on ${formatDate(tops[0].date)} to ${tops.at(-1)!.top} ${unit} on ${formatDate(tops.at(-1)!.date)} across 1 session.`
-          : t('progress.loadedTrend', { first: tops[0].top!, unit, firstDate: formatDate(tops[0].date), last: tops.at(-1)!.top!, lastDate: formatDate(tops.at(-1)!.date), count: series.length })) +
+      ? t('progress.loadedTrend', { first: tops[0].top!, unit, firstDate: formatDate(tops[0].date), last: tops.at(-1)!.top!, lastDate: formatDate(tops.at(-1)!.date), count: series.length }) +
         (eligible ? ` ${t('progress.estimated1rmHelp')}` : '')
-      : enOne
-        ? '1 session without loaded sets in this period.'
-        : t('progress.noLoadedSessions', { count: series.length });
+      : t('progress.noLoadedSessions', { count: series.length });
     table = {
       headers: [t('progress.date'), t('progress.topSetUnit', { unit }), ...(eligible ? [t('progress.estimated1rmUnit', { unit })] : []), t('progress.workingSets'), t('progress.totalReps')],
       rows: series.map((p, i) => [formatDate(p.date), data[i].top ?? '–', ...(eligible ? [data[i].e1rm ?? '–'] : []), p.workingSets, p.totalReps]),
     };
-    chart = (
+    chart = !tops.length ? null : (
       <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
         {common}
         <YAxis {...axisProps(c)} domain={['auto', 'auto']} width={52} unit={` ${unit}`} tickFormatter={(v: number) => num(v)} />
@@ -98,8 +79,7 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
   } else if (tracking === 'reps') {
     legend = [{ label: t('progress.bestRepsSet'), color: c.series[0], series: 0 }, { label: t('progress.totalReps'), color: c.series[1], series: 1 }];
     summary = first && last ? t('progress.bodyweightTrend', { firstBest: first.maxReps ?? 0, lastBest: last.maxReps ?? 0, firstTotal: first.reps, lastTotal: last.reps, count: series.length }) : '';
-    // i18n: no approved Icelandic copy for the short 'Best set' header
-    table = { headers: [t('progress.date'), 'Best set', t('progress.totalReps'), t('progress.workingSets')], rows: series.map((p) => [formatDate(p.date), p.maxReps, p.totalReps, p.workingSets]) };
+    table = { headers: [t('progress.date'), t('progress.bestSet'), t('progress.totalReps'), t('progress.workingSets')], rows: series.map((p) => [formatDate(p.date), p.maxReps, p.totalReps, p.workingSets]) };
     chart = (
       <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -24 }}>
         {common}
@@ -114,7 +94,7 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
     const pts = data.filter((x) => x.assist != null);
     summary = pts.length ? t('progress.assistanceTrend', { first: pts[0].assist!, unit, last: pts.at(-1)!.assist! }) : t('progress.assistanceEmpty');
     table = { headers: [t('progress.date'), t('progress.leastAssistanceUnit', { unit }), t('progress.bestRepsSet'), t('progress.workingSets')], rows: series.map((p, i) => [formatDate(p.date), data[i].assist ?? '–', p.maxReps, p.workingSets]) };
-    chart = (
+    chart = !pts.length ? null : (
       <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
         {common}
         <YAxis {...axisProps(c)} domain={[0, 'auto']} width={52} unit={` ${unit}`} tickFormatter={(v: number) => num(v)} />
@@ -127,7 +107,7 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
     const pts = data.filter((x) => x.longest != null);
     summary = pts.length ? t('progress.timedTrend', { firstDuration: formatDuration(pts[0].longest!), lastDuration: formatDuration(pts.at(-1)!.longest!), count: pts.length }) : t('progress.timedEmpty');
     table = { headers: [t('progress.date'), t('progress.longestSet'), t('progress.workingSets')], rows: series.map((p) => [formatDate(p.date), p.longestSec ? formatDuration(p.longestSec) : '–', p.workingSets]) };
-    chart = (
+    chart = !pts.length ? null : (
       <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
         {common}
         <YAxis {...axisProps(c)} tickFormatter={(v: number) => formatDuration(v)} width={52} />
@@ -144,32 +124,29 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
       <Select label={t('progress.exercise')} value={id} onChange={(e) => setPicked(e.target.value)}>
         {sorted.map((x) => (
           <option key={x} value={x}>
-            {exerciseName(x, d.byId)}
+            {exerciseLabel(x, d.byId)}
           </option>
         ))}
       </Select>
       {note && <p className="text-xs text-muted -mt-1">{note}</p>}
 
       {series.length === 0 ? (
-        <p className="text-sm text-muted py-4 text-center">{t('progress.exercisePeriodEmpty')}</p>
+        <PeriodEmpty onShowAll={d.onShowAll} />
       ) : (
         <div>
-          {legend.length > 1 && <Legend items={legend} />}
-          <ChartFigure title={t('progress.exerciseProgressTitle', { exercise: ex?.name ?? exerciseName(id, d.byId) })} summary={summary} table={table}>
-            <ResponsiveContainer width="100%" height="100%">
-              {chart ?? <div />}
-            </ResponsiveContainer>
+          {chart && legend.length > 1 && <Legend items={legend} />}
+          <ChartFigure title={t('progress.exerciseProgressTitle', { exercise: exerciseLabel(id, d.byId) })} summary={summary} table={table}>
+            {chart && <ResponsiveContainer width="100%" height="100%">{chart}</ResponsiveContainer>}
           </ChartFigure>
           {series.length === 1 && <p className="text-xs text-muted px-1 mt-1">{t('progress.oneSession')}</p>}
         </div>
       )}
 
+      {/* All-time records, only when some exist. */}
+      {records.length > 0 && (
       <div className="border-t border-line pt-3">
         <h3 className="text-sm font-medium mb-1">{t('progress.records')}</h3>
         <p className="text-xs text-muted mb-2">{t('progress.recordsHelp')}</p>
-        {records.length === 0 ? (
-          <p className="text-sm text-muted">{t('progress.noRecords')}</p>
-        ) : (
           <ul className="-mx-4 divide-y divide-line">
             {records.map((r) => (
               <li key={`${r.kind}-${r.value}-${r.sessionId}`}>
@@ -179,8 +156,8 @@ export function ExerciseSection({ d }: { d: ProgressData }) {
               </li>
             ))}
           </ul>
-        )}
       </div>
+      )}
     </Card>
   );
 }

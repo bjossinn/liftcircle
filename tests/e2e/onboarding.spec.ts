@@ -34,7 +34,7 @@ test('six questions, about a minute: the plan matches the days, session length a
   for (const m of minutes) expect(m).toBeLessThanOrEqual(45);
 
   // The test device is en-US, so weights default to pounds (changeable in Settings).
-  await page.goto('/settings');
+  await page.goto('/settings?section=app');
   await expect(page.getByRole('radiogroup', { name: /weight unit/i }).getByRole('radio', { name: /lb|Pounds/ })).toHaveAttribute('aria-checked', 'true');
 });
 

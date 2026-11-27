@@ -70,7 +70,7 @@ test('sheets: named dialog, Escape closes and focus returns to the trigger', asy
 });
 
 test('compact shared controls still have ≥ 44 px touch targets', async ({ page }) => {
-  await page.goto('/settings');
+  await page.goto('/settings?section=app');
   await expect(page.locator('[role="radio"]').first()).toBeVisible();
   const probes = await page.evaluate(() => {
     const out: { name: string; h: number }[] = [];
@@ -94,7 +94,7 @@ test('compact shared controls still have ≥ 44 px touch targets', async ({ page
 test('reduced motion turns animations and transitions off', async ({ browser }) => {
   const ctx = await browser.newContext({ reducedMotion: 'reduce' });
   const page = await ctx.newPage();
-  await page.goto('/settings');
+  await page.goto('/settings?section=training');
   const d = await page.locator('[role="switch"]').first().evaluate((e) => getComputedStyle(e).transitionDuration);
   expect(parseFloat(d)).toBeLessThanOrEqual(0.0001);
   await ctx.close();

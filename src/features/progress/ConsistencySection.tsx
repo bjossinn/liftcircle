@@ -1,12 +1,11 @@
 import { useMemo } from 'react';
-import { Link } from 'react-router';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card, ProgressBar, Stat } from '@/components/ui';
 import { weeklyTotals } from '@/domain/stats';
 import { adherence } from '@/domain/program/schedule';
 import { startOfWeek } from '@/lib/dates';
 import { round } from '@/domain/units';
-import { ChartFigure, ChartTip, Legend, axisProps, chartAnimation, num, shortDate, useChartColors, weekLabel } from './charts';
+import { ChartFigure, ChartTip, Legend, PeriodEmpty, axisProps, chartAnimation, num, shortDate, useChartColors, weekLabel } from './charts';
 import type { ProgressData } from './shared';
 import { useT } from '@/i18n';
 
@@ -23,7 +22,7 @@ function safeAdherence(d: ProgressData, from: string): { planned: number; comple
 
 export function ConsistencySection({ d }: { d: ProgressData }) {
   const c = useChartColors();
-  const { t, language } = useT();
+  const { t } = useT();
   const ws = d.settings.weekStart;
   const weeks = useMemo(() => weeklyTotals(d.rangeSessions, d.rangeActivities, ws, d.from, d.to), [d.rangeSessions, d.rangeActivities, ws, d.from, d.to]);
   const range = useMemo(() => safeAdherence(d, d.from), [d]);
@@ -32,11 +31,15 @@ export function ConsistencySection({ d }: { d: ProgressData }) {
   const workouts = d.rangeSessions.length;
   const acts = d.rangeActivities.length;
   const avg = weeks.length ? round((workouts + acts) / weeks.length, 1) : 0;
-  // English keeps its singular wording for a count of 1; Icelandic uses the approved count-neutral summary.
-  const summary =
-    language === 'en' && (workouts === 1 || acts === 1 || weeks.length === 1)
-      ? `${workouts} workout${workouts === 1 ? '' : 's'} and ${acts} other activit${acts === 1 ? 'y' : 'ies'} over ${weeks.length} week${weeks.length === 1 ? '' : 's'}, about ${avg} sessions per week.`
-      : t('progress.consistencySummary', { workouts, activities: acts, weeks: weeks.length, average: avg });
+  // Count-neutral in both languages (no ad-hoc singular branches).
+  const summary = t('progress.consistencySummary', { workouts, activities: acts, weeks: weeks.length, average: avg });
+
+  if (workouts + acts === 0)
+    return (
+      <Card className="p-4">
+        <PeriodEmpty onShowAll={d.onShowAll} />
+      </Card>
+    );
 
   return (
     <Card className="p-4 flex flex-col gap-4">
@@ -66,23 +69,16 @@ export function ConsistencySection({ d }: { d: ProgressData }) {
         </ChartFigure>
       </div>
 
-      <div className="border-t border-line pt-3">
-        <h3 className="text-sm font-medium mb-2">{t('progress.adherence')}</h3>
-        {!d.program ? (
-          <p className="text-sm text-muted">
-            {t('progress.noProgram')}{' '}
-            <Link to="/train/program" className="text-accent underline-offset-2 hover:underline">
-              {t('progress.setUpProgram')}
-            </Link>{' '}
-            {t('progress.adherenceHelp')}
-          </p>
-        ) : range && range.planned > 0 ? (
+      {/* Adherence only with a valid positive planned denominator (zero completions is valid); a plan alone, or no
+          program, adds nothing here. */}
+      {d.program && range && range.planned > 0 && (
+        <div className="border-t border-line pt-3">
+          <h3 className="text-sm font-medium mb-2">{t('progress.adherence')}</h3>
           <div className="flex flex-col gap-3">
             <div>
               <div className="flex justify-between text-sm mb-1">
                 <span>{t('progress.thisPeriod')}</span>
-                {/* i18n: no approved Icelandic copy */}
-                <span className="tabular">{range.completed} of {range.planned} planned sessions</span>
+                <span className="tabular">{t('progress.plannedSessionCount', { completed: range.completed, planned: range.planned })}</span>
               </div>
               <ProgressBar value={range.completed} max={range.planned} label={t('progress.plannedCompletedPeriod')} />
             </div>
@@ -90,18 +86,15 @@ export function ConsistencySection({ d }: { d: ProgressData }) {
               <div>
                 <div className="flex justify-between text-sm mb-1">
                   <span>{t('progress.thisWeekSoFar')}</span>
-                  {/* i18n: no approved Icelandic copy */}
-                  <span className="tabular">{thisWeek.completed} of {thisWeek.planned}</span>
+                  <span className="tabular">{t('progress.completedOfPlanned', { completed: thisWeek.completed, planned: thisWeek.planned })}</span>
                 </div>
                 <ProgressBar value={thisWeek.completed} max={thisWeek.planned} label={t('progress.plannedCompletedWeek')} />
               </div>
             )}
             <p className="text-xs text-muted">{t('progress.adherenceExplanation', { program: d.program.name })}</p>
           </div>
-        ) : (
-          <p className="text-sm text-muted">{t('progress.noPlannedPeriod', { program: d.program.name })}</p>
-        )}
-      </div>
+        </div>
+      )}
     </Card>
   );
 }

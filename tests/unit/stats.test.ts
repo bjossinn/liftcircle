@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Exercise, ID, LoggedSet, Measurement, SessionExercise, WorkoutSession } from '@/domain/types';
 import {
-  detectRecords, e1rm, e1rmEligible, exerciseSeries, goalProgress, observations, personalRecords, proteinDays, rollingAverage,
+  detectRecords, e1rm, e1rmEligible, exerciseSeries, goalProgress, observations, personalRecords, signedText, proteinDays, rollingAverage,
   setVolumeKg, summarizeSession, weeklyTotals, weeklyVolume, weeklyWorkingSets, cardioSeries, VOLUME_CONVENTIONS,
 } from '@/domain/stats';
 
@@ -271,6 +271,16 @@ describe('goals', () => {
     expect(a.current).toBe(20);
     expect(a.fraction).toBeCloseTo(0.5);
   });
+  it('goal status text is localized; protein goals without a target ask for one', () => {
+    const s = [session('a', '2026-01-05', []), session('b', '2026-01-07', [])];
+    const g = { id: 'g', createdAt: 0, updatedAt: 0, title: '', kind: 'sessions_per_week' as const, target: 3 };
+    expect(goalProgress(g, { ...ctxBase, sessions: s }, 'en').text).toBe('Workouts this week: 2 of 3.');
+    expect(goalProgress(g, { ...ctxBase, sessions: s }, 'is').text).toBe('Æfingar í þessari viku: 2 af 3.');
+    const p = goalProgress({ ...g, kind: 'protein_days', target: 5 }, { ...ctxBase, sessions: s }, 'en');
+    expect(p.text).toBe('Set a protein target to track this goal.');
+    const pd = goalProgress({ ...g, kind: 'protein_days', target: 5 }, { ...ctxBase, sessions: s, proteinTargetG: 100 }, 'en');
+    expect(pd.text).toBe('Protein target days this week: 0 of 5. Days without logs: 4.');
+  });
 });
 
 describe('observations', () => {
@@ -278,20 +288,28 @@ describe('observations', () => {
   it('reports plan adherence and bodyweight average with a signed delta', () => {
     const ms = [bw('2026-01-01', 81.8), bw('2026-01-03', 81.4), bw('2026-01-05', 81.0), bw('2026-01-08', 81.4)];
     const o = observations({ sessions: [], activities: [], measurements: ms, today: '2026-01-10', weekStart: 1, unit: 'kg', plan: { planned: 4, completed: 3 } });
-    expect(o).toContain('You completed 3 of 4 planned sessions this week.');
+    expect(o).toContain('Planned sessions completed this week: 3 of 4.');
     // last 7 days (4th–10th): 81.0, 81.4 → 81.2 ; previous (Dec 28–3rd): 81.8, 81.4 → 81.6
-    expect(o).toContain('Bodyweight 7-day average: 81.2 kg (−0.4 kg vs last week)');
+    expect(o).toContain('7-day average bodyweight: 81.2 kg (−0.4 kg versus last week).');
   });
-  it('mentions this week’s workouts and activity minutes, and states when nothing is logged', () => {
+  it('mentions this week’s workouts and activity minutes, and adds no filler when nothing is logged', () => {
     const o = observations({
       sessions: [session('a', '2026-01-06', [sx(BENCH.id, [set({ weightKg: 60, reps: 8 })])])],
       activities: [{ id: 'r', type: 'run', date: '2026-01-07', durationSec: 1800, timeZone: 'UTC', createdAt: 1, updatedAt: 1 }],
       measurements: [], today: '2026-01-08', weekStart: 1, unit: 'kg', byId,
     });
-    expect(o).toContain('This week you’ve logged 1 workout and 1 other activity.');
-    expect(o).toContain('Activity time this week: 30 min (+30 min vs last week).');
+    expect(o).toContain('Logged this week: workouts 1 · other activities 1.');
+    expect(o).toContain('Activity this week: 30 min (+30 min versus last week).');
     expect(o).toContain('Working sets this week: 1 (last week: 0).');
-    expect(observations({ sessions: [], activities: [], measurements: [], today: '2026-01-08', weekStart: 1, unit: 'kg' })).toEqual(['No workouts or activities logged yet.']);
+    expect(observations({ sessions: [], activities: [], measurements: [], today: '2026-01-08', weekStart: 1, unit: 'kg' })).toEqual([]);
     expect(o.join(' ')).not.toMatch(/recovery|muscle gained/i);
+  });
+  it('localizes observations with signed locale numbers (Icelandic decimal comma and minus sign)', () => {
+    const ms = [bw('2026-01-01', 81.8), bw('2026-01-03', 81.4), bw('2026-01-05', 81.0), bw('2026-01-08', 81.4)];
+    const o = observations({ sessions: [], activities: [], measurements: ms, today: '2026-01-10', weekStart: 1, unit: 'kg', plan: { planned: 4, completed: 3 } }, 'is');
+    expect(o).toContain('Skipulagðar æfingar í þessari viku: 3 af 4 lokið.');
+    expect(o).toContain('Meðallíkamsþyngd síðustu 7 daga: 81,2 kg (−0,4 kg frá síðustu viku).');
+    expect(signedText(2.25, 1, 'is')).toBe('+2,3');
+    expect(signedText(0, 1, 'en')).toBe('±0');
   });
 });

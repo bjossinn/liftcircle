@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { TooltipPayloadEntry } from 'recharts';
 import { formatDate } from '@/lib/dates';
 import { numberText, t, useT } from '@/i18n';
+import { Button } from '@/components/ui';
 import type { ISODate } from '@/domain/types';
 
 export interface ChartColors {
@@ -80,16 +81,19 @@ export function ChartFigure({ title, summary, table, children, height = 200 }: {
   title: string;
   summary: string;
   table?: { headers: string[]; rows: (string | number)[][] };
-  children: ReactNode;
+  /** The plot; omitted when there is no series with actual values (the summary and table still render). */
+  children?: ReactNode;
   height?: number;
 }) {
   const { t } = useT();
   return (
     <figure className="m-0">
       <figcaption className="text-sm font-medium px-1 mb-1">{title}</figcaption>
-      <div role="img" aria-label={`${title}. ${summary}`} style={{ height }} className="w-full">
-        {children}
-      </div>
+      {children != null && (
+        <div role="img" aria-label={`${title}. ${summary}`} style={{ height }} className="w-full">
+          {children}
+        </div>
+      )}
       <p className="text-xs text-muted px-1 mt-1">{summary}</p>
       {table && table.rows.length > 0 && (
         <details className="mt-1 px-1">
@@ -218,4 +222,22 @@ export function chartAnimation(): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * One compact message for an eligible metric with no data in the selected period, with a "Show all time" control
+ * (omitted when all time is already selected). Never a synthetic zero chart.
+ */
+export function PeriodEmpty({ onShowAll, message }: { onShowAll?: () => void; message?: string }) {
+  const { t } = useT();
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-sm text-muted">{message ?? t('progress.periodEmpty')}</p>
+      {onShowAll && (
+        <Button size="sm" variant="outline" onClick={onShowAll}>
+          {t('progress.showAllTime')}
+        </Button>
+      )}
+    </div>
+  );
 }

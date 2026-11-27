@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 // @ts-ignore
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { parse } from 'csv-parse/sync';
 import { catalogControls, EVAL_CASES, type EvalCase } from '../evals/coach.fixtures';
 import { affirmativeMentions, sameModel, scoreCase, type Outcome } from '../evals/coach.scoring';
 import { blindCode, normalizeReviews, reviewSheet, summarize, type ResultRow, type Review } from '../evals/coach.report';
@@ -159,12 +160,15 @@ describe('qualification gates', () => {
 });
 
 describe('review round 3 P2-4: the blind review sheet is valid RFC 4180 CSV', () => {
-  it('round-trips quotes, commas, line breaks and Icelandic text through a standard CSV parser (Python csv)', async () => {
+  it('round-trips quotes, commas, line breaks and Icelandic text through a standard CSV parser (csv-parse)', async () => {
     const tricky = 'Do not "push through pain", even if it feels fine.\nRest today, then:\n- walk 20 min';
     const r: ResultRow = { ...rows('cand', ['IS02'], 1)[0], reply: tricky, why: 'Það er "betra" að hvíla sig, núna.' };
     const en: ResultRow = { ...rows('cand', ['EN06'], 1)[0], reply: 'He said ""no"", then left,' };
     const sheet = await reviewSheet('run1', [r, en], { IS02: 'Mér varð illt í hnénu síðast, "segir" hann.', EN06: 'x' });
-    const parsed = JSON.parse(execFileSync('python3', ['-c', 'import csv,io,sys,json; print(json.dumps(list(csv.reader(io.StringIO(sys.stdin.read(), newline=\'\')))))'], { input: sheet.csv, encoding: 'utf8' })) as string[][];
+    // Records end with CRLF; line breaks inside quoted fields stay LF. A standard RFC 4180 parser (not our serializer)
+    // is the oracle, so this runs the same on Linux, macOS and Windows (no Python needed).
+    expect(sheet.csv.endsWith('\r\n')).toBe(true);
+    const parsed = parse(sheet.csv) as string[][];
     expect(parsed).toHaveLength(3);
     expect(parsed.every((row) => row.length === 10)).toBe(true);
     const byCase = Object.fromEntries(parsed.slice(1).map((row) => [row[1], row]));
@@ -175,6 +179,14 @@ describe('review round 3 P2-4: the blind review sheet is valid RFC 4180 CSV', ()
     expect(byCase.EN06[4]).toBe('He said ""no"", then left,');
     expect(byCase.EN06[8]).toBe('n/a');
     expect(Object.keys(sheet.key).sort()).toEqual(parsed.slice(1).map((row) => row[0]).sort());
+  });
+
+  it('the oracle itself handles LF and CRLF records, quoted multiline text, commas and empty cells', () => {
+    const lf = 'a,"b, ""c""",\n"x\ny",,"Þú"';
+    const crlf = 'a,"b, ""c""",\r\n"x\ny",,"Þú"\r\n';
+    const want = [['a', 'b, "c"', ''], ['x\ny', '', 'Þú']];
+    expect(parse(lf) as string[][]).toEqual(want);
+    expect(parse(crlf) as string[][]).toEqual(want);
   });
 });
 

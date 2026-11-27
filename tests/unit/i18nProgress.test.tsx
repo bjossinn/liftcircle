@@ -74,9 +74,9 @@ describe('Progress in Icelandic', () => {
     const text = el.textContent ?? '';
     // 30 Oct → 26 Nov with Monday weeks = 5 weeks; (3 + 1) / 5 = 0.8
     expect(text).toContain('Æfingar: 3 · önnur hreyfing: 1 · vikur: 5. Æfingar á viku að meðaltali: 0,8.');
-    expect(text).toContain('Fylgni við áætlun');
-    expect(text).toContain('Engin virk æfingaáætlun.');
-    expect(text).toContain('Búa til æfingaáætlun');
+    // Item 11: no program → no adherence/recruitment block.
+    expect(text).not.toContain('Fylgni við áætlun');
+    expect(text).not.toContain('Engin virk æfingaáætlun.');
     expect(text).toContain('Æfingar á viku');
     expect(text).not.toContain('Plan adherence');
   });
@@ -93,7 +93,8 @@ describe('Progress in Icelandic', () => {
     expect(text).toContain('Skráningar: 2. Sjö daga meðaltal fór úr');
     expect(text).toContain('Sýna gagnatöflu');
     expect(el.querySelector('select')?.textContent).toContain('Líkamsþyngd');
-    expect(el.querySelector('select')?.textContent).toContain('Mittismál');
+    // Item 11: the chart selector offers only measured kinds.
+    expect(el.querySelector('select')?.textContent).not.toContain('Mittismál');
     expect(el.querySelector('button[aria-label^="Breyta mælingu: líkamsþyngd, "]')).not.toBeNull();
   });
 
@@ -122,11 +123,11 @@ describe('Progress in Icelandic', () => {
     expect(text).toContain('One entry: 81.3 kg.');
   });
 
-  it('English keeps singular wording for a count of 1', async () => {
+  it('English uses the count-neutral summary for a count of 1 (item 11)', async () => {
     setLanguage('en');
     const sessions = [session('s1', '2026-11-03')];
     const activities = [activity('a1', '2026-11-12')];
     await render(createElement(ConsistencySection, { d: data({ sessions, rangeSessions: sessions, activities, rangeActivities: activities }) }));
-    expect(el.textContent).toContain('1 workout and 1 other activity over 5 weeks, about 0.4 sessions per week.');
+    expect(el.textContent).toContain('Workouts: 1 · other activities: 1 · weeks: 5. Sessions per week on average: 0.4.');
   });
 });

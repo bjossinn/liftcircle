@@ -58,8 +58,7 @@ export function SignOutButton() {
   return (
     <>
       <Button icon={<LogOut className="size-4" />} onClick={() => void begin()} loading={busy}>
-        {/* i18n: no approved Icelandic copy */}
-        Sign out
+        {t('settings.signOut')}
       </Button>
       <Sheet
         open={open}
@@ -71,8 +70,7 @@ export function SignOutButton() {
               {t('common.cancel')}
             </Button>
             <Button variant={unsynced > 0 && removeLocal ? 'danger' : 'primary'} loading={busy} onClick={() => void complete(removeLocal)}>
-              {/* i18n: no approved Icelandic copy */}
-              Sign out
+              {t('settings.signOut')}
             </Button>
           </>
         }

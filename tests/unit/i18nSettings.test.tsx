@@ -48,11 +48,11 @@ function Harness({ initial }: { initial: AccountState }) {
   return createElement(LanguageProvider, { language: account.settings.language ?? 'en', children: createElement(SettingsPage) });
 }
 
-async function render(initial: AccountState) {
+async function render(initial: AccountState, url = '/settings?section=app') {
   el = document.createElement('div');
   document.body.append(el);
   root = createRoot(el);
-  await act(async () => root!.render(createElement(ToastProvider, null, createElement(MemoryRouter, null, createElement(Harness, { initial })))));
+  await act(async () => root!.render(createElement(ToastProvider, null, createElement(MemoryRouter, { initialEntries: [url] }, createElement(Harness, { initial })))));
 }
 const text = () => document.body.textContent?.replace(/\s+/g, ' ') ?? '';
 const radio = (name: string) => [...document.querySelectorAll('[role="radio"]')].find((b) => b.textContent?.trim() === name) ?? null;
@@ -122,9 +122,13 @@ describe('Settings language save result', () => {
   it('unfocused numeric fields switch to the decimal comma with the language', async () => {
     const initial = defaultAccountState();
     initial.settings = { ...initial.settings, workout: { ...initial.settings.workout, plateIncrementKg: 2.5 } };
-    await render(initial);
+    await render(initial, '/settings?section=training');
     const values = () => [...document.querySelectorAll('input')].map((i) => i.value);
     expect(values()).toContain('2.5');
+    // Back to the index, then into "Language & display": the training group stays mounted (hidden).
+    await act(async () => void document.querySelector<HTMLButtonElement>('button[aria-label="Back"]')!.click());
+    await act(async () => void document.querySelector<HTMLAnchorElement>('#settings-row-app')!.click());
+    expect(document.querySelector('section[aria-labelledby="settings-group-training"]')?.hasAttribute('hidden')).toBe(true);
     await act(async () => void radio('Íslenska')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
     expect(values()).toContain('2,5');
     expect(values()).not.toContain('2.5');
