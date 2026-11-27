@@ -21,6 +21,7 @@ test('Profile in the header leads to Nutrition and Settings; Today jumps into Nu
   await expect(shortcuts.getByRole('link', { name: /Nutrition/ })).toBeVisible();
   await shortcuts.getByRole('link', { name: /Settings/ }).click();
   await expect(page).toHaveURL(/\/settings$/);
+  await page.getByRole('link', { name: /Training & nutrition/ }).click();
   await expect(page.getByText('Redo setup questions')).toBeVisible();
 
   await page.goto('/profile');

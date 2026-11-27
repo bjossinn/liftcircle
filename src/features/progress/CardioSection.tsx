@@ -1,17 +1,18 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Plus, Route } from 'lucide-react';
-import { Button, Card, EmptyState, ListRow, Segmented, Select, Stat } from '@/components/ui';
+import { Plus } from 'lucide-react';
+import { Button, Card, ListRow, Segmented, Select, Stat } from '@/components/ui';
 import { cardioSeries, weeklyTotals } from '@/domain/stats';
-import { ACTIVITY_TYPES, activityLabel, activityTypeInfo, formatPaceSec, paceOrSpeed, type PaceResult } from '@/domain/activities';
+import { activityLabel, activityTypeInfo, formatPaceSec, paceOrSpeed, type PaceResult } from '@/domain/activities';
 import { fromMeters, round } from '@/domain/units';
 import type { ActivityType, DistanceUnit } from '@/domain/types';
 import { formatDate, formatMinutes } from '@/lib/dates';
 import { ActivityIcon } from '@/features/activities/icons';
-import { ChartFigure, ChartTip, axisProps, chartAnimation, num, seriesLine, shortDate, useChartColors, weekLabel } from './charts';
+import { ChartFigure, ChartTip, PeriodEmpty, axisProps, chartAnimation, num, seriesLine, shortDate, useChartColors, weekLabel } from './charts';
 import { fmtInt, type ProgressData } from './shared';
 import { t as tr, useT, type Language } from '@/i18n';
+import { hasDistance, paceEligible, paceTypes as paceTypesOf, validChoice } from './visibility';
 
 /** "5.25 km" / "5,25 km": formatDistance with a locale decimal separator (same rounding, unit unchanged). */
 function distanceText(m: number | undefined, unit: DistanceUnit, decimals = 2): string {
@@ -33,20 +34,20 @@ export function CardioSection({ d }: { d: ProgressData }) {
   const { t, language, locale: locale_ } = useT();
   const du = d.settings.units.distance;
   const ws = d.settings.weekStart;
-  const [metric, setMetric] = useState<'minutes' | 'distance'>('minutes');
+  const [requestedMetric, setMetric] = useState<'minutes' | 'distance'>('minutes');
   const [typeSel, setTypeSel] = useState<ActivityType | ''>('');
 
   const weeks = useMemo(() => weeklyTotals([], d.rangeActivities, ws, d.from, d.to), [d.rangeActivities, ws, d.from, d.to]);
-  const paceTypes = useMemo(() => {
-    const set = new Set(d.rangeActivities.filter((a) => a.distanceM && activityTypeInfo(a.type).paceMode).map((a) => a.type));
-    return ACTIVITY_TYPES.filter((t) => set.has(t.type)).map((t) => t.type);
-  }, [d.rangeActivities]);
-  const type = typeSel && paceTypes.includes(typeSel) ? typeSel : paceTypes[0];
+  // Distance needs a recorded finite value; pace/speed a positive distance and duration on a supported type.
+  const anyDistance = d.rangeActivities.some(hasDistance);
+  const metric = anyDistance ? requestedMetric : 'minutes';
+  const paceTypes = useMemo(() => paceTypesOf(d.rangeActivities), [d.rangeActivities]);
+  const type = validChoice(typeSel || undefined, paceTypes);
   const paceData = useMemo(
     () =>
       type
         ? cardioSeries(d.rangeActivities, type)
-            .filter((p) => p.distanceM)
+            .filter((p) => paceEligible({ type, distanceM: p.distanceM ?? undefined, durationSec: p.durationSec }))
             .map((p) => {
               const r = paceOrSpeed({ type, distanceM: p.distanceM, durationSec: p.durationSec }, du)!;
               return { date: p.date, value: round(r.value, 1), text: paceText(r), per: r.kind === 'pace' ? `/${r.per}` : r.per, distance: distanceText(p.distanceM!, du) };
@@ -56,15 +57,11 @@ export function CardioSection({ d }: { d: ProgressData }) {
     [d.rangeActivities, type, du, language],
   );
 
-  if (!d.activities.length)
+  if (!d.rangeActivities.length)
     return (
-      <Card>
-        <EmptyState
-          icon={<Route className="size-6" />}
-          title={t('progress.activityEmptyTitle')}
-          body={t('progress.activityEmptyHelp')}
-          action={<Button variant="primary" icon={<Plus className="size-4" />} onClick={() => nav('/train/activity/new')}>{t('progress.logActivity')}</Button>}
-        />
+      <Card className="p-4 flex flex-col gap-3">
+        <PeriodEmpty onShowAll={d.onShowAll} />
+        <Button size="sm" variant="ghost" className="self-start" icon={<Plus className="size-4" />} onClick={() => nav('/train/activity/new')}>{t('progress.logActivity')}</Button>
       </Card>
     );
 
@@ -94,11 +91,13 @@ export function CardioSection({ d }: { d: ProgressData }) {
       <div className="grid grid-cols-3 gap-3">
         <Stat label={t('progress.activitiesLabel')} value={d.rangeActivities.length} />
         <Stat label={t('progress.activityTime')} value={formatMinutes(totalMin * 60)} />
-        <Stat label={t('progress.distance')} value={distanceText(totalDist, du, 1)} />
+        {anyDistance && <Stat label={t('progress.distance')} value={distanceText(totalDist, du, 1)} />}
       </div>
 
       <div>
-        <Segmented label={t('progress.weeklyMetric')} value={metric} onChange={setMetric} options={[{ value: 'minutes', label: t('progress.minutes') }, { value: 'distance', label: t('progress.distanceUnit', { unit: du }) }]} size="sm" className="mb-3" />
+        {anyDistance && (
+          <Segmented label={t('progress.weeklyMetric')} value={metric} onChange={setMetric} options={[{ value: 'minutes', label: t('progress.minutes') }, { value: 'distance', label: t('progress.distanceUnit', { unit: du }) }]} size="sm" className="mb-3" />
+        )}
         <ChartFigure
           title={metric === 'minutes' ? t('progress.activityMinutesWeek') : t('progress.activityDistanceWeek', { unit: du })}
           summary={sum}
@@ -116,12 +115,11 @@ export function CardioSection({ d }: { d: ProgressData }) {
         </ChartFigure>
       </div>
 
+      {/* Pace/speed only when some activity supports it; no unused selectors or charts. */}
+      {type && paceData.length > 0 && (
       <div className="border-t border-line pt-3 flex flex-col gap-3">
-        {/* i18n: no approved Icelandic copy for the Pace/Speed trend heading */}
-        <h3 className="text-sm font-medium">{isSpeed ? 'Speed' : 'Pace'} trend</h3>
-        {paceTypes.length === 0 ? (
-          <p className="text-sm text-muted">{t('progress.paceEmptyHelp')}</p>
-        ) : (
+        <h3 className="text-sm font-medium">{t(isSpeed ? 'progress.speedTrend' : 'progress.paceTrend')}</h3>
+        {(
           <>
             {paceTypes.length > 1 && (
               <Select aria-label={t('progress.paceType')} value={type} onChange={(e) => setTypeSel(e.target.value as ActivityType)}>
@@ -151,6 +149,7 @@ export function CardioSection({ d }: { d: ProgressData }) {
           </>
         )}
       </div>
+      )}
 
       <div className="border-t border-line pt-3">
         <div className="flex items-center justify-between mb-1">

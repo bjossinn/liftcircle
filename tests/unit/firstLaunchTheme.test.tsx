@@ -93,7 +93,8 @@ describe('first launch without a theme picker', () => {
     expect(el.textContent).not.toContain('Pick your look');
     expect(el.querySelector('[role="radiogroup"]')).toBeNull();
 
-    await act(async () => router.navigate('/settings'));
+    // Item 11: the legacy #appearance-title anchor opens the "Language & display" group.
+    await act(async () => router.navigate('/settings#appearance-title'));
     await waitFor(() => expect(el.querySelector('#appearance-title')).toBeTruthy());
     const appearance = () => el.querySelector('[role="radiogroup"][aria-labelledby="appearance-title"]')!;
     const checked = () => [...appearance().querySelectorAll('[role="radio"]')].find((r) => r.getAttribute('aria-checked') === 'true')?.getAttribute('aria-label');

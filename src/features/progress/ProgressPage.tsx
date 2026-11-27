@@ -1,11 +1,16 @@
-/* Progress tab: consistency, exercise progress & records, volume, cardio, body, nutrition, goals. */
+/*
+ * Progress tab: consistency, exercise progress & records, volume, cardio, body, nutrition, goals.
+ * Roadmap item 11: only sections with recorded data are shown (in the existing order); a new account gets one neutral
+ * empty state; "Add a record" is always available. Opening the page or changing its view writes no records or settings.
+ */
 import { useMemo, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Dumbbell, Plus } from 'lucide-react';
-import { Button, Card, EmptyState, Page, SectionTitle, Segmented, Spinner } from '@/components/ui';
+import { Activity, ChevronDown, Dumbbell, Flag, Plus, Ruler, Utensils } from 'lucide-react';
+import { Card, EmptyState, Page, SectionTitle, Segmented, Spinner, cx } from '@/components/ui';
 import { TopActions } from '@/app/TopActions';
 import { useApp } from '@/state/app';
+import type { LiftDb } from '@/db/db';
 import { alive } from '@/db/repo';
 import { useExercises } from '@/data/catalog';
 import { completedSessions, observations } from '@/domain/stats';
@@ -19,8 +24,11 @@ import { CardioSection } from './CardioSection';
 import { BodySection } from './BodySection';
 import { NutritionSection } from './NutritionSection';
 import { GoalsSection } from './GoalsSection';
-import type { ProgressData } from './shared';
-import type { FoodLogEntry } from '@/domain/types';
+import { MeasurementEditor } from './MeasurementEditor';
+import { GoalEditor } from './GoalEditor';
+import { inRange, type ProgressData } from './shared';
+import { earliestDate, sectionAvailability } from './visibility';
+import type { Measurement, UserGoal } from '@/domain/types';
 import { useT, type MessageKey } from '@/i18n';
 
 type RangeKey = '4w' | '3m' | '6m' | '1y' | 'all';
@@ -50,8 +58,70 @@ function Section({ id, title, children }: { id: string; title: string; children:
   );
 }
 
+/**
+ * A live query tagged with the DB it ran on. While a new account's query is pending the previous result is never
+ * shown: undefined (loading) until the current DB answers. Loading is never "empty".
+ */
+function useDbQuery<T>(db: LiftDb, fn: (db: LiftDb) => Promise<T>): T | undefined {
+  const res = useLiveQuery(async () => ({ db, value: await fn(db) }), [db]);
+  return res && res.db === db ? res.value : undefined;
+}
+
+/** "Add a record": workout, activity, food, measurement, goal. Always available, also with no data. */
+function AddRecordMenu({ onMeasurement, onGoal, open: alwaysOpen }: { onMeasurement: () => void; onGoal: () => void; open?: boolean }) {
+  const { t } = useT();
+  const [expanded, setExpanded] = useState(false);
+  const shown = alwaysOpen || expanded;
+  const item = 'flex items-center gap-3 w-full min-h-11 px-4 py-2 text-left text-[15px] hover:bg-surface-2 rounded-xl';
+  const list = (
+    <ul id="progress-add-menu" className="flex flex-col py-1" aria-label={t('progress.actions')}>
+      <li>
+        <Link to="/train" className={item}>
+          <Dumbbell className="size-4 text-accent" aria-hidden /> {t('train.historyLog')}
+        </Link>
+      </li>
+      <li>
+        <Link to="/train/activity/new" className={item}>
+          <Activity className="size-4 text-accent" aria-hidden /> {t('progress.logActivity')}
+        </Link>
+      </li>
+      <li>
+        <Link to="/nutrition/log" className={item}>
+          <Utensils className="size-4 text-accent" aria-hidden /> {t('today.logFood')}
+        </Link>
+      </li>
+      <li>
+        <button type="button" className={item} onClick={onMeasurement}>
+          <Ruler className="size-4 text-accent" aria-hidden /> {t('progress.addMeasurementGeneric')}
+        </button>
+      </li>
+      <li>
+        <button type="button" className={item} onClick={onGoal}>
+          <Flag className="size-4 text-accent" aria-hidden /> {t('progress.addGoal')}
+        </button>
+      </li>
+    </ul>
+  );
+  if (alwaysOpen) return <div className="w-full max-w-xs text-left">{list}</div>;
+  return (
+    <Card className="mt-3 p-1">
+      <button
+        type="button"
+        aria-expanded={shown}
+        aria-controls="progress-add-menu"
+        onClick={() => setExpanded((x) => !x)}
+        className="flex items-center gap-2 w-full min-h-11 px-3 text-sm font-semibold rounded-xl hover:bg-surface-2"
+      >
+        <Plus className="size-4 text-accent" aria-hidden />
+        <span className="flex-1 text-left">{t('progress.actions')}</span>
+        <ChevronDown className={cx('size-4 transition-transform motion-reduce:transition-none', shown && 'rotate-180')} aria-hidden />
+      </button>
+      {shown && list}
+    </Card>
+  );
+}
+
 export default function ProgressPage() {
-  const nav = useNavigate();
   const { t, language } = useT();
   const { db, account, accountReady } = useApp();
   const settings = account.settings;
@@ -66,42 +136,45 @@ export default function ProgressPage() {
     }
   };
   const { list: exercises, byId } = useExercises();
+  const [measurementEdit, setMeasurementEdit] = useState<Measurement | 'new' | null>(null);
+  const [goalEdit, setGoalEdit] = useState<UserGoal | 'new' | null>(null);
 
-  const sessionsRaw = useLiveQuery(() => db.sessions.where('status').equals('completed').toArray(), [db]);
-  const activitiesRaw = useLiveQuery(() => db.activities.toArray(), [db]);
-  const measurementsRaw = useLiveQuery(() => db.measurements.toArray(), [db]);
-  const goalsRaw = useLiveQuery(() => db.goals.toArray(), [db]);
-  const programsRaw = useLiveQuery(() => db.programs.toArray(), [db]);
+  const sessionsRaw = useDbQuery(db, (x) => x.sessions.where('status').equals('completed').toArray());
+  const activitiesRaw = useDbQuery(db, (x) => x.activities.toArray());
+  const measurementsRaw = useDbQuery(db, (x) => x.measurements.toArray());
+  const goalsRaw = useDbQuery(db, (x) => x.goals.toArray());
+  const programsRaw = useDbQuery(db, (x) => x.programs.toArray());
+  // Historical food data is read regardless of the nutrition setting (it only controls optional entry points).
+  const foodRaw = useDbQuery(db, (x) => x.foodLogs.toArray());
 
   const sessions = useMemo(() => (sessionsRaw ? completedSessions(sessionsRaw) : undefined), [sessionsRaw]);
   const activities = useMemo(() => (activitiesRaw ? alive(activitiesRaw) : undefined), [activitiesRaw]);
   const measurements = useMemo(() => (measurementsRaw ? alive(measurementsRaw) : undefined), [measurementsRaw]);
+  const foodLogs = useMemo(() => (foodRaw ? alive(foodRaw) : undefined), [foodRaw]);
 
   const from = useMemo(() => {
     const r = RANGES.find((x) => x.value === range)!;
     if (r.days) return addDays(today, -(r.days - 1));
-    const dates = [...(sessions ?? []).map((s) => s.date), ...(activities ?? []).map((a) => a.date), ...(measurements ?? []).map((m) => m.date)].filter((d) => d <= today).sort();
-    const earliest = dates[0] ?? addDays(today, -27);
+    // "All" starts at the earliest record of any kind, food included (at least four weeks).
+    const earliest = earliestDate({ sessions: sessions ?? [], activities: activities ?? [], measurements: measurements ?? [], foodLogs: foodLogs ?? [] }, today) ?? addDays(today, -27);
     return earliest < addDays(today, -27) ? earliest : addDays(today, -27);
-  }, [range, today, sessions, activities, measurements]);
+  }, [range, today, sessions, activities, measurements, foodLogs]);
 
-  // Food logs are only read when nutrition is enabled; cover this week too for weekly protein goals.
-  const nutritionOn = settings.nutritionEnabled;
   const wk = startOfWeek(today, settings.weekStart);
-  const foodFrom = from < wk ? from : wk;
-  const foodRaw = useLiveQuery(() => (nutritionOn ? db.foodLogs.where('date').between(foodFrom, today, true, true).toArray() : Promise.resolve([] as FoodLogEntry[])), [db, nutritionOn, foodFrom, today]);
 
   const data: ProgressData | null = useMemo(() => {
-    if (!sessions || !activities || !measurements || !goalsRaw || !programsRaw || !foodRaw) return null;
+    if (!sessions || !activities || !measurements || !goalsRaw || !programsRaw || !foodLogs) return null;
     const program = alive(programsRaw).find((p) => p.active) ?? null;
     return {
       sessions,
-      rangeSessions: sessions.filter((s) => s.date >= from && s.date <= today),
+      rangeSessions: inRange(sessions, from, today),
       activities,
-      rangeActivities: activities.filter((a) => a.date >= from && a.date <= today),
+      rangeActivities: inRange(activities, from, today),
       measurements,
       goals: alive(goalsRaw),
-      foodLogs: alive(foodRaw),
+      // All history (weekly goals filter the current account-timezone week; range sections use rangeFoodLogs).
+      foodLogs,
+      rangeFoodLogs: inRange(foodLogs, from, today),
       program,
       exercises,
       byId,
@@ -109,8 +182,14 @@ export default function ProgressPage() {
       to: today,
       today,
       settings,
+      onShowAll: range === 'all' ? undefined : () => setRange('all'),
     };
-  }, [sessions, activities, measurements, goalsRaw, programsRaw, foodRaw, from, today, exercises, byId, settings]);
+  }, [sessions, activities, measurements, goalsRaw, programsRaw, foodLogs, from, today, exercises, byId, settings, range]);
+
+  const avail = useMemo(
+    () => (data ? sectionAvailability({ sessions: data.sessions, activities: data.activities, measurements: data.measurements, goals: data.goals, foodLogs: data.foodLogs, byId: data.byId }) : null),
+    [data],
+  );
 
   const obs = useMemo(() => {
     if (!data) return [];
@@ -123,19 +202,40 @@ export default function ProgressPage() {
         plan = null;
       }
     }
-    return observations({ sessions: data.sessions, activities: data.activities, measurements: data.measurements, today, weekStart: settings.weekStart, unit: settings.units.weight, plan, byId });
-  }, [data, wk, today, settings.weekStart, settings.units.weight, byId]);
+    return observations({ sessions: data.sessions, activities: data.activities, measurements: data.measurements, today, weekStart: settings.weekStart, unit: settings.units.weight, plan, byId }, language);
+  }, [data, wk, today, settings.weekStart, settings.units.weight, byId, language]);
 
   const header = { title: t('nav.progress'), actions: <TopActions /> };
-  if (!data || !accountReady)
+  if (!data || !avail || !accountReady)
     return (
       <Page {...header}>
         <Spinner label={t('progress.loading')} />
       </Page>
     );
 
-  const nothing = !data.sessions.length && !data.activities.length && !data.measurements.length && !data.goals.length;
   const proteinTargetG = account.nutrition.proteinG;
+  const editors = (
+    <>
+      <MeasurementEditor target={measurementEdit} kind="bodyweight" measurements={data.measurements} settings={settings} today={today} onClose={() => setMeasurementEdit(null)} />
+      <GoalEditor edit={goalEdit} sessions={data.sessions} exercises={data.exercises} byId={data.byId} unit={settings.units.weight} today={today} onClose={() => setGoalEdit(null)} />
+    </>
+  );
+
+  // A genuinely new account: one neutral empty state with the add actions, no empty sections beneath it.
+  if (!avail.any)
+    return (
+      <Page {...header}>
+        <Card className="mt-4">
+          <EmptyState
+            illustration={<NoWorkoutsArt />}
+            title={t('progress.emptyTitle')}
+            body={t('progress.emptyHelp')}
+            action={<AddRecordMenu open onMeasurement={() => setMeasurementEdit('new')} onGoal={() => setGoalEdit('new')} />}
+          />
+        </Card>
+        {editors}
+      </Page>
+    );
 
   return (
     <Page {...header}>
@@ -149,59 +249,58 @@ export default function ProgressPage() {
         </p>
       </div>
 
-      {nothing ? (
-        <Card className="mt-4">
-          <EmptyState
-            illustration={<NoWorkoutsArt />}
-            title={t('progress.emptyTitle')}
-            body={t('progress.emptyHelp')}
-            action={
-              <div className="flex flex-col gap-2 w-full max-w-xs">
-                <Button variant="primary" icon={<Dumbbell className="size-4" />} onClick={() => nav('/train')}>{t('progress.logFirst')}</Button>
-                <Button icon={<Plus className="size-4" />} onClick={() => nav('/train/activity/new')}>{t('progress.logActivity')}</Button>
-              </div>
-            }
-          />
+      {obs.length > 0 && (
+        <Card as="section" aria-labelledby="obs-title" className="p-4 mt-3">
+          <h2 id="obs-title" className="text-sm font-semibold mb-2">{t('progress.thisWeek')}</h2>
+          <ul className="flex flex-col gap-1.5 text-sm">
+            {obs.map((o) => (
+              <li key={o} className="flex gap-2">
+                <span className="mt-2 size-1.5 rounded-full bg-ember shrink-0" aria-hidden />
+                <span>{o}</span>
+              </li>
+            ))}
+          </ul>
         </Card>
-      ) : (
-        obs.length > 0 && (
-          <Card as="section" aria-labelledby="obs-title" className="p-4 mt-3">
-            <h2 id="obs-title" className="text-sm font-semibold mb-2">{t('progress.thisWeek')}</h2>
-            <ul className="flex flex-col gap-1.5 text-sm">
-              {obs.map((o) => (
-                <li key={o} className="flex gap-2">
-                  <span className="mt-2 size-1.5 rounded-full bg-ember shrink-0" aria-hidden />
-                  <span>{o}</span>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        )
       )}
 
-      <Section id="p-consistency" title={t('progress.consistency')}>
-        <ConsistencySection d={data} />
-      </Section>
-      <Section id="p-exercise" title={t('progress.exerciseProgress')}>
-        <ExerciseSection d={data} />
-      </Section>
-      <Section id="p-volume" title={t('progress.volumeSets')}>
-        <VolumeSection d={data} />
-      </Section>
-      <Section id="p-cardio" title={t('progress.activities')}>
-        <CardioSection d={data} />
-      </Section>
-      <Section id="p-body" title={t('progress.body')}>
-        <BodySection d={data} today={today} />
-      </Section>
-      {nutritionOn && (
+      <AddRecordMenu onMeasurement={() => setMeasurementEdit('new')} onGoal={() => setGoalEdit('new')} />
+
+      {avail.consistency && (
+        <Section id="p-consistency" title={t('progress.consistency')}>
+          <ConsistencySection d={data} />
+        </Section>
+      )}
+      {avail.exercise && (
+        <Section id="p-exercise" title={t('progress.exerciseProgress')}>
+          <ExerciseSection d={data} />
+        </Section>
+      )}
+      {avail.volume && (
+        <Section id="p-volume" title={t('progress.volumeSets')}>
+          <VolumeSection d={data} />
+        </Section>
+      )}
+      {avail.activities && (
+        <Section id="p-cardio" title={t('progress.activities')}>
+          <CardioSection d={data} />
+        </Section>
+      )}
+      {avail.body && (
+        <Section id="p-body" title={t('progress.body')}>
+          <BodySection d={data} today={today} />
+        </Section>
+      )}
+      {avail.nutrition && (
         <Section id="p-nutrition" title={t('progress.protein')}>
           <NutritionSection d={data} proteinTargetG={proteinTargetG} />
         </Section>
       )}
-      <Section id="p-goals" title={t('progress.goals')}>
-        <GoalsSection d={data} proteinTargetG={proteinTargetG} />
-      </Section>
+      {avail.goals && (
+        <Section id="p-goals" title={t('progress.goals')}>
+          <GoalsSection d={data} proteinTargetG={proteinTargetG} />
+        </Section>
+      )}
+      {editors}
     </Page>
   );
 }

@@ -10,7 +10,7 @@ test('first launch goes straight into the welcome on Match my phone; the theme i
   // Match my phone: this browser prefers light.
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 
-  await page.goto('/settings');
+  await page.goto('/settings?section=app');
   const appearance = page.getByRole('radiogroup', { name: 'Appearance' });
   await expect(appearance.getByRole('radio', { name: /Match/ })).toHaveAttribute('aria-checked', 'true');
   await appearance.getByRole('radio', { name: 'Dark' }).click();

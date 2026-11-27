@@ -1,6 +1,19 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router';
-import { ChevronLeft, ChevronRight, Database, FlaskConical, Info, Smartphone, UserRound } from 'lucide-react';
+/**
+ * Settings (roadmap item 11): /settings is an index of five groups; `?section=` opens a group as a view of the same
+ * route (refreshable, real links, browser Back/Forward). Every existing control keeps its save logic and owner.
+ *
+ * - Legacy hashes still work and win over a conflicting section: #appearance-title / #language-title open "app",
+ *   #push-title / #coach-push-title / #quiet-push-title / #other-push-title open "coaching", then scroll to and focus
+ *   that heading. /settings/data#sync is a different route and is not touched.
+ * - A group is mounted on its first visit and kept mounted (hidden, so out of the accessibility tree) while this page
+ *   is open, so NumberInput/private-name drafts and pending writes survive switching groups. An account/DB change
+ *   clears it. PushSection is mounted only when the coaching group is opened: browsing never asks for permission.
+ * - Group Back returns to the index: history Back when this entry came from the index, else a replace to /settings.
+ *   Focus returns to the originating row; entering a group focuses its heading.
+ */
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router';
+import { Bot, ChevronLeft, ChevronRight, Database, Dumbbell, FlaskConical, Info, Languages, ShieldCheck, Smartphone, UserRound } from 'lucide-react';
 import { useApp } from '@/state/app';
 import { isBeginner, progressionRuleText } from '@/domain/progression';
 import { Button, Card, IconButton, Input, ListRow, NumberInput, Page, SectionTitle, Segmented, Select, Sheet, Toggle } from '@/components/ui';
@@ -19,14 +32,134 @@ import { analyticsEnabled, clearAnalyticsQueue } from '@/analytics/analytics';
 import { effectiveLanguage, t as tFor, useT, type Language, type MessageKey } from '@/i18n';
 import { knownErrorText } from './errorText';
 
+export type SettingsSection = 'app' | 'training' | 'coaching' | 'privacy' | 'account';
+export const SETTINGS_SECTIONS: { id: SettingsSection; title: MessageKey; description: MessageKey; icon: ReactNode }[] = [
+  { id: 'app', title: 'settings.group.app.title', description: 'settings.group.app.description', icon: <Languages className="size-5 text-muted" aria-hidden /> },
+  { id: 'training', title: 'settings.group.training.title', description: 'settings.group.training.description', icon: <Dumbbell className="size-5 text-muted" aria-hidden /> },
+  { id: 'coaching', title: 'settings.group.coaching.title', description: 'settings.group.coaching.description', icon: <Bot className="size-5 text-muted" aria-hidden /> },
+  { id: 'privacy', title: 'settings.group.privacy.title', description: 'settings.group.privacy.description', icon: <ShieldCheck className="size-5 text-muted" aria-hidden /> },
+  { id: 'account', title: 'settings.group.account.title', description: 'settings.group.account.description', icon: <UserRound className="size-5 text-muted" aria-hidden /> },
+];
+/** Legacy heading anchors → the group that now holds them. */
+export const LEGACY_HASHES: Record<string, SettingsSection> = {
+  'appearance-title': 'app',
+  'language-title': 'app',
+  'push-title': 'coaching',
+  'coach-push-title': 'coaching',
+  'quiet-push-title': 'coaching',
+  'other-push-title': 'coaching',
+};
+const isSection = (v: string | null): v is SettingsSection => SETTINGS_SECTIONS.some((s) => s.id === v);
+
+/** The open group: a legacy hash wins, then a valid ?section=, else the index (null). */
+export function sectionFor(search: string, hash: string): SettingsSection | null {
+  const h = LEGACY_HASHES[decodeURIComponent(hash.replace(/^#/, ''))];
+  if (h) return h;
+  const s = new URLSearchParams(search).get('section');
+  return isSection(s) ? s : null;
+}
+
 export default function SettingsPage() {
   const nav = useNavigate();
-  const toast = useToast();
+  const location = useLocation();
   const { t } = useT();
-  const { account, updateAccount, auth, backendConfigured, db } = useApp();
-  const s = account.settings;
-  /** Saves a settings change; resolves true when it was saved, false after showing the error (never rejects). */
-  const set = (fn: (s: Settings) => Settings): Promise<boolean> =>
+  const { db } = useApp();
+  const active = sectionFor(location.search, location.hash);
+  const hashTarget = LEGACY_HASHES[location.hash.replace(/^#/, '')] ? location.hash.replace(/^#/, '') : null;
+
+  // Lazily mounted groups, retained while this page is open; cleared when the account/DB changes.
+  const [visited, setVisited] = useState<{ key: string; ids: SettingsSection[] }>({ key: db.accountKey, ids: [] });
+  const ids = visited.key === db.accountKey ? visited.ids : [];
+  if (active && (visited.key !== db.accountKey || !visited.ids.includes(active))) setVisited({ key: db.accountKey, ids: [...ids, active] });
+  else if (visited.key !== db.accountKey) setVisited({ key: db.accountKey, ids: [] });
+
+  // Focus: the group heading on entry (or the legacy hash heading); the originating row on return to the index.
+  const lastGroup = useRef<SettingsSection | null>(null);
+  useLayoutEffect(() => {
+    if (active) {
+      lastGroup.current = active;
+      const target = (hashTarget && document.getElementById(hashTarget)) || document.getElementById(`settings-group-${active}`);
+      if (target) {
+        if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+        target.scrollIntoView?.({ block: 'start' });
+        target.focus({ preventScroll: true });
+      }
+    } else if (lastGroup.current) {
+      document.getElementById(`settings-row-${lastGroup.current}`)?.focus();
+    }
+  }, [active, hashTarget, ids.length]);
+
+  const back = () => {
+    // Commit a focused field first (its blur handler saves) so a typed draft is not lost.
+    const el = document.activeElement as HTMLElement | null;
+    if (el && el !== document.body) el.blur();
+    if (!active) return nav(-1);
+    const fromIndex = (location.state as { fromSettingsIndex?: boolean } | null)?.fromSettingsIndex === true;
+    if (fromIndex) nav(-1);
+    else nav('/settings', { replace: true });
+  };
+
+  return (
+    <Page
+      title={t('settings.title')}
+      back={
+        <IconButton label={t('common.back')} onClick={back}>
+          <ChevronLeft className="size-6" />
+        </IconButton>
+      }
+    >
+      <nav aria-label={t('settings.title')} hidden={active != null}>
+        <Card className="divide-y divide-line overflow-hidden mt-2">
+          {SETTINGS_SECTIONS.map((s) => (
+            <Link
+              key={s.id}
+              id={`settings-row-${s.id}`}
+              to={`/settings?section=${s.id}`}
+              state={{ fromSettingsIndex: true }}
+              className="flex items-center gap-3 px-4 py-3 min-h-14 hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2"
+            >
+              {s.icon}
+              <span className="flex-1 min-w-0">
+                <span className="block text-[15px] font-medium">{t(s.title)}</span>
+                <span className="block text-xs text-muted">{t(s.description)}</span>
+              </span>
+              <ChevronRight className="size-4 text-muted" aria-hidden />
+            </Link>
+          ))}
+        </Card>
+      </nav>
+      {SETTINGS_SECTIONS.filter((s) => ids.includes(s.id)).map((s) => (
+        <section key={`${db.accountKey}-${s.id}`} aria-labelledby={`settings-group-${s.id}`} hidden={active !== s.id}>
+          <h2 id={`settings-group-${s.id}`} tabIndex={-1} className="font-display text-xl font-bold mt-2 outline-none">
+            {t(s.title)}
+          </h2>
+          <Group id={s.id} />
+        </section>
+      ))}
+    </Page>
+  );
+}
+
+function Group({ id }: { id: SettingsSection }) {
+  switch (id) {
+    case 'app':
+      return <AppGroup />;
+    case 'training':
+      return <TrainingGroup />;
+    case 'coaching':
+      return <CoachingGroup />;
+    case 'privacy':
+      return <PrivacyGroup />;
+    case 'account':
+      return <AccountGroup />;
+  }
+}
+
+/** Saves a settings change; resolves true when it was saved, false after showing the error (never rejects). */
+function useSaveSettings() {
+  const toast = useToast();
+  const { updateAccount } = useApp();
+  return (fn: (s: Settings) => Settings): Promise<boolean> =>
     updateAccount((a) => ({ ...a, settings: fn(a.settings) })).then(
       () => true,
       (e) => {
@@ -34,6 +167,15 @@ export default function SettingsPage() {
         return false;
       },
     );
+}
+
+/* ---------------------------------------------------------------- app */
+function AppGroup() {
+  const toast = useToast();
+  const { t } = useT();
+  const { account } = useApp();
+  const set = useSaveSettings();
+  const s = account.settings;
   const zones = useMemo(() => {
     try {
       return (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? [s.timeZone];
@@ -41,78 +183,8 @@ export default function SettingsPage() {
       return [s.timeZone];
     }
   }, [s.timeZone]);
-  const [about, setAbout] = useState(false);
-  const signedIn = auth.status === 'signed_in' || auth.status === 'expired';
-
   return (
-    <Page
-      title={t('settings.title')}
-      back={
-        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
-        </IconButton>
-      }
-    >
-      <SectionTitle>{t('settings.account')}</SectionTitle>
-      <Card className="p-4 space-y-3">
-        {db.isDemo ? (
-          <>
-            <p className="text-sm">{t('settings.demoBody')}</p>
-            <Button onClick={() => void exitDemo()}>{t('settings.exitDemo')}</Button>
-          </>
-        ) : signedIn ? (
-          <>
-            <p className="text-sm">
-              {auth.email ? withSlot(t('settings.signedInAs', { email: SLOT }), <span className="font-medium">{auth.email}</span>) : t('settings.signedIn')}
-              {auth.status === 'expired' && ` ${t('settings.expired')}`}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {auth.status === 'expired' && (
-                <Button variant="primary" onClick={() => nav('/auth?reauth=1')}>
-                  {t('settings.signInAgain')}
-                </Button>
-              )}
-              <Button icon={<UserRound className="size-4" />} onClick={() => nav('/profile/edit')}>
-                {t('settings.socialProfile')}
-              </Button>
-              <SignOutButton />
-            </div>
-          </>
-        ) : backendConfigured ? (
-          <>
-            <p className="text-sm text-muted">{t('settings.guestBody', { brand: BRAND.name })}</p>
-            <div className="flex gap-2">
-              <Button variant="primary" onClick={() => nav('/auth?mode=signup')}>
-                {t('settings.createAccount')}
-              </Button>
-              <Button onClick={() => nav('/auth')}>{t('settings.signIn')}</Button>
-            </div>
-          </>
-        ) : (
-          <p className="text-sm text-muted">{t('settings.personalMode')}</p>
-        )}
-        <Input
-          label={t('settings.privateName')}
-          defaultValue={account.profile.displayName}
-          maxLength={40}
-          onBlur={(e) => e.target.value !== account.profile.displayName && void updateAccount((a) => ({ ...a, profile: { ...a.profile, displayName: e.target.value.trim() } }))}
-          hint={t('settings.privateNameHint')}
-        />
-      </Card>
-
-      <SectionTitle id="appearance-title">{t('settings.appearance')}</SectionTitle>
-      <Card className="p-3">
-        <ThemeOptions
-          layout="compact"
-          labelledBy="appearance-title"
-          value={effectiveThemeChoice(s.theme)}
-          onChange={(v) => {
-            setDeviceThemeChoice(v);
-            void set((x) => ({ ...x, theme: v }));
-          }}
-        />
-      </Card>
-
+    <>
       <SectionTitle id="language-title">{t('settings.languageTitle')}</SectionTitle>
       <Card className="p-4 space-y-3">
         {/* Autonyms stay in their own language in both locales. Changes Settings.language only: units, time zone,
@@ -130,6 +202,19 @@ export default function SettingsPage() {
           ]}
         />
         <p className="text-xs text-muted">{t('settings.languageDescription')}</p>
+      </Card>
+
+      <SectionTitle id="appearance-title">{t('settings.appearance')}</SectionTitle>
+      <Card className="p-3">
+        <ThemeOptions
+          layout="compact"
+          labelledBy="appearance-title"
+          value={effectiveThemeChoice(s.theme)}
+          onChange={(v) => {
+            setDeviceThemeChoice(v);
+            void set((x) => ({ ...x, theme: v }));
+          }}
+        />
       </Card>
 
       <SectionTitle>{t('settings.unitsDisplay')}</SectionTitle>
@@ -162,7 +247,19 @@ export default function SettingsPage() {
         </div>
         <p className="text-xs text-muted">{t('settings.timeZoneHint')}</p>
       </Card>
+    </>
+  );
+}
 
+/* ----------------------------------------------------------- training */
+function TrainingGroup() {
+  const nav = useNavigate();
+  const { t } = useT();
+  const { account } = useApp();
+  const set = useSaveSettings();
+  const s = account.settings;
+  return (
+    <>
       <SectionTitle>{t('settings.workoutRest')}</SectionTitle>
       <Card className="px-4 py-2 divide-y divide-line">
         <div className="grid grid-cols-2 gap-3 py-3">
@@ -193,6 +290,56 @@ export default function SettingsPage() {
         <p className="text-xs text-muted py-3">{t('settings.timerCaveat')}</p>
       </Card>
 
+      <SectionTitle>{t('settings.planNutrition')}</SectionTitle>
+      <Card className="divide-y divide-line overflow-hidden">
+        <div className="px-4">
+          <Toggle label={t('settings.nutritionFeatures')} description={t('settings.nutritionHint')} checked={s.nutritionEnabled} onChange={(v) => set((x) => ({ ...x, nutritionEnabled: v }))} />
+        </div>
+        <ListRow title={t('settings.nutritionTargets')} right={<ChevronRight className="size-4" />} onClick={() => nav('/nutrition/targets')} />
+        <ListRow title={t('settings.redoSetup')} subtitle={t('settings.redoSetupHint')} right={<ChevronRight className="size-4" />} onClick={() => nav('/onboarding')} />
+        <ListRow title={t('train.programSchedule')} right={<ChevronRight className="size-4" />} onClick={() => nav('/train/program')} />
+      </Card>
+    </>
+  );
+}
+
+/* ----------------------------------------------------------- coaching */
+function CoachingGroup() {
+  const { t } = useT();
+  const { account } = useApp();
+  const set = useSaveSettings();
+  const s = account.settings;
+  return (
+    <>
+      <Card className="mt-3 overflow-hidden">
+        <Link to="/coaching/ai/settings" className="flex items-center gap-3 px-4 py-3 min-h-14 hover:bg-surface-2">
+          <Bot className="size-5 text-muted" aria-hidden />
+          <span className="flex-1 text-[15px] font-medium">{t('ai.settings.title')}</span>
+          <ChevronRight className="size-4 text-muted" aria-hidden />
+        </Link>
+      </Card>
+      <PushSection />
+      <SectionTitle>{t('settings.notifications')}</SectionTitle>
+      <Card className="px-4 py-2 divide-y divide-line">
+        <Toggle label={t('settings.friendNotifications')} checked={s.notifications.friendRequests} onChange={(v) => set((x) => ({ ...x, notifications: { ...x.notifications, friendRequests: v } }))} />
+        <Toggle label={t('settings.likes')} checked={s.notifications.likes} onChange={(v) => set((x) => ({ ...x, notifications: { ...x.notifications, likes: v } }))} />
+        <Toggle label={t('settings.comments')} checked={s.notifications.comments} onChange={(v) => set((x) => ({ ...x, notifications: { ...x.notifications, comments: v } }))} />
+        <Toggle label={t('settings.coachingUpdates')} checked={s.notifications.coaching !== false} onChange={(v) => set((x) => ({ ...x, notifications: { ...x.notifications, coaching: v } }))} />
+        <p className="text-xs text-muted py-3">{t('settings.notificationsHint')}</p>
+      </Card>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------ privacy */
+function PrivacyGroup() {
+  const toast = useToast();
+  const { t } = useT();
+  const { account, auth, db } = useApp();
+  const set = useSaveSettings();
+  const s = account.settings;
+  return (
+    <>
       <SectionTitle>{t('settings.privacy')}</SectionTitle>
       <Card className="px-4 py-2 divide-y divide-line">
         <Toggle
@@ -240,25 +387,70 @@ export default function SettingsPage() {
           }}
         />
       </Card>
+    </>
+  );
+}
 
-      <SectionTitle>{t('settings.notifications')}</SectionTitle>
-      <Card className="px-4 py-2 divide-y divide-line">
-        <Toggle label={t('settings.friendNotifications')} checked={s.notifications.friendRequests} onChange={(v) => set((x) => ({ ...x, notifications: { ...x.notifications, friendRequests: v } }))} />
-        <Toggle label={t('settings.likes')} checked={s.notifications.likes} onChange={(v) => set((x) => ({ ...x, notifications: { ...x.notifications, likes: v } }))} />
-        <Toggle label={t('settings.comments')} checked={s.notifications.comments} onChange={(v) => set((x) => ({ ...x, notifications: { ...x.notifications, comments: v } }))} />
-        <Toggle label={t('settings.coachingUpdates')} checked={s.notifications.coaching !== false} onChange={(v) => set((x) => ({ ...x, notifications: { ...x.notifications, coaching: v } }))} />
-        <p className="text-xs text-muted py-3">{t('settings.notificationsHint')}</p>
-      </Card>
-      <PushSection />
-
-      <SectionTitle>{t('settings.planNutrition')}</SectionTitle>
-      <Card className="divide-y divide-line overflow-hidden">
-        <div className="px-4">
-          <Toggle label={t('settings.nutritionFeatures')} description={t('settings.nutritionHint')} checked={s.nutritionEnabled} onChange={(v) => set((x) => ({ ...x, nutritionEnabled: v }))} />
-        </div>
-        <ListRow title={t('settings.nutritionTargets')} right={<ChevronRight className="size-4" />} onClick={() => nav('/nutrition/targets')} />
-        <ListRow title={t('settings.redoSetup')} subtitle={t('settings.redoSetupHint')} right={<ChevronRight className="size-4" />} onClick={() => nav('/onboarding')} />
-        <ListRow title={t('train.programSchedule')} right={<ChevronRight className="size-4" />} onClick={() => nav('/train/program')} />
+/* ------------------------------------------------------------ account */
+function AccountGroup() {
+  const nav = useNavigate();
+  const toast = useToast();
+  const { t } = useT();
+  const { account, updateAccount, auth, backendConfigured, db } = useApp();
+  const [about, setAbout] = useState(false);
+  const signedIn = auth.status === 'signed_in' || auth.status === 'expired';
+  return (
+    <>
+      <SectionTitle>{t('settings.account')}</SectionTitle>
+      <Card className="p-4 space-y-3">
+        {db.isDemo ? (
+          <>
+            <p className="text-sm">{t('settings.demoBody')}</p>
+            <Button onClick={() => void exitDemo()}>{t('settings.exitDemo')}</Button>
+          </>
+        ) : signedIn ? (
+          <>
+            <p className="text-sm">
+              {auth.email ? withSlot(t('settings.signedInAs', { email: SLOT }), <span className="font-medium">{auth.email}</span>) : t('settings.signedIn')}
+              {auth.status === 'expired' && ` ${t('settings.expired')}`}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {auth.status === 'expired' && (
+                <Button variant="primary" onClick={() => nav('/auth?reauth=1')}>
+                  {t('settings.signInAgain')}
+                </Button>
+              )}
+              <Button icon={<UserRound className="size-4" />} onClick={() => nav('/profile/edit')}>
+                {t('settings.socialProfile')}
+              </Button>
+              <SignOutButton />
+            </div>
+          </>
+        ) : backendConfigured ? (
+          <>
+            <p className="text-sm text-muted">{t('settings.guestBody', { brand: BRAND.name })}</p>
+            <div className="flex gap-2">
+              <Button variant="primary" onClick={() => nav('/auth?mode=signup')}>
+                {t('settings.createAccount')}
+              </Button>
+              <Button onClick={() => nav('/auth')}>{t('settings.signIn')}</Button>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-muted">{t('settings.personalMode')}</p>
+        )}
+        <Input
+          label={t('settings.privateName')}
+          defaultValue={account.profile.displayName}
+          maxLength={40}
+          onBlur={(e) => {
+            const typed = e.target.value;
+            if (typed === account.profile.displayName) return;
+            // A failed save is shown (localized) and the typed draft stays in the field, so the next blur retries it.
+            updateAccount((a) => ({ ...a, profile: { ...a.profile, displayName: typed.trim() } })).catch((err: unknown) => toast.show(knownErrorText(err), { tone: 'error' }));
+          }}
+          hint={t('settings.privateNameHint')}
+        />
       </Card>
 
       <SectionTitle>{t('settings.app')}</SectionTitle>
@@ -291,7 +483,7 @@ export default function SettingsPage() {
           <p className="text-muted">{t('settings.aboutExercise')}</p>
         </div>
       </Sheet>
-    </Page>
+    </>
   );
 }
 

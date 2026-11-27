@@ -2,8 +2,9 @@ import { expect, test } from '@playwright/test';
 import { finishWorkout, startEmptyWithBench } from './helpers';
 
 test('unit changes preserve the recorded values exactly', async ({ page }) => {
-  await page.goto('/settings');
+  await page.goto('/settings?section=app');
   await page.getByRole('radio', { name: 'Pounds' }).click();
+  await expect(page.getByRole('radio', { name: 'Pounds' })).toHaveAttribute('aria-checked', 'true');
   await startEmptyWithBench(page);
   await page.getByLabel('Set 1 load in lb').fill('135');
   await page.getByLabel('Set 1 reps').fill('5');
@@ -11,12 +12,14 @@ test('unit changes preserve the recorded values exactly', async ({ page }) => {
   await finishWorkout(page);
   await expect(page.getByText(/135 lb × 5/)).toBeVisible();
   const summaryUrl = page.url();
-  await page.goto('/settings');
+  await page.goto('/settings?section=app');
   await page.getByRole('radio', { name: 'Kilograms' }).click();
+  await expect(page.getByRole('radio', { name: 'Kilograms' })).toHaveAttribute('aria-checked', 'true');
   await page.goto(summaryUrl);
   await expect(page.getByText(/61\.2 kg × 5/)).toBeVisible(); // 135 lb = 61.235 kg
-  await page.goto('/settings');
+  await page.goto('/settings?section=app');
   await page.getByRole('radio', { name: 'Pounds' }).click();
+  await expect(page.getByRole('radio', { name: 'Pounds' })).toHaveAttribute('aria-checked', 'true');
   await page.goto(summaryUrl);
   await expect(page.getByText(/135 lb × 5/)).toBeVisible(); // not 134.9
 });

@@ -124,14 +124,33 @@ describe('SSE transport', () => {
 
   it('text that the postchecks rewrite or remove never appears in any event', async () => {
     // Raw model output: forbidden filler, an ISO date and an invented in-app link. The stored reply has none of them.
+    // A fixed test clock (not the wall clock), so metadata timestamps are deterministic and never depend on the run date.
     const raw = 'Great question! On 2026-11-27 do your squats.\n[[open:/admin-secret|Open admin]]';
-    const { deps } = setup([answer(raw)]);
+    const { deps } = setup([answer(raw)], settings(), { clock: () => NOW.getTime() });
     const { c } = await stream(deps, send('When do I squat?'));
-    const complete = c!.events().find((e) => e.event === 'complete')!;
-    const stored = String((complete.data.reply as StoredMessage).content);
+    const ev0 = c!.events();
+    const complete = ev0.find((e) => e.event === 'complete')!;
+    const reply = complete.data.reply as StoredMessage & { why?: string | null };
+    const stored = String(reply.content);
     expect(stored).not.toMatch(/Great question|2026-11-27|admin-secret/);
-    const all = c!.frames.join('');
-    for (const bad of ['Great question', '2026-11-27', 'admin-secret']) expect(all).not.toContain(bad);
+    // Model-content fields (streamed deltas, final reply text/why, any card) are checked for forbidden prose…
+    const content = [
+      ...ev0.filter((e) => e.event === 'text_delta').map((e) => String(e.data.text)),
+      stored,
+      String(reply.why ?? ''),
+      JSON.stringify(complete.data.proposal ?? null),
+    ];
+    for (const bad of ['Great question', '2026-11-27', 'admin-secret']) for (const s of content) expect(s).not.toContain(bad);
+    // …and every serialized event, with only the timestamp/usage-day metadata removed, carries none of it either.
+    const scrub = (v: unknown): unknown =>
+      Array.isArray(v) ? v.map(scrub) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).filter(([k]) => k !== 'createdAt' && k !== 'day').map(([k, x]) => [k, scrub(x)])) : v;
+    const serialized = JSON.stringify(ev0.map((e) => ({ event: e.event, data: scrub(e.data) })));
+    for (const bad of ['Great question', '2026-11-27', 'admin-secret']) expect(serialized).not.toContain(bad);
+    // Timestamps are metadata from the injected clock, asserted separately.
+    // (the memory DB may add a millisecond or two to keep message order strict).
+    const at = Date.parse(String(reply.createdAt));
+    expect(at - NOW.getTime()).toBeGreaterThanOrEqual(0);
+    expect(at - NOW.getTime()).toBeLessThan(1000);
     // Nothing but status precedes the first chunk of the stored text.
     const ev = c!.events();
     const first = ev.findIndex((e) => e.event !== 'status');

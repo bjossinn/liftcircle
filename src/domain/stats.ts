@@ -24,7 +24,7 @@ import type {
 } from './types';
 import { addDays, diffDays, rangeDays, startOfWeek } from '@/lib/dates';
 import { formatWeight, fromKg, round, trimNum } from './units';
-import { getLanguage, numberText, t, tp, type Language, type MessageKey } from '@/i18n';
+import { getLanguage, localeFor, numberText, t, tp, type Language, type MessageKey, type Params } from '@/i18n';
 import { hasRecordedLoad, isCountableSet, isValidCompletedSet } from './setValidation';
 
 export const VOLUME_CONVENTIONS: string[] = [
@@ -674,46 +674,51 @@ export interface GoalContext {
 }
 
 /** Progress toward a goal from actual records. Targets use canonical units (kg, minutes, days, sessions). */
-export function goalProgress(g: UserGoal, c: GoalContext): GoalProgress {
+export function goalProgress(g: UserGoal, c: GoalContext, lang: Language = getLanguage()): GoalProgress {
   const wk = startOfWeek(c.today, c.weekStart);
   const frac = (cur: number, target: number) => (target > 0 ? Math.max(0, Math.min(1, cur / target)) : null);
+  const tx = (key: MessageKey, params?: Params) => t(key, params, lang);
+  const wt = (kg: number) => formatWeight(kg, c.unit, undefined, lang);
   switch (g.kind) {
     case 'sessions_per_week': {
       const n = completedSessions(c.sessions).filter((s) => s.date >= wk && s.date <= c.today).length;
-      return { current: n, fraction: frac(n, g.target), text: `${n} of ${g.target} workout${g.target === 1 ? '' : 's'} this week`, reached: n >= g.target };
+      return { current: n, fraction: frac(n, g.target), text: tx('progress.goalStatus.workouts', { current: n, target: g.target }), reached: n >= g.target };
     }
     case 'cardio_minutes': {
       const m = Math.round(c.activities.filter((a) => !a.deletedAt && a.date >= wk && a.date <= c.today).reduce((s, a) => s + a.durationSec / 60, 0));
-      return { current: m, fraction: frac(m, g.target), text: `${m} of ${g.target} min this week`, reached: m >= g.target };
+      return { current: m, fraction: frac(m, g.target), text: tx('progress.goalStatus.minutes', { current: m, target: g.target }), reached: m >= g.target };
     }
     case 'protein_days': {
-      if (!c.proteinTargetG) return { current: null, fraction: null, text: 'Set a protein target to track this goal', reached: false };
+      if (!c.proteinTargetG) return { current: null, fraction: null, text: tx('progress.goalStatus.proteinTargetMissing'), reached: false };
       const days = proteinDays(c.foodLogs, wk, c.today, c.proteinTargetG);
       const met = days.filter((d) => d.met).length;
       const noData = days.filter((d) => d.proteinG == null).length;
-      return { current: met, fraction: frac(met, g.target), text: `${met} of ${g.target} day${g.target === 1 ? '' : 's'} this week${noData ? ` · ${noData} without logs` : ''}`, reached: met >= g.target };
+      const text = noData
+        ? tx('progress.goalStatus.proteinDaysMissing', { current: met, target: g.target, missing: noData })
+        : tx('progress.goalStatus.proteinDays', { current: met, target: g.target });
+      return { current: met, fraction: frac(met, g.target), text, reached: met >= g.target };
     }
     case 'exercise_load': {
       const ex = g.exerciseId ? c.byId.get(g.exerciseId) : undefined;
-      if (!ex) return { current: null, fraction: null, text: 'Choose an exercise', reached: false };
+      if (!ex) return { current: null, fraction: null, text: tx('progress.chooseExercise'), reached: false };
       const series = exerciseSeries(c.sessions, ex.id, ex);
       if (ex.tracking === 'assisted') {
         const vals = series.map((p) => p.minAssistanceKg).filter((v): v is number => v != null);
-        if (!vals.length) return { current: null, fraction: null, text: `No ${ex.name} sets logged yet`, reached: false };
+        if (!vals.length) return { current: null, fraction: null, text: tx('progress.goalStatus.noExerciseSets', { exercise: ex.name }), reached: false };
         const cur = Math.min(...vals);
         const start = vals[0];
         const reached = cur <= g.target + 1e-9;
         const fraction = reached ? 1 : start > g.target ? Math.max(0, Math.min(1, (start - cur) / (start - g.target))) : 0;
-        return { current: cur, fraction, text: `Least assistance ${formatWeight(cur, c.unit)} · target ${formatWeight(g.target, c.unit)}`, reached };
+        return { current: cur, fraction, text: tx('progress.goalStatus.assistance', { current: wt(cur), target: wt(g.target) }), reached };
       }
       const vals = series.map((p) => p.topWeightKg).filter((v): v is number => v != null);
-      if (!vals.length) return { current: null, fraction: null, text: `No ${ex.name} sets logged yet`, reached: false };
+      if (!vals.length) return { current: null, fraction: null, text: tx('progress.goalStatus.noExerciseSets', { exercise: ex.name }), reached: false };
       const cur = Math.max(...vals);
-      return { current: cur, fraction: frac(cur, g.target), text: `Best ${formatWeight(cur, c.unit)} of ${formatWeight(g.target, c.unit)}`, reached: cur >= g.target - 1e-9 };
+      return { current: cur, fraction: frac(cur, g.target), text: tx('progress.goalStatus.load', { current: wt(cur), target: wt(g.target) }), reached: cur >= g.target - 1e-9 };
     }
     case 'bodyweight': {
       const bw = c.measurements.filter((m) => m.kind === 'bodyweight' && !m.deletedAt).sort((a, b) => (a.date < b.date ? -1 : 1));
-      if (!bw.length) return { current: null, fraction: null, text: 'Add a bodyweight entry to track this goal', reached: false };
+      if (!bw.length) return { current: null, fraction: null, text: tx('progress.goalStatus.weightMissing'), reached: false };
       const created = new Date(g.createdAt).toISOString().slice(0, 10);
       const startEntry = bw.filter((m) => m.date <= created).at(-1) ?? bw[0];
       const avg = windowAverage(bw.map((m) => ({ date: m.date, value: m.value })), addDays(c.today, -6), c.today) ?? bw.at(-1)!.value;
@@ -722,11 +727,11 @@ export function goalProgress(g: UserGoal, c: GoalContext): GoalProgress {
       const reached = losing ? avg <= g.target : avg >= g.target;
       const span = Math.abs(start - g.target);
       const fraction = reached ? 1 : span > 0 ? Math.max(0, Math.min(1, (losing ? start - avg : avg - start) / span)) : 0;
-      return { current: avg, fraction, text: `7-day average ${formatWeight(avg, c.unit)} · target ${formatWeight(g.target, c.unit)}`, reached };
+      return { current: avg, fraction, text: tx('progress.goalStatus.weight', { current: wt(avg), target: wt(g.target) }), reached };
     }
     case 'custom':
     default:
-      return { current: null, fraction: g.achievedAt ? 1 : null, text: g.achievedAt ? 'Achieved' : 'Mark it achieved when you get there', reached: !!g.achievedAt };
+      return { current: null, fraction: g.achievedAt ? 1 : null, text: g.achievedAt ? tx('progress.achieved') : tx('progress.goalStatus.custom'), reached: !!g.achievedAt };
   }
 }
 
@@ -743,67 +748,63 @@ export interface ObservationInput {
   byId?: Map<ID, Exercise>;
 }
 
-const MINUS = '−';
-function signed(n: number, decimals = 1): string {
+const MINUS = '\u2212';
+/** Signed, locale-formatted change: "+0.4" / "−0,4" / "±0" (fixed decimals, decimal comma in Icelandic). */
+export function signedText(n: number, decimals = 1, lang: Language = getLanguage()): string {
   const r = round(n, decimals);
   if (r === 0) return '±0';
-  return r > 0 ? `+${r.toFixed(decimals)}` : `${MINUS}${Math.abs(r).toFixed(decimals)}`;
+  return `${r > 0 ? '+' : MINUS}${fixedText(Math.abs(r), decimals, lang)}`;
 }
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** A number with exactly `decimals` decimals in the locale ("81.0" / "81,0"), ungrouped. */
+function fixedText(n: number, decimals: number, lang: Language): string {
+  return new Intl.NumberFormat(localeFor(lang), { minimumFractionDigits: decimals, maximumFractionDigits: decimals, useGrouping: false }).format(round(n, decimals));
+}
 
 /**
  * Short, factual observations about recent records. No scores, no inferences about recovery or
- * muscle gained — just what the logs say.
+ * muscle gained — just what the logs say. Nothing is added when nothing is logged.
  */
-export function observations(o: ObservationInput): string[] {
+export function observations(o: ObservationInput, lang: Language = getLanguage()): string[] {
   const out: string[] = [];
+  const tx = (key: MessageKey, params?: Params) => t(key, params, lang);
   const wk = startOfWeek(o.today, o.weekStart);
   const prevWk = addDays(wk, -7);
   const prevWkEnd = addDays(wk, -1);
   const done = completedSessions(o.sessions);
   const acts = o.activities.filter((a) => !a.deletedAt);
 
-  if (o.plan && o.plan.planned > 0) {
-    out.push(`You completed ${o.plan.completed} of ${o.plan.planned} planned sessions this week.`);
-  }
+  if (o.plan && o.plan.planned > 0) out.push(tx('progress.insight.planned', { completed: o.plan.completed, planned: o.plan.planned }));
   const wWeek = done.filter((s) => s.date >= wk && s.date <= o.today).length;
   const aWeek = acts.filter((a) => a.date >= wk && a.date <= o.today).length;
-  if (wWeek || aWeek) {
-    const parts = [];
-    if (wWeek) parts.push(plural(wWeek, 'workout'));
-    if (aWeek) parts.push(plural(aWeek, 'other activity', 'other activities'));
-    out.push(`This week you’ve logged ${parts.join(' and ')}.`);
-  }
+  if (wWeek && aWeek) out.push(tx('progress.insight.both', { workouts: wWeek, activities: aWeek }));
+  else if (wWeek) out.push(tx('progress.insight.workouts', { count: wWeek }));
+  else if (aWeek) out.push(tx('progress.insight.activities', { count: aWeek }));
 
   const minutes = (from: ISODate, to: ISODate) => Math.round(acts.filter((a) => a.date >= from && a.date <= to).reduce((s, a) => s + a.durationSec / 60, 0));
   const cw = minutes(wk, o.today);
   const pw = minutes(prevWk, prevWkEnd);
-  if (cw > 0 || pw > 0) {
-    out.push(`Activity time this week: ${cw} min (${signed(cw - pw, 0)} min vs last week).`);
-  }
+  if (cw > 0 || pw > 0) out.push(tx('progress.insight.minutes', { minutes: cw, change: signedText(cw - pw, 0, lang) }));
 
   if (o.byId) {
     const sets = (from: ISODate, to: ISODate) =>
       done.filter((s) => s.date >= from && s.date <= to).reduce((n, s) => n + summarizeSession(s, o.byId!).workingSets, 0);
     const cs = sets(wk, o.today);
-    if (cs > 0) out.push(`Working sets this week: ${cs} (last week: ${sets(prevWk, prevWkEnd)}).`);
+    if (cs > 0) out.push(tx('progress.insight.sets', { current: cs, previous: sets(prevWk, prevWkEnd) }));
   }
 
   const bw = o.measurements.filter((m) => m.kind === 'bodyweight' && !m.deletedAt).map((m) => ({ date: m.date, value: m.value }));
   const cur = windowAverage(bw, addDays(o.today, -6), o.today);
   if (cur != null) {
     const prev = windowAverage(bw, addDays(o.today, -13), addDays(o.today, -7));
-    const v = round(fromKg(cur, o.unit), 1).toFixed(1);
-    const delta = prev != null ? ` (${signed(fromKg(cur, o.unit) - fromKg(prev, o.unit))} ${o.unit} vs last week)` : '';
-    out.push(`Bodyweight 7-day average: ${v} ${o.unit}${delta}`);
+    const weight = fixedText(fromKg(cur, o.unit), 1, lang);
+    out.push(
+      prev != null
+        ? tx('progress.insight.weightChange', { weight, unit: o.unit, change: signedText(fromKg(cur, o.unit) - fromKg(prev, o.unit), 1, lang) })
+        : tx('progress.insight.weight', { weight, unit: o.unit }),
+    );
   }
 
-  if (!done.length && !acts.length) out.push('No workouts or activities logged yet.');
-  else {
-    const last = [...done.map((s) => s.date), ...acts.map((a) => a.date)].filter((d) => d <= o.today).sort().at(-1);
-    if (last && last < addDays(o.today, -6)) {
-      out.push(`Your last logged session was ${diffDays(o.today, last)} days ago.`);
-    }
-  }
+  const last = [...done.map((s) => s.date), ...acts.map((a) => a.date)].filter((d) => d <= o.today).sort().at(-1);
+  if (last && last < addDays(o.today, -6)) out.push(tx('progress.insight.lastSession', { count: diffDays(o.today, last) }));
   return out;
 }

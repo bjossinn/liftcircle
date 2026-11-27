@@ -23,7 +23,7 @@ export async function completeOnboarding(page: Page, name?: string) {
 
 /** Set the private display name (Settings → Your name) and return to Today. */
 export async function setName(page: Page, name: string) {
-  await page.goto('/settings');
+  await page.goto('/settings?section=account');
   const input = page.getByLabel('Your name (private)');
   await input.fill(name);
   await input.blur();

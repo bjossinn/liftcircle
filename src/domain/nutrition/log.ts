@@ -132,13 +132,24 @@ export function rescaleEntry<T extends Partial<EntryDraft>>(e: T, factor: number
   };
 }
 
+/**
+ * Stable identity of a recent item (also its React key). Quick entries have no catalog reference, so every macro's
+ * presence and value is part of their identity: 20/30/40 g stay distinct, and a missing value (unknown) is never
+ * merged with an explicitly recorded zero.
+ */
+export function recentKey(e: Pick<FoodLogEntry, 'source' | 'name' | 'servings' | 'grams' | MacroKey>): string {
+  const base = `${e.source.kind}:${e.source.refId ?? e.name.toLowerCase()}:${e.servings ?? ''}:${e.grams ?? ''}`;
+  if (e.source.kind !== 'quick') return base;
+  return `${base}:${MACRO_KEYS.map((k) => (e[k] == null ? '-' : `=${e[k]}`)).join(':')}`;
+}
+
 /** Distinct recently logged items, newest first. */
 export function recentItems<T extends FoodLogEntry>(entries: T[], limit = 20): T[] {
   const seen = new Set<string>();
   const out: T[] = [];
   for (const e of [...entries].sort((a, b) => b.createdAt - a.createdAt)) {
     if (e.deletedAt) continue;
-    const key = `${e.source.kind}:${e.source.refId ?? e.name.toLowerCase()}:${e.servings ?? ''}:${e.grams ?? ''}`;
+    const key = recentKey(e);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(e);
@@ -208,4 +219,49 @@ export function proteinGapSuggestions(
   recipes.sort((a, b) => Number(meal.get(b.id) === 'snack') - Number(meal.get(a.id) === 'snack') || b.protein / b.kcal - a.protein / a.kcal);
   const nFoods = Math.max(1, limit - Math.min(2, recipes.length));
   return [...foods.slice(0, nFoods), ...recipes.slice(0, limit - Math.min(nFoods, foods.length))].slice(0, limit);
+}
+
+/* ------------------------------------------------------ food-log landing */
+/** Quick-protein presets (grams). */
+export const QUICK_PROTEIN_PRESETS = [20, 30, 40] as const;
+
+/**
+ * One ordinary quick entry with protein only. Calories, carbs and fat stay unknown (absent), no amount is invented
+ * and nothing is associated with a food, allergen or supplement. `name` is the localized default, fixed at creation.
+ */
+export function quickProteinDraft(grams: number, name: string): EntryDraft {
+  return { name, source: { kind: 'quick' }, protein: grams };
+}
+
+/** Hour of day (0–23) of an instant in a time zone. Falls back to the device clock for an unknown zone. */
+export function hourIn(timeZone: string | undefined, now = Date.now()): number {
+  try {
+    const h = new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', hourCycle: 'h23' }).format(now);
+    const n = Number(h);
+    if (Number.isInteger(n) && n >= 0 && n < 24) return n;
+  } catch {
+    /* unknown zone */
+  }
+  return new Date(now).getHours();
+}
+
+/** The default meal slot for an hour of the day. */
+export function defaultMealAt(hour: number): MealSlot {
+  if (hour < 11) return 'breakfast';
+  if (hour < 15) return 'lunch';
+  if (hour >= 17 && hour < 22) return 'dinner';
+  return 'snack';
+}
+
+/** A real calendar date (YYYY-MM-DD) that is not after `today`; anything else (invalid, future, missing) → today. */
+export function normalizeLogDate(raw: string | null | undefined, today: string): string {
+  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return today;
+  const d = new Date(`${raw}T00:00:00Z`);
+  if (!Number.isFinite(d.getTime()) || d.toISOString().slice(0, 10) !== raw) return today;
+  return raw > today ? today : raw;
+}
+
+/** A valid meal slot from a query parameter, else the default. */
+export function normalizeMeal(raw: string | null | undefined, fallback: MealSlot): MealSlot {
+  return (MEAL_ORDER as string[]).includes(raw ?? '') ? (raw as MealSlot) : fallback;
 }

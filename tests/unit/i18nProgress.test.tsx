@@ -10,7 +10,8 @@ import { MemoryRouter } from 'react-router';
 import { setLanguage } from '@/i18n';
 import { ToastProvider } from '@/components/toast';
 import { defaultSettings } from '@/state/defaults';
-import type { ActivityLog, Measurement, UserGoal, WorkoutSession } from '@/domain/types';
+import type { ActivityLog, Measurement, ProgramVersion, SessionTemplate, UserGoal, WorkoutSession } from '@/domain/types';
+import { createProgram } from '@/domain/program/program';
 import type { ProgressData } from '@/features/progress/shared';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -74,11 +75,27 @@ describe('Progress in Icelandic', () => {
     const text = el.textContent ?? '';
     // 30 Oct → 26 Nov with Monday weeks = 5 weeks; (3 + 1) / 5 = 0.8
     expect(text).toContain('Æfingar: 3 · önnur hreyfing: 1 · vikur: 5. Æfingar á viku að meðaltali: 0,8.');
-    expect(text).toContain('Fylgni við áætlun');
-    expect(text).toContain('Engin virk æfingaáætlun.');
-    expect(text).toContain('Búa til æfingaáætlun');
+    // Item 11: no program → no adherence/recruitment block.
+    expect(text).not.toContain('Fylgni við áætlun');
+    expect(text).not.toContain('Engin virk æfingaáætlun.');
     expect(text).toContain('Æfingar á viku');
     expect(text).not.toContain('Plan adherence');
+  });
+
+  it('Consistency: older history + planned sessions with zero completions in the period still shows 0/N adherence', async () => {
+    const lift = { id: 'A', name: 'Full body A', focus: 'Full body', kind: 'lifting', exercises: [], estimatedMinutes: 45 } as SessionTemplate;
+    const version = { version: 1, createdAt: 0, reason: 'test', templates: [lift], schedule: [1, 3, 5].map((weekday) => ({ weekday, templateId: 'A' })), weeks: 12, reviewWeek: 12, rationale: [], warnings: [] } as ProgramVersion;
+    const program = createProgram(null, version, '2026-09-01', 'MWF', 'manual');
+    const older = [session('old', '2026-09-15')]; // all-history data (outside the selected period)
+    await render(createElement(ConsistencySection, { d: data({ sessions: older, rangeSessions: [], activities: [], rangeActivities: [], program }) }));
+    const text = el.textContent ?? '';
+    expect(text).toContain('Engin gögn á þessu tímabili.');
+    expect(text).toContain('Fylgni við áætlun');
+    const m = text.match(/Skipulagðar æfingar: (\d+) af (\d+) lokið/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBe(0);
+    expect(Number(m![2])).toBeGreaterThan(0);
+    expect(el.querySelector('[role="progressbar"], progress')).not.toBeNull();
   });
 
   it('Body: Icelandic labels, list values with decimal commas, trend summary', async () => {
@@ -93,7 +110,8 @@ describe('Progress in Icelandic', () => {
     expect(text).toContain('Skráningar: 2. Sjö daga meðaltal fór úr');
     expect(text).toContain('Sýna gagnatöflu');
     expect(el.querySelector('select')?.textContent).toContain('Líkamsþyngd');
-    expect(el.querySelector('select')?.textContent).toContain('Mittismál');
+    // Item 11: the chart selector offers only measured kinds.
+    expect(el.querySelector('select')?.textContent).not.toContain('Mittismál');
     expect(el.querySelector('button[aria-label^="Breyta mælingu: líkamsþyngd, "]')).not.toBeNull();
   });
 
@@ -122,11 +140,11 @@ describe('Progress in Icelandic', () => {
     expect(text).toContain('One entry: 81.3 kg.');
   });
 
-  it('English keeps singular wording for a count of 1', async () => {
+  it('English uses the count-neutral summary for a count of 1 (item 11)', async () => {
     setLanguage('en');
     const sessions = [session('s1', '2026-11-03')];
     const activities = [activity('a1', '2026-11-12')];
     await render(createElement(ConsistencySection, { d: data({ sessions, rangeSessions: sessions, activities, rangeActivities: activities }) }));
-    expect(el.textContent).toContain('1 workout and 1 other activity over 5 weeks, about 0.4 sessions per week.');
+    expect(el.textContent).toContain('Workouts: 1 · other activities: 1 · weeks: 5. Sessions per week on average: 0.4.');
   });
 });
