@@ -3,6 +3,20 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 27 Nov 2026: GPT-5 retirement — `gpt-5.4` for chat, `gpt-5.4-mini` for reminder copy
+
+- OpenAI retires `gpt-5` and `gpt-5-mini` on 11 Dec 2026. The training assistant's OpenAI default is now `gpt-5.4`
+  (still `medium` effort, 4,000-token allowance); reminder push copy defaults to `gpt-5.4-mini` with
+  `reasoning_effort: none` (0 reasoning tokens, `max_completion_tokens` 160; ~1.1 s live, where `gpt-5-mini` hit the
+  3 s timeout). Both verified live on the owner's key.
+- `minimal` / `none` are mapped per model (`compatibleReasoningEffort`): `minimal` only on gpt-5/-mini/-nano, `none`
+  only on gpt-5.1+, otherwise `low`. All env overrides still win.
+- Eval candidate `gpt-5.4-medium-structured` added. Dashboard bundles regenerated: `ai-coach.ts` and `push-send.ts`.
+  Deploys on merge; no migration.
+- Owner task: if `OPENAI_MODEL=gpt-5`/`gpt-5-mini` or `PUSH_COPY_MODEL=gpt-5-mini` is set as a function secret,
+  remove it before 11 Dec 2026.
+- Details: docs/AI_COACH.md §4i.
+
 ## 27 Nov 2026: Training assistant default reasoning is now `medium`
 
 - After the owner tested Icelandic replies from coach voice v1, the OpenAI default is `gpt-5` with

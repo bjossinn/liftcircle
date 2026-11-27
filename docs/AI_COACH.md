@@ -19,9 +19,9 @@ the app sends the user through setup again.
 | Variable | Default | Meaning |
 |---|---|---|
 | `OPENAI_API_KEY` | — | Platform API key (platform.openai.com). Billed separately from ChatGPT subscriptions. 401/403 → `not_configured`. |
-| `OPENAI_MODEL` | `gpt-5` (since coach voice v1, Nov 2026; was `gpt-5-mini`) | Any Chat Completions model your key can use; check the models list on the OpenAI Platform. Set `gpt-5-mini` (with `OPENAI_REASONING_EFFORT=low`) for the faster, cheaper model with weaker Icelandic. Reminder push copy does **not** follow this setting (`PUSH_COPY_MODEL`, §4h). |
-| `OPENAI_REASONING_EFFORT` | `medium` for `gpt-5*`/`o*` models (since Nov 2026, for better Icelandic; was `low`), otherwise not sent | Sent as `reasoning_effort`. `low` is a faster, cheaper override (weaker Icelandic). `off` never sends it (needed for models that reject the parameter). |
-| `OPENAI_REASONING_TOKEN_ALLOWANCE` | By effort when one is sent: `2000` for `minimal`/`low`, `4000` for `medium` (and any other value), `8000` for `high`; an explicit value wins, capped at `16000` | Added to `AI_MAX_OUTPUT_TOKENS` for `max_completion_tokens`, because hidden reasoning tokens count against that limit (and are billed as output). |
+| `OPENAI_MODEL` | `gpt-5.4` (since Nov 2026, §4i; was `gpt-5`, and `gpt-5-mini` before coach voice v1) | Any Chat Completions model your key can use; check the models list on the OpenAI Platform. `gpt-5` and `gpt-5-mini` retire on 11 Dec 2026, so don't pin them. Reminder push copy does **not** follow this setting (`PUSH_COPY_MODEL`, §4h). |
+| `OPENAI_REASONING_EFFORT` | `medium` for `gpt-5*`/`o*` models, `gpt-5.x` included (since Nov 2026, for better Icelandic; was `low`), otherwise not sent | Sent as `reasoning_effort`. `low` is a faster, cheaper override (weaker Icelandic); `none` (gpt-5.1+) reasons not at all. `minimal` and `none` are mapped to what the model accepts (`compatibleReasoningEffort`: `minimal` only on gpt-5/-mini/-nano, `none` only on gpt-5.1+, otherwise `low`). `off` never sends it (needed for models that reject the parameter). |
+| `OPENAI_REASONING_TOKEN_ALLOWANCE` | By effort when one is sent: `0` for `none`, `2000` for `minimal`/`low`, `4000` for `medium` (and any other value), `8000` for `high`; an explicit value wins, capped at `16000` | Added to `AI_MAX_OUTPUT_TOKENS` for `max_completion_tokens`, because hidden reasoning tokens count against that limit (and are billed as output). |
 | `OPENAI_BASE_URL` | `https://api.openai.com` | Override only for a proxy/gateway (must serve `/v1/chat/completions`). |
 
 An OpenAI `429 insufficient_quota` (no credits / billing limit) is not retried and shows as "unavailable";
@@ -46,8 +46,8 @@ The Anthropic variables below apply only when Anthropic is the provider.
    the Deploy Supabase workflow.
 3. **Set the secrets** (Dashboard → Edge Functions → Secrets, or CLI):
    ```sh
-   supabase secrets set OPENAI_API_KEY=sk-...                  # OpenAI (default model gpt-5, medium reasoning)
-   # optional, faster/cheaper with weaker Icelandic: OPENAI_REASONING_EFFORT=low, or OPENAI_MODEL=gpt-5-mini OPENAI_REASONING_EFFORT=low
+   supabase secrets set OPENAI_API_KEY=sk-...                  # OpenAI (default model gpt-5.4, medium reasoning)
+   # optional, faster/cheaper with weaker Icelandic: OPENAI_REASONING_EFFORT=low
    # or: supabase secrets set ANTHROPIC_API_KEY=sk-ant-... ANTHROPIC_MODEL=claude-sonnet-5-5
    # optional
    supabase secrets set AI_DAILY_REQUEST_LIMIT=40 AI_MAX_OUTPUT_TOKENS=1200 \
@@ -394,7 +394,7 @@ switch; in Icelandic, write natural Icelandic (cases, everyday gym words, "102,5
 translation of English; keep exercise, recipe and program names as they appear in the data (the app is in English) so
 the user can find them; link labels in the user's language; every rule applies in every language. The prompt itself
 and the context data stay English. Quality still depends mostly on the model: `gpt-5-mini` at `low` effort writes
-weak Icelandic, so since coach voice v1 (§4h) the OpenAI default is `gpt-5`, and since the owner's Icelandic review
+weak Icelandic, so since coach voice v1 (§4h) the OpenAI default is `gpt-5` (now `gpt-5.4`, §4i), and since the owner's Icelandic review
 (Nov 2026) at `medium` effort. `OPENAI_REASONING_EFFORT=low` (§1) is a faster, cheaper override with weaker Icelandic.
 
 ## 4d. Correctness fixes (1.0.2)
@@ -615,9 +615,9 @@ Spec (verbatim, with the approved English and Icelandic copy): `docs/specs/item1
 - **Budgets.** Module targets `response` 400 and `safety` 260 words; the static instructions stay under a bounded
   1,450-word ceiling (`STATIC_WORD_CEILING`) in every style and output format. No safety rule was removed.
 - **Reminder push copy is independent of the chat model** (`_shared/push/copy.ts` `resolvePushModel`). With OpenAI it
-  uses `PUSH_COPY_MODEL` (default `gpt-5-mini`), `PUSH_COPY_REASONING_EFFORT` (default `minimal` for gpt-5 /
-  gpt-5-mini / gpt-5-nano; `low` for models that reject `minimal`, such as gpt-5.1+ or o-series; `off` sends none) and
-  `PUSH_COPY_REASONING_TOKEN_ALLOWANCE` (default and cap 512), so changing `OPENAI_MODEL` never upgrades it silently.
+  uses `PUSH_COPY_MODEL` (default `gpt-5.4-mini` since §4i; was `gpt-5-mini`), `PUSH_COPY_REASONING_EFFORT` (default
+  `none` since §4i; was `minimal`; mapped per model, `off` sends none) and `PUSH_COPY_REASONING_TOKEN_ALLOWANCE`
+  (default 0 for `none`, else 512; cap 512), so changing `OPENAI_MODEL` never upgrades it silently.
   Non-reasoning models get no reasoning fields; 3 s timeout, no retries and the deterministic fallback are unchanged.
   Push tone is lightly upbeat (a friendly nudge, never hype). Emoji policy: only `workout_reminder` may end with ONE optional 💪 or 🙌; missed-workout and food nudges stay
   emoji-free and low-pressure. `validateCopy(raw, language, kind)` enforces it (the emoji counts toward the 140 code
@@ -629,6 +629,27 @@ Spec (verbatim, with the approved English and Icelandic copy): `docs/specs/item1
   `node tests/live/coach-tone-live.mjs`) covers a completed-sets celebration, 3-hour sleep exhaustion, shoulder pain
   on bench, food boredom and a crisis message (calm, no emojis). The pressure check treats curly apostrophes
   (`Don’t push through…`) like straight ones.
+
+## 4i. GPT-5 retirement (Nov 2026): gpt-5.4 for chat, gpt-5.4-mini for reminder copy
+
+OpenAI retires `gpt-5` and `gpt-5-mini` on 11 Dec 2026. Both new defaults were verified live on the owner's key.
+
+- **Chat** (`_shared/ai/provider.ts`). `DEFAULT_OPENAI_MODEL` is `gpt-5.4` (was `gpt-5`). Unchanged: `medium` effort
+  (`DEFAULT_OPENAI_REASONING_EFFORT`) and the effort-scaled allowance (`none`/`off` 0, `minimal`/`low` 2,000, `medium`
+  4,000, `high` 8,000; explicit `OPENAI_REASONING_TOKEN_ALLOWANCE` wins, cap 16,000). `gpt-5.x` counts as a reasoning
+  model (`isOpenAiReasoningModel`).
+- **Reminder copy** (`_shared/push/copy.ts`). `DEFAULT_PUSH_OPENAI_MODEL` is `gpt-5.4-mini` (was `gpt-5-mini`) and
+  `DEFAULT_PUSH_REASONING_EFFORT` is `none` (was `minimal`), with a 0-token reasoning allowance, so
+  `max_completion_tokens` stays 160. A live benchmark answered in about 1.1 s in clean Icelandic; `gpt-5-mini` at
+  `minimal` was hitting the 3,000 ms timeout. `PUSH_COPY_MODEL` / `PUSH_COPY_REASONING_EFFORT` /
+  `PUSH_COPY_REASONING_TOKEN_ALLOWANCE` still override.
+- **Effort compatibility** (`compatibleReasoningEffort`, used by both). `minimal` exists only on `gpt-5` / `gpt-5-mini`
+  / `gpt-5-nano`; gpt-5.1+ reject it and offer `none` instead. A requested `minimal` or `none` becomes whichever of the
+  two the model accepts, else `low` (o-series, `-pro`). Other efforts pass through unchanged.
+- **Evals.** `tests/evals/coach.models.json` adds `gpt-5.4-medium-structured` (the production default); the gpt-5
+  entries stay for comparison until the retirement date.
+- Dashboard bundles regenerated: `ai-coach.ts` and `push-send.ts`. No migration. If `OPENAI_MODEL=gpt-5` or
+  `PUSH_COPY_MODEL=gpt-5-mini` is set as a function secret, remove it before 11 Dec 2026.
 
 ## 5. Testing status
 

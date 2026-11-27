@@ -136,9 +136,10 @@ describe('scoring', () => {
       expect(m.pricing.source).toMatch(/^https?:\/\//);
       expect(m.pricing.asOf).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
-    // The production default (gpt-5, medium) is a candidate; gpt-5 low and the gpt-5-mini baseline stay for comparison.
+    // The production default (gpt-5.4, medium) is a candidate; gpt-5 low/medium and the gpt-5-mini baseline stay for comparison.
     const ids = MODELS.candidates.map((m) => m.id);
-    expect(ids).toEqual(expect.arrayContaining(['baseline-gpt-5-mini', 'gpt-5-low-structured', 'gpt-5-medium-structured']));
+    expect(ids).toEqual(expect.arrayContaining(['baseline-gpt-5-mini', 'gpt-5-low-structured', 'gpt-5-medium-structured', 'gpt-5.4-medium-structured']));
+    expect(MODELS.candidates.find((m) => m.id === 'gpt-5.4-medium-structured')).toMatchObject({ provider: 'openai', model: 'gpt-5.4', reasoningEffort: 'medium', structuredOutput: 'on', source: 'current' });
     expect(MODELS.candidates.find((m) => m.id === 'gpt-5-low-structured')).toMatchObject({ provider: 'openai', model: 'gpt-5', reasoningEffort: 'low', structuredOutput: 'on', source: 'current' });
     expect(MODELS.candidates.find((m) => m.id === 'baseline-gpt-5-mini')).toMatchObject({ model: 'gpt-5-mini', source: 'baseline' });
     expect(EVAL_CASES).toHaveLength(30);

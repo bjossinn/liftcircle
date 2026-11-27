@@ -16,9 +16,30 @@ import { fromOpenAiResponse, isOpenAiQuotaError, toOpenAiRequest } from './opena
 
 export const DEFAULT_MODEL = 'claude-sonnet-5-5';
 export const DEFAULT_API_VERSION = '2023-06-01';
-export const DEFAULT_OPENAI_MODEL = 'gpt-5';
+/** gpt-5.4 since Nov 2026 (gpt-5 / gpt-5-mini retire 11 Dec 2026). */
+export const DEFAULT_OPENAI_MODEL = 'gpt-5.4';
 /** Default reasoning_effort for OpenAI reasoning models (medium since Nov 2026: better Icelandic than low). */
 export const DEFAULT_OPENAI_REASONING_EFFORT = 'medium';
+
+/** OpenAI reasoning models (gpt-5, gpt-5.x, o-series): they take reasoning_effort and spend hidden reasoning tokens. */
+export const isOpenAiReasoningModel = (model: string) => /^(gpt-5|o\d)/i.test(model);
+/** gpt-5, gpt-5-mini, gpt-5-nano (optionally date-pinned): the only models that accept reasoning_effort "minimal". */
+const MINIMAL_EFFORT_MODELS = /^gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$/i;
+/** gpt-5.1 and later (not -pro): accept reasoning_effort "none" (and reject "minimal"). */
+const NONE_EFFORT_MODELS = /^gpt-5\.\d+(?!\S*-pro)/i;
+
+/**
+ * Maps the lowest-latency efforts onto what the model accepts: "minimal" exists only on the original GPT-5 family,
+ * "none" only on gpt-5.1+. Asking for either on a model that rejects it gets the other where supported, else "low"
+ * (o-series, gpt-5-pro). Every other effort is passed through unchanged.
+ */
+export function compatibleReasoningEffort(model: string, effort: string): string {
+  if (effort !== 'minimal' && effort !== 'none') return effort;
+  const minimalOk = MINIMAL_EFFORT_MODELS.test(model);
+  const noneOk = NONE_EFFORT_MODELS.test(model);
+  if (effort === 'minimal') return minimalOk ? 'minimal' : noneOk ? 'none' : 'low';
+  return noneOk ? 'none' : minimalOk ? 'minimal' : 'low';
+}
 
 export type ProviderId = 'anthropic' | 'openai';
 export const PROVIDER_NAMES: Record<ProviderId, string> = { anthropic: 'Anthropic', openai: 'OpenAI' };
@@ -49,12 +70,15 @@ export function resolveProvider(env: (name: string) => string | undefined): Reso
     const apiKey = get('OPENAI_API_KEY');
     if (!apiKey) return null;
     const model = get('OPENAI_MODEL') ?? DEFAULT_OPENAI_MODEL;
-    const reasoning = /^(gpt-5|o\d)/i.test(model);
+    const reasoning = isOpenAiReasoningModel(model);
     const effortEnv = get('OPENAI_REASONING_EFFORT')?.toLowerCase();
-    const reasoningEffort = effortEnv === 'off' ? undefined : (effortEnv ?? (reasoning ? DEFAULT_OPENAI_REASONING_EFFORT : undefined));
+    const requested = effortEnv === 'off' ? undefined : (effortEnv ?? (reasoning ? DEFAULT_OPENAI_REASONING_EFFORT : undefined));
+    const reasoningEffort = requested && reasoning ? compatibleReasoningEffort(model, requested) : requested;
     const allowance = Number(get('OPENAI_REASONING_TOKEN_ALLOWANCE'));
-    // Default hidden-reasoning budget scales with effort so medium/high replies don't stop on max_completion_tokens.
-    const defaultAllowance = reasoningEffort === 'minimal' || reasoningEffort === 'low' ? 2000 : reasoningEffort === 'high' ? 8000 : 4000;
+    // Default hidden-reasoning budget scales with effort so medium/high replies don't stop on max_completion_tokens;
+    // "none" reasons not at all, so it adds nothing.
+    const defaultAllowance =
+      reasoningEffort === 'none' ? 0 : reasoningEffort === 'minimal' || reasoningEffort === 'low' ? 2000 : reasoningEffort === 'high' ? 8000 : 4000;
     return {
       provider,
       apiKey,
