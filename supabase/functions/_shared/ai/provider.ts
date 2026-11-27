@@ -12,14 +12,19 @@
  */
 import type { ApiMessage, ApiResponse, FetchLike } from './types.ts';
 // @ts-ignore — Deno needs the .ts extension; the app tsconfig resolves it without
-import { fromOpenAiResponse, isOpenAiQuotaError, toOpenAiRequest } from './openai.ts';
+import { chatCompletionsReasoningEffort, fromOpenAiResponse, isOpenAiQuotaError, toOpenAiRequest } from './openai.ts';
 
 export const DEFAULT_MODEL = 'claude-sonnet-5-5';
 export const DEFAULT_API_VERSION = '2023-06-01';
 /** gpt-5.4 since Nov 2026 (gpt-5 / gpt-5-mini retire 11 Dec 2026). */
 export const DEFAULT_OPENAI_MODEL = 'gpt-5.4';
-/** Default reasoning_effort for OpenAI reasoning models (medium since Nov 2026: better Icelandic than low). */
-export const DEFAULT_OPENAI_REASONING_EFFORT = 'medium';
+/**
+ * Default reasoning_effort for OpenAI reasoning models: 'none' (hotfix, Nov 2026). gpt-5.4+ rejects function tools
+ * with any other effort in /v1/chat/completions (HTTP 400 "use /v1/responses or set reasoning_effort to 'none'"),
+ * and the coach always sends tools. Verified live: gpt-5.4 + none gives strong, natural Icelandic. Reasoning with
+ * tools on gpt-5.4+ requires migrating to /v1/responses; see chatCompletionsReasoningEffort in ./openai.ts.
+ */
+export const DEFAULT_OPENAI_REASONING_EFFORT = 'none';
 
 /** OpenAI reasoning models (gpt-5, gpt-5.x, o-series): they take reasoning_effort and spend hidden reasoning tokens. */
 export const isOpenAiReasoningModel = (model: string) => /^(gpt-5|o\d)/i.test(model);
@@ -168,9 +173,13 @@ export async function createMessage(cfg: ProviderConfig, req: MessagesRequest): 
   const maxRetries = Math.max(0, Math.min(5, cfg.maxRetries ?? 2));
   const deadline = cfg.deadline ?? now() + timeoutMs * (maxRetries + 1) + 10_000;
   const openai = cfg.provider === 'openai';
+  // A gpt-5.4+ request with tools is forced to reasoning_effort "none" (toOpenAiRequest); it then reasons not at all,
+  // so the hidden-reasoning allowance is dropped too.
+  const effort = openai ? chatCompletionsReasoningEffort(cfg.model, cfg.reasoningEffort, !!req.tools?.length) : undefined;
+  const allowance = openai && effort !== cfg.reasoningEffort ? 0 : (cfg.reasoningAllowance ?? 0);
   const body = JSON.stringify(
     openai
-      ? toOpenAiRequest(req, { model: cfg.model, maxTokens: cfg.maxTokens + (cfg.reasoningAllowance ?? 0), reasoningEffort: cfg.reasoningEffort, responseFormat: req.responseFormat })
+      ? toOpenAiRequest(req, { model: cfg.model, maxTokens: cfg.maxTokens + allowance, reasoningEffort: cfg.reasoningEffort, responseFormat: req.responseFormat })
       : {
           model: cfg.model,
           max_tokens: cfg.maxTokens,

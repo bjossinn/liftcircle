@@ -758,14 +758,20 @@ function toOpenAiTools(tools) {
     return { type: "function", function: { name: d.name, description: d.description ?? "", parameters: d.input_schema ?? { type: "object", properties: {} } } };
   });
 }
+var TOOLS_NEED_NO_REASONING_MODELS = /^gpt-5\.(?:[4-9]|\d{2,})(?!\S*-pro)/i;
+function chatCompletionsReasoningEffort(model, effort, hasTools) {
+  if (!effort || !hasTools || !TOOLS_NEED_NO_REASONING_MODELS.test(model)) return effort;
+  return "none";
+}
 function toOpenAiRequest(req, opts) {
   const tools = toOpenAiTools(req.tools);
   const choice = req.tool_choice?.type === "any" ? "required" : req.tool_choice?.type;
+  const reasoningEffort = chatCompletionsReasoningEffort(opts.model, opts.reasoningEffort, tools.length > 0);
   return {
     model: opts.model,
     messages: toOpenAiMessages(req.system, req.messages),
     max_completion_tokens: opts.maxTokens,
-    ...opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {},
+    ...reasoningEffort ? { reasoning_effort: reasoningEffort } : {},
     ...tools.length ? { tools, ...choice ? { tool_choice: choice } : {} } : {},
     // Structured Outputs for the final text (item 10). Tool schemas stay non-strict (optional/nested parameters).
     ...opts.responseFormat ? { response_format: { type: "json_schema", json_schema: { name: opts.responseFormat.name, strict: true, schema: opts.responseFormat.schema } } } : {}
@@ -818,7 +824,7 @@ function isOpenAiQuotaError(bodyText) {
 var DEFAULT_MODEL = "claude-sonnet-5-5";
 var DEFAULT_API_VERSION = "2023-06-01";
 var DEFAULT_OPENAI_MODEL = "gpt-5.4";
-var DEFAULT_OPENAI_REASONING_EFFORT = "medium";
+var DEFAULT_OPENAI_REASONING_EFFORT = "none";
 var isOpenAiReasoningModel = (model) => /^(gpt-5|o\d)/i.test(model);
 var MINIMAL_EFFORT_MODELS = /^gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$/i;
 var NONE_EFFORT_MODELS = /^gpt-5\.\d+(?!\S*-pro)/i;
@@ -893,8 +899,10 @@ async function createMessage(cfg, req) {
   const maxRetries = Math.max(0, Math.min(5, cfg.maxRetries ?? 2));
   const deadline = cfg.deadline ?? now() + timeoutMs * (maxRetries + 1) + 1e4;
   const openai = cfg.provider === "openai";
+  const effort = openai ? chatCompletionsReasoningEffort(cfg.model, cfg.reasoningEffort, !!req.tools?.length) : void 0;
+  const allowance = openai && effort !== cfg.reasoningEffort ? 0 : cfg.reasoningAllowance ?? 0;
   const body = JSON.stringify(
-    openai ? toOpenAiRequest(req, { model: cfg.model, maxTokens: cfg.maxTokens + (cfg.reasoningAllowance ?? 0), reasoningEffort: cfg.reasoningEffort, responseFormat: req.responseFormat }) : {
+    openai ? toOpenAiRequest(req, { model: cfg.model, maxTokens: cfg.maxTokens + allowance, reasoningEffort: cfg.reasoningEffort, responseFormat: req.responseFormat }) : {
       model: cfg.model,
       max_tokens: cfg.maxTokens,
       system: req.system,

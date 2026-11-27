@@ -20,7 +20,7 @@ the app sends the user through setup again.
 |---|---|---|
 | `OPENAI_API_KEY` | — | Platform API key (platform.openai.com). Billed separately from ChatGPT subscriptions. 401/403 → `not_configured`. |
 | `OPENAI_MODEL` | `gpt-5.4` (since Nov 2026, §4i; was `gpt-5`, and `gpt-5-mini` before coach voice v1) | Any Chat Completions model your key can use; check the models list on the OpenAI Platform. `gpt-5` and `gpt-5-mini` retire on 11 Dec 2026, so don't pin them. Reminder push copy does **not** follow this setting (`PUSH_COPY_MODEL`, §4h). |
-| `OPENAI_REASONING_EFFORT` | `medium` for `gpt-5*`/`o*` models, `gpt-5.x` included (since Nov 2026, for better Icelandic; was `low`), otherwise not sent | Sent as `reasoning_effort`. `low` is a faster, cheaper override (weaker Icelandic); `none` (gpt-5.1+) reasons not at all. `minimal` and `none` are mapped to what the model accepts (`compatibleReasoningEffort`: `minimal` only on gpt-5/-mini/-nano, `none` only on gpt-5.1+, otherwise `low`). `off` never sends it (needed for models that reject the parameter). |
+| `OPENAI_REASONING_EFFORT` | `none` for `gpt-5*`/`o*` models, `gpt-5.x` included (hotfix Nov 2026, §4j; was `medium`), otherwise not sent | Sent as `reasoning_effort`. **On gpt-5.4+ (`gpt-5.4*`, `gpt-5.5*`, …, not `-pro`) any request with tools is forced to `none`** (`chatCompletionsReasoningEffort` in `openai.ts`): `/v1/chat/completions` rejects function tools with any other effort there (HTTP 400). Reasoning with tools on gpt-5.4+ requires migrating to `/v1/responses`. On older models `low`/`medium`/`high` still apply; `none` (gpt-5.1+) reasons not at all. `minimal` and `none` are mapped to what the model accepts (`compatibleReasoningEffort`: `minimal` only on gpt-5/-mini/-nano, `none` only on gpt-5.1+, otherwise `low`). `off` never sends it (needed for models that reject the parameter). |
 | `OPENAI_REASONING_TOKEN_ALLOWANCE` | By effort when one is sent: `0` for `none`, `2000` for `minimal`/`low`, `4000` for `medium` (and any other value), `8000` for `high`; an explicit value wins, capped at `16000` | Added to `AI_MAX_OUTPUT_TOKENS` for `max_completion_tokens`, because hidden reasoning tokens count against that limit (and are billed as output). |
 | `OPENAI_BASE_URL` | `https://api.openai.com` | Override only for a proxy/gateway (must serve `/v1/chat/completions`). |
 
@@ -46,8 +46,8 @@ The Anthropic variables below apply only when Anthropic is the provider.
    the Deploy Supabase workflow.
 3. **Set the secrets** (Dashboard → Edge Functions → Secrets, or CLI):
    ```sh
-   supabase secrets set OPENAI_API_KEY=sk-...                  # OpenAI (default model gpt-5.4, medium reasoning)
-   # optional, faster/cheaper with weaker Icelandic: OPENAI_REASONING_EFFORT=low
+   supabase secrets set OPENAI_API_KEY=sk-...                  # OpenAI (default model gpt-5.4, reasoning_effort none)
+   # gpt-5.4+ with tools is always sent reasoning_effort none in /v1/chat/completions (§4j); medium needs /v1/responses
    # or: supabase secrets set ANTHROPIC_API_KEY=sk-ant-... ANTHROPIC_MODEL=claude-sonnet-5-5
    # optional
    supabase secrets set AI_DAILY_REQUEST_LIMIT=40 AI_MAX_OUTPUT_TOKENS=1200 \
@@ -395,7 +395,8 @@ translation of English; keep exercise, recipe and program names as they appear i
 the user can find them; link labels in the user's language; every rule applies in every language. The prompt itself
 and the context data stay English. Quality still depends mostly on the model: `gpt-5-mini` at `low` effort writes
 weak Icelandic, so since coach voice v1 (§4h) the OpenAI default is `gpt-5` (now `gpt-5.4`, §4i), and since the owner's Icelandic review
-(Nov 2026) at `medium` effort. `OPENAI_REASONING_EFFORT=low` (§1) is a faster, cheaper override with weaker Icelandic.
+(Nov 2026) at `medium` effort; since the gpt-5.4 hotfix (§4j) at `none`, which was verified live to write strong,
+natural Icelandic.
 
 ## 4d. Correctness fixes (1.0.2)
 
@@ -650,6 +651,25 @@ OpenAI retires `gpt-5` and `gpt-5-mini` on 11 Dec 2026. Both new defaults were v
   entries stay for comparison until the retirement date.
 - Dashboard bundles regenerated: `ai-coach.ts` and `push-send.ts`. No migration. If `OPENAI_MODEL=gpt-5` or
   `PUSH_COPY_MODEL=gpt-5-mini` is set as a function secret, remove it before 11 Dec 2026.
+
+## 4j. Hotfix (Nov 2026): gpt-5.4 + tools needs `reasoning_effort: none` in /v1/chat/completions
+
+After §4i shipped, live `ai-coach` calls failed with OpenAI HTTP 400: "Function tools with reasoning_effort are not
+supported for gpt-5.4 in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to
+'none'." The coach always sends tools, so every message failed.
+
+- `DEFAULT_OPENAI_REASONING_EFFORT` is `none` (was `medium`), so the default reasoning allowance is 0.
+- Guard: `chatCompletionsReasoningEffort` (`_shared/ai/openai.ts`, applied in `toOpenAiRequest`) coerces any effort to
+  `none` when tools are present on a gpt-5.4+ model (`gpt-5.4*`, `gpt-5.5*`, `gpt-5.6*`, …; not `-pro`). An explicit
+  `OPENAI_REASONING_EFFORT=low`/`medium`/`high` secret can therefore never cause this 400; `createMessage` also drops
+  the hidden-reasoning allowance for a coerced request. `off` still sends no effort. Requests without tools, and older
+  models, keep the configured effort.
+- Verified live on the owner's key: `gpt-5.4` + `none` works with `tools`, `tool_choice` and `response_format`
+  (`json_schema`) and writes strong, natural Icelandic.
+- Reasoning (`low`/`medium`/…) with tools on gpt-5.4+ requires migrating the adapter to `/v1/responses`.
+- Reminder copy (`push-send`) is unchanged: `gpt-5.4-mini` + `none`, no tools.
+- Evals: `gpt-5.4-none-structured` is the production default; `gpt-5.4-medium-structured` is kept, but the guard
+  sends it as `none` until a Responses migration. Bundles regenerated: `ai-coach.ts`, `push-send.ts` (shared code).
 
 ## 5. Testing status
 

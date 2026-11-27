@@ -3,10 +3,21 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 27 Nov 2026: Hotfix — `gpt-5.4` + tools needs `reasoning_effort: none`
+
+- Live `ai-coach` calls after the gpt-5.4 switch failed with OpenAI HTTP 400 ("Function tools with reasoning_effort
+  are not supported for gpt-5.4 in /v1/chat/completions"). Default effort is now `none` (0 reasoning allowance), and
+  any gpt-5.4+ request with tools is forced to `none` regardless of `OPENAI_REASONING_EFFORT`. Verified live: tools,
+  `tool_choice` and `json_schema` work, Icelandic is strong and natural.
+- `medium` reasoning with tools on gpt-5.4+ requires a `/v1/responses` migration (not done). An
+  `OPENAI_REASONING_EFFORT=low`/`medium` secret is now harmless on gpt-5.4+ but has no effect; remove it for clarity.
+- Reminder copy unchanged (`gpt-5.4-mini` + `none`). Bundles regenerated: `ai-coach.ts`, `push-send.ts`. Deploys on
+  merge; no migration. Details: docs/AI_COACH.md §4j.
+
 ## 27 Nov 2026: GPT-5 retirement — `gpt-5.4` for chat, `gpt-5.4-mini` for reminder copy
 
 - OpenAI retires `gpt-5` and `gpt-5-mini` on 11 Dec 2026. The training assistant's OpenAI default is now `gpt-5.4`
-  (still `medium` effort, 4,000-token allowance); reminder push copy defaults to `gpt-5.4-mini` with
+  (`medium` effort at the time; now `none`, see the hotfix above); reminder push copy defaults to `gpt-5.4-mini` with
   `reasoning_effort: none` (0 reasoning tokens, `max_completion_tokens` 160; ~1.1 s live, where `gpt-5-mini` hit the
   3 s timeout). Both verified live on the owner's key.
 - `minimal` / `none` are mapped per model (`compatibleReasoningEffort`): `minimal` only on gpt-5/-mini/-nano, `none`
