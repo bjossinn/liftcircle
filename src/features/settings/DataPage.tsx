@@ -17,6 +17,7 @@ import { DeleteAccountButton } from './account';
 import { useToast } from '@/components/toast';
 import { clockText, dateTimeText, getLanguage, locale, t as tNow, useT } from '@/i18n';
 import { knownErrorText, restoreErrorText } from './errorText';
+import { WorkoutImportSection } from '@/features/import/WorkoutImportSection';
 
 export default function DataPage() {
   const nav = useNavigate();
@@ -105,6 +106,9 @@ export default function DataPage() {
         </div>
         <p className="text-xs text-muted">{t('settings.backupContents')}</p>
       </Card>
+
+      <SectionTitle id="import">{t('import.title')}</SectionTitle>
+      <WorkoutImportSection />
 
       <SectionTitle>{t('settings.restoreBackup')}</SectionTitle>
       <RestoreSection />

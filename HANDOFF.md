@@ -3,6 +3,18 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 27 Nov 2026: CSV workout import from Strong and Hevy (roadmap item 13, PR 1 of 3) — v1.0.4
+
+- Settings → Data → *Import from Strong or Hevy*: parsers for both CSV exports (auto-detected; comma/semicolon,
+  quotes, decimal commas, kg/lb, warm-up/drop sets), exercise matching to the library (unmatched → custom exercises),
+  a preview before anything is written, and one atomic write through the normal sync queue (`preferRemote`).
+- Idempotent: each workout's id is a SHA-256 hash (source + start time + sets) shaped as a UUID; a workout whose
+  `imported.key` (source + start time) exists on the device, even deleted, is skipped. Sessions carry an optional
+  `imported` field (payload only; no migration, no backend change).
+- Imports bypass the logger, so no cheers, auto-share, analytics "first workout" events or push sends.
+- Code: `src/features/import/`. New EN/IS strings under `import.*` (Icelandic awaits native review). Details:
+  docs/USER_GUIDE.md "Backups & your data".
+
 ## 27 Nov 2026: Hotfix — `gpt-5.4` + tools needs `reasoning_effort: none`
 
 - Live `ai-coach` calls after the gpt-5.4 switch failed with OpenAI HTTP 400 ("Function tools with reasoning_effort

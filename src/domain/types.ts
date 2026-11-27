@@ -314,6 +314,14 @@ export interface RestTimerState {
   forExerciseId?: ID;
 }
 
+/** Set on workouts imported from another app's CSV export (Strong, Hevy). Historical: never cheered, shared or notified. */
+export interface WorkoutImportInfo {
+  source: 'strong' | 'hevy';
+  /** Source + the workout's start time as written in the export; a second import of the same workout is skipped. */
+  key: string;
+  importedAt: Epoch;
+}
+
 export interface WorkoutSession extends SyncFields {
   name: string;
   status: 'active' | 'completed';
@@ -332,6 +340,8 @@ export interface WorkoutSession extends SyncFields {
   rest?: RestTimerState;
   /** Posts created from this session (snapshot copies, never live links). */
   sharedPostIds?: ID[];
+  /** Present when the workout came from a CSV import (see src/features/import). */
+  imported?: WorkoutImportInfo;
 }
 
 /* ------------------------------------------------------------- activities */

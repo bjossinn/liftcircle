@@ -1,0 +1,14 @@
+"title","start_time","end_time","description","exercise_title","superset_id","exercise_notes","set_index","set_type","weight_kg","reps","distance_km","duration_seconds","rpe"
+"Upper A","15 Jan 2024, 08:30","15 Jan 2024, 09:35","Felt good, new gym","Bench Press (Barbell)",,"Elbows tucked",0,"warmup",40,10,,,
+"Upper A","15 Jan 2024, 08:30","15 Jan 2024, 09:35","Felt good, new gym","Bench Press (Barbell)",,"Elbows tucked",1,"normal",82.5,8,,,8
+"Upper A","15 Jan 2024, 08:30","15 Jan 2024, 09:35","Felt good, new gym","Bench Press (Barbell)",,"Elbows tucked",2,"failure",82.5,6,,,10
+"Upper A","15 Jan 2024, 08:30","15 Jan 2024, 09:35","Felt good, new gym","Bent Over Row (Barbell)",0,"",0,"normal",70,10,,,
+"Upper A","15 Jan 2024, 08:30","15 Jan 2024, 09:35","Felt good, new gym","Lateral Raise (Dumbbell)",0,"",0,"normal",10,15,,,
+"Upper A","15 Jan 2024, 08:30","15 Jan 2024, 09:35","Felt good, new gym","Lateral Raise (Dumbbell)",0,"",1,"dropset",6,12,,,
+"Upper A","15 Jan 2024, 08:30","15 Jan 2024, 09:35","Felt good, new gym","Cable Crunch",,"",0,"normal",45,15,,,
+"Lower A","17 Jan 2024, 19:05","17 Jan 2024, 20:10","","Squat (Barbell)",,"",0,"warmup",60,5,,,
+"Lower A","17 Jan 2024, 19:05","17 Jan 2024, 20:10","","Squat (Barbell)",,"",1,"normal",110,5,,,8.5
+"Lower A","17 Jan 2024, 19:05","17 Jan 2024, 20:10","","Romanian Deadlift (Barbell)",,"",0,"normal",90,8,,,
+"Lower A","17 Jan 2024, 19:05","17 Jan 2024, 20:10","","Treadmill",,"",0,"normal",,,1.6,600,
+"Lower A","17 Jan 2024, 19:05","17 Jan 2024, 20:10","","Plank",,"",0,"normal",,,,75,
+"Lower A","17 Jan 2024, 19:05","17 Jan 2024, 20:10","","Hip Thrust (Barbell)",,"",0,"normal",,,,,
