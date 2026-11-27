@@ -13,6 +13,10 @@ test('manifest, icons and service worker are valid', async ({ page, request }) =
   expect(sizes).toEqual(expect.arrayContaining(['192x192:any', '512x512:any', '512x512:maskable']));
   for (const i of m.icons) expect((await request.get(i.src)).headers()['content-type']).toContain('image/png');
   expect((await request.get('/icons/apple-touch-icon-180.png')).ok()).toBe(true);
+  // iOS probes the root path too; it must be the real PNG, not the SPA's index.html fallback.
+  const rootIcon = await request.get('/apple-touch-icon.png');
+  expect(rootIcon.ok()).toBe(true);
+  expect(rootIcon.headers()['content-type']).toContain('image/png');
   const reg = await page.evaluate(async () => (await navigator.serviceWorker.ready).active?.scriptURL);
   expect(reg).toMatch(/sw\.js$/);
 });

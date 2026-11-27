@@ -52,7 +52,7 @@ export default defineConfig({
       // update when no workout is active (see src/pwa/update.ts).
       registerType: 'prompt',
       injectRegister: false,
-      includeAssets: ['icons/apple-touch-icon-180.png', 'icons/favicon-16.png', 'icons/favicon-32.png'],
+      includeAssets: ['apple-touch-icon.png', 'icons/apple-touch-icon-180.png', 'icons/favicon-16.png', 'icons/favicon-32.png'],
       manifest: {
         id: '/',
         name: BRAND.name,
