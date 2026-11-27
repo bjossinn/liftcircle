@@ -14,7 +14,7 @@ import type { AccountState } from '@/domain/types';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const h = vi.hoisted(() => ({ app: null as unknown, updates: [] as AccountState[], auth: { status: 'signed_out' } as Record<string, unknown>, location: '' }));
+const h = vi.hoisted(() => ({ app: null as unknown, fail: false, updates: [] as AccountState[], auth: { status: 'signed_out' } as Record<string, unknown>, location: '' }));
 vi.mock('@/state/app', () => ({ useApp: () => h.app }));
 vi.mock('@/features/settings/UpdateCheckRow', () => ({ UpdateCheckRow: () => null }));
 vi.mock('@/features/settings/PushSection', () => ({ PushSection: () => createElement('section', { 'data-testid': 'push' }, createElement('h2', { id: 'push-title' }, 'Push'), createElement('h3', { id: 'quiet-push-title' }, 'Quiet')) }));
@@ -37,6 +37,7 @@ function Harness({ initial }: { initial: AccountState }) {
   h.app = {
     account,
     updateAccount: async (fn: (a: AccountState) => AccountState) => {
+      if (h.fail) throw new Error('IndexedDB write failed');
       const next = fn(account);
       h.updates.push(next);
       setAccount(next);
@@ -66,6 +67,7 @@ const click = async (e: Element) => act(async () => void (e as HTMLElement).clic
 beforeEach(() => {
   vi.stubEnv('VITE_VAPID_PUBLIC_KEY', '');
   h.updates = [];
+  h.fail = false;
   h.auth = { status: 'signed_out' };
   setLanguage('en');
 });
@@ -162,6 +164,30 @@ describe('Settings groups', () => {
     await click(document.querySelector('button[aria-label="Back"]')!);
     expect(h.updates.at(-1)?.profile.displayName).toBe('Sigga');
     expect(h.location).toBe('/settings');
+  });
+
+  it('a failed private-name save is shown, keeps the draft, and retries after returning to the group', async () => {
+    await render('/settings?section=account');
+    const field = () => document.querySelector<HTMLInputElement>('section[aria-labelledby="settings-group-account"] input[maxlength="40"]')!;
+    h.fail = true;
+    act(() => {
+      field().focus();
+      field().value = 'Sigga';
+    });
+    await click(document.querySelector('button[aria-label="Back"]')!);
+    await act(async () => {});
+    expect(h.updates).toHaveLength(0);
+    expect(norm(document.body.textContent)).toContain('Something went wrong');
+    expect(h.location).toBe('/settings');
+    // Return to the group: the retained field still holds the draft; blur again saves it.
+    await click(document.querySelector('#settings-row-account')!);
+    expect(field().value).toBe('Sigga');
+    h.fail = false;
+    await act(async () => {
+      field().focus();
+      field().blur();
+    });
+    expect(h.updates.at(-1)?.profile.displayName).toBe('Sigga');
   });
 
   it('language changes keep units, time zone and theme', async () => {

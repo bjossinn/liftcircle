@@ -241,6 +241,36 @@ describe('Atomic multi-entry logging and repeats', () => {
     expect((await db.outbox.toArray()).filter((o) => o.entity === 'food_logs')).toHaveLength(0);
   });
 
+  it('"Copy previous meal" holds the guard across a slow read and the write: a double tap copies once', async () => {
+    const yesterday = addDays(TODAY(), -1);
+    await db.foodLogs.bulkPut([newRecord({ name: 'Skyr', source: { kind: 'quick' as const }, protein: 17, date: yesterday, meal: 'lunch' as const })]);
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const orig = db.foodLogs.where.bind(db.foodLogs);
+    vi.spyOn(db.foodLogs, 'where').mockImplementation(((key: string) => {
+      const real = orig(key);
+      // Delay only the copy's equals() read; Recent's between() query passes straight through.
+      return Object.assign(Object.create(real), {
+        equals: (v: string) => ({ toArray: async () => { await gate; return real.equals(v).toArray(); } }),
+      });
+    }) as never);
+    mount(`/nutrition/log?date=${TODAY()}&meal=lunch`);
+    const copy = button('Copy this meal from the previous day');
+    act(() => {
+      copy.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      copy.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(button('Copy this meal from the previous day').disabled).toBe(true);
+    await act(async () => open());
+    await waitFor(async () => expect((await alive()).filter((e) => e.date === TODAY())).toHaveLength(1));
+    await act(async () => new Promise((r) => setTimeout(r, 50)));
+    expect((await alive()).filter((e) => e.date === TODAY())).toHaveLength(1);
+    await waitFor(() => expect(button('Copy this meal from the previous day').disabled).toBe(false));
+    // After completion a new, intentional tap is valid again.
+    click(button('Copy this meal from the previous day'));
+    await waitFor(async () => expect((await alive()).filter((e) => e.date === TODAY())).toHaveLength(2));
+  });
+
   it('repeating a Recent item keeps the stored snapshot exactly (no recalculation) and ignores tombstones', async () => {
     const old: FoodLogEntry = newRecord({
       name: 'Old recipe name',

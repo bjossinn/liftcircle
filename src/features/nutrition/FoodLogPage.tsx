@@ -81,13 +81,20 @@ export default function FoodLogPage() {
   const [pending, setPending] = useState(false);
   const [focusProtein, setFocusProtein] = useState(false);
 
-  const log: LogFn = async (drafts, label) => {
-    if (inFlight.current || !drafts.length) return false;
-    inFlight.current = true; // acquired synchronously, before any await
+  /** The shared in-flight guard: acquired synchronously (before any await), released on every exit. */
+  const acquire = () => {
+    if (inFlight.current) return false;
+    inFlight.current = true;
     setPending(true);
-    // Capture everything the write and its feedback depend on.
-    const targetDb = db;
-    const at = { date, meal, today };
+    return true;
+  };
+  const release = () => {
+    inFlight.current = false;
+    setPending(false);
+  };
+
+  /** Writes one batch atomically (with its outbox ops) and confirms it. The caller holds the guard. */
+  async function commit(drafts: EntryDraft[], label: string | undefined, targetDb: LiftDb, at: { date: string; meal: MealSlot; today: string }): Promise<boolean> {
     const name = label ?? (drafts.length === 1 ? drafts[0].name : tpNow('foodLog.itemCount', drafts.length));
     const records = drafts.map((d) => newRecord<Omit<FoodLogEntry, keyof SyncFields>>({ ...entryDraftOf(d), date: at.date, meal: at.meal }));
     try {
@@ -101,29 +108,42 @@ export default function FoodLogPage() {
     } catch {
       if (dbRef.current === targetDb) toast.show(t('foodLog.saveError'), { tone: 'error' });
       return false;
+    }
+  }
+
+  const log: LogFn = async (drafts, label) => {
+    if (!drafts.length || !acquire()) return false;
+    // Capture everything the write and its feedback depend on.
+    try {
+      return await commit(drafts, label, db, { date, meal, today });
     } finally {
-      inFlight.current = false;
-      setPending(false);
+      release();
     }
   };
 
+  /** Copy this meal from the previous day: the guard is held across the read AND the write, so overlapping taps can't duplicate. */
   async function copyYesterday() {
-    if (inFlight.current) return;
-    const prev = addDays(date, -1);
+    if (!acquire()) return;
     const targetDb = db;
-    let rows: FoodLogEntry[];
+    const at = { date, meal, today };
+    const prev = addDays(at.date, -1);
     try {
-      rows = alive(await targetDb.foodLogs.where('date').equals(prev).toArray()).filter((e) => e.meal === meal);
-    } catch {
-      if (dbRef.current === targetDb) toast.show(t('foodLog.loadError'), { tone: 'error' });
-      return;
+      let rows: FoodLogEntry[];
+      try {
+        rows = alive(await targetDb.foodLogs.where('date').equals(prev).toArray()).filter((e) => e.meal === at.meal);
+      } catch {
+        if (dbRef.current === targetDb) toast.show(t('foodLog.loadError'), { tone: 'error' });
+        return;
+      }
+      if (dbRef.current !== targetDb) return;
+      if (!rows.length) {
+        toast.show(t('foodLog.copyEmpty', { date: formatDate(prev) }));
+        return;
+      }
+      await commit(rows.map(entryDraftOf), t('foodLog.copyLabel'), targetDb, at);
+    } finally {
+      release();
     }
-    if (dbRef.current !== targetDb) return;
-    if (!rows.length) {
-      toast.show(t('foodLog.copyEmpty', { date: formatDate(prev) }));
-      return;
-    }
-    await log(rows.map(entryDraftOf), t('foodLog.copyLabel'));
   }
 
   // Tabs: roving focus with Arrow/Home/End; Enter/Space activate (native button behaviour).

@@ -394,6 +394,7 @@ function PrivacyGroup() {
 /* ------------------------------------------------------------ account */
 function AccountGroup() {
   const nav = useNavigate();
+  const toast = useToast();
   const { t } = useT();
   const { account, updateAccount, auth, backendConfigured, db } = useApp();
   const [about, setAbout] = useState(false);
@@ -442,7 +443,12 @@ function AccountGroup() {
           label={t('settings.privateName')}
           defaultValue={account.profile.displayName}
           maxLength={40}
-          onBlur={(e) => e.target.value !== account.profile.displayName && void updateAccount((a) => ({ ...a, profile: { ...a.profile, displayName: e.target.value.trim() } }))}
+          onBlur={(e) => {
+            const typed = e.target.value;
+            if (typed === account.profile.displayName) return;
+            // A failed save is shown (localized) and the typed draft stays in the field, so the next blur retries it.
+            updateAccount((a) => ({ ...a, profile: { ...a.profile, displayName: typed.trim() } })).catch((err: unknown) => toast.show(knownErrorText(err), { tone: 'error' }));
+          }}
           hint={t('settings.privateNameHint')}
         />
       </Card>

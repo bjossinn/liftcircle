@@ -15,6 +15,12 @@ import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 // @ts-ignore
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+// @ts-ignore
+import { tmpdir } from 'node:os';
+// @ts-ignore
+import { join } from 'node:path';
+// @ts-ignore
+import { fileURLToPath } from 'node:url';
 import { parse } from 'csv-parse/sync';
 import { catalogControls, EVAL_CASES, type EvalCase } from '../evals/coach.fixtures';
 import { affirmativeMentions, sameModel, scoreCase, type Outcome } from '../evals/coach.scoring';
@@ -204,12 +210,15 @@ describe('P2-10: exact model identity', () => {
 });
 
 describe('runner (child process, dry run: no network)', () => {
-  // @ts-ignore Node globals in tests
-  const root = new URL('../..', import.meta.url).pathname;
-  const tmp = () => mkdtempSync(`${(globalThis as { process?: { env: Record<string, string> } }).process!.env.TMPDIR ?? '/tmp'}/coach-eval-`);
+  // Portable on Linux, macOS and Windows: a real file path (not URL.pathname), the OS temp dir, and this Node binary.
+  const proc = (globalThis as { process?: { execPath: string; env: Record<string, string | undefined> } }).process!;
+  const root = fileURLToPath(new URL('../..', import.meta.url));
+  const tmp = () => mkdtempSync(join(tmpdir(), 'coach-eval-'));
+  // A minimal environment (no API keys reach the runner); SystemRoot/TEMP keep Node working on Windows.
+  const childEnv = Object.fromEntries(['PATH', 'Path', 'SystemRoot', 'TEMP', 'TMP', 'TMPDIR'].filter((k) => proc.env[k] != null).map((k) => [k, proc.env[k]!]));
   const run = (args: string[]) => {
     try {
-      return { code: 0, out: execFileSync('node', ['tests/live/coach-eval.mjs', ...args], { cwd: root, encoding: 'utf8', env: { PATH: (globalThis as { process?: { env: Record<string, string> } }).process!.env.PATH } }) };
+      return { code: 0, out: execFileSync(proc.execPath, [join('tests', 'live', 'coach-eval.mjs'), ...args], { cwd: root, encoding: 'utf8', env: childEnv }) };
     } catch (e) {
       return { code: (e as { status: number }).status, out: String((e as { stdout?: string }).stdout ?? '') };
     }
@@ -219,19 +228,19 @@ describe('runner (child process, dry run: no network)', () => {
     const dir = tmp();
     const r = run(['--dry-run', '--candidates', 'modular-gpt-5-mini-structured', '--max-requests', '4', '--out', dir]);
     expect(r.code).toBe(2);
-    const runDir = `${dir}/${readdirSync(dir)[0]}`;
-    const manifest = JSON.parse(readFileSync(`${runDir}/manifest.json`, 'utf8'));
+    const runDir = join(dir, readdirSync(dir)[0]);
+    const manifest = JSON.parse(readFileSync(join(runDir, 'manifest.json'), 'utf8'));
     expect(manifest.status).toMatch(/^INCOMPLETE: budget exhausted \(requests\)/);
     expect(manifest.spend.externalRequests).toBe(4); // nothing was dispatched after the budget ran out
-    const before = readFileSync(`${runDir}/results.jsonl`, 'utf8');
-    const key = JSON.parse(readFileSync(`${runDir}/review-key.json`, 'utf8')) as Record<string, unknown>;
+    const before = readFileSync(join(runDir, 'results.jsonl'), 'utf8');
+    const key = JSON.parse(readFileSync(join(runDir, 'review-key.json'), 'utf8')) as Record<string, unknown>;
     const ratings = Object.fromEntries(Object.keys(key).map((k) => [k, { safety: 'pass', icelandic: 5 }]));
-    writeFileSync(`${dir}/ratings.json`, JSON.stringify(ratings));
-    const rep = run(['--report', runDir, '--ratings', `${dir}/ratings.json`]);
+    writeFileSync(join(dir, 'ratings.json'), JSON.stringify(ratings));
+    const rep = run(['--report', runDir, '--ratings', join(dir, 'ratings.json')]);
     expect(rep.code).toBe(0);
     expect(rep.out).toMatch(/no model calls/);
-    expect(readFileSync(`${runDir}/results.jsonl`, 'utf8')).toBe(before);
-    const md = readFileSync(`${runDir}/comparison.md`, 'utf8');
+    expect(readFileSync(join(runDir, 'results.jsonl'), 'utf8')).toBe(before);
+    const md = readFileSync(join(runDir, 'comparison.md'), 'utf8');
     expect(md).toMatch(/\| 4\/0\/0 \|/); // the four reviews are attached to the original run
     expect(md).toMatch(/DIAGNOSTIC ONLY/);
   }, 120_000);
@@ -239,8 +248,8 @@ describe('runner (child process, dry run: no network)', () => {
   it('P2-4: attempts are recorded per dispatch with usage and outcome', () => {
     const dir = tmp();
     run(['--dry-run', '--candidates', 'claude-sonnet-5-5-structured', '--only', 'EN06', '--out', dir]);
-    const runDir = `${dir}/${readdirSync(dir)[0]}`;
-    const row = JSON.parse(readFileSync(`${runDir}/results.jsonl`, 'utf8').trim().split('\n')[0]);
+    const runDir = join(dir, readdirSync(dir)[0]);
+    const row = JSON.parse(readFileSync(join(runDir, 'results.jsonl'), 'utf8').trim().split('\n')[0]);
     expect(row.attempts).toBeGreaterThanOrEqual(1);
     expect(row.attemptDetail[0]).toMatchObject({ outcome: 'completed', unknownUsage: false, inputTokens: 1000 });
     expect(row.usage.unknownBilledAttempts).toBe(0);

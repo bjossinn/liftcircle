@@ -34,10 +34,38 @@ export function ConsistencySection({ d }: { d: ProgressData }) {
   // Count-neutral in both languages (no ad-hoc singular branches).
   const summary = t('progress.consistencySummary', { workouts, activities: acts, weeks: weeks.length, average: avg });
 
+  // Adherence only with a valid positive planned denominator (zero completions is valid, e.g. 0 of 3); a plan alone,
+  // or no program, adds nothing. It is independent of the history/chart state: an empty period still shows 0/N.
+  const adherenceBlock = d.program && range && range.planned > 0 && (
+        <div className="border-t border-line pt-3">
+          <h3 className="text-sm font-medium mb-2">{t('progress.adherence')}</h3>
+          <div className="flex flex-col gap-3">
+            <div>
+              <div className="flex justify-between text-sm mb-1">
+                <span>{t('progress.thisPeriod')}</span>
+                <span className="tabular">{t('progress.plannedSessionCount', { completed: range.completed, planned: range.planned })}</span>
+              </div>
+              <ProgressBar value={range.completed} max={range.planned} label={t('progress.plannedCompletedPeriod')} />
+            </div>
+            {thisWeek && thisWeek.planned > 0 && (
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>{t('progress.thisWeekSoFar')}</span>
+                  <span className="tabular">{t('progress.completedOfPlanned', { completed: thisWeek.completed, planned: thisWeek.planned })}</span>
+                </div>
+                <ProgressBar value={thisWeek.completed} max={thisWeek.planned} label={t('progress.plannedCompletedWeek')} />
+              </div>
+            )}
+            <p className="text-xs text-muted">{t('progress.adherenceExplanation', { program: d.program.name })}</p>
+          </div>
+        </div>
+      );
+
   if (workouts + acts === 0)
     return (
-      <Card className="p-4">
+      <Card className="p-4 flex flex-col gap-4">
         <PeriodEmpty onShowAll={d.onShowAll} />
+        {adherenceBlock}
       </Card>
     );
 
@@ -69,32 +97,7 @@ export function ConsistencySection({ d }: { d: ProgressData }) {
         </ChartFigure>
       </div>
 
-      {/* Adherence only with a valid positive planned denominator (zero completions is valid); a plan alone, or no
-          program, adds nothing here. */}
-      {d.program && range && range.planned > 0 && (
-        <div className="border-t border-line pt-3">
-          <h3 className="text-sm font-medium mb-2">{t('progress.adherence')}</h3>
-          <div className="flex flex-col gap-3">
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span>{t('progress.thisPeriod')}</span>
-                <span className="tabular">{t('progress.plannedSessionCount', { completed: range.completed, planned: range.planned })}</span>
-              </div>
-              <ProgressBar value={range.completed} max={range.planned} label={t('progress.plannedCompletedPeriod')} />
-            </div>
-            {thisWeek && thisWeek.planned > 0 && (
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span>{t('progress.thisWeekSoFar')}</span>
-                  <span className="tabular">{t('progress.completedOfPlanned', { completed: thisWeek.completed, planned: thisWeek.planned })}</span>
-                </div>
-                <ProgressBar value={thisWeek.completed} max={thisWeek.planned} label={t('progress.plannedCompletedWeek')} />
-              </div>
-            )}
-            <p className="text-xs text-muted">{t('progress.adherenceExplanation', { program: d.program.name })}</p>
-          </div>
-        </div>
-      )}
+      {adherenceBlock}
     </Card>
   );
 }

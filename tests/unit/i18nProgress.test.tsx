@@ -10,7 +10,8 @@ import { MemoryRouter } from 'react-router';
 import { setLanguage } from '@/i18n';
 import { ToastProvider } from '@/components/toast';
 import { defaultSettings } from '@/state/defaults';
-import type { ActivityLog, Measurement, UserGoal, WorkoutSession } from '@/domain/types';
+import type { ActivityLog, Measurement, ProgramVersion, SessionTemplate, UserGoal, WorkoutSession } from '@/domain/types';
+import { createProgram } from '@/domain/program/program';
 import type { ProgressData } from '@/features/progress/shared';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -79,6 +80,22 @@ describe('Progress in Icelandic', () => {
     expect(text).not.toContain('Engin virk æfingaáætlun.');
     expect(text).toContain('Æfingar á viku');
     expect(text).not.toContain('Plan adherence');
+  });
+
+  it('Consistency: older history + planned sessions with zero completions in the period still shows 0/N adherence', async () => {
+    const lift = { id: 'A', name: 'Full body A', focus: 'Full body', kind: 'lifting', exercises: [], estimatedMinutes: 45 } as SessionTemplate;
+    const version = { version: 1, createdAt: 0, reason: 'test', templates: [lift], schedule: [1, 3, 5].map((weekday) => ({ weekday, templateId: 'A' })), weeks: 12, reviewWeek: 12, rationale: [], warnings: [] } as ProgramVersion;
+    const program = createProgram(null, version, '2026-09-01', 'MWF', 'manual');
+    const older = [session('old', '2026-09-15')]; // all-history data (outside the selected period)
+    await render(createElement(ConsistencySection, { d: data({ sessions: older, rangeSessions: [], activities: [], rangeActivities: [], program }) }));
+    const text = el.textContent ?? '';
+    expect(text).toContain('Engin gögn á þessu tímabili.');
+    expect(text).toContain('Fylgni við áætlun');
+    const m = text.match(/Skipulagðar æfingar: (\d+) af (\d+) lokið/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBe(0);
+    expect(Number(m![2])).toBeGreaterThan(0);
+    expect(el.querySelector('[role="progressbar"], progress')).not.toBeNull();
   });
 
   it('Body: Icelandic labels, list values with decimal commas, trend summary', async () => {
