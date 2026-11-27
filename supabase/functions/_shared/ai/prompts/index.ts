@@ -27,11 +27,11 @@ export { asCoachStyle, COACH_STYLES, DEFAULT_COACH_STYLE, SAFETY, STYLE_RULES, t
 export { OUTPUT_FORMAT, type OutputMode } from './response.ts';
 
 /** Bump when any module's wording changes (recorded with eval results and in the content-free send log). */
-export const PROMPT_VERSION = '2026-11-30.item10';
+export const PROMPT_VERSION = '2026-11-27.coach-voice-v1';
 
 export type PromptModule = 'identity' | 'safety' | 'grounding' | 'training' | 'nutrition' | 'response';
 /** Approximate word targets per module (the safety module includes the selected coach style). */
-export const MODULE_TARGETS: Record<PromptModule, number> = { identity: 140, safety: 200, grounding: 190, training: 210, nutrition: 200, response: 260 };
+export const MODULE_TARGETS: Record<PromptModule, number> = { identity: 140, safety: 260, grounding: 190, training: 210, nutrition: 200, response: 400 };
 
 export interface PromptOptions {
   style: CoachStyle;
@@ -53,6 +53,9 @@ export function promptModules(o: PromptOptions): { name: PromptModule; text: str
 export function staticInstructions(o: PromptOptions): string {
   return promptModules(o).map((m) => m.text).join('\n\n');
 }
+
+/** Bounded ceiling for the whole static instruction set (every style and output format). */
+export const STATIC_WORD_CEILING = 1450;
 
 export const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
 

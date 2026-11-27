@@ -149,13 +149,16 @@ app keeps working. Details: docs/BACKEND.md §8 (coaching), docs/AI_COACH.md (Tr
    the API is billed separately per token from prepaid credits on the OpenAI Platform. Set a usage limit there.
    ```bash
    npx supabase secrets set OPENAI_API_KEY=sk-...                   # alone, this selects OpenAI
-   npx supabase secrets set OPENAI_MODEL=gpt-5-mini                 # optional; any Chat Completions model your key can use
+   npx supabase secrets set OPENAI_MODEL=gpt-5-mini                 # optional; default gpt-5 (low reasoning). Any Chat Completions model your key can use
+   npx supabase secrets set PUSH_COPY_MODEL=gpt-5-mini              # optional; reminder copy has its own default (gpt-5-mini, minimal reasoning) and never follows OPENAI_MODEL
    ```
    **Anthropic** (platform.claude.com → API keys; a Claude.ai subscription doesn't include API access either):
    ```bash
    npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
    npx supabase secrets set ANTHROPIC_MODEL=claude-sonnet-5-5       # optional
    ```
+   The coach's default voice is upbeat and emoji-friendly (0–2 optional emojis), calm with no emojis for pain,
+   exhaustion, distress or crisis, and the default coach style is Supportive (docs/AI_COACH.md §4h).
    With both keys set, `AI_PROVIDER=openai` or `AI_PROVIDER=anthropic` decides (default Anthropic). Shared, optional:
    ```bash
    npx supabase secrets set AI_DAILY_REQUEST_LIMIT=40 AI_MAX_OUTPUT_TOKENS=1200 \

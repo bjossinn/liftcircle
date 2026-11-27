@@ -16,7 +16,7 @@ import { fromOpenAiResponse, isOpenAiQuotaError, toOpenAiRequest } from './opena
 
 export const DEFAULT_MODEL = 'claude-sonnet-5-5';
 export const DEFAULT_API_VERSION = '2023-06-01';
-export const DEFAULT_OPENAI_MODEL = 'gpt-5-mini';
+export const DEFAULT_OPENAI_MODEL = 'gpt-5';
 
 export type ProviderId = 'anthropic' | 'openai';
 export const PROVIDER_NAMES: Record<ProviderId, string> = { anthropic: 'Anthropic', openai: 'OpenAI' };

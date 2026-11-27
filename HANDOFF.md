@@ -3,6 +3,24 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 27 Nov 2026: Coach voice v1 — GPT-5 default and an upbeat, emoji-friendly persona
+
+- The training assistant's OpenAI default is now `gpt-5` at `low` reasoning (2,000 reasoning tokens), was `gpt-5-mini`.
+  If `OPENAI_MODEL` is set as a function secret it still wins: to actually get the upgrade, remove it or set it to
+  `gpt-5`; to go back, set `OPENAI_MODEL=gpt-5-mini`. Costs more per message than gpt-5-mini; no migration.
+- New prompt (`PROMPT_VERSION` `2026-11-27.coach-voice-v1`): upbeat, warm and fun voice with 0–2 optional emojis,
+  natural Icelandic register, a **calm safety voice** (no emojis, jokes, hype or pressure) for pain, exhaustion,
+  distress, medical concerns and crisis in every style, and rewritten styles (Supportive stays the default; Strict is
+  firm without scolding and never questions pain or tiredness).
+- Reminder push copy keeps its own model (`gpt-5-mini`, `minimal` reasoning, 512 tokens; `PUSH_COPY_MODEL` /
+  `PUSH_COPY_REASONING_EFFORT` / `PUSH_COPY_REASONING_TOKEN_ALLOWANCE` override). Only the workout reminder may end with
+  one 💪 or 🙌; missed-workout and food nudges stay emoji-free. Still off unless `PUSH_AI_COPY=on`.
+- Dashboard bundles regenerated: `supabase/functions-bundled/ai-coach.ts` and `push-send.ts`. Deploys on merge.
+- Owner tasks: run `node tests/live/coach-tone-live.mjs` (EN/IS tone smoke set) and, before turning on push copy,
+  `node tests/live/push-copy-live.mjs`, with real keys; have a native speaker review the Icelandic. Optionally compare
+  `gpt-5-low-structured` with the `gpt-5-mini` baseline in `tests/live/coach-eval.mjs`. None could run in the sandbox.
+- Details: docs/AI_COACH.md §4h, docs/AI_PROMPT_RULES.md.
+
 ## 30 Nov 2026: Eval set, streaming status line and six-part prompt (roadmap item 10)
 
 - One additive migration: `supabase/migrations/20261130000001_ai_cancellation.sql` (acknowledged Stop: request states,
@@ -45,9 +63,8 @@ Supabase project **LiftCircle** (display name, unchanged: renaming it is an owne
 
 - The assistant's prompt now says to reply in the user's language and to write natural Icelandic (docs/AI_COACH.md §4c).
 - Deploys with Deploy Supabase on merge; no migration.
-- Owner choice: the default model is `gpt-5-mini` at `low` reasoning, which is weak at Icelandic. For better
-  Icelandic, set the function secrets `OPENAI_MODEL` (a full GPT-5 model) and `OPENAI_REASONING_EFFORT=medium`.
-  Costs more per message; no redeploy needed.
+- Owner choice: the default model was `gpt-5-mini` at `low` reasoning, which is weak at Icelandic. Superseded by coach
+  voice v1 (27 Nov 2026): the default is now `gpt-5` at `low`; `OPENAI_REASONING_EFFORT=medium` remains optional.
 
 ## 31 Oct 2026: Hard Earned rebrand (v1.0.0), PR waiting for your review
 

@@ -1,16 +1,17 @@
 # Training assistant prompt: rule-preservation matrix (roadmap item 10)
 
 The single ~2,300-word `SYSTEM_RULES` prompt was split into six modules in
-`supabase/functions/_shared/ai/prompts/` (about 1,200 words of static instructions in total):
+`supabase/functions/_shared/ai/prompts/` (about 1,400 words of static instructions in total since coach voice v1,
+bounded by a 1,450-word ceiling, `STATIC_WORD_CEILING`, in every style and output format):
 
 | Module | Target words | File |
 |---|---:|---|
 | identity | 140 | `identity.ts` |
-| safety (+ the one selected coach style) | 200 | `safety.ts` |
+| safety (+ the one selected coach style) | 260 | `safety.ts` |
 | grounding | 190 | `grounding.ts` |
 | training | 210 | `training.ts` |
 | nutrition | 200 | `nutrition.ts` |
-| response (+ the selected output format) | 260 | `response.ts` |
+| response (+ the selected output format) | 400 | `response.ts` |
 
 The composer (`prompts/index.ts`) always orders the system prompt as **static modules → server-derived controls →
 feature-filtered app guide → bounded permitted data**; the filtered conversation goes in `messages`. Each section has
@@ -67,10 +68,23 @@ enforcement that does not depend on the model reading the prompt, and a regressi
 | R38 | Cards are authoritative; never say something was applied | response | Cards are authoritative | Conflicting text replaced by the card summary (postcheck.ts) | tests/unit/aiCoachV2.test.ts |
 | R39 | Formatting subset; no ISO dates | response | Never write ISO dates | `humanizeDates()`; safe Markdown subset in the app | tests/unit/aiMarkdown.test.ts |
 | R40 | Reply language resolution | response | reply in the language of the user's latest message | `resolveReplyLang()` + reply-language control | tests/unit/i18nAiServer.test.ts |
-| R41 | Natural Icelandic, decimal comma, Icelandic dates | response | natural, idiomatic Icelandic | Server text localized (`sharedT`, `humanizeDates(lang)`) | tests/unit/ai.test.ts |
+| R41 | Natural Icelandic, decimal comma, Icelandic dates | response | For Icelandic, sound like a person from Iceland texting | Server text localized (`sharedT`, `humanizeDates(lang)`) | tests/unit/ai.test.ts |
 | R42 | Stored names kept exactly | response | Keep stored exercise, recipe and program names exactly as written | Cards render stored names | tests/unit/ai.test.ts |
 | R43 | Validated in-app links only, at end, ≤ 2 screen links | response | only with paths from the app guide | `validateOpenLinks()` with the feature-filtered guide | tests/unit/aiAppGuide.test.ts |
 | R44 | Optional short rationale ("Why this?") | response | Why this? | `splitWhy()` (text) or the strict `{answer, why}` envelope (structured.ts) | tests/unit/aiStructured.test.ts |
 | R45 | All rules apply in every language | response | All rules apply in every language. | — | tests/unit/ai.test.ts |
 | R46 | Pregnancy questions: general, conservative guidance and a qualified professional (restored, review round 2) | safety | Pregnancy, medication or a medical condition | — | tests/unit/aiReviewServer.test.ts |
 | R47 | Medication questions: general, conservative guidance and a qualified professional (restored, review round 2) | safety | medication or a medical condition: also say to check with their doctor or midwife | — | tests/unit/aiReviewServer.test.ts |
+
+## Coach voice v1 (`PROMPT_VERSION` 2026-11-27.coach-voice-v1)
+
+Wording changes only; no rule above was removed and every anchor is still checked by
+`tests/unit/aiPromptModules.test.ts`.
+
+| Change | Module | Anchor | Deterministic enforcement | Regression test |
+|---|---|---|---|---|
+| Upbeat, energetic, warm and fun voice (replaces "warm, clear and steady") | response | Voice: upbeat, energetic, warm and fun | — | tests/unit/aiCoachV2.test.ts |
+| 0–2 optional emojis per ordinary reply; never instead of advice, numbers or warnings; overridden by the calm safety rule | response | Emojis: use 0–2 natural emojis per ordinary reply | `tidyReply()` keeps emojis | tests/unit/aiFollowups.test.ts |
+| Icelandic register ("a person from Iceland texting"; no literal hype; no gender assumptions) | response | For Icelandic, sound like a person from Iceland texting | — | tests/unit/ai.test.ts |
+| Calm safety voice: no emojis, jokes, hype or pressure for pain, exhaustion, distress, medical concerns or crisis, in every style | safety | Calm safety voice | Tiredness control (`mentionsTiredness`), crisis exception | tests/unit/coachTone.test.ts |
+| Styles rewritten: Supportive default; Balanced realistic minimum tied to the goal; Strict firm accountability without scolding | safety | Coach style: SUPPORTIVE (the default) | `asCoachStyle()` | tests/unit/aiCoachV2.test.ts |

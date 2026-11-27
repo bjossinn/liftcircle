@@ -13,7 +13,12 @@
  * supportive); any violation fails the run. It never sends a notification and touches
  * no database.
  *
- * Env: OPENAI_API_KEY or ANTHROPIC_API_KEY (+ AI_PROVIDER, *_MODEL, PUSH_COPY_MODEL, PUSH_COPY_REASONING_EFFORT).
+ * The reminder model is resolved exactly as in production (copy.ts resolvePushModel: with OpenAI, PUSH_COPY_MODEL default
+ * gpt-5-mini, minimal reasoning, 512 reasoning tokens; independent of OPENAI_MODEL). Emoji policy (validateCopy): only
+ * workout_reminder may end with one 💪 or 🙌; missed and food nudges must be emoji-free (checked again below).
+ *
+ * Env: OPENAI_API_KEY or ANTHROPIC_API_KEY (+ AI_PROVIDER, *_MODEL, PUSH_COPY_MODEL, PUSH_COPY_REASONING_EFFORT,
+ * PUSH_COPY_REASONING_TOKEN_ALLOWANCE).
  * Without a key it prints BLOCKED and exits 0. Exit 1 when fewer than LC_PUSH_COPY_MIN_PASS (default 0.6) of the
  * calls for any kind/language produced valid generated copy.
  */
@@ -27,7 +32,7 @@ if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
   process.exit(0);
 }
 const out = await build({ entryPoints: [path.join(ROOT, 'supabase/functions/_shared/push/copy.ts')], bundle: true, write: false, format: 'esm', platform: 'neutral', logLevel: 'silent' });
-const { writeCopy, COACH_KINDS } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}`);
+const { writeCopy, COACH_KINDS, resolvePushModel, WORKOUT_REMINDER_EMOJIS } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}`);
 const { judgeProblems } = await import(
   `data:text/javascript;base64,${Buffer.from((await build({ entryPoints: [path.join(ROOT, 'supabase/functions/_shared/push/judge.ts')], bundle: true, write: false, format: 'esm', platform: 'neutral', logLevel: 'silent' })).outputFiles[0].text).toString('base64')}`
 );
@@ -69,7 +74,17 @@ async function judge(text, language) {
   // Strict: all eight fields, booleans only, one complete JSON object, not truncated (judge.ts).
   return judgeProblems(raw, res.stop_reason === 'max_tokens');
 }
-console.log(`Provider ${provider.provider}, model ${env('PUSH_COPY_MODEL') || provider.model}, ${runs} run(s) per kind and language\n`);
+const pushModel = resolvePushModel(env, provider);
+console.log(
+  `Provider ${provider.provider}, model ${pushModel.model} (reasoning ${pushModel.reasoningEffort ?? 'none'}, allowance ${pushModel.reasoningAllowance}), ${runs} run(s) per kind and language\n`,
+);
+const EMOJI = /\p{Extended_Pictographic}/gu;
+/** Narrow emoji policy, re-checked on every generated text (validateCopy enforces it too). */
+function emojiOk(kind, text) {
+  const found = text.match(EMOJI) ?? [];
+  if (kind !== 'workout_reminder') return found.length === 0;
+  return found.length === 0 || (found.length === 1 && WORKOUT_REMINDER_EMOJIS.some((e) => text.endsWith(e)));
+}
 for (const kind of COACH_KINDS) {
   for (const language of ['en', 'is']) {
     let ai_ = 0;
@@ -90,6 +105,7 @@ for (const kind of COACH_KINDS) {
     console.log(`${rate >= minPass ? 'PASS' : 'FAIL'}  ${kind.padEnd(17)} ${language}  generated ${ai_}/${runs}  fallback reasons ${JSON.stringify(reasons)}  max ${Math.max(...times)} ms`);
     for (const t of texts) {
       const bad = await judge(t, language);
+      if (!emojiOk(kind, t)) bad.push('emoji_policy');
       if (bad.length) failed = true;
       console.log(`        ${bad.length ? `SEMANTIC FAIL (${bad.join(', ')})` : 'ok'}  “${t}”`);
     }

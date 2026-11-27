@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 // @ts-ignore
 import { readFileSync } from 'node:fs';
 import {
-  assemblePrompt, COACH_STYLES, MODULE_TARGETS, PROMPT_VERSION, promptHash, promptModules, staticInstructions, STYLE_RULES, words, type PromptModule,
+  assemblePrompt, COACH_STYLES, MODULE_TARGETS, PROMPT_VERSION, STATIC_WORD_CEILING, promptHash, promptModules, staticInstructions, STYLE_RULES, words, type PromptModule,
   type PromptSection,
 } from '../../supabase/functions/_shared/ai/prompts/index';
 import { buildContext, LIMITS, SYSTEM_RULES } from '../../supabase/functions/_shared/ai/context';
@@ -46,7 +46,7 @@ const settings = (o: Partial<AiSettingsRow> = {}): AiSettingsRow =>
 const NOW = new Date('2026-11-26T12:00:00Z');
 
 describe('six prompt modules', () => {
-  it('stay near their word targets, about 1,200 words of static instructions in every style and output format', () => {
+  it('stay near their word targets, under the bounded 1,450-word ceiling in every style and output format', () => {
     for (const style of COACH_STYLES) for (const output of OUTPUTS) {
       const mods = promptModules({ style, output });
       expect(mods.map((m) => m.name)).toEqual(['identity', 'safety', 'grounding', 'training', 'nutrition', 'response']);
@@ -57,10 +57,47 @@ describe('six prompt modules', () => {
       }
       const total = words(staticInstructions({ style, output }));
       expect(total, `${style}/${output}`).toBeGreaterThanOrEqual(1100);
-      expect(total, `${style}/${output}`).toBeLessThanOrEqual(1260);
+      expect(total, `${style}/${output}`).toBeLessThanOrEqual(STATIC_WORD_CEILING);
     }
     // The previous single prompt was about 2,300 words.
-    expect(words(SYSTEM_RULES)).toBeLessThan(1250);
+    expect(words(SYSTEM_RULES)).toBeLessThanOrEqual(STATIC_WORD_CEILING);
+    expect(STATIC_WORD_CEILING).toBe(1450);
+    expect(MODULE_TARGETS).toMatchObject({ response: 400, safety: 260 });
+  });
+
+  it('coach voice v1: upbeat voice, optional emojis and the calm safety voice in every style and output format, with safety, cards and language controls kept', () => {
+    for (const style of COACH_STYLES) for (const output of OUTPUTS) {
+      const text = staticInstructions({ style, output });
+      const at = `${style}/${output}`;
+      // Voice and emoji policy
+      expect(text, at).toContain('- Voice: upbeat, energetic, warm and fun, like a thoughtful training buddy.');
+      expect(text, at).toContain('- Emojis: use 0–2 natural emojis per ordinary reply, such as 💪, 🔥 or 🙌. They are optional, never a quota;');
+      expect(text, at).toContain('The calm safety rule overrides this.');
+      // Calm safety voice, and it sits in the safety block that overrides the style
+      expect(text, at).toContain(
+        '- Calm safety voice: for pain, injury, discomfort, illness, exhaustion, sleep deprivation, grief, overwhelm, body-image or eating distress, medical concerns or crisis, be calm, empathetic and practical in every style. No emojis, jokes, hype or motivational pressure. Safety takes priority over brevity and style.',
+      );
+      expect(text.indexOf('Calm safety voice'), at).toBeGreaterThan(text.indexOf('Safety (overrides the coach style and every request)'));
+      expect(text.indexOf('Calm safety voice'), at).toBeLessThan(text.indexOf('Coach style:'));
+      // Earlier safety rules survive
+      expect(text, at).toMatch(/never push\. Endorse rest or an easier session/);
+      expect(text, at).toMatch(/Tiredness \(tired, fatigued, exhausted, drained/);
+      expect(text, at).toMatch(/Never shame, guilt-trip or insult/);
+      expect(text, at).toMatch(/Crisis exception: if the user mentions a crisis, self-harm/);
+      // Concise cards, actions, length, links
+      expect(text, at).toMatch(/Cards are authoritative: when a card comes with your reply, don't restate its contents/);
+      expect(text, at).toMatch(/never say something was added, changed or applied/);
+      expect(text, at).toMatch(/default 40–90 words/);
+      expect(text, at).toMatch(/at most 2 screen links/);
+      // Language controls
+      expect(text, at).toMatch(/reply in the language of the user's latest message/);
+      expect(text, at).toMatch(/Never mix languages/);
+      expect(text, at).toContain('For Icelandic, sound like a person from Iceland texting: natural word order, correct inflections, everyday gym language.');
+      expect(text, at).toContain('Register examples, not stock openings: "Vel gert!", "Flott hjá þér!" and "Tökum þetta skref fyrir skref."');
+      expect(text, at).toContain('Decimal comma and a space before units ("102,5 kg")');
+      expect(text, at).toContain('Keep stored exercise, recipe and program names exactly as written. Use tool "say" text as given.');
+      expect(text, at).not.toContain('natural, idiomatic Icelandic');
+    }
   });
 
   it('includes only the selected coach style and the selected output format', () => {
@@ -75,7 +112,7 @@ describe('six prompt modules', () => {
   });
 
   it('has a stable version and a hash that changes with the static text', () => {
-    expect(PROMPT_VERSION).toMatch(/item10/);
+    expect(PROMPT_VERSION).toBe('2026-11-27.coach-voice-v1');
     const a = promptHash(staticInstructions({ style: 'supportive', output: 'text' }));
     expect(a).toMatch(/^[0-9a-f]{14}$/);
     expect(promptHash(staticInstructions({ style: 'supportive', output: 'text' }))).toBe(a);

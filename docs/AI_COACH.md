@@ -19,7 +19,7 @@ the app sends the user through setup again.
 | Variable | Default | Meaning |
 |---|---|---|
 | `OPENAI_API_KEY` | — | Platform API key (platform.openai.com). Billed separately from ChatGPT subscriptions. 401/403 → `not_configured`. |
-| `OPENAI_MODEL` | `gpt-5-mini` | Any Chat Completions model your key can use; check the models list on the OpenAI Platform. |
+| `OPENAI_MODEL` | `gpt-5` (since coach voice v1, Nov 2026; was `gpt-5-mini`) | Any Chat Completions model your key can use; check the models list on the OpenAI Platform. Set `gpt-5-mini` to go back to the cheaper model. Reminder push copy does **not** follow this setting (`PUSH_COPY_MODEL`, §4h). |
 | `OPENAI_REASONING_EFFORT` | `low` for `gpt-5*`/`o*` models, otherwise not sent | Sent as `reasoning_effort`. `off` never sends it (needed for models that reject the parameter). |
 | `OPENAI_REASONING_TOKEN_ALLOWANCE` | `2000` when an effort is sent | Added to `AI_MAX_OUTPUT_TOKENS` for `max_completion_tokens`, because hidden reasoning tokens count against that limit (and are billed as output). |
 | `OPENAI_BASE_URL` | `https://api.openai.com` | Override only for a proxy/gateway (must serve `/v1/chat/completions`). |
@@ -46,7 +46,8 @@ The Anthropic variables below apply only when Anthropic is the provider.
    the Deploy Supabase workflow.
 3. **Set the secrets** (Dashboard → Edge Functions → Secrets, or CLI):
    ```sh
-   supabase secrets set OPENAI_API_KEY=sk-... OPENAI_MODEL=gpt-5-mini        # OpenAI
+   supabase secrets set OPENAI_API_KEY=sk-...                  # OpenAI (default model gpt-5, low reasoning)
+   # optional: supabase secrets set OPENAI_MODEL=gpt-5-mini   # cheaper, weaker Icelandic
    # or: supabase secrets set ANTHROPIC_API_KEY=sk-ant-... ANTHROPIC_MODEL=claude-sonnet-5-5
    # optional
    supabase secrets set AI_DAILY_REQUEST_LIMIT=40 AI_MAX_OUTPUT_TOKENS=1200 \
@@ -175,9 +176,10 @@ unchanged.
 **Accountability.** When the user wants to skip, or this week's state shows skipped/missed sessions, the coach asks
 what's going on, pushes back on weak reasons ("too tired", "no time", "don't feel like it"), offers a minimum version
 ("just the first two exercises, 20 minutes") and reminds them of their goal and what they've already done this week.
-How firmly depends on the **coach style** (`ai_settings.coach_style`, `STYLE_RULES`): Supportive (gentle, never
-pushes), Balanced (default; light accountability), Strict (tough love, firm pushback). The style block is added after
-the rules; unknown/missing values mean Balanced.
+How firmly depends on the **coach style** (`ai_settings.coach_style`, `STYLE_RULES`): Supportive (the default; warm,
+upbeat encouragement with no pressure), Balanced (light accountability, a realistic minimum tied to the user's goal),
+Strict (opt-in; energetic, direct, firm accountability without scolding). Since coach voice v1 (§4h) no style pushes
+back on tiredness or pain or uses "no excuses" rhetoric. Unknown/missing values mean Supportive.
 
 **Safety limits (rule 9) override every style:** pain, injury, illness, dizziness, chest symptoms, unusual exhaustion,
 poor sleep from a newborn or night shifts, grief or feeling overwhelmed → no pushing; endorse rest, adjust the plan,
@@ -265,7 +267,8 @@ messages are stored unchanged.
 bullets or 2 short paragraphs, texting-a-client voice (no preambles, no repeating the question, no caveat lists), detail
 after `[[why]]` or an offer ("Want the full breakdown?"); longer only on request or for a full program/meal plan (bold
 day/session names, short lists). Formatting the app supports is spelled out (bold for key numbers and names, short
-lists, italic rarely, no headings/tables/code blocks, emoji rarely). `tidyReply` leaves Markdown markers untouched.
+lists, italic rarely, no headings/tables/code blocks; since coach voice v1, 0–2 optional emojis per ordinary reply and
+none in calm safety replies, §4h). `tidyReply` leaves Markdown markers and emojis untouched.
 
 **App guide.** `supabase/functions/_shared/ai/appGuide.ts` (shared with the app) has one line per main screen (path,
 what you do there, how to reach it from the tab bar). It goes into the system prompt; "how do I…" questions are in
@@ -389,9 +392,9 @@ The prompt has a **Language** section: reply in the language of the user's lates
 switch; in Icelandic, write natural Icelandic (cases, everyday gym words, "102,5 kg", Icelandic dates) rather than a
 translation of English; keep exercise, recipe and program names as they appear in the data (the app is in English) so
 the user can find them; link labels in the user's language; every rule applies in every language. The prompt itself
-and the context data stay English. Quality still depends mostly on the model: `gpt-5-mini` at `low` effort (the
-defaults) writes weak Icelandic, so for Icelandic users set `OPENAI_MODEL` to a full GPT-5 model and
-`OPENAI_REASONING_EFFORT=medium` (§1), at a higher cost per message.
+and the context data stay English. Quality still depends mostly on the model: `gpt-5-mini` at `low` effort writes
+weak Icelandic, so since coach voice v1 (§4h) the OpenAI default is `gpt-5` at `low` effort. `OPENAI_REASONING_EFFORT=medium`
+(§1) is still available at a higher cost and latency per message.
 
 ## 4d. Correctness fixes (1.0.2)
 
@@ -581,6 +584,46 @@ Spec (verbatim, with the approved English and Icelandic copy): `docs/specs/item1
   (`ai_usage.unknown_usage_attempts`), once, without changing its charge.
 - Eval: negated safety wording ("Do not push through the pain") is a review flag, not a violation; the blind review
   sheet is RFC 4180 CSV (doubled quotes, multiline fields).
+
+## 4h. Coach voice v1 (Nov 2026): GPT-5 default and an upbeat, emoji-friendly persona
+
+`PROMPT_VERSION` `2026-11-27.coach-voice-v1`.
+
+- **Model.** `DEFAULT_OPENAI_MODEL` is `gpt-5` (was `gpt-5-mini`), keeping `low` reasoning effort, the 2,000-token
+  reasoning allowance, the `OPENAI_MODEL` / `OPENAI_REASONING_EFFORT` / `OPENAI_REASONING_TOKEN_ALLOWANCE` overrides,
+  timeouts, retries and the error/refund handling. Streaming is unchanged: `text_delta` still carries only the final,
+  validated, stored answer, never raw model tokens.
+- **Voice** (`prompts/response.ts`). Upbeat, energetic, warm and fun, like a thoughtful training buddy; reacts to what
+  the user said, celebrates real effort without inventing or exaggerating achievements, light humour when it fits; no
+  canned praise, forced slang, pet names or sales hype; plain words, no em dashes; at most one question.
+- **Emojis.** 0–2 natural emojis per ordinary reply (💪, 🔥, 🙌…), optional and never a quota, never in place of
+  advice, numbers or warnings. `tidyReply()` keeps them (it only strips fillers and generic offers).
+- **Icelandic.** "Sound like a person from Iceland texting": natural word order, correct inflections, everyday gym
+  language; "Vel gert!", "Flott hjá þér!" and "Tökum þetta skref fyrir skref." are register examples, not stock
+  openings; no literal English hype and no assumptions about the user's gender; æfing, sett, endurtekningar.
+- **Calm safety voice** (`prompts/safety.ts`, in every style). Pain, injury, discomfort, illness, exhaustion, sleep
+  deprivation, grief, overwhelm, body-image or eating distress, medical concerns or crisis → calm, empathetic and
+  practical, with no emojis, jokes, hype or motivational pressure; safety wins over brevity and style. The crisis
+  exception (`identity.ts`), the tiredness control and the "tired of chicken" exception are unchanged.
+- **Styles.** Supportive stays the default (warm, upbeat, no pressure; the minimum version is an option; rest and
+  declined suggestions accepted warmly). Balanced: light accountability, a realistic minimum tied to the user's stated
+  goal, adapts to the time available. Strict (opt-in): energetic, direct, firm accountability rather than scolding;
+  the user still decides; never questions pain or tiredness or uses "no excuses" rhetoric.
+- **Budgets.** Module targets `response` 400 and `safety` 260 words; the static instructions stay under a bounded
+  1,450-word ceiling (`STATIC_WORD_CEILING`) in every style and output format. No safety rule was removed.
+- **Reminder push copy is independent of the chat model** (`_shared/push/copy.ts` `resolvePushModel`). With OpenAI it
+  uses `PUSH_COPY_MODEL` (default `gpt-5-mini`), `PUSH_COPY_REASONING_EFFORT` (default `minimal`; `off` sends none) and
+  `PUSH_COPY_REASONING_TOKEN_ALLOWANCE` (default and cap 512), so changing `OPENAI_MODEL` never upgrades it silently.
+  Non-reasoning models get no reasoning fields; 3 s timeout, no retries and the deterministic fallback are unchanged.
+  Emoji policy: only `workout_reminder` may end with ONE optional 💪 or 🙌; missed-workout and food nudges stay
+  emoji-free and low-pressure. `validateCopy(raw, language, kind)` enforces it (the emoji counts toward the 140 code
+  points; only that trailing emoji is exempt from the content checks) in `writeCopy()` and `finalizeCopy()`, cached
+  copy included. `PUSH_AI_COPY`, consent, sharing, scheduling and quota rules are unchanged.
+- **Evals.** `tests/evals/coach.models.json` adds `gpt-5-low-structured` (the new default) next to the `gpt-5-mini`
+  baseline and `gpt-5-medium`; the 30 eval questions are unchanged. A separate EN/IS tone smoke set
+  (`tests/evals/coach.tone.json`, scored by `coach.tone.ts`; offline `tests/unit/coachTone.test.ts`, live opt-in
+  `node tests/live/coach-tone-live.mjs`) covers a completed-sets celebration, 3-hour sleep exhaustion, shoulder pain
+  on bench, food boredom and a crisis message (calm, no emojis).
 
 ## 5. Testing status
 

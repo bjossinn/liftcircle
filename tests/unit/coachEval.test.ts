@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildContext } from '../../supabase/functions/_shared/ai/context';
 import { handleAiCoach } from '../../supabase/functions/_shared/ai/coach';
+import { PROMPT_VERSION } from '../../supabase/functions/_shared/ai/prompts/index';
 import { EXERCISE_SETUP_SEC, setSeconds } from '../../supabase/functions/_shared/ai/workout';
 import type { FetchLike } from '../../supabase/functions/_shared/ai/types';
 import { buildFixture, CATALOG, catalogControls, EVAL_CASES, freshDb, FROZEN_NOW, INJECTION, SENTINEL, UID, type EvalCase } from '../evals/coach.fixtures';
@@ -135,6 +136,12 @@ describe('scoring', () => {
       expect(m.pricing.source).toMatch(/^https?:\/\//);
       expect(m.pricing.asOf).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
+    // Coach voice v1: the production default (gpt-5, low) is a candidate; the gpt-5-mini baseline and gpt-5-medium stay.
+    const ids = MODELS.candidates.map((m) => m.id);
+    expect(ids).toEqual(expect.arrayContaining(['baseline-gpt-5-mini', 'gpt-5-low-structured', 'gpt-5-medium-structured']));
+    expect(MODELS.candidates.find((m) => m.id === 'gpt-5-low-structured')).toMatchObject({ provider: 'openai', model: 'gpt-5', reasoningEffort: 'low', structuredOutput: 'on', source: 'current' });
+    expect(MODELS.candidates.find((m) => m.id === 'baseline-gpt-5-mini')).toMatchObject({ model: 'gpt-5-mini', source: 'baseline' });
+    expect(EVAL_CASES).toHaveLength(30);
   });
 });
 
@@ -157,7 +164,7 @@ describe('end-to-end with a stub provider (harness check, not a model eval)', ()
       for (const r of requests) expect(r, c.id).not.toContain(SENTINEL);
       const s = scoreCase(c, { status: res.status, body: res.body, providerRequests: requests, logs, forbidden: f.forbidden });
       expect(s.assertions.length, c.id).toBeGreaterThan(1);
-      expect(logs.find((l) => l.event === 'ai_send'), c.id).toMatchObject({ prompt_version: expect.stringMatching(/item10/), prompt_hash: expect.stringMatching(/^[0-9a-f]{14}$/) });
+      expect(logs.find((l) => l.event === 'ai_send'), c.id).toMatchObject({ prompt_version: PROMPT_VERSION, prompt_hash: expect.stringMatching(/^[0-9a-f]{14}$/) });
     }
   }, 60_000);
 });
