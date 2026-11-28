@@ -7,6 +7,7 @@ import type { CoachingRelationship } from '@/backend/coachingContract';
 import { coachingApi } from '@/backend/coaching';
 import type { LiftDb } from '@/db/db';
 import { coachingError } from '@/coaching/errors';
+import { t } from '@/i18n';
 
 const key = (id: string) => `coach-rel:${id}`;
 
@@ -41,7 +42,7 @@ export function useRelationship(id: string, db: LiftDb, enabled: boolean) {
       if (found) db.kv.put({ key: key(id), value: found }).catch(() => {});
       else db.kv.delete(key(id)).catch(() => {});
     } catch (e) {
-      setError(coachingError(e, 'Couldn’t load this conversation.'));
+      setError(coachingError(e, t('coaching.editor.couldnt_load_conversation')));
     }
   }, [db, id]);
 

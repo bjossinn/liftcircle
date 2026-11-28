@@ -7,7 +7,7 @@ import { socialApi } from '@/backend/social';
 import { publicAppUrl } from '@/backend/supabase';
 import type { FriendStatus, ID, SocialProfile } from '@/domain/types';
 import { friendlyError, usePendingPosts } from '@/social/pendingPosts';
-import { AccessNotice, Avatar, ReportSheet, shareLink, useSocialAccess } from './common';
+import { AccessNotice, Avatar, ReportSheet, interestLabel, shareLink, useSocialAccess } from './common';
 import { PendingPostCard, PostCard } from './PostCard';
 import { PAGE_SIZE, usePostList } from './usePostList';
 import { useMyProfile } from './useMyProfile';
@@ -31,7 +31,7 @@ export default function ProfilePage() {
       {!username && <ProfileShortcuts />}
       {!username && <PendingUploads access={access} />}
       {access !== 'ok' ? (
-        <AccessNotice access={access} what="Profiles" guestTitle={username ? `Connect with @${username}` : undefined} />
+        <AccessNotice access={access} what="profiles" guestTitle={username ? t('social.access.connect_with_x', { username }) : undefined} />
       ) : username ? (
         <OtherProfile username={username.toLowerCase()} meId={meId!} />
       ) : (
@@ -104,17 +104,18 @@ export function PendingUploads({ access }: { access: string }) {
 
 /* ================================================================ header */
 function ProfileHeader({ profile, children }: { profile: SocialProfile; children?: ReactNode }) {
+  const { t, language } = useT();
   return (
-    <section className="flex flex-col items-center text-center pt-2" aria-label="Profile">
+    <section className="flex flex-col items-center text-center pt-2" aria-label={t('nav.profile')}>
       <Avatar profile={profile} size={88} />
       <h2 className="text-xl font-bold mt-3 break-words max-w-full">{profile.displayName}</h2>
       <p className="text-sm text-muted">@{profile.username}</p>
       {profile.bio && <p className="text-[15px] mt-3 whitespace-pre-wrap break-words max-w-md">{profile.bio}</p>}
       {profile.interests.length > 0 && (
-        <ul className="flex flex-wrap justify-center gap-1.5 mt-3" aria-label="Training interests">
+        <ul className="flex flex-wrap justify-center gap-1.5 mt-3" aria-label={t('social.training_interests')}>
           {profile.interests.map((i) => (
             <li key={i}>
-              <Badge tone="accent">{i}</Badge>
+              <Badge tone="accent">{interestLabel(i, language)}</Badge>
             </li>
           ))}
         </ul>
@@ -136,13 +137,13 @@ function UserPosts({ userId, meId, empty, onBlocked, reloadOn }: { userId: ID; m
   }, [reloadOn, refresh]);
   return (
     <section aria-labelledby="posts-title">
-      <SectionTitle id="posts-title">Posts</SectionTitle>
+      <SectionTitle id="posts-title">{t('social.posts')}</SectionTitle>
       {list.status === 'loading' ? (
-        <Spinner label="Loading posts" />
+        <Spinner label={t('social.loading_posts')} />
       ) : list.status === 'error' ? (
-        <ErrorState title="Couldn’t load posts" message={list.error ?? undefined} onRetry={() => void list.refresh('initial')} />
+        <ErrorState title={t('social.couldnt_load_posts')} message={list.error ?? undefined} onRetry={() => void list.refresh('initial')} />
       ) : list.items.length === 0 ? (
-        <EmptyState title="No posts to show" body={empty} />
+        <EmptyState title={t('social.no_posts_to_show')} body={empty} />
       ) : (
         <>
           <ul className="flex flex-col gap-3">
@@ -160,7 +161,7 @@ function UserPosts({ userId, meId, empty, onBlocked, reloadOn }: { userId: ID; m
                 </p>
               )}
               <Button onClick={() => void list.loadMore()} loading={list.loadingMore}>
-                {list.moreError ? t('common.retry') : 'Load more' /* i18n: social posts list is outside this fragment */}
+                {list.moreError ? t('common.retry') : t('social.load_more')}
               </Button>
             </div>
           )}
@@ -213,7 +214,7 @@ function MyProfile({ meId }: { meId: string }) {
           <Button icon={<Pencil className="size-4" />} onClick={() => nav('/profile/edit')}>
             {t('profile.edit')}
           </Button>
-          <Button icon={<Share2 className="size-4" />} onClick={() => void shareLink(profileUrl(profile.username), `${profile.displayName} on Hard Earned`, toast)}>
+          <Button icon={<Share2 className="size-4" />} onClick={() => void shareLink(profileUrl(profile.username), t('social.share_title', { name: profile.displayName }), toast)}>
             {t('profile.shareLink')}
           </Button>
           <Button icon={<Users className="size-4" />} onClick={() => nav('/friends')}>
@@ -238,6 +239,7 @@ type Loaded = { profile: SocialProfile; relation: FriendStatus; requestId?: ID }
 function OtherProfile({ username, meId }: { username: string; meId: string }) {
   const nav = useNavigate();
   const toast = useToast();
+  const { t } = useT();
   const [data, setData] = useState<Loaded | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -253,9 +255,9 @@ function OtherProfile({ username, meId }: { username: string; meId: string }) {
       }
       setData(r && r.relation !== 'blocked_by' ? r : null);
     } catch (e) {
-      setError(friendlyError(e, 'Couldn’t load this profile.'));
+      setError(friendlyError(e, t('social.couldnt_load_this_profile')));
     }
-  }, [username, meId, nav]);
+  }, [username, meId, nav, t]);
 
   useEffect(() => {
     setData(undefined);
@@ -276,10 +278,16 @@ function OtherProfile({ username, meId }: { username: string; meId: string }) {
     }
   };
 
-  if (error) return <ErrorState title="Couldn’t load this profile" message={error} onRetry={load} />;
-  if (data === undefined) return <Spinner label="Loading profile" />;
+  if (error) return <ErrorState title={t('social.couldnt_load_this_profile')} message={error} onRetry={load} />;
+  if (data === undefined) return <Spinner label={t('social.loading_profile')} />;
   if (data === null)
-    return <EmptyState title="Profile not found" body={`There’s no one we can show you with the username @${username}. Check the spelling: usernames are exact.`} action={<Button onClick={() => nav('/friends')}>Find friends</Button>} />;
+    return (
+      <EmptyState
+        title={t('social.profile_not_found')}
+        body={t('social.theres_no_one_we_can_show', { username })}
+        action={<Button onClick={() => nav('/friends')}>{t('social.find_friends')}</Button>}
+      />
+    );
 
   const { profile, relation, requestId } = data;
   const name = profile.displayName || `@${profile.username}`;
@@ -288,21 +296,21 @@ function OtherProfile({ username, meId }: { username: string; meId: string }) {
     switch (relation) {
       case 'none':
         return (
-          <Button variant="primary" loading={busy} icon={<UserPlus className="size-4" />} onClick={() => act(() => socialApi.sendFriendRequest(profile.id), 'Friend request sent', 'Couldn’t send the request.')}>
-            Add friend
+          <Button variant="primary" loading={busy} icon={<UserPlus className="size-4" />} onClick={() => act(() => socialApi.sendFriendRequest(profile.id), t('social.friend_request_sent'), t('social.error.send_request'))}>
+            {t('social.add_friend')}
           </Button>
         );
       case 'outgoing':
         return (
           <>
-            <Badge className="min-h-9 px-3">Requested</Badge>
+            <Badge className="min-h-9 px-3">{t('social.requested')}</Badge>
             <Button
               loading={busy}
               icon={<X className="size-4" />}
               disabled={!requestId}
-              onClick={() => requestId && act(() => socialApi.cancelFriendRequest(requestId), 'Request cancelled', 'Couldn’t cancel the request.')}
+              onClick={() => requestId && act(() => socialApi.cancelFriendRequest(requestId), t('social.request_cancelled'), t('social.error.cancel_request'))}
             >
-              Cancel request
+              {t('coaching.myCoach.cancel_request')}
             </Button>
           </>
         );
@@ -314,17 +322,17 @@ function OtherProfile({ username, meId }: { username: string; meId: string }) {
               loading={busy}
               icon={<Check className="size-4" />}
               disabled={!requestId}
-              onClick={() => requestId && act(() => socialApi.respondFriendRequest(requestId, true), `You and ${name} are now friends`, 'Couldn’t accept the request.')}
+              onClick={() => requestId && act(() => socialApi.respondFriendRequest(requestId, true), t('social.now_friends_with', { name }), t('social.error.accept'))}
             >
-              Accept
+              {t('social.accept')}
             </Button>
             <Button
               loading={busy}
               icon={<X className="size-4" />}
               disabled={!requestId}
-              onClick={() => requestId && act(() => socialApi.respondFriendRequest(requestId, false), 'Request declined', 'Couldn’t decline the request.')}
+              onClick={() => requestId && act(() => socialApi.respondFriendRequest(requestId, false), t('social.request_declined'), t('social.error.decline'))}
             >
-              Decline
+              {t('aiCard.proposal.decline')}
             </Button>
           </>
         );
@@ -332,10 +340,10 @@ function OtherProfile({ username, meId }: { username: string; meId: string }) {
         return (
           <>
             <Badge tone="accent" className="min-h-9 px-3">
-              <UserCheck className="size-4" aria-hidden /> Friends
+              <UserCheck className="size-4" aria-hidden /> {t('profile.friends')}
             </Badge>
             <Button icon={<UserMinus className="size-4" />} onClick={() => setDialog('remove')}>
-              Remove friend
+              {t('social.remove_friend')}
             </Button>
           </>
         );
@@ -343,10 +351,10 @@ function OtherProfile({ username, meId }: { username: string; meId: string }) {
         return (
           <>
             <Badge tone="danger" className="min-h-9 px-3">
-              <Ban className="size-4" aria-hidden /> Blocked
+              <Ban className="size-4" aria-hidden /> {t('social.blocked')}
             </Badge>
-            <Button loading={busy} onClick={() => act(() => socialApi.unblockUser(profile.id), `${name} is unblocked`, 'Couldn’t unblock.')}>
-              Unblock
+            <Button loading={busy} onClick={() => act(() => socialApi.unblockUser(profile.id), t('social.x_unblocked', { name }), t('social.error.unblock'))}>
+              {t('social.unblock')}
             </Button>
           </>
         );
@@ -360,20 +368,20 @@ function OtherProfile({ username, meId }: { username: string; meId: string }) {
       <ProfileHeader profile={profile}>
         <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
           {actions}
-          <IconButton label="More options" onClick={() => setDialog('menu')}>
+          <IconButton label={t('social.more_options')} onClick={() => setDialog('menu')}>
             <MoreHorizontal className="size-5" />
           </IconButton>
         </div>
       </ProfileHeader>
 
       {relation === 'blocked' ? (
-        <EmptyState title="You blocked this person" body="Unblock them to see their profile and posts again." />
+        <EmptyState title={t('social.you_blocked_this_person')} body={t('social.unblock_them_to_see_their_profile')} />
       ) : (
         <UserPosts
           key={relation}
           userId={profile.id}
           meId={meId}
-          empty={relation === 'friends' ? `${name} hasn’t shared anything with you yet.` : `Posts are shared with friends. Add ${name} as a friend to see theirs.`}
+          empty={relation === 'friends' ? t('social.x_hasnt_shared', { name }) : t('social.posts_shared_with_friends', { name })}
           onBlocked={() => void load()}
         />
       )}
@@ -381,19 +389,20 @@ function OtherProfile({ username, meId }: { username: string; meId: string }) {
       <Sheet open={dialog === 'menu'} onClose={() => setDialog(null)} title={name}>
         <ul className="flex flex-col">
           <li>
-            <button type="button" className="flex items-center gap-3 w-full min-h-12 px-2 rounded-xl hover:bg-surface-2" onClick={() => void shareLink(profileUrl(profile.username), `${name} on Hard Earned`, toast).then(() => setDialog(null))}>
-              <Share2 className="size-5" aria-hidden /> Share profile link
+            <button type="button" className="flex items-center gap-3 w-full min-h-12 px-2 rounded-xl hover:bg-surface-2" onClick={() => void shareLink(profileUrl(profile.username), t('social.share_title', { name }), toast).then(() => setDialog(null))}
+            >
+              <Share2 className="size-5" aria-hidden /> {t('profile.shareLink')}
             </button>
           </li>
           <li>
             <button type="button" className="flex items-center gap-3 w-full min-h-12 px-2 rounded-xl hover:bg-surface-2" onClick={() => setDialog('report')}>
-              <Flag className="size-5" aria-hidden /> Report profile
+              <Flag className="size-5" aria-hidden /> {t('social.report_profile')}
             </button>
           </li>
           {relation !== 'blocked' && (
             <li>
               <button type="button" className="flex items-center gap-3 w-full min-h-12 px-2 rounded-xl hover:bg-surface-2 text-danger" onClick={() => setDialog('block')}>
-                <Ban className="size-5" aria-hidden /> Block {name}
+                <Ban className="size-5" aria-hidden /> {t('social.block_name', { name })}
               </button>
             </li>
           )}
@@ -402,22 +411,22 @@ function OtherProfile({ username, meId }: { username: string; meId: string }) {
       <ReportSheet open={dialog === 'report'} onClose={() => setDialog(null)} target={{ userId: profile.id }} what="profile" />
       <ConfirmDialog
         open={dialog === 'block'}
-        title={`Block ${name}?`}
-        body="You won’t see each other’s posts or profiles, and they can’t send you friend requests. If you’re friends, the friendship ends."
-        confirmLabel="Block"
+        title={t('social.block_x', { name })}
+        body={t('social.you_wont_see_each_others_posts')}
+        confirmLabel={t('social.block')}
         danger
         busy={busy}
-        onConfirm={() => act(() => socialApi.blockUser(profile.id), `${name} is blocked`, 'Couldn’t block.')}
+        onConfirm={() => act(() => socialApi.blockUser(profile.id), t('social.x_is_blocked', { name }), t('social.error.block'))}
         onCancel={() => setDialog(null)}
       />
       <ConfirmDialog
         open={dialog === 'remove'}
-        title={`Remove ${name} as a friend?`}
-        body="You’ll stop seeing each other’s friends-only posts. They won’t be notified."
-        confirmLabel="Remove friend"
+        title={t('social.remove_x_as_a_friend_2', { name })}
+        body={t('social.youll_stop_seeing_each_others_friends')}
+        confirmLabel={t('social.remove_friend')}
         danger
         busy={busy}
-        onConfirm={() => act(() => socialApi.removeFriend(profile.id), `${name} removed from friends`, 'Couldn’t remove this friend.')}
+        onConfirm={() => act(() => socialApi.removeFriend(profile.id), t('social.x_removed_from_friends', { name }), t('social.error.remove_friend'))}
         onCancel={() => setDialog(null)}
       />
     </>

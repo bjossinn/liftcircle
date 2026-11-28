@@ -4,6 +4,7 @@ import type { Exercise, ID } from '@/domain/types';
 import { EXERCISES } from './exercises';
 import { useDb } from '@/state/app';
 import { alive } from '@/db/repo';
+import { exerciseDisplayName } from './catalogText';
 
 const BUNDLED = new Map(EXERCISES.map((e) => [e.id, e]));
 
@@ -22,6 +23,7 @@ export function useExercises(): { list: Exercise[]; byId: Map<ID, Exercise>; get
   }, [custom]);
 }
 
+/** Display name in the current language (catalog translated, custom as typed, unknown → "Unknown exercise"). */
 export function exerciseName(id: ID, byId?: Map<ID, Exercise>): string {
-  return byId?.get(id)?.name ?? BUNDLED.get(id)?.name ?? 'Unknown exercise';
+  return exerciseDisplayName(id, byId);
 }

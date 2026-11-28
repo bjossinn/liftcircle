@@ -9,12 +9,14 @@ import { friendlyError } from '@/social/pendingPosts';
 import { AccessNotice, Avatar, Time, useSocialAccess } from './common';
 import { feedHome } from './feedHome';
 import { allNotificationTypesEnabled, enabledNotificationTypes, notifyUnreadChanged } from './useUnreadCount';
+import { t, useT, type Language, type MessageKey } from '@/i18n';
 
-const SOCIAL_TEXT: Record<SocialNotificationType, string> = {
-  friend_request: 'sent you a friend request',
-  friend_accept: 'accepted your friend request',
-  like: 'liked your post',
-  comment: 'commented on your post',
+/** Verb phrases that follow the actor's name ("Anna liked your post" / "Anna lækaði færsluna þína"). */
+const SOCIAL_TEXT: Record<SocialNotificationType, MessageKey> = {
+  friend_request: 'social.notif.friend_request',
+  friend_accept: 'social.notif.friend_accept',
+  like: 'social.notif.like',
+  comment: 'social.notif.comment',
 };
 const ICON: Record<AppNotification['type'], typeof Bell> = {
   friend_request: UserPlus,
@@ -39,41 +41,42 @@ const ICON: Record<AppNotification['type'], typeof Bell> = {
  * What a notification says. Coaching notifications carry ids only, never message text.
  * `me` decides direction where the same type reaches both sides (coach vs client, applicant vs admin).
  */
-export function describeNotification(n: AppNotification, me: string | undefined): { who: string | null; text: string } {
-  const actorName = n.actor?.displayName || (n.actor?.username ? `@${n.actor.username}` : 'Someone');
+export function describeNotification(n: AppNotification, me: string | undefined, language?: Language): { who: string | null; text: string } {
+  const tr = (key: MessageKey) => t(key, undefined, language);
+  const actorName = n.actor?.displayName || (n.actor?.username ? `@${n.actor.username}` : tr('social.someone'));
   const iAmCoach = !!me && n.coachId === me;
   switch (n.type) {
     case 'friend_request':
     case 'friend_accept':
     case 'like':
     case 'comment':
-      return { who: actorName, text: SOCIAL_TEXT[n.type] };
+      return { who: actorName, text: tr(SOCIAL_TEXT[n.type]) };
     case 'coach_request':
-      return { who: actorName, text: 'asked you for coaching' };
+      return { who: actorName, text: tr('social.notif.coach_request') };
     case 'coach_request_accepted':
-      return { who: actorName, text: 'accepted your coaching request' };
+      return { who: actorName, text: tr('social.notif.coach_request_accepted') };
     case 'coach_request_declined':
-      return { who: actorName, text: 'declined your coaching request' };
+      return { who: actorName, text: tr('social.notif.coach_request_declined') };
     case 'coach_request_cancelled':
-      return { who: actorName, text: 'withdrew their coaching request' };
+      return { who: actorName, text: tr('social.notif.coach_request_cancelled') };
     case 'coach_ended':
-      return { who: actorName, text: 'ended coaching with you' };
+      return { who: actorName, text: tr('social.notif.coach_ended') };
     case 'coach_message':
-      return { who: actorName, text: 'sent you a coaching message' };
+      return { who: actorName, text: tr('social.notif.coach_message') };
     case 'coach_proposal':
-      return { who: actorName, text: 'sent you a program to review' };
+      return { who: actorName, text: tr('social.notif.coach_proposal') };
     case 'coach_proposal_response':
-      return { who: actorName, text: 'responded to your program proposal' };
+      return { who: actorName, text: tr('social.notif.coach_proposal_response') };
     case 'coach_checkin':
-      return iAmCoach ? { who: actorName, text: 'sent you a check-in' } : { who: actorName, text: 'replied to your check-in' };
+      return { who: actorName, text: tr(iAmCoach ? 'social.notif.coach_checkin_sent' : 'social.notif.coach_checkin_replied') };
     case 'coach_feedback':
-      return { who: actorName, text: 'left feedback on a workout' };
+      return { who: actorName, text: tr('social.notif.coach_feedback') };
     case 'coach_application':
       return iAmCoach
-        ? { who: null, text: 'Your coach application was reviewed.' }
-        : { who: actorName, text: 'submitted a coach application for review' };
+        ? { who: null, text: tr('social.notif.application_reviewed') }
+        : { who: actorName, text: tr('social.notif.application_submitted') };
     case 'coach_status':
-      return iAmCoach ? { who: null, text: 'Your coach account status changed.' } : { who: null, text: 'Your coach’s account status changed.' };
+      return { who: null, text: tr(iAmCoach ? 'social.notif.my_status_changed' : 'social.notif.coach_status_changed') };
   }
 }
 
@@ -115,22 +118,24 @@ export function linkFor(n: AppNotification, me?: string): string {
 
 export default function NotificationsPage() {
   const nav = useNavigate();
+  const { t } = useT();
   const { access } = useSocialAccess();
   return (
     <Page
-      title="Notifications"
+      title={t('nav.notifications')}
       back={
-        <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+        <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
           <ChevronLeft />
         </IconButton>
       }
     >
-      {access !== 'ok' ? <AccessNotice access={access} what="Notifications" /> : <NotificationList />}
+      {access !== 'ok' ? <AccessNotice access={access} what="notifications" /> : <NotificationList />}
     </Page>
   );
 }
 
 function NotificationList() {
+  const { t, language } = useT();
   const settings = useSettings();
   const { auth } = useApp();
   const me = auth.userId;
@@ -159,11 +164,11 @@ function NotificationList() {
           .catch(() => {});
       }
     } catch (e) {
-      setError(friendlyError(e, 'Couldn’t load notifications.'));
+      setError(friendlyError(e, t('social.couldnt_load_notifications')));
     } finally {
       setRefreshing(false);
     }
-  }, [types]);
+  }, [types, t]);
 
   useEffect(() => {
     void load();
@@ -172,24 +177,24 @@ function NotificationList() {
   return (
     <>
       <div className="flex justify-end -mt-1 mb-1">
-        <IconButton label="Refresh notifications" onClick={() => void load()} disabled={refreshing}>
+        <IconButton label={t('social.refresh_notifications')} onClick={() => void load()} disabled={refreshing}>
           <RefreshCw className={cx('size-5', refreshing && 'animate-spin')} />
         </IconButton>
       </div>
       {hidden && (
         <Notice className="mb-3">
-          Some notification types are turned off.{' '}
+          {t('social.some_notification_types_are_turned_off')}{' '}
           <Link to="/settings" className="font-semibold text-accent inline-flex min-h-11 items-center">
-            Notification settings
+            {t('social.notification_settings')}
           </Link>
         </Notice>
       )}
       {error && !items ? (
-        <ErrorState title="Couldn’t load notifications" message={error} onRetry={load} />
+        <ErrorState title={t('social.couldnt_load_notifications')} message={error} onRetry={load} />
       ) : !items ? (
-        <Spinner label="Loading notifications" />
+        <Spinner label={t('social.loading_notifications')} />
       ) : items.length === 0 ? (
-        <EmptyState icon={<Bell className="size-6" aria-hidden />} title="Nothing new" body="Friend requests, likes, comments and coaching updates will show up here." />
+        <EmptyState icon={<Bell className="size-6" aria-hidden />} title={t('social.nothing_new')} body={t('social.friend_requests_likes_comments_and_coaching')} />
       ) : (
         <>
           {error && (
@@ -201,7 +206,7 @@ function NotificationList() {
             {items.map((n) => {
               const Icon = ICON[n.type];
               const unread = freshIds.has(n.id);
-              const { who, text } = describeNotification(n, me);
+              const { who, text } = describeNotification(n, me, language);
               return (
                 <li key={n.id}>
                   <Link to={linkFor(n, me)} className={cx('flex items-center gap-3 rounded-xl px-3 py-2.5 min-h-16 hover:bg-surface-2', unread && 'bg-surface')}>
@@ -226,7 +231,7 @@ function NotificationList() {
                     {unread && (
                       <>
                         <span className="size-2 rounded-full bg-ember shrink-0" aria-hidden />
-                        <span className="sr-only">New</span>
+                        <span className="sr-only">{t('social.new')}</span>
                       </>
                     )}
                   </Link>

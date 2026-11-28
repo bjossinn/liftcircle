@@ -9,12 +9,13 @@ import {
 } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { useApp } from '@/state/app';
+import { useT } from '@/i18n';
 import { alive, deleteRecord, newRecord, saveRecord, StorageWriteError } from '@/db/repo';
 import { socialApi } from '@/backend/social';
 import type { ActivityLog, ActivityTemplate, ActivityType, DistanceUnit, Intensity } from '@/domain/types';
 import {
-  ACTIVITY_TYPES, ENERGY_ESTIMATE_NOTE, activityLabel, activityTypeInfo, epochToZonedTime, estimateEnergyKcal, hasField, hmsToSec, paceOrSpeed,
-  splitHms, validateActivity, zonedTimeToEpoch,
+  ACTIVITY_TYPES, activityLabel, activityTypeInfo, epochToZonedTime, estimateEnergyKcal, hasField, hmsToSec, paceOrSpeed,
+  energyEstimateNote, splitHms, validateActivity, zonedTimeToEpoch,
 } from '@/domain/activities';
 import { formatDistance, fromMeters, round, toMeters } from '@/domain/units';
 import { formatMinutes, todayISO } from '@/lib/dates';
@@ -22,11 +23,11 @@ import { ActivityIcon } from './icons';
 
 const M_PER_FT = 0.3048;
 type EnergySource = NonNullable<ActivityLog['energySource']>;
-const ENERGY_SOURCES: { value: EnergySource; label: string }[] = [
-  { value: 'device', label: 'My device' },
-  { value: 'user', label: 'My estimate' },
-  { value: 'estimate', label: 'Approx. calc' },
-];
+const ENERGY_SOURCES = [
+  { value: 'device', labelKey: 'activities.form.my_device' },
+  { value: 'user', labelKey: 'activities.form.my_estimate' },
+  { value: 'estimate', labelKey: 'activities.form.approx_calc' },
+] as const satisfies readonly { value: EnergySource; labelKey: string }[];
 
 interface FormState {
   type: ActivityType;
@@ -78,6 +79,7 @@ export default function ActivityFormPage() {
   const [params] = useSearchParams();
   const nav = useNavigate();
   const toast = useToast();
+  const { t, tp } = useT();
   const { db, account } = useApp();
   const settings = account.settings;
   const du = settings.units.distance;
@@ -110,8 +112,8 @@ export default function ActivityFormPage() {
       return;
     }
     const f = emptyForm(today);
-    const t = params.get('type') as ActivityType | null;
-    if (t && ACTIVITY_TYPES.some((x) => x.type === t)) f.type = t;
+    const typeParam = params.get('type') as ActivityType | null;
+    if (typeParam && ACTIVITY_TYPES.some((x) => x.type === typeParam)) f.type = typeParam;
     const dur = Number(params.get('duration'));
     if (dur > 0) Object.assign(f, splitHms(dur));
     const notes = params.get('notes');
@@ -140,17 +142,17 @@ export default function ActivityFormPage() {
   const preview = form ? paceOrSpeed({ type: form.type, distanceM, durationSec }, du) : null;
   const info = form ? activityTypeInfo(form.type) : null;
 
-  const applyTemplate = (t: ActivityTemplate) => {
+  const applyTemplate = (tpl: ActivityTemplate) => {
     setForm((f) => {
       const base = f ?? emptyForm(today);
-      const next: FormState = { ...base, type: t.type };
-      if (t.durationSec) Object.assign(next, splitHms(t.durationSec));
-      if (t.distanceM != null) next.distance = round(fromMeters(t.distanceM, du), 3);
-      if (t.type === 'custom') next.customName = t.name;
+      const next: FormState = { ...base, type: tpl.type };
+      if (tpl.durationSec) Object.assign(next, splitHms(tpl.durationSec));
+      if (tpl.distanceM != null) next.distance = round(fromMeters(tpl.distanceM, du), 3);
+      if (tpl.type === 'custom') next.customName = tpl.name;
       return next;
     });
     setPickTpl(false);
-    toast.show(`Started from “${t.name}”`, { tone: 'success' });
+    toast.show(t('activities.form.started_from_x', { name: tpl.name }), { tone: 'success' });
   };
 
   const buildInput = (f: FormState) => ({
@@ -173,10 +175,10 @@ export default function ActivityFormPage() {
     const input = buildInput(form);
     const v = validateActivity(input);
     const errs: Record<string, string> = v.ok ? {} : { ...v.errors };
-    if (form.date > today) errs.date = 'The date can’t be in the future';
+    if (form.date > today) errs.date = t('activities.form.dateInFuture');
     if (Object.keys(errs).length) {
       setErrors(errs);
-      toast.show('Check the highlighted fields', { tone: 'warn' });
+      toast.show(t('activities.form.check_the_highlighted_fields'), { tone: 'warn' });
       return;
     }
     const tz = existing?.timeZone ?? settings.timeZone;
@@ -186,7 +188,7 @@ export default function ActivityFormPage() {
       if (editing && existing) {
         const rec: ActivityLog = { ...existing, ...input, timeZone: tz, startedAt };
         await saveRecord('activities', rec, db);
-        toast.show('Activity updated', { tone: 'success' });
+        toast.show(t('activities.form.activity_updated'), { tone: 'success' });
         nav(-1);
       } else {
         const rec = newRecord<Omit<ActivityLog, 'id' | 'createdAt' | 'updatedAt'>>({ ...input, timeZone: tz, startedAt });
@@ -194,7 +196,7 @@ export default function ActivityFormPage() {
         nav(`/train/summary/${rec.id}?kind=activity`, { replace: true });
       }
     } catch (e) {
-      toast.show(e instanceof StorageWriteError ? e.message : 'Couldn’t save the activity. Please try again.', { tone: 'error' });
+      toast.show(e instanceof StorageWriteError ? e.message : t('activities.form.couldnt_save_the_activity_please_try'), { tone: 'error' });
     } finally {
       setSaving(false);
     }
@@ -211,9 +213,9 @@ export default function ActivityFormPage() {
         db,
       );
       setSaveTpl(false);
-      toast.show('Template saved', { tone: 'success' });
+      toast.show(t('activities.form.template_saved'), { tone: 'success' });
     } catch (e) {
-      toast.show(e instanceof StorageWriteError ? e.message : 'Couldn’t save the template', { tone: 'error' });
+      toast.show(e instanceof StorageWriteError ? e.message : t('activities.form.couldnt_save_the_template'), { tone: 'error' });
     }
   };
 
@@ -224,7 +226,7 @@ export default function ActivityFormPage() {
       await deleteRecord('activities', existing.id, db);
     } catch (e) {
       setDeleting(false);
-      toast.show(e instanceof StorageWriteError ? e.message : 'Couldn’t delete the activity', { tone: 'error' });
+      toast.show(e instanceof StorageWriteError ? e.message : t('activities.form.couldnt_delete_the_activity'), { tone: 'error' });
       return;
     }
     const posts = existing.sharedPostIds ?? [];
@@ -240,7 +242,7 @@ export default function ActivityFormPage() {
     }
     setDeleting(false);
     setConfirmDelete(false);
-    toast.show(failed ? 'Activity deleted. The shared post couldn’t be removed right now. You can delete it from the feed.' : 'Activity deleted', { tone: failed ? 'warn' : 'success' });
+    toast.show(failed ? t('activities.form.activity_deleted_the_shared_post_couldnt') : t('activities.form.activity_deleted'), { tone: failed ? 'warn' : 'success' });
     nav(-1);
   };
 
@@ -249,21 +251,21 @@ export default function ActivityFormPage() {
     const r = estimateEnergyKcal({ type: form.type, intensity: form.intensity || undefined, durationSec, weightKg: latestBw?.value });
     if (!r) return;
     setForm({ ...form, energy: r.kcal, energySource: 'estimate' });
-    setEstimateNote(`About ${r.kcal} kcal (MET ${r.met} × ${round(latestBw!.value, 1)} kg × ${round(durationSec / 3600, 2)} h). ${ENERGY_ESTIMATE_NOTE}`);
+    setEstimateNote(t('activities.form.estimateNote', { kcal: r.kcal, met: r.met, weight: round(latestBw!.value, 1), hours: round(durationSec / 3600, 2), note: energyEstimateNote() }));
   };
 
   const back = (
-    <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+    <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
       <ChevronLeft />
     </IconButton>
   );
-  const title = editing ? 'Edit activity' : 'Log activity';
+  const title = editing ? t('summary.editActivity') : t('today.logActivity');
 
   if (editing && existing === undefined) return <Page title={title} back={back}><Spinner /></Page>;
   if (editing && (existing === null || existing?.deletedAt))
     return (
       <Page title={title} back={back}>
-        <EmptyState title="Activity not found" body="It may have been deleted on this or another device." action={<Button onClick={() => nav('/train')}>Go to Train</Button>} />
+        <EmptyState title={t('summary.activityNotFound')} body={t('activities.form.it_may_have_been_deleted_on')} action={<Button onClick={() => nav('/train')}>{t('workout.goToTrain')}</Button>} />
       </Page>
     );
   if (!form || !info) return <Page title={title} back={back}><Spinner /></Page>;
@@ -275,10 +277,10 @@ export default function ActivityFormPage() {
       {!editing && (
         <div className="flex gap-2 mb-2">
           <Button size="sm" variant="outline" icon={<FileDown className="size-4" />} onClick={() => setPickTpl(true)}>
-            Start from template
+            {t('activities.form.start_from_template')}
           </Button>
           <Button size="sm" variant="ghost" icon={<Timer className="size-4" />} onClick={() => nav('/train/intervals')}>
-            Interval timer
+            {t('today.intervalTimer')}
           </Button>
         </div>
       )}
@@ -290,102 +292,102 @@ export default function ActivityFormPage() {
           void onSave();
         }}
       >
-        <SectionTitle id="type-label">Activity</SectionTitle>
+        <SectionTitle id="type-label">{t('train.historyActivity')}</SectionTitle>
         <div role="radiogroup" aria-labelledby="type-label" className="grid grid-cols-4 gap-2">
-          {ACTIVITY_TYPES.map((t) => {
-            const on = t.type === form.type;
+          {ACTIVITY_TYPES.map((at) => {
+            const on = at.type === form.type;
             return (
               <button
-                key={t.type}
+                key={at.type}
                 type="button"
                 role="radio"
                 aria-checked={on}
-                onClick={() => set('type', t.type)}
+                onClick={() => set('type', at.type)}
                 className={cx(
                   'flex flex-col items-center justify-center gap-1 rounded-xl border min-h-16 px-1 py-2 text-[11px] leading-tight text-center transition-colors',
                   on ? 'bg-accent-soft border-accent text-accent font-semibold' : 'border-line bg-surface text-ink hover:bg-surface-2',
                 )}
               >
-                <ActivityIcon type={t.type} />
-                {t.label}
+                <ActivityIcon type={at.type} />
+                {at.label}
               </button>
             );
           })}
         </div>
         {form.type === 'custom' && (
-          <Input className="mt-3" label="Activity name" value={form.customName} onChange={(e) => set('customName', e.target.value)} maxLength={60} placeholder="e.g. Climbing" error={errors.customName} />
+          <Input className="mt-3" label={t('activities.form.activity_name')} value={form.customName} onChange={(e) => set('customName', e.target.value)} maxLength={60} placeholder={t('activities.form.e_g_climbing')} error={errors.customName} />
         )}
 
-        <SectionTitle>When</SectionTitle>
+        <SectionTitle>{t('activities.form.when')}</SectionTitle>
         <Card className="p-4 grid grid-cols-2 gap-3">
-          <Input label="Date" type="date" value={form.date} max={today} onChange={(e) => set('date', e.target.value)} error={errors.date} />
-          <Input label="Start time" hint="Optional" type="time" value={form.time} onChange={(e) => set('time', e.target.value)} />
+          <Input label={t('progress.date')} type="date" value={form.date} max={today} onChange={(e) => set('date', e.target.value)} error={errors.date} />
+          <Input label={t('activities.form.start_time')} hint={t('common.optional')} type="time" value={form.time} onChange={(e) => set('time', e.target.value)} />
         </Card>
 
-        <SectionTitle>Effort</SectionTitle>
+        <SectionTitle>{t('program.effort')}</SectionTitle>
         <Card className="p-4 flex flex-col gap-4">
           <fieldset>
-            <legend className="text-sm font-medium mb-1.5">Duration</legend>
+            <legend className="text-sm font-medium mb-1.5">{t('workout.share.duration')}</legend>
             <div className="grid grid-cols-3 gap-2">
-              <NumberInput ariaLabel="Hours" value={form.h} onChange={(v) => set('h', v)} decimals={false} min={0} max={24} suffix="h" />
-              <NumberInput ariaLabel="Minutes" value={form.m} onChange={(v) => set('m', v)} decimals={false} min={0} max={59} suffix="min" />
-              <NumberInput ariaLabel="Seconds" value={form.s} onChange={(v) => set('s', v)} decimals={false} min={0} max={59} suffix="s" />
+              <NumberInput ariaLabel={t('activities.form.hours')} value={form.h} onChange={(v) => set('h', v)} decimals={false} min={0} max={24} suffix="h" />
+              <NumberInput ariaLabel={t('program.minutes')} value={form.m} onChange={(v) => set('m', v)} decimals={false} min={0} max={59} suffix="min" />
+              <NumberInput ariaLabel={t('workout.seconds')} value={form.s} onChange={(v) => set('s', v)} decimals={false} min={0} max={59} suffix="s" />
             </div>
             {errors.durationSec ? (
               <p className="text-xs text-danger mt-1.5" role="alert">{errors.durationSec}</p>
             ) : (
-              <p className="text-xs text-muted mt-1.5">{durationSec > 0 ? formatMinutes(durationSec) : 'Between 1 minute and 24 hours'}</p>
+              <p className="text-xs text-muted mt-1.5">{durationSec > 0 ? formatMinutes(durationSec) : t('activities.form.between_1_minute_and_24_hours')}</p>
             )}
           </fieldset>
 
           {(hasField(form.type, 'distance') || hasField(form.type, 'elevation')) && (
             <div className="grid grid-cols-2 gap-3">
               {hasField(form.type, 'distance') && (
-                <NumberInput label="Distance" hint="Optional" value={form.distance} onChange={(v) => set('distance', v)} min={0} suffix={du} error={errors.distanceM} />
+                <NumberInput label={t('workout.share.distance')} hint={t('common.optional')} value={form.distance} onChange={(v) => set('distance', v)} min={0} suffix={du} error={errors.distanceM} />
               )}
               {hasField(form.type, 'elevation') && (
-                <NumberInput label="Elevation gain" hint="Optional" value={form.elevation} onChange={(v) => set('elevation', v)} decimals={false} min={0} suffix={elevUnit(du)} error={errors.elevationM} />
+                <NumberInput label={t('activities.form.elevation_gain')} hint={t('common.optional')} value={form.elevation} onChange={(v) => set('elevation', v)} decimals={false} min={0} suffix={elevUnit(du)} error={errors.elevationM} />
               )}
             </div>
           )}
 
           {info.paceMode && (
             <div aria-live="polite" className="rounded-xl bg-surface-2 px-3 py-2.5 flex items-center justify-between">
-              <span className="text-sm text-muted">{info.paceMode === 'speed' ? 'Average speed' : info.paceMode === 'per_100m' ? 'Pace per 100 m' : info.paceMode === 'per_500m' ? 'Split per 500 m' : 'Average pace'}</span>
+              <span className="text-sm text-muted">{info.paceMode === 'speed' ? t('activities.form.average_speed') : info.paceMode === 'per_100m' ? t('activities.form.pace_per_100_m') : info.paceMode === 'per_500m' ? t('activities.form.split_per_500_m') : t('activities.form.average_pace')}</span>
               <span className="text-base font-semibold tabular">{preview ? preview.text : '–'}</span>
             </div>
           )}
 
-          <Field label="Intensity" hint="How hard it felt overall (optional)">
+          <Field label={t('activities.form.intensity')} hint={t('activities.form.how_hard_it_felt_overall_optional')}>
             <Segmented
-              label="Intensity"
+              label={t('activities.form.intensity')}
               value={form.intensity}
               onChange={(v) => set('intensity', v)}
               options={[
-                { value: '', label: 'Not set' },
-                { value: 'easy', label: 'Easy' },
-                { value: 'moderate', label: 'Moderate' },
-                { value: 'hard', label: 'Hard' },
+                { value: '', label: t('activities.form.not_set') },
+                { value: 'easy', label: t('program.easy') },
+                { value: 'moderate', label: t('program.moderate') },
+                { value: 'hard', label: t('program.hard') },
               ]}
             />
           </Field>
 
           {hrOk && (
             <div className="grid grid-cols-2 gap-3">
-              <NumberInput label="Avg heart rate" hint="Optional" value={form.avgHr} onChange={(v) => set('avgHr', v)} decimals={false} suffix="bpm" error={errors.avgHr} />
-              <NumberInput label="Max heart rate" hint="Optional" value={form.maxHr} onChange={(v) => set('maxHr', v)} decimals={false} suffix="bpm" error={errors.maxHr} />
+              <NumberInput label={t('activities.form.avg_heart_rate')} hint={t('common.optional')} value={form.avgHr} onChange={(v) => set('avgHr', v)} decimals={false} suffix="bpm" error={errors.avgHr} />
+              <NumberInput label={t('activities.form.max_heart_rate')} hint={t('common.optional')} value={form.maxHr} onChange={(v) => set('maxHr', v)} decimals={false} suffix="bpm" error={errors.maxHr} />
             </div>
           )}
         </Card>
 
-        <SectionTitle>Energy (optional)</SectionTitle>
+        <SectionTitle>{t('activities.form.energy_optional')}</SectionTitle>
         <Card className="p-4 flex flex-col gap-3">
           <div className="flex items-end gap-2">
             <NumberInput
               className="flex-1"
               label={
                 <span className="inline-flex items-center gap-2">
-                  Energy {form.energy != null && form.energySource === 'estimate' && <Badge tone="warn">Approximate</Badge>}
+                  {t('activities.form.energy')} {form.energy != null && form.energySource === 'estimate' && <Badge tone="warn">{t('activities.form.approximate')}</Badge>}
                 </span>
               }
               value={form.energy}
@@ -401,27 +403,33 @@ export default function ActivityFormPage() {
             />
           </div>
           {form.energy != null && (
-            <Field label="Where is this number from?">
-              <Segmented label="Energy source" value={form.energySource} onChange={(v) => set('energySource', v)} options={ENERGY_SOURCES} size="sm" />
+            <Field label={t('activities.form.where_is_this_number_from')}>
+              <Segmented
+                label={t('activities.form.energy_source')}
+                value={form.energySource}
+                onChange={(v) => set('energySource', v)}
+                options={ENERGY_SOURCES.map((o) => ({ value: o.value, label: t(o.labelKey) }))}
+                size="sm"
+              />
             </Field>
           )}
           {latestBw ? (
             <Button size="sm" variant="outline" icon={<Calculator className="size-4" />} onClick={onEstimate} disabled={durationSec < 60} className="self-start">
-              Calculate an approximate value
+              {t('activities.form.calculate_an_approximate_value')}
             </Button>
           ) : (
-            <p className="text-xs text-muted">To calculate an approximate value, add a bodyweight entry in Progress. You can always type your own number.</p>
+            <p className="text-xs text-muted">{t('activities.form.to_calculate_an_approximate_value_add')}</p>
           )}
           {estimateNote && <Notice tone="warn">{estimateNote}</Notice>}
-          <p className="text-xs text-muted">Energy figures are always approximate and are never added to your nutrition targets automatically.</p>
+          <p className="text-xs text-muted">{t('activities.form.energy_figures_are_always_approximate_and')}</p>
         </Card>
 
-        <SectionTitle>Notes</SectionTitle>
-        <Textarea aria-label="Notes" value={form.notes} onChange={(e) => set('notes', e.target.value)} maxLength={2000} placeholder="Route, how it felt, conditions…" error={errors.notes} />
+        <SectionTitle>{t('workout.custom.notes')}</SectionTitle>
+        <Textarea aria-label={t('workout.custom.notes')} value={form.notes} onChange={(e) => set('notes', e.target.value)} maxLength={2000} placeholder={t('activities.form.route_how_it_felt_conditions')} error={errors.notes} />
 
         <div className="flex flex-col gap-2 mt-6">
           <Button type="submit" variant="primary" size="lg" block loading={saving}>
-            {editing ? 'Save changes' : 'Save activity'}
+            {editing ? t('workout.custom.saveChanges') : t('activities.form.save_activity')}
           </Button>
           <Button
             variant="ghost"
@@ -432,45 +440,45 @@ export default function ActivityFormPage() {
               setSaveTpl(true);
             }}
           >
-            Save as template
+            {t('summary.saveTemplate')}
           </Button>
           {editing && (
             <Button variant="danger" block icon={<Trash2 className="size-4" />} onClick={() => setConfirmDelete(true)}>
-              Delete activity
+              {t('activities.form.delete_activity')}
             </Button>
           )}
         </div>
       </form>
 
-      <Sheet open={pickTpl} onClose={() => setPickTpl(false)} title="Start from template">
+      <Sheet open={pickTpl} onClose={() => setPickTpl(false)} title={t('activities.form.start_from_template')}>
         {templates.length === 0 ? (
-          <EmptyState title="No templates yet" body="Fill in an activity and choose “Save as template” to reuse it next time." />
+          <EmptyState title={t('activities.form.no_templates_yet')} body={t('activities.form.fill_in_an_activity_and_choose')} />
         ) : (
           <ul className="-mx-5 divide-y divide-line">
-            {templates.map((t) => (
-              <li key={t.id} className="flex items-center pr-3">
+            {templates.map((tpl) => (
+              <li key={tpl.id} className="flex items-center pr-3">
                 <ListRow
                   className="flex-1"
-                  left={<ActivityIcon type={t.type} />}
-                  title={t.name}
+                  left={<ActivityIcon type={tpl.type} />}
+                  title={tpl.name}
                   subtitle={[
-                    activityLabel({ type: t.type }),
-                    t.durationSec ? formatMinutes(t.durationSec) : null,
-                    t.distanceM ? formatDistance(t.distanceM, du) : null,
-                    t.intervals?.length ? `${t.intervals.length} interval steps` : null,
+                    activityLabel({ type: tpl.type }),
+                    tpl.durationSec ? formatMinutes(tpl.durationSec) : null,
+                    tpl.distanceM ? formatDistance(tpl.distanceM, du) : null,
+                    tpl.intervals?.length ? tp('activities.form.intervalSteps', tpl.intervals.length) : null,
                   ].filter(Boolean).join(' · ')}
-                  onClick={() => applyTemplate(t)}
+                  onClick={() => applyTemplate(tpl)}
                 />
-                {t.intervals?.length ? (
-                  <IconButton label={`Open ${t.name} in interval timer`} onClick={() => nav(`/train/intervals?template=${t.id}`)}>
+                {tpl.intervals?.length ? (
+                  <IconButton label={t('activities.form.open_x_in_interval_timer', { name: tpl.name })} onClick={() => nav(`/train/intervals?template=${tpl.id}`)}>
                     <Timer className="size-5" />
                   </IconButton>
                 ) : null}
                 <IconButton
-                  label={`Delete template ${t.name}`}
+                  label={t('activities.form.delete_template_x', { name: tpl.name })}
                   onClick={async () => {
-                    await deleteRecord('activity_templates', t.id, db);
-                    toast.show('Template deleted');
+                    await deleteRecord('activity_templates', tpl.id, db);
+                    toast.show(t('activities.form.template_deleted'));
                   }}
                 >
                   <Trash2 className="size-5 text-danger" />
@@ -484,23 +492,31 @@ export default function ActivityFormPage() {
       <Sheet
         open={saveTpl}
         onClose={() => setSaveTpl(false)}
-        title="Save as template"
+        title={t('summary.saveTemplate')}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setSaveTpl(false)}>Cancel</Button>
-            <Button variant="primary" onClick={onSaveTemplate} disabled={!tplName.trim()}>Save template</Button>
+            <Button variant="ghost" onClick={() => setSaveTpl(false)}>{t('common.cancel')}</Button>
+            <Button variant="primary" onClick={onSaveTemplate} disabled={!tplName.trim()}>{t('activities.form.save_template')}</Button>
           </>
         }
       >
-        <p className="text-sm text-muted mb-3">Saves the activity type{durationSec ? ', duration' : ''}{distanceM ? ' and distance' : ''} so you can start from it next time.</p>
-        <Input label="Template name" value={tplName} onChange={(e) => setTplName(e.target.value)} maxLength={60} autoFocus />
+        <p className="text-sm text-muted mb-3">
+          {durationSec && distanceM
+            ? t('activities.form.savesTypeDurationDistance')
+            : durationSec
+              ? t('activities.form.savesTypeDuration')
+              : distanceM
+                ? t('activities.form.savesTypeDistance')
+                : t('activities.form.saves_the_activity_type')}
+        </p>
+        <Input label={t('activities.form.template_name')} value={tplName} onChange={(e) => setTplName(e.target.value)} maxLength={60} autoFocus />
       </Sheet>
 
       <ConfirmDialog
         open={confirmDelete}
-        title="Delete this activity?"
-        body="It will be removed from your history, weekly totals and progress charts on all your devices."
-        confirmLabel="Delete"
+        title={t('activities.form.delete_this_activity')}
+        body={t('activities.form.it_will_be_removed_from_your')}
+        confirmLabel={t('common.delete')}
         danger
         busy={deleting}
         onConfirm={onDelete}
@@ -511,8 +527,8 @@ export default function ActivityFormPage() {
             <Toggle
               checked={alsoDeletePosts}
               onChange={setAlsoDeletePosts}
-              label={existing.sharedPostIds.length > 1 ? 'Also delete the shared posts' : 'Also delete the shared post'}
-              description="Friends will no longer see it in their feed."
+              label={existing.sharedPostIds.length > 1 ? t('activities.form.also_delete_the_shared_posts') : t('activities.form.also_delete_the_shared_post')}
+              description={t('activities.form.friends_will_no_longer_see_it')}
             />
           </div>
         )}

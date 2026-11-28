@@ -76,7 +76,7 @@ export async function previewGuestImport(target: LiftDb): Promise<ImportRow[]> {
 
 /** Copy selected entities. Returns number of records imported. */
 export async function importGuestData(target: LiftDb, userId: string, entities: SyncedEntity[]): Promise<number> {
-  if (target.isGuest || target.accountKey !== userId) throw new Error('Sign in to the account you want to import into.');
+  if (target.isGuest || target.accountKey !== userId) throw new Error(t('auth.sign_in_to_the_account_you'));
   let n = 0;
   await withGuest(async (g) => {
     for (const entity of entities) {

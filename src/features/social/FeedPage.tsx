@@ -10,10 +10,12 @@ import { PendingPostCard, PostCard } from './PostCard';
 import { PAGE_SIZE, recalledScroll, rememberScroll, usePostList } from './usePostList';
 import { useMyProfile } from './useMyProfile';
 import { NoFriendsArt } from '@/components/illustrations';
+import { useT } from '@/i18n';
 
 export default function FeedPage() {
   usePendingPostsRunner();
   const nav = useNavigate();
+  const { t } = useT();
   const { access, meId } = useSocialAccess();
   const pending = usePendingPosts();
   const key = access === 'ok' && meId ? `feed:${meId}` : null;
@@ -55,11 +57,11 @@ export default function FeedPage() {
 
   return (
     <Page
-      title="Feed"
+      title={t('nav.feed')}
       actions={
         <>
           {canCompose && (
-            <IconButton label="New post" onClick={() => nav('/feed/new')}>
+            <IconButton label={t('social.new_post')} onClick={() => nav('/feed/new')}>
               <Plus className="size-5" />
             </IconButton>
           )}
@@ -69,8 +71,8 @@ export default function FeedPage() {
     >
       {pending.length > 0 && canCompose && (
         <section aria-labelledby="pending-title">
-          <SectionTitle id="pending-title">Not posted yet</SectionTitle>
-          {access === 'expired' && <Notice className="mb-2">These will upload after you sign in again.</Notice>}
+          <SectionTitle id="pending-title">{t('profile.notPosted')}</SectionTitle>
+          {access === 'expired' && <Notice className="mb-2">{t('profile.pendingSignIn')}</Notice>}
           <ul className="flex flex-col gap-3">
             {pending.map((p) => (
               <li key={p.id}>
@@ -82,23 +84,23 @@ export default function FeedPage() {
       )}
 
       {access !== 'ok' ? (
-        <AccessNotice access={access} what="The feed" />
+        <AccessNotice access={access} what="feed" />
       ) : (
         <section aria-labelledby="feed-title" aria-busy={list.status === 'loading' || list.refreshing}>
           <div className="flex items-center justify-between mt-4 mb-2 px-1">
             <h2 id="feed-title" className="text-[13px] font-semibold uppercase tracking-wide text-muted">
-              You and your friends
+              {t('social.you_and_your_friends')}
             </h2>
             <Button size="sm" variant="ghost" onClick={() => void list.refresh()} disabled={list.refreshing || list.status === 'loading'} icon={<RefreshCw className={cx('size-4', list.refreshing && 'animate-spin')} aria-hidden />}>
-              {list.refreshing ? 'Refreshing…' : 'Refresh'}
+              {list.refreshing ? t('social.refreshing') : t('social.refresh')}
             </Button>
           </div>
 
           {me.known && !me.profile && (
             <Notice tone="accent" className="mb-3">
-              <p>Create a profile so friends can find you and see your posts.</p>
+              <p>{t('social.create_a_profile_so_friends_can')}</p>
               <Link to="/profile/edit" className="inline-flex min-h-11 items-center font-semibold text-accent">
-                Create profile
+                {t('profile.create')}
               </Link>
             </Notice>
           )}
@@ -107,25 +109,25 @@ export default function FeedPage() {
             <Notice tone="warn" className="mb-3">
               <span>{list.error}</span>{' '}
               <button type="button" className="font-semibold text-accent min-h-11" onClick={() => void list.refresh()}>
-                Try again
+                {t('common.retry')}
               </button>
             </Notice>
           )}
 
-          {list.status === 'loading' && <Spinner label="Loading the feed" />}
-          {list.status === 'error' && <ErrorState title="Couldn’t load the feed" message={list.error ?? undefined} onRetry={() => void list.refresh('initial')} />}
+          {list.status === 'loading' && <Spinner label={t('social.loading_the_feed')} />}
+          {list.status === 'error' && <ErrorState title={t('social.couldnt_load_the_feed')} message={list.error ?? undefined} onRetry={() => void list.refresh('initial')} />}
           {list.status === 'ready' && list.items.length === 0 && (
             <EmptyState
               illustration={<NoFriendsArt />}
-              title="Your feed is quiet"
-              body="Share a workout, or add friends to see what they’re up to."
+              title={t('social.your_feed_is_quiet')}
+              body={t('social.share_a_workout_or_add_friends')}
               action={
                 <div className="flex flex-wrap justify-center gap-2">
                   <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => nav('/feed/new')}>
-                    New post
+                    {t('social.new_post')}
                   </Button>
                   <Button icon={<UserPlus className="size-4" />} onClick={() => nav('/friends')}>
-                    Find friends
+                    {t('social.find_friends')}
                   </Button>
                 </div>
               }
@@ -152,15 +154,15 @@ export default function FeedPage() {
                     </p>
                   )}
                   <Button onClick={() => void list.loadMore()} loading={list.loadingMore}>
-                    {list.moreError ? 'Try again' : 'Load more'}
+                    {list.moreError ? t('common.retry') : t('social.load_more')}
                   </Button>
                 </>
               ) : (
-                <p className="text-xs text-faint">You’re all caught up</p>
+                <p className="text-xs text-faint">{t('social.youre_all_caught_up')}</p>
               )}
             </div>
           )}
-          {loadingMore && <span className="sr-only" role="status">Loading more posts</span>}
+          {loadingMore && <span className="sr-only" role="status">{t('social.loading_more_posts')}</span>}
         </section>
       )}
     </Page>

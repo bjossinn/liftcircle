@@ -20,9 +20,9 @@ import type {
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { catalog } from './catalog.ts';
 // @ts-ignore see above
-import { addMacros, ALLERGEN_LABELS, ingredientFitsProteinPrefs, likedBonus, normalizeProteinPrefs, proteinFitSwaps, proteinListText, recipeProteinGroups, DIET_TAG_LABELS, displayMacro, formatFraction, formatGrams, friendlyAmount, ingredientAllowed, macrosForGrams, MEAL_LABELS, recipeAllergens, recipeCostTier, recipeDietTags, recipeMatches, recipeMinutes, recipeNutrition, resolveIngredients, roundMacros, satisfiesTag, ZERO_MACROS, type IngredientIndex, type Swap, } from './recipes.ts';
+import { addMacros, allergenLabel, ingredientFitsProteinPrefs, likedBonus, normalizeProteinPrefs, proteinFitSwaps, proteinListText, recipeProteinGroups, dietTagLabel, displayMacro, formatFraction, formatGrams, friendlyAmount, ingredientAllowed, macrosForGrams, recipeAllergens, recipeCostTier, recipeDietTags, recipeMatches, recipeMinutes, recipeNutrition, resolveIngredients, roundMacros, satisfiesTag, ZERO_MACROS, type IngredientIndex, type Swap, } from './recipes.ts';
 // @ts-ignore see above
-import { localeFor, sharedT, type Language } from '../i18n/core.ts';
+import { listText, localeFor, numberText, sharedT, type Language, type SharedKey } from '../i18n/core.ts';
 
 const round = (n: number, decimals = 2) => {
   const f = 10 ** decimals;
@@ -58,6 +58,15 @@ export interface PlanPrefs {
 export interface PlanContext {
   recipes?: Recipe[];
   byId?: IngredientIndex;
+  /**
+   * Language of the warning and day-status texts (planWarnings, planDayStatus, planStatus). Default English; the server
+   * never sets it, so its output is unchanged. Planning itself never depends on it.
+   */
+  lang?: Language;
+  /** Recipe name shown in those texts (the app passes its localized catalog name). Default `r.name`. */
+  recipeName?: (r: Recipe) => string;
+  /** "on Monday" / "á mánudaginn" for a plan date, a whole phrase (the app passes weekdayOn). Default English. */
+  weekdayOn?: (date: ISODate) => string;
 }
 
 export type PlanDraft = MealPlanContent;
@@ -487,6 +496,28 @@ export function generateMealPlan(weekStart: ISODate, prefs: PlanPrefs, ctx: Plan
 /* ---------------------------------------------------- derived status & warnings */
 const weekdayName = (date: ISODate) => formatDate(date, { weekday: 'long' });
 
+/** Message helpers for the derived texts: language, localized names and number formatting (English output is unchanged). */
+function textCtx(ctx: PlanContext) {
+  const lang: Language = ctx.lang ?? 'en';
+  const tr = sharedT(lang);
+  const en = lang === 'en';
+  return {
+    lang,
+    tr,
+    en,
+    name: (r: Recipe) => (ctx.recipeName ? ctx.recipeName(r) : r.name),
+    day: (date: ISODate) => (ctx.weekdayOn ? ctx.weekdayOn(date) : `on ${weekdayName(date)}`),
+    /** Lower-case meal for sentences: "breakfast" / "morgunmat" (Icelandic object form). */
+    meal: (slot: MealSlot) => tr.t(`aiServer.mealSlotFor.${slot}` as SharedKey),
+    /** Numbers as the English text always printed them; locale-formatted in other languages. */
+    num: (n: number): string | number => (en ? String(n) : n),
+    lower: (x: string) => x.toLocaleLowerCase(localeFor(lang)),
+    /** Fragments joined with "and" (English kept as before: "a and b and c"). */
+    and: (parts: string[]) => (en ? parts.join(' and ') : listText(parts, lang)),
+    cap: (x: string) => x.charAt(0).toLocaleUpperCase(localeFor(lang)) + x.slice(1),
+  };
+}
+
 /**
  * Plan-level warnings, derived from the saved plan and the current settings (so they survive a reload and
  * update when settings change): meals with no matching recipe, relaxed cooking time, and planned meals that
@@ -495,33 +526,34 @@ const weekdayName = (date: ISODate) => formatDate(date, { weekday: 'long' });
 export function planWarnings(plan: PlanDraft, prefs: PlanPrefs, ctx: PlanContext = {}): string[] {
   const byId = ctx.byId ?? catalog().byId;
   const recipesById = new Map((ctx.recipes ?? catalog().recipes).map((r) => [r.id, r]));
+  const x = textCtx(ctx);
+  const { tr } = x;
   const out: string[] = [];
   const excluded = prefs.proteinExcluded ?? [];
+  const allergenList = (list: Allergen[]) => (x.en ? list.map((a) => allergenLabel(a).toLowerCase()).join(', ') : listText(list.map((a) => x.lower(allergenLabel(a, x.lang))), x.lang));
   for (const slot of new Set(slotsForMeals(prefs.mealsPerDay))) {
     const { recipes, relaxedTime } = rankedCandidates(slot, prefs, ctx);
     if (recipes.length === 0)
-      out.push(excluded.length
-        ? `No ${MEAL_LABELS[slot].toLowerCase()} recipes match your diet, allergy and protein choices, so that meal is left empty. Allow one more protein or a longer cook time?`
-        : `No ${MEAL_LABELS[slot].toLowerCase()} recipes match your diet and allergy settings, so that meal is left empty.`);
+      out.push(tr.t(excluded.length ? 'mealPlanner.warning.noRecipesProteins' : 'mealPlanner.warning.noRecipes', { meal: x.meal(slot) }));
     else if (excluded.length && recipes.length < FEW_RECIPES)
-      out.push(`Only ${recipes.length} ${recipes.length === 1 ? MEAL_LABELS[slot].toLowerCase() : MEAL_PLURALS[slot]} fit${recipes.length === 1 ? 's' : ''} your choices, so some repeat this week: allow one more protein or a longer cook time?`);
-    else if (relaxedTime) out.push(`No ${MEAL_LABELS[slot].toLowerCase()} recipes fit within ${prefs.maxCookMinutes} minutes; some take longer.`);
+      out.push(tr.tp('mealPlanner.warning.fewRecipes', recipes.length, { meals: tr.tp(`mealPlanner.slotCount.${slot}`, recipes.length) }));
+    else if (relaxedTime) out.push(tr.t('mealPlanner.warning.timeRelaxed', { meal: x.meal(slot), minutes: x.num(prefs.maxCookMinutes) }));
   }
   for (const day of plan.days) {
     for (const it of day.items) {
       const r = recipesById.get(it.recipeId);
       if (!r) {
-        out.push(`A meal on ${weekdayName(day.date)} uses a recipe that is no longer available. Swap or remove it.`);
+        out.push(tr.t('mealPlanner.warning.missingRecipe', { day: x.day(day.date) }));
         continue;
       }
       const swaps = it.swaps as Swap[] | undefined;
       const problems: string[] = [];
       const allergens = new Set<Allergen>(recipeAllergens(r, swaps, byId));
       const hit = prefs.allergens.filter((a) => allergens.has(a));
-      if (hit.length) problems.push(`contains ${hit.map((a) => ALLERGEN_LABELS[a].toLowerCase()).join(', ')}`);
+      if (hit.length) problems.push(tr.tp('mealPlanner.problem.allergens', hit.length, { allergens: allergenList(hit) }));
       for (const e of it.extras ?? []) {
         const sideHit = prefs.allergens.filter((a) => byId.get(e.ingredientId)?.allergens.includes(a));
-        if (sideHit.length) problems.push(`has a side of ${extraText(e, byId)}, which contains ${sideHit.map((a) => ALLERGEN_LABELS[a].toLowerCase()).join(', ')}`);
+        if (sideHit.length) problems.push(tr.tp('mealPlanner.problem.sideAllergens', sideHit.length, { side: extraText(e, byId, x.lang), allergens: allergenList(sideHit) }));
       }
       const tags = recipeDietTags(r, swaps, byId);
       const extrasOk = (t: DietTag) => (it.extras ?? []).every((e) => {
@@ -529,9 +561,12 @@ export function planWarnings(plan: PlanDraft, prefs: PlanPrefs, ctx: PlanContext
         return !ing || ingredientAllowed(ing, { tags: [t] });
       });
       const notMet = prefs.tags.filter((t) => !satisfiesTag(tags, t) || !extrasOk(t));
-      if (notMet.length) problems.push(`isn't ${notMet.map((t) => DIET_TAG_LABELS[t].toLowerCase()).join(' or ')}`);
-      const ids = [...resolveIngredients(r, swaps, byId).map((x) => x.ingredientId), ...(it.extras ?? []).map((e) => e.ingredientId)];
-      if (prefs.dislikedIngredientIds.some((d) => ids.includes(d))) problems.push('includes an ingredient you skip');
+      if (notMet.length)
+        problems.push(tr.t('mealPlanner.problem.diet', {
+          diets: x.en ? notMet.map((t) => dietTagLabel(t).toLowerCase()).join(' or ') : listText(notMet.map((t) => `„${dietTagLabel(t, x.lang)}“`), x.lang, 'disjunction'),
+        }));
+      const ids = [...resolveIngredients(r, swaps, byId).map((i) => i.ingredientId), ...(it.extras ?? []).map((e) => e.ingredientId)];
+      if (prefs.dislikedIngredientIds.some((d) => ids.includes(d))) problems.push(tr.t('mealPlanner.problem.skipped'));
       if (excluded.length) {
         const groups = new Set(recipeProteinGroups(r, swaps, byId));
         for (const e of it.extras ?? []) {
@@ -539,12 +574,12 @@ export function planWarnings(plan: PlanDraft, prefs: PlanPrefs, ctx: PlanContext
           if (g) groups.add(g);
         }
         const hitG = excluded.filter((g) => groups.has(g));
-        if (hitG.length) problems.push(`includes ${proteinListText(hitG)}, which you marked Not for me`);
+        if (hitG.length) problems.push(tr.t('mealPlanner.problem.proteins', { proteins: proteinListText(hitG, x.lang) }));
       }
-      if (problems.length) out.push(`${r.name} on ${weekdayName(day.date)} ${problems.join(' and ')}. Swap it or edit the meal.`);
+      if (problems.length) out.push(tr.t('mealPlanner.warning.mealConflict', { recipe: x.name(r), day: x.day(day.date), problems: x.and(problems) }));
     }
   }
-  if (!prefs.proteinTarget && !prefs.kcalTarget) out.push('Portions are one serving each. Adjust servings to suit your appetite.');
+  if (!prefs.proteinTarget && !prefs.kcalTarget) out.push(tr.t('mealPlanner.warning.oneServing'));
   return [...new Set(out)];
 }
 
@@ -569,32 +604,33 @@ export interface PlanDayStatus {
   balanced?: PlanDay;
 }
 
-function describeChanges(before: PlanDay, after: PlanDay, recipesById: Map<ID, Recipe>, byId: IngredientIndex): string[] {
+function describeChanges(before: PlanDay, after: PlanDay, recipesById: Map<ID, Recipe>, byId: IngredientIndex, x: ReturnType<typeof textCtx>): string[] {
+  const { tr } = x;
   const lines: string[] = [];
   for (const b of before.items) {
     const a = after.items.find((x) => x.id === b.id);
     if (!a || a === b) continue;
     const delta = displayMacro(planItemNutrition(a, recipesById, byId).protein - planItemNutrition(b, recipesById, byId).protein, 'protein');
-    const sign = delta >= 0 ? `+${delta}` : `${delta}`;
+    const deltaText = x.en ? `${delta}` : numberText(delta, x.lang);
+    const sign = delta >= 0 ? `+${deltaText}` : deltaText;
     const rb = recipesById.get(b.recipeId);
     const ra = recipesById.get(a.recipeId);
-    const meal = MEAL_LABELS[a.slot].toLowerCase();
+    const meal = x.meal(a.slot);
     const parts: string[] = [];
-    if (a.recipeId !== b.recipeId) parts.push(`swap ${rb?.name ?? 'this meal'} for ${ra?.name ?? 'another recipe'}`);
-    if (a.servings !== b.servings) parts.push(`have ${a.servings} serving${a.servings === 1 ? '' : 's'} of ${ra?.name ?? 'the meal'} (was ${b.servings})`);
+    if (a.recipeId !== b.recipeId)
+      parts.push(tr.t('mealPlanner.change.swap', { from: rb ? x.name(rb) : tr.t('mealPlanner.fallback.thisMeal'), to: ra ? x.name(ra) : tr.t('mealPlanner.fallback.anotherRecipe') }));
+    if (a.servings !== b.servings)
+      parts.push(tr.tp('mealPlanner.change.servings', a.servings, { count: x.num(a.servings), recipe: ra ? x.name(ra) : tr.t('mealPlanner.fallback.theMeal'), was: x.num(b.servings) }));
     const ea = JSON.stringify(a.extras ?? []);
     const eb = JSON.stringify(b.extras ?? []);
     if (ea !== eb) {
       const added = a.extras?.[0];
       const had = b.extras?.[0];
-      if (added && !had) parts.push(`add ${extraText(added, byId)} to ${meal}`);
-      else if (added && had) parts.push(`make the ${meal} side ${extraText(added, byId)}`);
-      else if (had) parts.push(`leave out the ${extraText(had, byId)} at ${meal}`);
+      if (added && !had) parts.push(tr.t('mealPlanner.change.addSide', { side: extraText(added, byId, x.lang), meal }));
+      else if (added && had) parts.push(tr.t('mealPlanner.change.replaceSide', { side: extraText(added, byId, x.lang), meal }));
+      else if (had) parts.push(tr.t('mealPlanner.change.removeSide', { side: extraText(had, byId, x.lang), meal }));
     }
-    if (parts.length) {
-      const text = parts.join(' and ');
-      lines.push(`${text.charAt(0).toUpperCase()}${text.slice(1)} (${sign} g protein).`);
-    }
+    if (parts.length) lines.push(tr.t('mealPlanner.change.line', { changes: x.cap(x.and(parts)), delta: sign }));
   }
   return lines;
 }
@@ -602,12 +638,13 @@ function describeChanges(before: PlanDay, after: PlanDay, recipesById: Map<ID, R
 const COOK_TIME_OPTIONS = [15, 20, 30, 45, 60, 90];
 /** With protein exclusions, fewer matching recipes than this for a meal means visible repeats, so the status says so. */
 export const FEW_RECIPES = 5;
-const MEAL_PLURALS: Record<MealSlot, string> = { breakfast: 'breakfasts', lunch: 'lunches', dinner: 'dinners', snack: 'snacks' };
 
 /** Status of one planned day against the current objective, with the gap and practical changes. Pure and deterministic. */
 export function planDayStatus(day: PlanDay, prefs: PlanPrefs, ctx: PlanContext & { dayIndex?: number } = {}): PlanDayStatus {
   const byId = ctx.byId ?? catalog().byId;
   const recipesById = new Map((ctx.recipes ?? catalog().recipes).map((r) => [r.id, r]));
+  const x = textCtx(ctx);
+  const { tr, num } = x;
   const totals = planDayNutrition(day, recipesById, byId);
   const obj = objectiveOf(prefs);
   const status: PlanDayStatus = { date: day.date, totals, state: 'no_target', suggestions: [] };
@@ -623,7 +660,7 @@ export function planDayStatus(day: PlanDay, prefs: PlanPrefs, ctx: PlanContext &
   }
   if (day.items.length === 0) {
     status.state = 'empty';
-    status.message = 'No meals are planned for this day.';
+    status.message = tr.t('mealPlanner.status.empty');
     return status;
   }
   const pOff = obj.protein != null && Math.abs(totals.protein - obj.protein) > obj.tolP;
@@ -633,21 +670,21 @@ export function planDayStatus(day: PlanDay, prefs: PlanPrefs, ctx: PlanContext &
 
   const planned = displayMacro(totals.protein, 'protein');
   const msgs: string[] = [];
-  if (status.state === 'short') msgs.push(`${planned} g of your ${obj.protein} g protein target is planned: ${status.proteinGap} g short.`);
-  else if (status.state === 'over') msgs.push(`${planned} g protein is planned, ${-status.proteinGap!} g above your ${obj.protein} g target.`);
-  if (kOff) msgs.push(`${displayMacro(totals.kcal, 'kcal')} of your ${obj.kcal} kcal target is planned.`);
+  if (status.state === 'short') msgs.push(tr.t('mealPlanner.status.short', { planned: num(planned), target: num(obj.protein!), gap: num(status.proteinGap!) }));
+  else if (status.state === 'over') msgs.push(tr.t('mealPlanner.status.over', { planned: num(planned), over: num(-status.proteinGap!), target: num(obj.protein!) }));
+  if (kOff) msgs.push(tr.t('mealPlanner.status.kcal', { kcal: num(displayMacro(totals.kcal, 'kcal')), target: num(obj.kcal!) }));
 
   const balanced = balanceDay(day, prefs, { ...ctx, dayIndex: ctx.dayIndex });
   const balancedOut = outside(planDayNutrition(balanced, recipesById, byId), obj);
   if (balanced !== day && balancedOut < outside(totals, obj) - 1e-9) {
     status.balanced = balanced;
-    status.suggestions.push(...describeChanges(day, balanced, recipesById, byId));
+    status.suggestions.push(...describeChanges(day, balanced, recipesById, byId, x));
   }
   if (balancedOut > 0 && status.state === 'short') {
     const after = displayMacro(planDayNutrition(balanced, recipesById, byId).protein, 'protein');
-    if (status.balanced) msgs.push(`Even with the changes below this day reaches about ${after} g with your current settings.`);
-    else msgs.push('Portions and protein sides that fit your settings cannot close this gap.');
-    msgs.push('Your allergy and diet settings are never relaxed to reach a target.');
+    if (status.balanced) msgs.push(tr.t('mealPlanner.status.evenWithChanges', { grams: num(after) }));
+    else msgs.push(tr.t('mealPlanner.status.cannotClose'));
+    msgs.push(tr.t('mealPlanner.status.neverRelaxed'));
     // Swaps to higher-protein recipes that meet the same constraints.
     const used = new Set(day.items.map((i) => i.recipeId));
     const swaps: { text: string; gain: number }[] = [];
@@ -656,7 +693,10 @@ export function planDayStatus(day: PlanDay, prefs: PlanPrefs, ctx: PlanContext &
       for (const r of rankedCandidates(it.slot, prefs, ctx).recipes) {
         if (used.has(r.id)) continue;
         const gain = planItemNutrition({ ...it, swaps: [], ...withRecipe(r, prefs, byId) }, recipesById, byId).protein - cur;
-        if (gain >= 3) swaps.push({ text: `Swap ${recipesById.get(it.recipeId)?.name ?? 'this meal'} for ${r.name} (+${displayMacro(gain, 'protein')} g protein).`, gain });
+        if (gain >= 3) {
+          const cur = recipesById.get(it.recipeId);
+          swaps.push({ text: tr.t('mealPlanner.suggestion.swap', { from: cur ? x.name(cur) : tr.t('mealPlanner.fallback.thisMeal'), to: x.name(r), grams: num(displayMacro(gain, 'protein')) }), gain });
+        }
       }
     }
     swaps.sort((a, b) => b.gain - a.gain || a.text.localeCompare(b.text));
@@ -675,25 +715,22 @@ export function planDayStatus(day: PlanDay, prefs: PlanPrefs, ctx: PlanContext &
         }
       }
       if (bestNew && bestNew.p >= 20)
-        status.suggestions.push(`Allowing up to ${nextTime} minutes of cooking adds options such as ${bestNew.r.name} (${displayMacro(bestNew.p, 'protein')} g protein per serving).`);
+        status.suggestions.push(tr.t('mealPlanner.suggestion.longerCooking', { minutes: num(nextTime), recipe: x.name(bestNew.r), grams: num(displayMacro(bestNew.p, 'protein')) }));
     }
     // One more meal a day.
     if (prefs.mealsPerDay < 6) {
       const snackRecipe = rankedCandidates('snack', prefs, ctx).recipes
-        .map((r) => ({ name: r.name, p: recipeNutrition(r, { servings: 1, byId }).perServing.protein }))
+        .map((r) => ({ name: x.name(r), p: recipeNutrition(r, { servings: 1, byId }).perServing.protein }))
         .sort((a, b) => b.p - a.p)[0];
       const side = allowedAddOns('snack', prefs, ctx)[0];
       const sideP = side ? macrosForGrams(byId.get(side.ingredientId)!, side.amounts[side.amounts.length - 1]).protein : 0;
-      const idea = snackRecipe && snackRecipe.p >= sideP ? `${snackRecipe.name} (${displayMacro(snackRecipe.p, 'protein')} g)` : side
-        ? `${extraText({ ingredientId: side.ingredientId, grams: side.amounts[side.amounts.length - 1] }, byId)} (${displayMacro(sideP, 'protein')} g)`
+      const idea = snackRecipe && snackRecipe.p >= sideP ? tr.t('mealPlanner.suggestion.idea', { food: snackRecipe.name, grams: num(displayMacro(snackRecipe.p, 'protein')) }) : side
+        ? tr.t('mealPlanner.suggestion.idea', { food: extraText({ ingredientId: side.ingredientId, grams: side.amounts[side.amounts.length - 1] }, byId, x.lang), grams: num(displayMacro(sideP, 'protein')) })
         : null;
       if (idea && Math.max(snackRecipe?.p ?? 0, sideP) >= 8)
-        status.suggestions.push(`Planning ${prefs.mealsPerDay + 1} meals a day adds a snack, for example ${idea}.`);
+        status.suggestions.push(tr.t('mealPlanner.suggestion.extraMeal', { meals: num(prefs.mealsPerDay + 1), idea }));
     }
-    if (status.suggestions.length === 0)
-      status.suggestions.push(
-        'No other recipe or protein side in the catalogue fits all of your settings for this day. You can add your own foods to the day, or review your cooking time and meals per day.',
-      );
+    if (status.suggestions.length === 0) status.suggestions.push(tr.t('mealPlanner.suggestion.nothingElse'));
   }
   status.message = msgs.join(' ');
   return status;

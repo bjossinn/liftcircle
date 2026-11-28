@@ -163,8 +163,8 @@ describe('Icelandic', () => {
     expect(r('noAssist')).toBe('án aðstoðar');
 
     const rest = session([ex('e1', 'barbell-bench-press', [set('a', { completed: true }), set('b', { weightKg: 61.25, entered: { value: 61.25, unit: 'kg' } })])], { rest: { endsAt: 1, durationMs: 1, forExerciseId: 'e1' } });
-    expect(nextSet(rest, byId, 'kg')!.label).toBe('Barbell bench press · sett 2: 61,25 kg × 8');
-    expect(restOverCheer(rest, byId, 'kg', 'balanced', null, () => 0)!.line).toBe('Hvíldinni lokið. Barbell bench press · sett 2: 61,25 kg × 8. Af stað.');
+    expect(nextSet(rest, byId, 'kg')!.label).toBe('Bekkpressa með stöng · sett 2: 61,25 kg × 8');
+    expect(restOverCheer(rest, byId, 'kg', 'balanced', null, () => 0)!.line).toBe('Hvíldinni lokið. Bekkpressa með stöng · sett 2: 61,25 kg × 8. Af stað.');
     const timed = session([ex('e1', 'plank', [set('a', { completed: true }), set('b', { weightKg: undefined, entered: undefined, reps: undefined, durationSec: 45 })])]);
     expect(nextSet(timed, byId, 'kg')!.detail).toBe('45 sek.');
     const unknown = session([ex('e1', 'no-such-exercise', [set('a', { weightKg: undefined, entered: undefined, reps: undefined })])]);

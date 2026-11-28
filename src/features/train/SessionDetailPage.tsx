@@ -19,12 +19,16 @@ import { uuid } from '@/lib/id';
 import { estimateSessionMinutes } from '@/domain/program/generator';
 import { socialApi } from '@/backend/social';
 import { useStarters } from './hooks';
+import { t as tGlobal, useT } from '@/i18n';
+import { exerciseDisplayName } from '@/data/catalogText';
+import { workoutDisplayName } from '@/features/program/parts';
 
 export default function SessionDetailPage() {
   const { id = '' } = useParams();
   const [params] = useSearchParams();
   const nav = useNavigate();
   const toast = useToast();
+  const { t, tp } = useT();
   const { db, account, auth } = useApp();
   const unit = account.settings.units.weight;
   const { byId, list } = useExercises();
@@ -37,7 +41,7 @@ export default function SessionDetailPage() {
   const summary = useMemo(() => (session ? summarizeSession(session, byId) : null), [session, byId]);
 
   if (session === undefined) return <Spinner />;
-  if (!session || session.deletedAt) return <EmptyState title="Workout not found" body="It may have been deleted." action={<Button onClick={() => nav('/train/history')}>History</Button>} />;
+  if (!session || session.deletedAt) return <EmptyState title={t('workout.notFound')} body={t('coaching.admin.it_may_have_been_deleted')} action={<Button onClick={() => nav('/train/history')}>{t('train.historyTitle')}</Button>} />;
   if (session.status === 'active') return <Navigate to={`/train/session/${session.id}`} replace />;
 
   const save = async (fn: (s: WorkoutSession) => WorkoutSession): Promise<boolean> => {
@@ -47,7 +51,7 @@ export default function SessionDetailPage() {
       await saveRecord('sessions', fn(cur), db);
       return true;
     } catch (e) {
-      toast.show((e as Error).message || 'Couldn’t save that change on this device.', { tone: 'error' });
+      toast.show((e as Error).message || t('workout.saveFailed'), { tone: 'error' });
       return false;
     }
   };
@@ -72,25 +76,25 @@ export default function SessionDetailPage() {
 
   return (
     <Page
-      title={session.name}
+      title={workoutDisplayName(session)}
       back={
-        <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+        <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
           <ChevronLeft />
         </IconButton>
       }
     >
       <Card className="p-4 space-y-3">
-        <Input label="Name" defaultValue={session.name} maxLength={80} onBlur={(e) => e.target.value.trim() && e.target.value !== session.name && void save((s) => ({ ...s, name: e.target.value.trim() }))} />
+        <Input label={t('workout.custom.name')} defaultValue={session.name} maxLength={80} onBlur={(e) => e.target.value.trim() && e.target.value !== session.name && void save((s) => ({ ...s, name: e.target.value.trim(), nameEdited: true }))} />
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="Date"
+            label={t('progress.date')}
             type="date"
             defaultValue={session.date}
             max={formatISO(new Date())}
             onBlur={(e) => /^\d{4}-\d{2}-\d{2}$/.test(e.target.value) && e.target.value !== session.date && void save((s) => ({ ...s, date: e.target.value }))}
           />
           <NumberInput
-            label="Duration (min)"
+            label={t('workout.historyDetail.duration_min')}
             value={durationMin}
             decimals={false}
             min={1}
@@ -100,33 +104,34 @@ export default function SessionDetailPage() {
         </div>
         {summary && (
           <div className="grid grid-cols-3 gap-3 pt-1">
-            <Stat label="Working sets" value={summary.workingSets} />
-            <Stat label="Warm-up sets" value={summary.warmupSets} />
-            <Stat label="Exercises" value={summary.exercisesDone} />
+            <Stat label={t('program.workingSets')} value={summary.workingSets} />
+            <Stat label={t('workout.historyDetail.warm_up_sets')} value={summary.warmupSets} />
+            <Stat label={t('summary.exercises')} value={summary.exercisesDone} />
           </div>
         )}
-        <p className="text-xs text-faint">Edits here update your progress charts and records. Your program templates aren’t changed.</p>
+        <p className="text-xs text-faint">{t('workout.historyDetail.edits_here_update_your_progress_charts')}</p>
       </Card>
 
-      <SectionTitle>Exercises</SectionTitle>
+      <SectionTitle>{t('summary.exercises')}</SectionTitle>
       <div className="space-y-3">
         {session.exercises.map((se) => {
           const ex = byId.get(se.exerciseId);
+          const exName = ex ? exerciseDisplayName(ex) : t('workout.unknownExercise');
           return (
             <Card key={se.id} className="p-3">
               <div className="flex items-center gap-2 px-1">
-                <h3 className="font-semibold flex-1 min-w-0 truncate">{ex?.name ?? 'Unknown exercise'}</h3>
-                <IconButton size="sm" label={`Remove ${ex?.name ?? 'exercise'}`} onClick={() => void save((s) => ops.removeExercise(s, se.id))}>
+                <h3 className="font-semibold flex-1 min-w-0 truncate">{exName}</h3>
+                <IconButton size="sm" label={t('program.remove', { exercise: exName })} onClick={() => void save((s) => ops.removeExercise(s, se.id))}>
                   <Trash2 className="size-4" />
                 </IconButton>
               </div>
-              {se.discomfort && se.sets.length === 0 && <p className="text-xs text-muted px-1 mt-1">Stopped with discomfort: no sets completed. Kept so its load isn’t increased next time.</p>}
+              {se.discomfort && se.sets.length === 0 && <p className="text-xs text-muted px-1 mt-1">{t('workout.historyDetail.stopped_with_discomfort_no_sets_completed')}</p>}
               <div className="mt-1 space-y-1">
                 {se.sets.map((st, i) => (
                   <EditSetRow
                     key={st.id}
                     set={st}
-                    label={st.type === 'warmup' ? 'W' : String(i + 1 - se.sets.slice(0, i).filter((x) => x.type === 'warmup').length)}
+                    label={st.type === 'warmup' ? t('workout.warmupMarker') : String(i + 1 - se.sets.slice(0, i).filter((x) => x.type === 'warmup').length)}
                     ex={ex}
                     unit={unit}
                     sessionId={session.id}
@@ -150,33 +155,33 @@ export default function SessionDetailPage() {
                   })
                 }
               >
-                Add set
+                {t('workout.addSet')}
               </Button>
             </Card>
           );
         })}
         <Button block icon={<Plus className="size-4" />} onClick={() => setPicker(true)}>
-          Add exercise
+          {t('workout.addExercise')}
         </Button>
       </div>
 
-      <SectionTitle>Notes</SectionTitle>
-      <Textarea aria-label="Workout notes" defaultValue={session.notes ?? ''} onBlur={(e) => e.target.value !== (session.notes ?? '') && void save((s) => ({ ...s, notes: e.target.value.trim() || undefined }))} />
+      <SectionTitle>{t('workout.custom.notes')}</SectionTitle>
+      <Textarea aria-label={t('workout.notes')} defaultValue={session.notes ?? ''} onBlur={(e) => e.target.value !== (session.notes ?? '') && void save((s) => ({ ...s, notes: e.target.value.trim() || undefined }))} />
 
       <div className="grid grid-cols-2 gap-2 mt-6">
         <Button icon={<Repeat className="size-4" />} onClick={() => void repeat(session)}>
-          Repeat
+          {t('workout.historyDetail.repeat')}
         </Button>
         <Button icon={<Layers className="size-4" />} onClick={() => setTplOpen(true)}>
-          Save as template
+          {t('summary.saveTemplate')}
         </Button>
         {!db.isGuest && (
           <Button icon={<Share2 className="size-4" />} onClick={() => nav(`/feed/new?session=${session.id}`)}>
-            Share
+            {t('workout.share.share')}
           </Button>
         )}
         <Button variant="danger" icon={<Trash2 className="size-4" />} onClick={() => setDel(true)}>
-          Delete
+          {t('common.delete')}
         </Button>
       </div>
 
@@ -192,25 +197,25 @@ export default function SessionDetailPage() {
       <ConfirmDialog
         open={del}
         danger
-        title="Delete this workout?"
-        body="This removes the workout and its recorded sets from your history, charts and records on all your devices."
-        confirmLabel="Delete workout"
-        cancelLabel="Keep workout"
+        title={t('workout.historyDetail.delete_this_workout')}
+        body={t('workout.historyDetail.this_removes_the_workout_and_its')}
+        confirmLabel={t('workout.historyDetail.delete_workout')}
+        cancelLabel={t('workout.historyDetail.keep_workout')}
         onCancel={() => setDel(false)}
         onConfirm={async () => {
           if (posts.length && delPosts && auth.status === 'signed_in') {
             const results = await Promise.allSettled(posts.map((p) => socialApi.deletePost(p)));
-            if (results.some((r) => r.status === 'rejected')) toast.show('The workout was deleted, but its shared post couldn’t be removed right now. You can delete it from the feed.', { tone: 'warn' });
+            if (results.some((r) => r.status === 'rejected')) toast.show(t('workout.historyDetail.the_workout_was_deleted_but_its'), { tone: 'warn' });
           }
           await deleteRecord('sessions', session.id, db);
           setDel(false);
-          toast.show('Workout deleted');
+          toast.show(t('workout.historyDetail.workout_deleted'));
           nav('/train/history', { replace: true });
         }}
       >
         {posts.length > 0 && (
           <div className="mt-3">
-            <Toggle label={`Also delete the shared post${posts.length > 1 ? 's' : ''}`} description="Shared posts are separate snapshots. Keep them if you like." checked={delPosts} onChange={setDelPosts} />
+            <Toggle label={tp('workout.historyDetail.alsoDeletePosts', posts.length)} description={t('workout.historyDetail.shared_posts_are_separate_snapshots_keep')} checked={delPosts} onChange={setDelPosts} />
           </div>
         )}
       </ConfirmDialog>
@@ -224,6 +229,7 @@ function formatISO(d: Date) {
 }
 
 function EditSetRow({ set, label, ex, unit, sessionId, onChange, onDelete }: { set: LoggedSet; label: string; ex?: Exercise; unit: 'kg' | 'lb'; sessionId: string; onChange: (p: Partial<LoggedSet>) => CommitResult; onDelete: () => void }) {
+  const { t: tr } = useT();
   const t = ex?.tracking;
   const showLoad = usesLoad(ex);
   const key = (f: string) => draftKey(`hist-${sessionId}`, set.id, f);
@@ -235,24 +241,24 @@ function EditSetRow({ set, label, ex, unit, sessionId, onChange, onDelete }: { s
         {showLoad && (
           <DraftNumberField
             className="flex-1"
-            ariaLabel={`Set ${label} load (${unit})`}
+            ariaLabel={tr('workout.historyDetail.set_x_load_x', { set: label, unit })}
             value={set.weightKg == null ? null : displayWeight(set.weightKg, unit, set.entered)}
             draftKey={key('weight')}
             placeholder={unit}
             onCommit={(v) => onChange(v == null ? { weightKg: null, entered: undefined } : { weightKg: toKg(v, unit), entered: { value: v, unit } })}
           />
         )}
-        {t === 'distance_time' && <DraftNumberField className="flex-1" ariaLabel={`Set ${label} distance (m)`} placeholder="m" value={set.distanceM ?? null} draftKey={key('distance')} onCommit={(v) => onChange({ distanceM: v })} />}
+        {t === 'distance_time' && <DraftNumberField className="flex-1" ariaLabel={tr('workout.historyDetail.set_x_distance_m', { set: label })} placeholder="m" value={set.distanceM ?? null} draftKey={key('distance')} onCommit={(v) => onChange({ distanceM: v })} />}
         {t === 'duration' || t === 'distance_time' ? (
-          <DraftNumberField className="flex-1" ariaLabel={`Set ${label} seconds`} placeholder="s" decimals={false} value={set.durationSec ?? null} draftKey={key('duration')} onCommit={(v) => onChange({ durationSec: v })} />
+          <DraftNumberField className="flex-1" ariaLabel={tr('workout.historyDetail.set_x_seconds', { set: label })} placeholder="s" decimals={false} value={set.durationSec ?? null} draftKey={key('duration')} onCommit={(v) => onChange({ durationSec: v })} />
         ) : (
-          <DraftNumberField className="flex-1" ariaLabel={`Set ${label} reps`} placeholder="reps" decimals={false} value={set.reps ?? null} draftKey={key('reps')} onCommit={(v) => onChange({ reps: v })} />
+          <DraftNumberField className="flex-1" ariaLabel={tr('workout.historyDetail.set_x_reps', { set: label })} placeholder={tr('workout.historyDetail.reps')} decimals={false} value={set.reps ?? null} draftKey={key('reps')} onCommit={(v) => onChange({ reps: v })} />
         )}
-        <IconButton size="sm" label={`Delete set ${label}`} onClick={onDelete}>
+        <IconButton size="sm" label={tr('workout.historyDetail.delete_set_x', { set: label })} onClick={onDelete}>
           <X className="size-4" />
         </IconButton>
       </div>
-      {issue && <p className="pl-10 text-xs text-warn">Not counted: {issue.charAt(0).toLowerCase() + issue.slice(1)}</p>}
+      {issue && <p className="pl-10 text-xs text-warn">{tr('workout.historyDetail.not_counted', { reason: issue.charAt(0).toLowerCase() + issue.slice(1) })}</p>}
     </div>
   );
 }
@@ -260,6 +266,7 @@ function EditSetRow({ set, label, ex, unit, sessionId, onChange, onDelete }: { s
 function SaveTemplateSheet({ open, onClose, session, byId, catalog }: { open: boolean; onClose: () => void; session: WorkoutSession; byId: Map<string, Exercise>; catalog: Exercise[] }) {
   const { db, account } = useApp();
   const toast = useToast();
+  const { t } = useT();
   const [name, setName] = useState(session.name);
   useEffect(() => {
     if (open) setName(session.name);
@@ -268,11 +275,11 @@ function SaveTemplateSheet({ open, onClose, session, byId, catalog }: { open: bo
     <Sheet
       open={open}
       onClose={onClose}
-      title="Save as template"
+      title={t('summary.saveTemplate')}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant="primary"
@@ -291,7 +298,7 @@ function SaveTemplateSheet({ open, onClose, session, byId, catalog }: { open: bo
                   targetRir: se.prescription?.targetRir ?? 2,
                   restSec: se.prescription?.restSec ?? account.settings.rest.defaultSec,
                   durationSec: ex?.tracking === 'duration' ? Math.max(...work.map((s) => s.durationSec ?? 30)) : undefined,
-                  warmup: se.sets.some((s) => s.type === 'warmup') ? 'Warm up with 1–2 lighter sets.' : '',
+                  warmup: se.sets.some((s) => s.type === 'warmup') ? tGlobal('program.template.warmupLighterSets', undefined, 'en') : '',
                   priority: 2,
                   alternatives: ex?.substitutions ?? [],
                 };
@@ -299,17 +306,17 @@ function SaveTemplateSheet({ open, onClose, session, byId, catalog }: { open: bo
               const template = { id: uuid(), name: name.trim() || session.name, focus: session.name, kind: 'lifting' as const, exercises, estimatedMinutes: 0 };
               template.estimatedMinutes = estimateSessionMinutes(template, catalog);
               await saveRecord('templates', newRecord<Omit<SavedTemplate, keyof import('@/domain/types').SyncFields>>({ template }) as SavedTemplate, db);
-              toast.show('Template saved', { tone: 'success' });
+              toast.show(t('activities.form.template_saved'), { tone: 'success' });
               onClose();
             }}
           >
-            Save
+            {t('common.save')}
           </Button>
         </>
       }
     >
-      <Input label="Template name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
-      <p className="text-xs text-muted mt-2">Uses this workout’s exercises, set counts and rep range. Find it under Train → Templates.</p>
+      <Input label={t('activities.form.template_name')} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+      <p className="text-xs text-muted mt-2">{t('workout.historyDetail.uses_this_workouts_exercises_set_counts')}</p>
     </Sheet>
   );
 }

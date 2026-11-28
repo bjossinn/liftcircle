@@ -7,36 +7,37 @@ import { socialApi } from '@/backend/social';
 import { useApp } from '@/state/app';
 import { friendlyError } from '@/social/pendingPosts';
 import { mediaErrorMessage, processAvatar } from '@/social/media';
-import { AccessNotice, Avatar, usernameProblem, useSocialAccess } from './common';
+import { AccessNotice, Avatar, PRESET_INTERESTS, interestLabel, usernameProblem, useSocialAccess } from './common';
 import { setMyProfileCache, useMyProfile } from './useMyProfile';
+import { useT } from '@/i18n';
 
 const DISPLAY_MAX = 50;
 const BIO_MAX = 160;
 const MAX_INTERESTS = 8;
 const INTEREST_MAX = 24;
-const PRESET_INTERESTS = ['Strength', 'Muscle building', 'Powerlifting', 'Running', 'Cycling', 'Walking', 'Hiking', 'Swimming', 'Mobility', 'Yoga', 'Calisthenics', 'Conditioning', 'Sports'];
 
 type Availability = 'idle' | 'checking' | 'available' | 'taken' | 'error';
 
 export default function ProfileEditPage() {
   const nav = useNavigate();
+  const { t } = useT();
   const { access, meId } = useSocialAccess();
   const me = useMyProfile(access === 'ok' ? meId : undefined);
   return (
     <Page
-      title={me.profile ? 'Edit profile' : 'Create profile'}
+      title={me.profile ? t('profile.edit') : t('profile.create')}
       back={
-        <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+        <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
           <ChevronLeft />
         </IconButton>
       }
     >
       {access !== 'ok' ? (
-        <AccessNotice access={access} what="Editing your profile" />
+        <AccessNotice access={access} what="edit_profile" />
       ) : me.loading ? (
-        <Spinner label="Loading your profile" />
+        <Spinner label={t('profile.loading')} />
       ) : me.error && !me.known ? (
-        <ErrorState title="Couldn’t load your profile" message={me.error} onRetry={me.reload} />
+        <ErrorState title={t('profile.loadFailed')} message={me.error} onRetry={me.reload} />
       ) : (
         <ProfileForm meId={meId!} key={me.profile?.id ?? 'new'} />
       )}
@@ -47,6 +48,7 @@ export default function ProfileEditPage() {
 function ProfileForm({ meId }: { meId: string }) {
   const nav = useNavigate();
   const toast = useToast();
+  const { t, language } = useT();
   const { account, updateAccount } = useApp();
   const { profile } = useMyProfile(meId);
   const original = profile?.username ?? '';
@@ -121,13 +123,13 @@ function ProfileForm({ meId }: { meId: string }) {
     setCustomInterest('');
   };
 
-  const usernameError = (touchedUsername || username !== original) && problem ? problem : availability === 'taken' ? 'That username is taken.' : usernameServerError;
+  const usernameError = (touchedUsername || username !== original) && problem ? problem : availability === 'taken' ? t('social.username.taken') : usernameServerError;
 
   const save = async () => {
     setTouchedUsername(true);
     setFormError(null);
     const name = displayName.trim().replace(/\s+/g, ' ');
-    const dErr = !name ? 'Add a display name.' : name.length > DISPLAY_MAX ? `At most ${DISPLAY_MAX} characters.` : null;
+    const dErr = !name ? t('social.display_name_required') : name.length > DISPLAY_MAX ? t('social.at_most_chars', { max: DISPLAY_MAX }) : null;
     setDisplayError(dErr);
     if (problem || dErr || availability === 'taken' || availability === 'checking' || avatarBusy) return;
     setSaving(true);
@@ -137,19 +139,19 @@ function ProfileForm({ meId }: { meId: string }) {
         try {
           saved = await socialApi.uploadAvatar(avatarBlob);
         } catch (e) {
-          toast.show(`Profile saved, but the photo didn’t upload. ${friendlyError(e, '')}`.trim(), { tone: 'warn' });
+          toast.show(t('social.profile_saved_photo_failed', { reason: friendlyError(e, '') }).trim(), { tone: 'warn' });
         }
       }
       setMyProfileCache(meId, saved);
       if (account.settings.social.discoverable !== discoverable) {
         await updateAccount((a) => ({ ...a, settings: { ...a.settings, social: { ...a.settings.social, discoverable } } })).catch(() => {});
       }
-      toast.show(profile ? 'Profile updated' : 'Profile created', { tone: 'success' });
+      toast.show(profile ? t('social.profile_updated') : t('social.profile_created'), { tone: 'success' });
       nav('/profile', { replace: true });
     } catch (e) {
-      const msg = friendlyError(e, 'Couldn’t save your profile. Please try again.');
+      const msg = friendlyError(e, t('social.error.save_profile'));
       if (/username/i.test(msg) || /duplicate|unique|taken/i.test(e instanceof Error ? e.message : '')) {
-        setUsernameServerError(/taken|duplicate|unique/i.test(e instanceof Error ? e.message : msg) ? 'That username is taken.' : msg);
+        setUsernameServerError(/taken|duplicate|unique/i.test(e instanceof Error ? e.message : msg) ? t('social.username.taken') : msg);
         setAvailability('idle');
       } else setFormError(msg);
     } finally {
@@ -157,7 +159,7 @@ function ProfileForm({ meId }: { meId: string }) {
     }
   };
 
-  const interestOptions = [...PRESET_INTERESTS, ...interests.filter((i) => !PRESET_INTERESTS.includes(i))].map((i) => ({ value: i, label: i }));
+  const interestOptions = [...PRESET_INTERESTS, ...interests.filter((i) => !PRESET_INTERESTS.includes(i))].map((i) => ({ value: i, label: interestLabel(i, language) }));
   const shown = avatarPreview ? { displayName, username, avatarUrl: avatarPreview } : { displayName, username, avatarUrl: profile?.avatarUrl };
 
   return (
@@ -174,12 +176,12 @@ function ProfileForm({ meId }: { meId: string }) {
           <Avatar profile={shown} size={96} />
           {avatarBusy && (
             <span className="absolute inset-0 rounded-full bg-bg/60 flex items-center justify-center">
-              <Loader2 className="size-6 animate-spin" aria-label="Preparing photo" />
+              <Loader2 className="size-6 animate-spin" aria-label={t('social.preparing_photo')} />
             </span>
           )}
         </div>
         <Button size="sm" icon={<Camera className="size-4" />} onClick={() => fileRef.current?.click()} disabled={avatarBusy || saving}>
-          {profile?.avatarUrl || avatarPreview ? 'Change photo' : 'Add photo'}
+          {profile?.avatarUrl || avatarPreview ? t('coaching.apply.change_photo') : t('coaching.apply.add_photo')}
         </Button>
         <input ref={fileRef} type="file" accept="image/*" className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => {
           void pickAvatar(e.target.files?.[0]);
@@ -192,10 +194,10 @@ function ProfileForm({ meId }: { meId: string }) {
         )}
       </div>
 
-      <SectionTitle>About you</SectionTitle>
+      <SectionTitle>{t('social.about_you')}</SectionTitle>
       <div className="flex flex-col gap-4">
         <Input
-          label="Username"
+          label={t('social.username')}
           value={username}
           autoComplete="username"
           autoCapitalize="none"
@@ -209,26 +211,26 @@ function ProfileForm({ meId }: { meId: string }) {
           hint={
             availability === 'checking' ? (
               <span className="inline-flex items-center gap-1">
-                <Loader2 className="size-4 animate-spin" aria-hidden /> Checking…
+                <Loader2 className="size-4 animate-spin" aria-hidden /> {t('settings.checking')}
               </span>
             ) : availability === 'available' ? (
               <span className="inline-flex items-center gap-1 text-accent">
-                <Check className="size-4" aria-hidden /> Available
+                <Check className="size-4" aria-hidden /> {t('social.available')}
               </span>
             ) : availability === 'error' ? (
-              'Couldn’t check right now. We’ll check when you save.'
+              t('social.couldnt_check_right_now_well_check')
             ) : (
-              '3–20 characters: lowercase letters, numbers, underscores. Friends find you by this exact name.'
+              t('social.3_20_characters_lowercase_letters_numbers')
             )
           }
         />
-        <Input label="Display name" value={displayName} maxLength={DISPLAY_MAX} autoComplete="nickname" onChange={(e) => setDisplayName(e.target.value)} error={displayError} />
-        <Textarea label="Bio (optional)" value={bio} maxLength={BIO_MAX} onChange={(e) => setBio(e.target.value)} hint={`${bio.length}/${BIO_MAX}`} className="min-h-20" />
+        <Input label={t('social.display_name')} value={displayName} maxLength={DISPLAY_MAX} autoComplete="nickname" onChange={(e) => setDisplayName(e.target.value)} error={displayError} />
+        <Textarea label={t('social.bio_optional')} value={bio} maxLength={BIO_MAX} onChange={(e) => setBio(e.target.value)} hint={`${bio.length}/${BIO_MAX}`} className="min-h-20" />
       </div>
 
-      <SectionTitle>Training interests</SectionTitle>
+      <SectionTitle>{t('social.training_interests')}</SectionTitle>
       <ChipGroup
-        label="Training interests"
+        label={t('social.training_interests')}
         values={interests}
         onChange={(v) => setInterests(v.slice(0, MAX_INTERESTS))}
         options={interestOptions}
@@ -236,7 +238,7 @@ function ProfileForm({ meId }: { meId: string }) {
       <div className="flex gap-2 mt-3 items-end">
         <div className="flex-1">
         <Input
-          label="Add your own"
+          label={t('social.add_your_own')}
           value={customInterest}
           maxLength={INTEREST_MAX}
           onChange={(e) => setCustomInterest(e.target.value)}
@@ -249,26 +251,27 @@ function ProfileForm({ meId }: { meId: string }) {
           disabled={interests.length >= MAX_INTERESTS}
         />
         </div>
-        <IconButton label="Add interest" onClick={addCustom} disabled={!customInterest.trim() || interests.length >= MAX_INTERESTS} className="border border-line">
+        <IconButton label={t('social.add_interest')} onClick={addCustom} disabled={!customInterest.trim() || interests.length >= MAX_INTERESTS} className="border border-line">
           <Plus className="size-5" />
         </IconButton>
       </div>
       <p className="text-xs text-muted mt-1">
-        {interests.length}/{MAX_INTERESTS} selected
-        {interests.filter((i) => !PRESET_INTERESTS.includes(i)).length > 0 && ' · tap a chip to remove it'}
+        {interests.some((i) => !PRESET_INTERESTS.includes(i))
+          ? t('social.interests_selected_remove', { count: interests.length, max: MAX_INTERESTS })
+          : t('social.interests_selected', { count: interests.length, max: MAX_INTERESTS })}
       </p>
 
-      <SectionTitle>Privacy</SectionTitle>
+      <SectionTitle>{t('social.privacy')}</SectionTitle>
       <Toggle
-        label="Let people find me by username"
-        description="When off, people can’t look you up by username or profile link. Your friends still see your profile."
+        label={t('settings.discoverable')}
+        description={t('social.when_off_people_cant_look_you')}
         checked={discoverable}
         onChange={setDiscoverable}
       />
       <Notice className="mt-3">
         <span className="inline-flex items-start gap-2">
           <ShieldCheck className="size-4 text-accent shrink-0 mt-0.5" aria-hidden />
-          <span>Your profile only shows what’s on this page. Your email, age, weight, measurements, health notes and food logs are never shown.</span>
+          <span>{t('social.your_profile_only_shows_whats_on')}</span>
         </span>
       </Notice>
 
@@ -279,10 +282,10 @@ function ProfileForm({ meId }: { meId: string }) {
       )}
       <div className="flex gap-2 mt-6">
         <Button variant="ghost" icon={<X className="size-4" />} onClick={() => nav(-1)} disabled={saving}>
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" block loading={saving} disabled={avatarBusy}>
-          {profile ? 'Save profile' : 'Create profile'}
+          {profile ? t('social.save_profile') : t('profile.create')}
         </Button>
       </div>
     </form>

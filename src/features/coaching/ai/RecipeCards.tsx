@@ -17,7 +17,8 @@ import { useApp } from '@/state/app';
 import { newRecord, saveRecord } from '@/db/repo';
 import { addDays, formatDate, startOfWeek, todayISO } from '@/lib/dates';
 import { LEFT_OUT, MEAL_ORDER, mealLabel, type Swap } from '@/domain/nutrition/recipes';
-import { listText, t as tr, useT } from '@/i18n';
+import { getLanguage, listText, locale, t as tr, useT, type Language } from '@/i18n';
+import { ingredientDisplayName, recipeDisplayName } from '@/data/catalogText';
 import { addPlanItem, removePlanItem, updatePlanItem } from '@/domain/nutrition/mealplan';
 import { INGREDIENTS_BY_ID } from '@/data/ingredients';
 import type { RecipeSuggestions } from '@/domain/nutrition/aiActions';
@@ -27,13 +28,15 @@ import { recipeLink } from '@/features/nutrition/recipeLink';
 
 type Recipe = RecipeSuggestions['recipes'][number];
 
-const ingName = (id: string) => (INGREDIENTS_BY_ID.get(id)?.name ?? id).replace(/\s*\(.*\)\s*$/, '');
+const ingName = (id: string, lang: Language) =>
+  (INGREDIENTS_BY_ID.has(id) ? ingredientDisplayName(id, lang) : id).replace(/\s*\(.*\)\s*$/, '');
 /** "Without blueberries · Strawberries instead of raspberries" / "Sleppt: … · Skipt út: … → …" (empty when the recipe
- *  is shown as written). Ingredient names are catalog content and stay as they are; only the frame is localized. */
-export function changesText(r: Pick<Recipe, 'omit' | 'swaps'>): string {
+ *  is shown as written). Ingredient names are shown in the app language (catalog display text). */
+export function changesText(r: Pick<Recipe, 'omit' | 'swaps'>, lang: Language = getLanguage()): string {
+  const lower = (x: string) => x.toLocaleLowerCase(locale(lang));
   const parts = [
-    ...(r.omit?.length ? [tr('aiCard.recipe.omitted', { ingredients: listText(r.omit.map((x) => ingName(x).toLowerCase())) })] : []),
-    ...(r.swaps ?? []).map((s) => tr('aiCard.recipe.swap', { to: ingName(s.to), from: ingName(s.from).toLowerCase() })),
+    ...(r.omit?.length ? [tr('aiCard.recipe.omitted', { ingredients: listText(r.omit.map((x) => lower(ingName(x, lang))), lang) }, lang)] : []),
+    ...(r.swaps ?? []).map((s) => tr('aiCard.recipe.swap', { to: ingName(s.to, lang), from: lower(ingName(s.from, lang)) }, lang)),
   ];
   return parts.join(' · ');
 }
@@ -65,6 +68,8 @@ function RecipeCard({ r, onPlan }: { r: Recipe; onPlan: () => void }) {
   const { account, updateAccount } = useApp();
   const toast = useToast();
   const fav = account.favorites.recipes.includes(r.id);
+  const name = recipeDisplayName(r.id, language, r.name);
+  const changes = changesText(r, language);
   async function toggleFav() {
     try {
       await updateAccount((a) => {
@@ -77,9 +82,9 @@ function RecipeCard({ r, onPlan }: { r: Recipe; onPlan: () => void }) {
     }
   }
   return (
-    <article aria-label={r.name} data-testid="ai-recipe-card" className="rounded-2xl border border-line bg-surface px-3.5 py-3">
+    <article aria-label={name} data-testid="ai-recipe-card" className="rounded-2xl border border-line bg-surface px-3.5 py-3">
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="font-semibold text-[15px] min-w-0 break-words">{r.name}</h3>
+        <h3 className="font-semibold text-[15px] min-w-0 break-words">{name}</h3>
         <span className="text-xs text-muted shrink-0">
           {t('aiCard.recipe.time', { meal: mealLabel(r.meal, language), minutes: r.totalMinutes })}
         </span>
@@ -87,7 +92,7 @@ function RecipeCard({ r, onPlan }: { r: Recipe; onPlan: () => void }) {
       <p className="text-xs text-muted mt-0.5">
         {t('aiCard.recipe.proteinServing', { protein: Math.round(r.perServing.protein_g) })}
       </p>
-      {changesText(r) && <p className="text-xs text-muted mt-0.5" data-testid="ai-recipe-changes">{changesText(r)}</p>}
+      {changes && <p className="text-xs text-muted mt-0.5" data-testid="ai-recipe-changes">{changes}</p>}
       <div className="mt-2 flex flex-wrap gap-1.5">
         <Link to={recipeHref(r)} className="inline-flex items-center min-h-9 px-3 rounded-xl border border-line text-sm font-medium hover:bg-surface-2">
           {t('aiCard.recipe.open')}
@@ -114,6 +119,7 @@ function AddToPlanSheet({ r, onClose }: { r: Recipe; onClose: () => void }) {
   const [date, setDate] = useState(dates[0] ?? today);
   const [slot, setSlot] = useState<MealSlot>(r.meal);
   const [busy, setBusy] = useState(false);
+  const name = recipeDisplayName(r.id, language, r.name);
 
   async function add() {
     if (plan === undefined) return;
@@ -127,7 +133,7 @@ function AddToPlanSheet({ r, onClose }: { r: Recipe; onClose: () => void }) {
       if (added && swaps.length) next = updatePlanItem(next, date, added.id, { swaps });
       const saved = await saveRecord('meal_plans', plan ? ({ ...plan, ...next } as MealPlan) : newRecord(next), db);
       onClose();
-      toast.show(t('aiCard.recipe.addedToDay', { recipe: r.name, day: formatDate(date, { weekday: 'long' }) }), {
+      toast.show(t('aiCard.recipe.addedToDay', { recipe: name, day: formatDate(date, { weekday: 'long' }) }), {
         tone: 'success',
         action: added
           ? {
@@ -147,7 +153,7 @@ function AddToPlanSheet({ r, onClose }: { r: Recipe; onClose: () => void }) {
     <Sheet
       open
       onClose={onClose}
-      title={t('aiCard.recipe.addTitle', { recipe: r.name })}
+      title={t('aiCard.recipe.addTitle', { recipe: name })}
       footer={
         <Button variant="primary" className="w-full" loading={busy} disabled={plan === undefined || !dates.length} onClick={() => void add()}>
           {t('aiCard.recipe.add')}

@@ -8,14 +8,18 @@ import { supabase } from '@/backend/supabase';
 import { BRAND } from '@/config/brand';
 import { rememberReturn, safeReturnPath } from './authReturn';
 import { PrivacySummary } from './PrivacySummary';
+import { t as translate, useT } from '@/i18n';
+import { authErrorMessage, type AuthErrorLike } from './authErrors';
 
-const emailSchema = z.string().trim().email('Enter a valid email address');
-const passwordSchema = z.string().min(8, 'Use at least 8 characters');
+// Messages are read when validating, so they follow the current language.
+const emailSchema = z.string().trim().email({ error: () => translate('auth.invalidEmail') });
+const passwordSchema = z.string().min(8, { error: () => translate('auth.passwordTooShort') });
 
 type Mode = 'signin' | 'signup' | 'forgot';
 
 export default function AuthPage() {
   const nav = useNavigate();
+  const { t } = useT();
   const [params] = useSearchParams();
   const { backendConfigured, auth, online } = useApp();
   const [mode, setMode] = useState<Mode>(params.get('mode') === 'signup' ? 'signup' : 'signin');
@@ -36,19 +40,19 @@ export default function AuthPage() {
     if (next) rememberReturn(next);
   }, [next]);
   const back = (
-    <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+    <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
       <ChevronLeft />
     </IconButton>
   );
 
   if (!backendConfigured) {
     return (
-      <Page title="Account" back={back}>
+      <Page title={t('settings.account')} back={back}>
         <Card className="p-5 space-y-3">
-          <p className="text-[15px]">Accounts, backup and friends aren’t enabled in this version of {BRAND.name}.</p>
-          <p className="text-sm text-muted">Everything you log is saved on this device. You can export a backup anytime from Settings → Your data.</p>
+          <p className="text-[15px]">{t('auth.accounts_backup_and_friends_arent_enabled', { brand: BRAND.name })}</p>
+          <p className="text-sm text-muted">{t('auth.everything_you_log_is_saved_on')}</p>
           <Button variant="primary" onClick={() => nav('/')}>
-            Continue
+            {t('onboarding.continue')}
           </Button>
         </Card>
       </Page>
@@ -68,7 +72,7 @@ export default function AuthPage() {
     }
     setErrors(errs);
     if (Object.keys(errs).length) return;
-    if (!online) return setErrors({ form: 'You’re offline. Connect to the internet to sign in.' });
+    if (!online) return setErrors({ form: t('auth.offline') });
     const sb = supabase()!;
     setBusy(true);
     try {
@@ -87,16 +91,7 @@ export default function AuthPage() {
         setSent('reset');
       }
     } catch (err) {
-      const msg = (err as Error).message || 'Something went wrong';
-      setErrors({
-        form: /invalid login/i.test(msg)
-          ? 'Email or password is incorrect.'
-          : /not confirmed/i.test(msg)
-            ? 'Please confirm your email first. Check your inbox for the link.'
-            : /rate|too many/i.test(msg)
-              ? 'Too many attempts. Please wait a minute and try again.'
-              : msg,
-      });
+      setErrors({ form: authErrorMessage(err as AuthErrorLike) });
     } finally {
       setBusy(false);
     }
@@ -104,13 +99,13 @@ export default function AuthPage() {
 
   if (sent) {
     return (
-      <Page title={sent === 'verify' ? 'Check your email' : 'Reset link sent'} back={back}>
+      <Page title={sent === 'verify' ? t('auth.check_your_email') : t('auth.reset_link_sent')} back={back}>
         <Card className="p-5 flex flex-col items-center text-center gap-3">
           <MailCheck className="size-8 text-accent" aria-hidden />
           <p className="text-[15px]">
             {sent === 'verify'
-              ? `We sent a confirmation link to ${email}. Open it on this device to finish creating your account.`
-              : `If an account exists for ${email}, you’ll get a link to choose a new password.`}
+              ? t('auth.we_sent_a_confirmation_link_to', { email })
+              : t('auth.if_an_account_exists_for_x', { email })}
           </p>
           <Button
             variant="ghost"
@@ -121,7 +116,7 @@ export default function AuthPage() {
               setErrors({});
             }}
           >
-            Back to sign in
+            {t('auth.back_to_sign_in')}
           </Button>
         </Card>
       </Page>
@@ -129,38 +124,38 @@ export default function AuthPage() {
   }
 
   return (
-    <Page title={mode === 'signup' ? 'Create account' : mode === 'forgot' ? 'Reset password' : 'Sign in'} back={back}>
+    <Page title={mode === 'signup' ? t('settings.createAccount') : mode === 'forgot' ? t('auth.reset_password') : t('settings.signIn')} back={back}>
       {reauth && (
         <Notice tone="warn" className="mb-4">
-          Your session expired. Sign in with the same account{auth.email ? ` (${auth.email})` : ''} to resume backup. Workouts you logged meanwhile are kept on this device.
+          {auth.email ? t('auth.sessionExpiredWithEmail', { email: auth.email }) : t('auth.your_session_expired_sign_in_with')}
         </Notice>
       )}
       {mode !== 'forgot' && (
         <Segmented
-          label="Sign in or create account"
+          label={t('auth.sign_in_or_create_account')}
           value={mode}
           onChange={(m) => {
             setMode(m);
             setErrors({});
           }}
           options={[
-            { value: 'signin', label: 'Sign in' },
-            { value: 'signup', label: 'Create account' },
+            { value: 'signin', label: t('settings.signIn') },
+            { value: 'signup', label: t('settings.createAccount') },
           ]}
           className="mb-5"
         />
       )}
       <form onSubmit={submit} className="space-y-4" noValidate>
-        <Input label="Email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} error={errors.email} />
+        <Input label={t('auth.email')} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} error={errors.email} />
         {mode !== 'forgot' && (
           <Input
-            label="Password"
+            label={t('auth.password')}
             type="password"
             autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             error={errors.password}
-            hint={mode === 'signup' ? 'At least 8 characters.' : undefined}
+            hint={mode === 'signup' ? t('auth.at_least_8_characters') : undefined}
           />
         )}
         {errors.form && (
@@ -169,22 +164,22 @@ export default function AuthPage() {
           </Notice>
         )}
         <Button type="submit" variant="primary" size="lg" block loading={busy}>
-          {mode === 'signup' ? 'Create account' : mode === 'forgot' ? 'Send reset link' : 'Sign in'}
+          {mode === 'signup' ? t('settings.createAccount') : mode === 'forgot' ? t('auth.send_reset_link') : t('settings.signIn')}
         </Button>
       </form>
       <div className="mt-4 flex flex-col items-center gap-2 text-sm">
         {mode === 'signin' && (
           <button type="button" className="text-accent min-h-11" onClick={() => setMode('forgot')}>
-            Forgot password?
+            {t('auth.forgot_password')}
           </button>
         )}
         {mode === 'forgot' && (
           <button type="button" className="text-accent min-h-11" onClick={() => setMode('signin')}>
-            Back to sign in
+            {t('auth.back_to_sign_in')}
           </button>
         )}
         <Link to="/" className="text-muted min-h-11 inline-flex items-center">
-          Continue without an account
+          {t('auth.continue_without_an_account')}
         </Link>
       </div>
       {mode === 'signup' && <PrivacySummary />}

@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, Camera, ImagePlus, Loader2, X } from
 import { Button, IconButton, Input } from '@/components/ui';
 import { uuid } from '@/lib/id';
 import { mediaErrorMessage, processImage, type ProcessedImage } from '@/social/media';
+import { t, tp, useT } from '@/i18n';
 
 export const MAX_PHOTOS = 4;
 export const DESCRIPTION_MAX = 300;
@@ -43,12 +44,12 @@ export function usePhotoPicker(max = MAX_PHOTOS) {
       const list = Array.from(files);
       const free = max - ref.current.length;
       if (free <= 0) {
-        setNotice(`A post can have up to ${max} photos.`);
+        setNotice(t('social.photos_max', { max }));
         return;
       }
       const chosen = list.slice(0, free);
-      setNotice(list.length > free ? `A post can have up to ${max} photos. The first ${free === 1 ? 'one was' : `${free} were`} added.` : null);
-      const items: PickedPhoto[] = chosen.map((f) => ({ id: uuid(), name: f.name || 'Photo', status: 'processing', description: '' }));
+      setNotice(list.length > free ? tp('social.photos_first_added', free, { max }) : null);
+      const items: PickedPhoto[] = chosen.map((f) => ({ id: uuid(), name: f.name || t('social.photo'), status: 'processing', description: '' }));
       setPhotos((cur) => [...cur, ...items]);
       chosen.forEach((file, i) => {
         const id = items[i].id;
@@ -109,6 +110,7 @@ export function usePhotoPicker(max = MAX_PHOTOS) {
 export type PhotoPickerState = ReturnType<typeof usePhotoPicker>;
 
 export function PhotoPicker({ picker, disabled }: { picker: PhotoPickerState; disabled?: boolean }) {
+  const { t } = useT();
   const libraryRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const full = picker.photos.length >= picker.max;
@@ -120,16 +122,16 @@ export function PhotoPicker({ picker, disabled }: { picker: PhotoPickerState; di
     <div>
       <div className="flex flex-wrap gap-2">
         <Button icon={<ImagePlus className="size-4" />} onClick={() => libraryRef.current?.click()} disabled={disabled || full}>
-          Choose photos
+          {t('social.choose_photos')}
         </Button>
         <Button icon={<Camera className="size-4" />} onClick={() => cameraRef.current?.click()} disabled={disabled || full}>
-          Take photo
+          {t('social.take_photo')}
         </Button>
         <input ref={libraryRef} type="file" accept="image/*" multiple className="sr-only" tabIndex={-1} aria-hidden onChange={onFiles} />
         <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="sr-only" tabIndex={-1} aria-hidden onChange={onFiles} />
       </div>
       <p className="text-xs text-muted mt-2">
-        Up to {picker.max} photos. Location and camera details are removed before upload.
+        {t('social.up_to_x_photos', { count: picker.max })}
       </p>
       {picker.notice && (
         <p role="status" className="text-xs text-warn mt-1">
@@ -138,14 +140,14 @@ export function PhotoPicker({ picker, disabled }: { picker: PhotoPickerState; di
       )}
 
       {picker.photos.length > 0 && (
-        <ol className="mt-3 flex flex-col gap-3" aria-label="Selected photos">
+        <ol className="mt-3 flex flex-col gap-3" aria-label={t('social.selected_photos')}>
           {picker.photos.map((p, i) => (
             <li key={p.id} className="flex gap-3 items-start rounded-xl border border-line bg-surface-2 p-2">
               <div className="size-20 shrink-0 rounded-lg bg-surface-3 overflow-hidden flex items-center justify-center">
                 {p.status === 'ready' && p.previewUrl ? (
-                  <img src={p.previewUrl} alt={p.description || `Selected photo ${i + 1}`} className="size-full object-cover" />
+                  <img src={p.previewUrl} alt={p.description || t('social.selected_photo_x', { n: i + 1 })} className="size-full object-cover" />
                 ) : p.status === 'processing' ? (
-                  <Loader2 className="size-5 animate-spin text-muted" aria-label="Preparing photo" />
+                  <Loader2 className="size-5 animate-spin text-muted" aria-label={t('social.preparing_photo')} />
                 ) : (
                   <AlertTriangle className="size-5 text-danger" aria-hidden />
                 )}
@@ -158,8 +160,8 @@ export function PhotoPicker({ picker, disabled }: { picker: PhotoPickerState; di
                   </div>
                 ) : (
                   <Input
-                    label={<span className="text-xs text-muted font-normal">Photo {i + 1} description (optional)</span>}
-                    placeholder="What’s in the photo?"
+                    label={<span className="text-xs text-muted font-normal">{t('social.photo_description_x', { n: i + 1 })}</span>}
+                    placeholder={t('social.whats_in_the_photo')}
                     value={p.description}
                     maxLength={DESCRIPTION_MAX}
                     disabled={disabled}
@@ -168,15 +170,15 @@ export function PhotoPicker({ picker, disabled }: { picker: PhotoPickerState; di
                 )}
               </div>
               <div className="flex flex-col shrink-0">
-                <IconButton label={`Remove photo ${i + 1}`} onClick={() => picker.remove(p.id)} disabled={disabled}>
+                <IconButton label={t('social.remove_photo_x', { n: i + 1 })} onClick={() => picker.remove(p.id)} disabled={disabled}>
                   <X className="size-5" />
                 </IconButton>
                 {picker.photos.length > 1 && (
                   <>
-                    <IconButton label={`Move photo ${i + 1} up`} onClick={() => picker.move(p.id, -1)} disabled={disabled || i === 0}>
+                    <IconButton label={t('social.move_photo_x_up', { n: i + 1 })} onClick={() => picker.move(p.id, -1)} disabled={disabled || i === 0}>
                       <ArrowUp className="size-4" />
                     </IconButton>
-                    <IconButton label={`Move photo ${i + 1} down`} onClick={() => picker.move(p.id, 1)} disabled={disabled || i === picker.photos.length - 1}>
+                    <IconButton label={t('social.move_photo_x_down', { n: i + 1 })} onClick={() => picker.move(p.id, 1)} disabled={disabled || i === picker.photos.length - 1}>
                       <ArrowDown className="size-4" />
                     </IconButton>
                   </>

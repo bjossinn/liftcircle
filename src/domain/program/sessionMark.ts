@@ -7,7 +7,7 @@
  *  2. otherwise the canonical English stored `name` / `focus` (`Upper B`, `Lower body`, manual `Session C`, …).
  * Nothing is persisted; the mark is recomputed when shown.
  */
-import type { SessionTemplate, SplitKey } from '@/domain/types';
+import type { Program, SessionKind, SessionTemplate, SplitKey, WorkoutSession } from '@/domain/types';
 import { SPLITS } from './templates';
 
 export type SessionFamily =
@@ -118,3 +118,27 @@ export const sessionMarkKey = (t: MarkSource): string => {
   const m = sessionMark(t);
   return `${m.family}:${m.letter ?? ''}`;
 };
+
+/**
+ * Mark source for a logged workout: the template it was started from (looked up in the programs, at the version the
+ * workout used when there is one), so mobility, conditioning and cardio sessions keep their own mark in history. When
+ * the template is gone, the kind is inferred from the generated template id (`act:mobility`, `end:long`, …), else the
+ * workout counts as lifting.
+ */
+export function workoutMarkSource(
+  s: Pick<WorkoutSession, 'templateId' | 'programId' | 'programVersion' | 'name' | 'nameEdited'>,
+  programs: readonly Pick<Program, 'id' | 'versions' | 'currentVersion'>[] = [],
+): MarkSource | null {
+  const id = s.templateId;
+  if (!id) return null;
+  const owners = s.programId ? programs.filter((p) => p.id === s.programId) : [];
+  for (const p of [...owners, ...programs.filter((x) => !owners.includes(x))]) {
+    const versions = [...p.versions].sort((a, b) => b.version - a.version);
+    const exact = s.programVersion != null && s.programId === p.id ? versions.find((v) => v.version === s.programVersion) : undefined;
+    const tpl = exact?.templates.find((t) => t.id === id) ?? versions.map((v) => v.templates.find((t) => t.id === id)).find(Boolean);
+    if (tpl) return { id, kind: tpl.kind, name: tpl.name, focus: tpl.focus, nameEdited: tpl.nameEdited };
+  }
+  const act = /^act:(walk|cardio|mobility|conditioning)$/.exec(id);
+  const kind: SessionKind = act ? (act[1] as SessionKind) : id.startsWith('end:') ? 'cardio' : 'lifting';
+  return { id, kind, name: s.name, ...(s.nameEdited ? { nameEdited: true as const } : {}) };
+}

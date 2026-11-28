@@ -9,6 +9,7 @@ import { coachingApi } from '@/backend/coaching';
 import type { ClientOverview, CoachProfile, CoachingRelationship } from '@/backend/coachingContract';
 import { Avatar } from '@/features/social/common';
 import { useLoad } from './common';
+import { t as tNow, useT } from '@/i18n';
 
 export type CoachState = 'loading' | 'error' | 'none' | 'applicant' | 'suspended' | 'approved';
 
@@ -20,34 +21,27 @@ export function coachStateOf(profile: CoachProfile | null | undefined): CoachSta
 }
 
 export function useCoachStatus(enabled: boolean) {
-  const prof = useLoad(() => coachingApi.getMyCoachProfile(), [], enabled, 'Couldn’t load your coach profile.');
+  const prof = useLoad(() => coachingApi.getMyCoachProfile(), [], enabled, tNow('coaching.editor.couldnt_load_your_coach_profile'));
   const state: CoachState = prof.error && prof.data === undefined ? 'error' : coachStateOf(prof.data);
   return { state, profile: prof.data ?? null, error: prof.error, reload: prof.reload };
 }
 
-const APP_STATUS: Record<CoachProfile['status'], string> = {
-  draft: 'Your application is a draft. Finish and submit it for review.',
-  submitted: 'Your application is with our reviewers.',
-  changes_requested: 'Reviewers asked for changes to your application.',
-  approved: 'Approved',
-  rejected: 'Your application wasn’t approved.',
-};
-
 /** Explanation for anyone who can't use the coach tools right now. Renders nothing when approved. */
 export function CoachGate({ state, profile, error, reload }: { state: CoachState; profile: CoachProfile | null; error: string | null; reload: () => Promise<void> }): ReactNode {
   const nav = useNavigate();
+  const { t } = useT();
   if (state === 'approved') return null;
-  if (state === 'loading') return <Spinner label="Checking your coach status" />;
-  if (state === 'error') return <ErrorState title="Couldn’t check your coach status" message={error ?? undefined} onRetry={reload} />;
+  if (state === 'loading') return <Spinner label={t('coaching.editor.checking_your_coach_status')} />;
+  if (state === 'error') return <ErrorState title={t('coaching.editor.couldnt_check_your_coach_status')} message={error ?? undefined} onRetry={reload} />;
   if (state === 'suspended')
     return (
       <EmptyState
         icon={<ShieldAlert className="size-6" aria-hidden />}
-        title="Your coach account is suspended"
+        title={t('coaching.apply.your_coach_account_is_suspended')}
         body={
           <>
-            While suspended you can’t see clients, their records or messages, and your listing is hidden. Your clients keep their workouts and accepted plans.
-            {profile?.suspendedReason ? ` Reason: “${profile.suspendedReason}”.` : ''} Contact support if you think this is a mistake.
+            {t('coaching.editor.while_suspended_you_cant_see_clients')}
+            {profile?.suspendedReason ? ` ${t('coaching.editor.reason_x', { reason: profile.suspendedReason })}` : ''} {t('coaching.editor.contact_support_if_you_think_this')}
           </>
         }
       />
@@ -55,27 +49,27 @@ export function CoachGate({ state, profile, error, reload }: { state: CoachState
   if (state === 'none')
     return (
       <EmptyState
-        title="Coach tools are for approved coaches"
-        body="Apply to become a coach. Once Hard Earned approves your application you can accept clients, build programs and message them."
+        title={t('coaching.editor.coach_tools_are_for_approved_coaches')}
+        body={t('coaching.editor.apply_to_become_a_coach_once')}
         action={
           <Button variant="primary" onClick={() => nav('/coaching/apply')}>
-            Apply to be listed
+            {t('coaching.editor.apply_to_be_listed')}
           </Button>
         }
       />
     );
   return (
     <EmptyState
-      title="Not approved yet"
+      title={t('coaching.editor.not_approved_yet')}
       body={
         <>
-          {profile ? APP_STATUS[profile.status] : ''}
-          {profile?.latestFeedback ? ` Feedback: “${profile.latestFeedback}”.` : ''} You can prepare your profile, but you can’t access clients until you’re approved.
+          {profile ? t(`coaching.editor.app_status.${profile.status}`) : ''}
+          {profile?.latestFeedback ? ` ${t('coaching.editor.feedback_x', { feedback: profile.latestFeedback })}` : ''} {t('coaching.editor.you_can_prepare_your_profile_but')}
         </>
       }
       action={
         <Button variant="primary" onClick={() => nav('/coaching/apply')}>
-          View application
+          {t('coaching.hub.view_application')}
         </Button>
       }
     />
@@ -84,28 +78,32 @@ export function CoachGate({ state, profile, error, reload }: { state: CoachState
 
 /* ================================================================ client card */
 export function TrainingSummary({ training, who }: { training: ClientOverview['training'] | undefined; who: string }) {
-  if (training === undefined) return <p className="text-xs text-muted">Loading activity…</p>;
+  const { t, tp } = useT();
+  if (training === undefined) return <p className="text-xs text-muted">{t('coaching.editor.loading_activity')}</p>;
   if (training === null)
     return (
       <p className="text-xs text-muted inline-flex items-center gap-1">
-        <EyeOff className="size-4" aria-hidden /> Training not shared by {who}
+        <EyeOff className="size-4" aria-hidden /> {t('coaching.editor.training_not_shared_by', { name: who })}
       </p>
     );
   const { plannedLast28: planned, completedLast28: done } = training;
+  const summary = planned != null && planned > 0 ? t('coaching.editor.x_of_x_planned_sessions_in', { done, planned }) : tp('coaching.editor.workouts_last_28', done);
   return (
     <div className="flex flex-col gap-1">
       <p className="text-xs text-muted">
-        {planned != null && planned > 0 ? `${done} of ${planned} planned sessions in the last 28 days` : `${done} workout${done === 1 ? '' : 's'} in the last 28 days`}
-        {training.activeProgram ? ` · ${training.activeProgram.name} v${training.activeProgram.currentVersion}` : ' · no active plan'}
+        {training.activeProgram
+          ? t('coaching.editor.training_summary_plan', { summary, program: training.activeProgram.name, version: training.activeProgram.currentVersion })
+          : t('coaching.editor.training_summary_no_plan', { summary })}
       </p>
-      {planned != null && planned > 0 && <ProgressBar value={Math.min(done, planned)} max={planned} label={`Adherence for ${who}`} tone={done / planned < 0.6 ? 'warn' : 'accent'} />}
+      {planned != null && planned > 0 && <ProgressBar value={Math.min(done, planned)} max={planned} label={t('coaching.editor.adherence_for_x', { name: who })} tone={done / planned < 0.6 ? 'warn' : 'accent'} />}
     </div>
   );
 }
 
 export function ClientCard({ rel, overview, overviewError }: { rel: CoachingRelationship; overview: ClientOverview | undefined; overviewError?: string | null }) {
   const nav = useNavigate();
-  const who = rel.client.displayName || 'your client';
+  const { t, tp } = useT();
+  const who = rel.client.displayName || t('coaching.client.your_client');
   const openCheckins = overview?.checkins?.filter((c) => !c.coachResponse).length ?? 0;
   return (
     <Card as="li" className="px-4 py-3">
@@ -115,22 +113,22 @@ export function ClientCard({ rel, overview, overviewError }: { rel: CoachingRela
           <Link to={`/coaching/client/${rel.id}`} className="font-semibold truncate block hover:underline">
             {who}
           </Link>
-          <div className="mt-1">{overviewError ? <p className="text-xs text-danger">Couldn’t load activity.</p> : <TrainingSummary training={overview ? overview.training : undefined} who={who} />}</div>
+          <div className="mt-1">{overviewError ? <p className="text-xs text-danger">{t('coaching.editor.couldnt_load_activity')}</p> : <TrainingSummary training={overview ? overview.training : undefined} who={who} />}</div>
           <div className="flex flex-wrap gap-1.5 mt-1.5">
-            {rel.unread > 0 && <Badge tone="accent">{rel.unread} unread</Badge>}
-            {openCheckins > 0 && <Badge tone="warn">{openCheckins} check-in{openCheckins === 1 ? '' : 's'} to answer</Badge>}
+            {rel.unread > 0 && <Badge tone="accent">{t('coaching.editor.unread_count', { count: rel.unread })}</Badge>}
+            {openCheckins > 0 && <Badge tone="warn">{tp('coaching.editor.checkins_to_answer', openCheckins)}</Badge>}
           </div>
         </div>
       </div>
       <div className="flex gap-1 mt-2 -ml-2 flex-wrap">
         <Button size="sm" variant="ghost" icon={<MessageCircle className="size-4" />} onClick={() => nav(`/coaching/messages/${rel.id}`)}>
-          Message
+          {t('coaching.messages.message')}
         </Button>
         <Button size="sm" variant="ghost" icon={<CalendarRange className="size-4" />} onClick={() => nav(`/coaching/client/${rel.id}/program`)}>
-          Program
+          {t('train.program')}
         </Button>
         <Button size="sm" variant="ghost" icon={<ClipboardCheck className="size-4" />} onClick={() => nav(`/coaching/client/${rel.id}`)}>
-          Details
+          {t('today.nutritionDetails')}
         </Button>
       </div>
     </Card>

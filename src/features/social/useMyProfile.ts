@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { socialApi } from '@/backend/social';
 import type { SocialProfile } from '@/domain/types';
 import { friendlyError } from '@/social/pendingPosts';
+import { t } from '@/i18n';
 
 /** In-memory (per account) copy of my social profile, shared across social screens. */
 let cache: { account: string; profile: SocialProfile | null } | null = null;
@@ -26,7 +27,7 @@ export async function updateDiscoverable(account: string, discoverable: boolean)
     setMyProfileCache(account, saved);
     return saved;
   } catch (e) {
-    throw new Error(friendlyError(e, 'Couldn’t update who can find you.'));
+    throw new Error(friendlyError(e, t('social.error.discoverable')));
   }
 }
 
@@ -50,7 +51,7 @@ export function useMyProfile(meId: string | undefined) {
     try {
       setMyProfileCache(meId, await socialApi.getMyProfile());
     } catch (e) {
-      setError(friendlyError(e, 'Couldn’t load your profile.'));
+      setError(friendlyError(e, t('profile.loadFailed')));
     } finally {
       setLoading(false);
     }

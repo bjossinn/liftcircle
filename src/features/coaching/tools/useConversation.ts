@@ -9,6 +9,7 @@ import { coachingApi } from '@/backend/coaching';
 import type { LiftDb } from '@/db/db';
 import { onCoachMessageSent } from '@/coaching/outbox';
 import { coachingError } from '@/coaching/errors';
+import { t } from '@/i18n';
 
 export const POLL_MS = 5_000;
 const PAGE = 200;
@@ -87,7 +88,7 @@ export function useConversation(relationshipId: string, db: LiftDb, enabled: boo
       setFromCache(false);
       setError(null);
     } catch (e) {
-      setError(coachingError(e, 'Couldn’t load messages.'));
+      setError(coachingError(e, t('coaching.editor.couldnt_load_messages')));
       if (!ref.current.length) setMessages((m) => m ?? []);
     } finally {
       busy.current = false;

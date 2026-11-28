@@ -16,6 +16,7 @@ import { useApp } from '@/state/app';
 import { kvGet } from '@/db/repo';
 import { pushApi } from '@/backend/push';
 import { mentionsPainOrIllness, missedNudgeJobs, restAlertJob, workoutReminderJobs, type ScheduledJob } from '@/domain/pushSchedule';
+import { effectiveLanguage } from '@/i18n';
 import type { Exercise, ID, WeightUnit, WorkoutSession } from '@/domain/types';
 import { useActiveProgram, useAllActivities, useAllSessions } from '@/features/train/hooks';
 import { AI_HISTORY_CACHE_KEY } from '@/features/coaching/ai/model';
@@ -95,7 +96,7 @@ export function usePushScheduler() {
     const t = setTimeout(() => {
       void (async () => {
         const prefs = { ...cachedPushPrefs(uid), timeZone: account.settings.timeZone };
-        const base = { program, sessions, activities: activities ?? [], today: todayISO(account.settings.timeZone), now: new Date(), prefs, style: account.settings.coachStyle };
+        const base = { program, sessions, activities: activities ?? [], today: todayISO(account.settings.timeZone), now: new Date(), prefs, style: account.settings.coachStyle, language: effectiveLanguage(account.settings.language) };
         const painFlag = await localPainFlag(db, sessions);
         await upload(uid, 'workout_reminder', prefs.kinds.includes('workout_reminder') ? workoutReminderJobs(base) : [], isCurrent);
         await upload(uid, 'missed_nudge', prefs.kinds.includes('missed_nudge') ? missedNudgeJobs({ ...base, painFlag }) : [], isCurrent);

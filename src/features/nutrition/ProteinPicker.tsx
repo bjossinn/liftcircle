@@ -9,7 +9,9 @@ import { Button, cx } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { useApp } from '@/state/app';
 import type { DietPrefs, ProteinGroup, ProteinPrefs } from '@/domain/types';
-import { cycleProteinChoice, normalizeProteinPrefs, proteinChoice, PROTEIN_GROUP_EXAMPLES, PROTEIN_GROUP_LABELS, PROTEIN_GROUPS, type ProteinChoice } from '@/domain/nutrition/recipes';
+import { cycleProteinChoice, normalizeProteinPrefs, proteinChoice, proteinGroupLabel, PROTEIN_GROUPS, type ProteinChoice } from '@/domain/nutrition/recipes';
+import { proteinExampleText } from '@/data/catalogText';
+import { getLanguage, locale, t as tNow, useT, type Language } from '@/i18n';
 
 const ICONS: Record<ProteinGroup, ComponentType<{ className?: string; 'aria-hidden'?: boolean }>> = {
   chicken: Drumstick,
@@ -31,12 +33,23 @@ const ICONS: Record<ProteinGroup, ComponentType<{ className?: string; 'aria-hidd
   plant_protein: Sprout,
 };
 
-export const CHOICE_TEXT: Record<ProteinChoice, string> = { like: 'Like', exclude: 'Not for me', neutral: 'No preference' };
+/** Chip state names in the current language (read at render). */
+export const CHOICE_TEXT: Readonly<Record<ProteinChoice, string>> = {
+  get like() {
+    return tNow('nutrition.protein.choice.like');
+  },
+  get exclude() {
+    return tNow('nutrition.protein.choice.exclude');
+  },
+  get neutral() {
+    return tNow('nutrition.protein.choice.neutral');
+  },
+};
 
 export function ProteinPicker({
   value,
   onChange,
-  hint = 'Tap once to like, twice for “Not for me”, a third time to reset. Optional.',
+  hint: hintProp,
   groups = PROTEIN_GROUPS,
 }: {
   value: Partial<ProteinPrefs> | undefined;
@@ -45,6 +58,8 @@ export function ProteinPicker({
   groups?: ProteinGroup[];
 }) {
   const hintId = useId();
+  const { t, language } = useT();
+  const hint = hintProp === undefined ? t('nutrition.protein.hint') : hintProp;
   return (
     <div className="flex flex-col gap-2">
       {hint && (
@@ -52,18 +67,19 @@ export function ProteinPicker({
           {hint}
         </p>
       )}
-      <ul className="grid grid-cols-2 gap-2" aria-label="Proteins">
+      <ul className="grid grid-cols-2 gap-2" aria-label={t('nutrition.mealPlan.proteins')}>
         {groups.map((g) => {
           const choice = proteinChoice(value, g);
           const Icon = ICONS[g];
+          const label = proteinGroupLabel(g, language);
           return (
             <li key={g}>
               <button
                 type="button"
                 data-choice={choice}
-                aria-label={`${PROTEIN_GROUP_LABELS[g]}: ${CHOICE_TEXT[choice]}`}
+                aria-label={t('nutrition.protein.chip_label', { protein: label, choice: CHOICE_TEXT[choice] })}
                 aria-describedby={hint ? hintId : undefined}
-                title={PROTEIN_GROUP_EXAMPLES[g]}
+                title={proteinExampleText(g, language)}
                 onClick={() => onChange(cycleProteinChoice(value, g))}
                 className={cx(
                   'w-full min-h-12 rounded-xl border px-3 py-2 text-left flex items-center gap-2 text-sm transition-colors',
@@ -74,7 +90,7 @@ export function ProteinPicker({
               >
                 <Icon className="size-4 shrink-0" aria-hidden />
                 <span className="min-w-0 flex-1">
-                  <span className={cx('block leading-tight', choice === 'exclude' && 'line-through')}>{PROTEIN_GROUP_LABELS[g]}</span>
+                  <span className={cx('block leading-tight', choice === 'exclude' && 'line-through')}>{label}</span>
                   {choice !== 'neutral' && <span className="block text-[11px] leading-tight mt-0.5 no-underline">{CHOICE_TEXT[choice]}</span>}
                 </span>
                 {choice === 'like' && <Check className="size-4 shrink-0" aria-hidden />}
@@ -89,10 +105,15 @@ export function ProteinPicker({
 }
 
 /** "Likes chicken, eggs · Not for me: prawns" (empty string when there are no preferences). */
-export function proteinPrefsSummary(p: Partial<ProteinPrefs> | undefined): string {
+export function proteinPrefsSummary(p: Partial<ProteinPrefs> | undefined, lang: Language = getLanguage()): string {
   const n = normalizeProteinPrefs(p);
-  const names = (gs: ProteinGroup[]) => gs.map((g) => PROTEIN_GROUP_LABELS[g].toLowerCase()).join(', ');
-  return [n.liked.length ? `likes ${names(n.liked)}` : '', n.excluded.length ? `not for me: ${names(n.excluded)}` : ''].filter(Boolean).join(' · ');
+  const names = (gs: ProteinGroup[]) => gs.map((g) => proteinGroupLabel(g, lang).toLocaleLowerCase(locale(lang))).join(', ');
+  return [
+    n.liked.length ? tNow('nutrition.protein.summary_likes', { proteins: names(n.liked) }, lang) : '',
+    n.excluded.length ? tNow('nutrition.protein.summary_not_for_me', { proteins: names(n.excluded) }, lang) : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 /**
@@ -102,6 +123,7 @@ export function proteinPrefsSummary(p: Partial<ProteinPrefs> | undefined): strin
 export function ProteinsForm({ hasPlan, busy, onRebuild, onDone }: { hasPlan: boolean; busy: boolean; onRebuild: (diet: DietPrefs) => void | Promise<void>; onDone: () => void }) {
   const { account, updateAccount } = useApp();
   const toast = useToast();
+  const { t } = useT();
   const [value, setValue] = useState<ProteinPrefs>(() => normalizeProteinPrefs(account.profile.diet.proteinPrefs));
   const [saved, setSaved] = useState<DietPrefs | null>(null);
   const [saving, setSaving] = useState(false);
@@ -114,11 +136,11 @@ export function ProteinsForm({ hasPlan, busy, onRebuild, onDone }: { hasPlan: bo
       await updateAccount((a) => ({ ...a, profile: { ...a.profile, diet: { ...a.profile.diet, proteinPrefs: diet.proteinPrefs } } }));
       if (hasPlan) setSaved(diet);
       else {
-        toast.show('Protein choices saved.', { tone: 'success' });
+        toast.show(t('nutrition.protein.protein_choices_saved'), { tone: 'success' });
         onDone();
       }
     } catch {
-      toast.show('Could not save. Please try again.', { tone: 'error' });
+      toast.show(t('foodLog.saveError'), { tone: 'error' });
     } finally {
       setSaving(false);
     }
@@ -126,13 +148,13 @@ export function ProteinsForm({ hasPlan, busy, onRebuild, onDone }: { hasPlan: bo
   if (saved)
     return (
       <div className="flex flex-col gap-4" role="status">
-        <p className="text-sm">Saved. Your current plan stays as it is until you rebuild it.</p>
+        <p className="text-sm">{t('nutrition.protein.saved_your_current_plan_stays_as')}</p>
         <div className="flex flex-col gap-2">
           <Button variant="primary" loading={busy} onClick={() => onRebuild(saved)}>
-            Rebuild meal plan with these
+            {t('nutrition.protein.rebuild_meal_plan_with_these')}
           </Button>
           <Button variant="ghost" onClick={onDone}>
-            Keep current plan
+            {t('nutrition.protein.keep_current_plan')}
           </Button>
         </div>
       </div>
@@ -140,13 +162,13 @@ export function ProteinsForm({ hasPlan, busy, onRebuild, onDone }: { hasPlan: bo
   return (
     <div className="flex flex-col gap-4">
       <ProteinPicker value={value} onChange={setValue} />
-      <p className="text-xs text-muted">“Not for me” proteins never appear in plans, swaps or protein sides. Allergies are separate, under Plan preferences.</p>
+      <p className="text-xs text-muted">{t('nutrition.protein.not_for_me_proteins_never_appear')}</p>
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onDone}>
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Button variant="primary" onClick={save} loading={saving} disabled={!changed}>
-          Save
+          {t('common.save')}
         </Button>
       </div>
     </div>

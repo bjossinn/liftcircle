@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FeedCursor, Page } from '@/backend/contract';
 import type { ID, Post } from '@/domain/types';
 import { friendlyError } from '@/social/pendingPosts';
+import { t } from '@/i18n';
 
 export const PAGE_SIZE = 20;
 
@@ -78,7 +79,7 @@ export function usePostList(key: string | null, fetchPage: (cursor: FeedCursor |
         setStatus('ready');
       } catch (e) {
         if (id !== reqId.current) return;
-        const msg = friendlyError(e, 'Couldn’t load posts.');
+        const msg = friendlyError(e, t('social.couldnt_load_posts'));
         if (stateRef.current.items.length === 0) {
           setStatus('error');
           setError(msg);
@@ -118,7 +119,7 @@ export function usePostList(key: string | null, fetchPage: (cursor: FeedCursor |
       });
       setNext(page.next ?? null);
     } catch (e) {
-      setMoreError(friendlyError(e, 'Couldn’t load more posts.'));
+      setMoreError(friendlyError(e, t('social.error.load_more_posts')));
     } finally {
       setLoadingMore(false);
     }

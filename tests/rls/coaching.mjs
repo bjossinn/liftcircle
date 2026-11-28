@@ -239,7 +239,7 @@ export async function coachingTests(h) {
   // client data
   const S = randomUUID();
   const PR = randomUUID();
-  const sessionP = { id: S, name: 'Lower A', status: 'completed', date: new Date().toISOString().slice(0, 10), timeZone: 'UTC', startedAt: ts - 3600e3,
+  const sessionP = { id: S, name: 'Lower A', templateId: 'ul4:la', status: 'completed', date: new Date().toISOString().slice(0, 10), timeZone: 'UTC', startedAt: ts - 3600e3,
     endedAt: ts, pausedTotalMs: 0, createdAt: ts, updatedAt: ts,
     exercises: [{ id: 'e1', exerciseId: 'barbell-back-squat', order: 0, sets: [{ id: 's1', type: 'normal', weightKg: 100, reps: 5, completed: true, completedAt: ts }] }] };
   const version = (n) => ({ version: n, createdAt: ts, reason: `v${n}`, weeks: 8, reviewWeek: 4, rationale: [], warnings: [],
@@ -311,6 +311,8 @@ export async function coachingTests(h) {
     const o = ok(await R('coach', 'coach_client_overview', { p_id: REL }), 'overview');
     assert(o.training && o.training.recent_sessions.length === 1 && o.training.active_program.id === PR, 'training panel');
     eq(o.training.recent_sessions[0].working_sets, 1, 'working sets');
+    // Display provenance of the stored name (20261201000001): generated template id, not renamed.
+    eq([o.training.recent_sessions[0].template_id, o.training.recent_sessions[0].name_edited], ['ul4:la', false], 'session provenance');
     assert(Number.isInteger(o.training.planned_last28), 'planned from schedule');
     eq([o.measurements, o.nutrition], [null, null], 'unconsented panels null');
     eq(o.checkins, [], 'checkins panel (consented, empty)');

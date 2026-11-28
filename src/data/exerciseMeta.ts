@@ -1,7 +1,8 @@
 import type {
   Difficulty, Equipment, Exercise, ExerciseCategory, LimitationArea, LoadConvention, MovementPattern, MuscleGroup, TrackingType,
 } from '@/domain/types';
-import { getLanguage, t, tKey, type Language, type MessageKey } from '@/i18n';
+import { getLanguage, localeFor, t, tKey, type Language, type MessageKey } from '@/i18n';
+import { exerciseAliases, exerciseDisplayName } from './catalogText';
 import { LANGUAGES } from '../../supabase/functions/_shared/i18n/core';
 
 /*
@@ -156,7 +157,10 @@ export function normalizeText(s: string): string {
 }
 
 interface Indexed {
+  /** Catalog English name. */
   name: string;
+  /** Name shown in each app language (the translation for catalog exercises, the typed name for custom ones). */
+  byLang: Record<Language, string>;
   aliases: string[];
   primary: string[];
   secondary: string[];
@@ -173,7 +177,7 @@ const MUSCLE_SEARCH_EXTRA: Partial<Record<MuscleGroup, LimitationArea>> = { shou
 /**
  * Search terms for one metadata value: the label in EVERY app language plus the raw enum value, so English aliases
  * keep working in Icelandic and Icelandic words ("axlir", "teygja", "hnébeygja") find the English catalog. Catalog
- * exercise names are never translated.
+ * exercise names and aliases are indexed the same way (see indexOf).
  */
 function terms(group: MetaGroup, value: string): string[] {
   const out = new Set<string>([normalizeText(value)]);
@@ -190,8 +194,15 @@ function indexOf(ex: Exercise): Indexed {
   let ix = indexCache.get(ex);
   if (!ix) {
     ix = {
+      // Catalog exercises: the name and aliases in every app language (plus the English), so "bekkpressa" and
+      // "bench press" both match whatever the UI language is. Custom exercises: what the user typed.
       name: normalizeText(ex.name),
-      aliases: ex.aliases.map(normalizeText),
+      byLang: Object.fromEntries(LANGUAGES.map((lang) => [lang, normalizeText(exerciseDisplayName(ex, undefined, lang))])) as Record<Language, string>,
+      aliases: [
+        ...new Set(
+          [...ex.aliases, ...LANGUAGES.flatMap((lang) => [exerciseDisplayName(ex, undefined, lang), ...exerciseAliases(ex, lang)])].map(normalizeText),
+        ),
+      ].filter(Boolean),
       primary: ex.primaryMuscles.flatMap((m) => terms('muscle', m)),
       secondary: ex.secondaryMuscles.flatMap((m) => terms('muscle', m)),
       equipment: ex.equipment.flatMap((e) => terms('equipment', e)),
@@ -206,10 +217,13 @@ const wordStart = (hay: string, q: string) => hay.startsWith(q) || hay.includes(
 /** Simple singular/plural tolerance: "dumbbell" ↔ "dumbbells", "lunges" → "lunge". */
 const stem = (t: string) => (t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t);
 
-function scoreOne(ix: Indexed, q: string): number {
-  if (ix.name.startsWith(q)) return 1000;
-  if (wordStart(ix.name, q)) return 900;
-  if (ix.name.includes(q)) return 800;
+/** Names that rank as a name match: the one shown in the UI language and the catalog English. Names in the other
+ * languages rank as aliases (they are indexed in `aliases`). */
+function scoreOne(ix: Indexed, q: string, lang: Language = getLanguage()): number {
+  const names = ix.byLang[lang] === ix.name ? [ix.name] : [ix.byLang[lang], ix.name];
+  if (names.some((n) => n.startsWith(q))) return 1000;
+  if (names.some((n) => wordStart(n, q))) return 900;
+  if (names.some((n) => n.includes(q))) return 800;
   if (ix.aliases.some((a) => a.startsWith(q) || a === q)) return 700;
   if (ix.aliases.some((a) => a.includes(q))) return 600;
   if (ix.primary.some((m) => wordStart(m, q))) return 500;
@@ -243,7 +257,15 @@ export function searchExercises(
     return true;
   });
   const q = normalizeText(query);
-  const byName = (a: Exercise, b: Exercise) => a.name.localeCompare(b.name);
+  const lang = getLanguage();
+  const collator = new Intl.Collator(localeFor(lang));
+  const shown = new Map<Exercise, string>();
+  const label = (e: Exercise) => {
+    let n = shown.get(e);
+    if (n == null) shown.set(e, (n = exerciseDisplayName(e, undefined, lang)));
+    return n;
+  };
+  const byName = (a: Exercise, b: Exercise) => collator.compare(label(a), label(b));
 
   if (!q) {
     const m = filters?.muscle;

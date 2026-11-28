@@ -47,7 +47,7 @@ export function conventionNote(ex: Exercise): string | null {
 }
 
 /** Stored-catalog name, else the bundled catalog's, else the localized "Unknown exercise" (records are kept). */
-export const exerciseLabel = (id: ID, byId: Map<ID, Exercise>) => byId.get(id)?.name ?? (exerciseName(id, byId) === 'Unknown exercise' ? t('workout.unknownExercise') : exerciseName(id, byId));
+export const exerciseLabel = (id: ID, byId: Map<ID, Exercise>) => exerciseName(id, byId);
 
 /** Food logs within [from, to]. */
 export const inRange = <T extends { date: ISODate }>(rows: T[], from: ISODate, to: ISODate) => rows.filter((r) => r.date >= from && r.date <= to);

@@ -23,6 +23,8 @@
 import type { ActivityLog, CoachStyle, Exercise, ID, ISODate, Program, WeightUnit, WorkoutSession } from './types';
 import { plannedSessionsInRange } from './program/schedule';
 import { nextSet } from './coachCheers';
+import { sessionDisplayName } from './program/localize';
+import { getLanguage, t, type Language } from '@/i18n';
 
 export type PushKind = 'workout_reminder' | 'rest_over' | 'coaching' | 'social' | 'missed_nudge' | 'food_unlogged';
 export const PUSH_KINDS: PushKind[] = ['workout_reminder', 'rest_over', 'coaching', 'social', 'missed_nudge', 'food_unlogged'];
@@ -167,18 +169,21 @@ export function reminderTime(i: ReminderTimeInput): string {
 }
 
 /* ------------------------------------------------------------------ texts (coach style) */
-export function reminderText(name: string, style: CoachStyle = 'supportive'): string {
-  if (style === 'supportive') return `${name} today, whenever you’re ready.`;
-  if (style === 'strict') return `${name} today. Start with the first exercise.`;
-  return `${name} today. Ready for a session?`;
+/** Reminder text in `language` (default: the current language, which follows the account language). */
+export function reminderText(name: string, style: CoachStyle = 'supportive', language: Language = getLanguage()): string {
+  if (style === 'supportive') return t('push.reminder.supportive', { name }, language);
+  if (style === 'strict') return t('push.reminder.strict', { name }, language);
+  return t('push.reminder.direct', { name }, language);
 }
-export function missedText(name: string, style: CoachStyle = 'supportive'): string {
-  if (style === 'supportive') return `${name} is still open from yesterday, and that’s okay. A short session today still counts.`;
-  if (style === 'strict') return `${name} is still open from yesterday. Do the first two exercises today: 20 minutes counts.`;
-  return `${name} is still open from yesterday. Can you fit it in today? Even 20 minutes counts.`;
+export function missedText(name: string, style: CoachStyle = 'supportive', language: Language = getLanguage()): string {
+  if (style === 'supportive') return t('push.missed.supportive', { name }, language);
+  if (style === 'strict') return t('push.missed.strict', { name }, language);
+  return t('push.missed.direct', { name }, language);
 }
-export function restText(exerciseName: string, setNumber: number, detail: string): string {
-  return `Rest’s up: ${exerciseName} set ${setNumber}${detail ? `, ${detail}` : ''}`;
+export function restText(exerciseName: string, setNumber: number, detail: string, language: Language = getLanguage()): string {
+  return detail
+    ? t('push.restWithDetail', { exercise: exerciseName, number: setNumber, detail }, language)
+    : t('push.rest', { exercise: exerciseName, number: setNumber }, language);
 }
 
 /** Latest local input mentions pain/injury/illness → no nudges. */
@@ -198,6 +203,8 @@ export interface PlanJobsInput {
   /** True when the latest local input (AI chat message, discomfort flag) mentions pain, injury or illness. */
   painFlag?: boolean;
   days?: number;
+  /** Language of the texts (default: the current language, i.e. the account language). */
+  language?: Language;
 }
 
 const started = (sessions: WorkoutSession[], date: ISODate) =>
@@ -223,7 +230,7 @@ export function workoutReminderJobs(i: PlanJobsInput): ScheduledJob[] {
     const at = zonedToUtc(it.date, reminderTime({ templateId: it.template.id, sessions: i.sessions, prefs: i.prefs }), tz);
     if (at.getTime() <= i.now.getTime()) continue;
     seen.add(it.date);
-    out.push({ dedupeKey: `reminder:${it.date}`, fireAt: at.toISOString(), payload: { title: 'Hard Earned', body: reminderText(it.template.name, i.style), url: '/', tag: 'workout' }, eventDate: it.date, sourceDate: it.date });
+    out.push({ dedupeKey: `reminder:${it.date}`, fireAt: at.toISOString(), payload: { title: 'Hard Earned', body: reminderText(sessionDisplayName(it.template, i.language), i.style, i.language), url: '/', tag: 'workout' }, eventDate: it.date, sourceDate: it.date });
   }
   return out;
 }
@@ -250,7 +257,7 @@ export function missedNudgeJobs(i: PlanJobsInput): ScheduledJob[] {
     const at = zonedToUtc(nudgeDay, reminderTime({ templateId: it.template.id, sessions: i.sessions, prefs: i.prefs }), tz);
     if (at.getTime() <= i.now.getTime()) continue;
     seen.add(it.date);
-    out.push({ dedupeKey: `nudge:${it.date}`, fireAt: at.toISOString(), payload: { title: 'Hard Earned', body: missedText(it.template.name, i.style), url: '/', tag: 'workout' }, eventDate: nudgeDay, sourceDate: it.date });
+    out.push({ dedupeKey: `nudge:${it.date}`, fireAt: at.toISOString(), payload: { title: 'Hard Earned', body: missedText(sessionDisplayName(it.template, i.language), i.style, i.language), url: '/', tag: 'workout' }, eventDate: nudgeDay, sourceDate: it.date });
   }
   // At most one nudge per calendar day.
   const perDay = new Map<string, ScheduledJob>();
@@ -262,10 +269,10 @@ export function missedNudgeJobs(i: PlanJobsInput): ScheduledJob[] {
 }
 
 /** The rest-over push for an active workout's running rest timer (dedupe key per workout), or null. */
-export function restAlertJob(session: WorkoutSession, byId: Map<ID, Exercise>, unit: WeightUnit): ScheduledJob | null {
+export function restAlertJob(session: WorkoutSession, byId: Map<ID, Exercise>, unit: WeightUnit, language: Language = getLanguage()): ScheduledJob | null {
   const endsAt = session.status === 'active' ? session.rest?.endsAt : undefined;
   if (endsAt == null) return null;
-  const n = nextSet(session, byId, unit, session.rest?.forExerciseId);
+  const n = nextSet(session, byId, unit, session.rest?.forExerciseId, language);
   if (!n) return null;
   return {
     dedupeKey: `rest:${session.id}`,

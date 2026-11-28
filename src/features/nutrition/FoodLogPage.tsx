@@ -25,7 +25,8 @@ import {
   normalizeMeal, quickProteinDraft, recentItems, recentKey, type EntryDraft, type MacroKey,
 } from '@/domain/nutrition/log';
 import { hasKey, listText, numberText, tp as tpNow, useT, type MessageKey } from '@/i18n';
-import { MACRO_LABEL, macroLine, useDayEntries } from './shared';
+import { ingredientDisplayName, recipeDisplayName } from '@/data/catalogText';
+import { MACRO_LABEL, entryDisplayName, macroLine, useDayEntries } from './shared';
 
 type Tab = 'recent' | 'quick' | 'foods' | 'recipes' | 'custom' | 'saved';
 /** Display order; every id keeps its existing meaning (`quick` is the manual macro form). */
@@ -95,7 +96,7 @@ export default function FoodLogPage() {
 
   /** Writes one batch atomically (with its outbox ops) and confirms it. The caller holds the guard. */
   async function commit(drafts: EntryDraft[], label: string | undefined, targetDb: LiftDb, at: { date: string; meal: MealSlot; today: string }): Promise<boolean> {
-    const name = label ?? (drafts.length === 1 ? drafts[0].name : tpNow('foodLog.itemCount', drafts.length));
+    const name = label ?? (drafts.length === 1 ? entryDisplayName(drafts[0], language) : tpNow('foodLog.itemCount', drafts.length));
     const records = drafts.map((d) => newRecord<Omit<FoodLogEntry, keyof SyncFields>>({ ...entryDraftOf(d), date: at.date, meal: at.meal }));
     try {
       await saveRecordsAtomic(records.map((record) => ({ entity: 'food_logs' as const, record })), targetDb);
@@ -264,7 +265,7 @@ function QuickProtein({ onLog, pending, onOther }: { onLog: LogFn; pending: bool
 /* ------------------------------------------------------------------- recent */
 function RecentTab({ onLog, today, pending, onOther }: { onLog: LogFn; today: string; pending: boolean; onOther: () => void }) {
   const { db } = useApp();
-  const { t } = useT();
+  const { t, language } = useT();
   // The Recent window is independent of the selected log date: the last 30 days through today, inclusive.
   const res = useLiveQuery(
     () =>
@@ -291,13 +292,13 @@ function RecentTab({ onLog, today, pending, onOther }: { onLog: LogFn; today: st
             {res.value.map((e) => (
               <li key={recentKey(e)} className="flex items-center gap-2 pl-4 pr-2 py-2 min-h-14">
                 <div className="min-w-0 flex-1">
-                  <div className="text-[15px] font-medium truncate">{e.name}</div>
+                  <div className="text-[15px] font-medium truncate">{entryDisplayName(e, language)}</div>
                   <div className="text-xs text-muted truncate">
                     {e.servings != null ? `${numberText(e.servings)}× · ` : e.grams != null ? `${numberText(e.grams)} g · ` : ''}
                     {macroLine(e)}
                   </div>
                 </div>
-                <Button size="sm" disabled={pending} onClick={() => void onLog([entryDraftOf(e)])} aria-label={t('foodLog.recent.again', { name: e.name })}>
+                <Button size="sm" disabled={pending} onClick={() => void onLog([entryDraftOf(e)])} aria-label={t('foodLog.recent.again', { name: entryDisplayName(e, language) })}>
                   {t('foodLog.add')}
                 </Button>
               </li>
@@ -369,16 +370,19 @@ function QuickTab({ onLog, fullMode, pending, focusProtein, onFocused }: { onLog
 /* ------------------------------------------------------------------ recipes */
 function RecipesTab({ onLog, pending }: { onLog: LogFn; pending: boolean }) {
   const { account } = useApp();
-  const { t, tp, language } = useT();
+  const { t, tp, language, locale } = useT();
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState<Recipe | null>(null);
   const [servings, setServings] = useState<number>(1);
   const allergens = account.profile.diet.allergens;
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
+    const sl = q.trim().toLocaleLowerCase(locale);
     const favs = account.favorites.recipes;
-    return RECIPES.filter((r) => !s || r.name.toLowerCase().includes(s)).sort((a, b) => Number(favs.includes(b.id)) - Number(favs.includes(a.id)));
-  }, [q, account.favorites.recipes]);
+    return RECIPES.filter((r) => !s || r.name.toLowerCase().includes(s) || recipeDisplayName(r, language).toLocaleLowerCase(locale).includes(sl)).sort(
+      (a, b) => Number(favs.includes(b.id)) - Number(favs.includes(a.id)),
+    );
+  }, [q, account.favorites.recipes, language, locale]);
   const preview = picked ? entryFromRecipe(picked, servings) : null;
   return (
     <>
@@ -402,7 +406,7 @@ function RecipesTab({ onLog, pending }: { onLog: LogFn; pending: boolean }) {
                     }}
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="text-[15px] font-medium truncate">{r.name}</div>
+                      <div className="text-[15px] font-medium truncate">{recipeDisplayName(r, language)}</div>
                       <div className="text-xs text-muted">
                         {mealLabel(r.meal, language)} · {t('foodLog.recipes.perServing', { macros: macroLine({ kcal: n.kcal, protein: n.protein }, false) })}
                       </div>
@@ -420,7 +424,7 @@ function RecipesTab({ onLog, pending }: { onLog: LogFn; pending: boolean }) {
       <Sheet
         open={!!picked}
         onClose={() => setPicked(null)}
-        title={picked?.name ?? ''}
+        title={picked ? recipeDisplayName(picked, language) : ''}
         footer={
           <>
             <Button variant="ghost" onClick={() => setPicked(null)}>
@@ -457,14 +461,18 @@ function RecipesTab({ onLog, pending }: { onLog: LogFn; pending: boolean }) {
 
 /* -------------------------------------------------------------------- foods */
 function FoodsTab({ onLog, pending }: { onLog: LogFn; pending: boolean }) {
-  const { t } = useT();
+  const { t, language, locale } = useT();
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState<Ingredient | null>(null);
   const [grams, setGrams] = useState<number | null>(100);
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return INGREDIENTS.filter((i) => i.id !== 'spices' && (!s || i.name.toLowerCase().includes(s))).sort((a, b) => a.name.localeCompare(b.name));
-  }, [q]);
+    const sl = q.trim().toLocaleLowerCase(locale);
+    const name = (i: Ingredient) => ingredientDisplayName(i, language);
+    return INGREDIENTS.filter((i) => i.id !== 'spices' && (!s || i.name.toLowerCase().includes(s) || name(i).toLocaleLowerCase(locale).includes(sl))).sort((a, b) =>
+      name(a).localeCompare(name(b), locale),
+    );
+  }, [q, language, locale]);
   const unitChips = picked
     ? (Object.entries(picked.units ?? {}) as [string, number][]).map(([u, g]) => {
         const key = `foodLog.foods.measure.${u}`;
@@ -492,7 +500,7 @@ function FoodsTab({ onLog, pending }: { onLog: LogFn; pending: boolean }) {
                   }}
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="text-[15px] font-medium truncate">{i.name}</div>
+                    <div className="text-[15px] font-medium truncate">{ingredientDisplayName(i, language)}</div>
                     <div className="text-xs text-muted">{t('foodLog.foods.per100g', { macros: macroLine({ kcal: i.per100g.kcal, protein: i.per100g.protein }, false) })}</div>
                   </div>
                   {i.state !== 'as_sold' && <Badge>{t(`foodLog.foods.state.${i.state}`)}</Badge>}
@@ -505,7 +513,7 @@ function FoodsTab({ onLog, pending }: { onLog: LogFn; pending: boolean }) {
       <Sheet
         open={!!picked}
         onClose={() => setPicked(null)}
-        title={picked?.name ?? ''}
+        title={picked ? ingredientDisplayName(picked, language) : ''}
         footer={
           <>
             <Button variant="ghost" onClick={() => setPicked(null)}>
@@ -786,7 +794,7 @@ function SavedTab({ onLog, date, meal, pending }: { onLog: LogFn; date: string; 
         ) : (
           <>
             <p className="text-sm text-muted">
-              {tp('foodLog.itemCount', current.length)} · {t('foodLog.saved.items', { items: listText(current.map((e) => e.name), language) })}
+              {tp('foodLog.itemCount', current.length)} · {t('foodLog.saved.items', { items: listText(current.map((e) => entryDisplayName(e, language)), language) })}
             </p>
             <Input label={t('program.name')} placeholder={t('foodLog.saved.defaultName')} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
             <Button onClick={saveCurrent} loading={busy}>

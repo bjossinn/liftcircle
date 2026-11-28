@@ -7,7 +7,7 @@
 import { z } from 'zod';
 import type { ActivityLog, ActivityType, DistanceUnit, Intensity } from './types';
 import { formatSpeed, fromMeters } from './units';
-import { getLanguage, tKey, type Language } from '@/i18n';
+import { getLanguage, t, tKey, type Language } from '@/i18n';
 
 export type ActivityField = 'distance' | 'elevation' | 'hr' | 'pace';
 /** How pace/speed is expressed for a type. */
@@ -16,7 +16,7 @@ export type PaceMode = 'per_unit' | 'per_100m' | 'per_500m' | 'speed';
 export interface ActivityTypeInfo {
   type: ActivityType;
   label: string;
-  /** Past-tense-free noun used in sentences, e.g. "run", "bike ride". */
+  /** Noun used in sentences ("That distance looks too long for a {{noun}}"), in the current language. */
   noun: string;
   fields: ActivityField[];
   /** null when pace/speed is not meaningful for the type. */
@@ -29,32 +29,40 @@ export interface ActivityTypeInfo {
   met: Record<Intensity, number>;
 }
 
-const ACTIVITY_DEFS: Omit<ActivityTypeInfo, 'label'>[] = [
-  { type: 'walk', noun: 'walk', fields: ['distance', 'elevation', 'hr', 'pace'], paceMode: 'per_unit', maxDistanceM: 150_000, maxSpeedKmh: 12, met: { easy: 3, moderate: 3.8, hard: 5 } },
-  { type: 'run', noun: 'run', fields: ['distance', 'elevation', 'hr', 'pace'], paceMode: 'per_unit', maxDistanceM: 350_000, maxSpeedKmh: 25, met: { easy: 7, moderate: 9.5, hard: 11.5 } },
-  { type: 'cycle', noun: 'ride', fields: ['distance', 'elevation', 'hr'], paceMode: 'speed', maxDistanceM: 1_000_000, maxSpeedKmh: 80, met: { easy: 4, moderate: 6.8, hard: 10 } },
-  { type: 'hike', noun: 'hike', fields: ['distance', 'elevation', 'hr', 'pace'], paceMode: 'per_unit', maxDistanceM: 150_000, maxSpeedKmh: 12, met: { easy: 4.5, moderate: 6, hard: 7.8 } },
-  { type: 'swim', noun: 'swim', fields: ['distance', 'hr', 'pace'], paceMode: 'per_100m', maxDistanceM: 60_000, maxSpeedKmh: 8, met: { easy: 5.8, moderate: 7, hard: 9.8 } },
-  { type: 'row', noun: 'row', fields: ['distance', 'hr', 'pace'], paceMode: 'per_500m', maxDistanceM: 200_000, maxSpeedKmh: 30, met: { easy: 4.8, moderate: 7, hard: 8.5 } },
-  { type: 'sport', noun: 'sport session', fields: ['hr'], paceMode: null, met: { easy: 4.5, moderate: 6.5, hard: 8.5 } },
-  { type: 'class', noun: 'class', fields: ['hr'], paceMode: null, met: { easy: 4, moderate: 6, hard: 8 } },
-  { type: 'yoga', noun: 'yoga session', fields: ['hr'], paceMode: null, met: { easy: 2.5, moderate: 3, hard: 4 } },
-  { type: 'mobility', noun: 'mobility session', fields: ['hr'], paceMode: null, met: { easy: 2.3, moderate: 2.8, hard: 3.5 } },
-  { type: 'stretch', noun: 'stretching session', fields: ['hr'], paceMode: null, met: { easy: 2.3, moderate: 2.5, hard: 3 } },
-  { type: 'custom', noun: 'activity', fields: ['distance', 'elevation', 'hr'], paceMode: null, maxDistanceM: 1_000_000, met: { easy: 3.5, moderate: 5, hard: 7 } },
+const ACTIVITY_DEFS: Omit<ActivityTypeInfo, 'label' | 'noun'>[] = [
+  { type: 'walk', fields: ['distance', 'elevation', 'hr', 'pace'], paceMode: 'per_unit', maxDistanceM: 150_000, maxSpeedKmh: 12, met: { easy: 3, moderate: 3.8, hard: 5 } },
+  { type: 'run', fields: ['distance', 'elevation', 'hr', 'pace'], paceMode: 'per_unit', maxDistanceM: 350_000, maxSpeedKmh: 25, met: { easy: 7, moderate: 9.5, hard: 11.5 } },
+  { type: 'cycle', fields: ['distance', 'elevation', 'hr'], paceMode: 'speed', maxDistanceM: 1_000_000, maxSpeedKmh: 80, met: { easy: 4, moderate: 6.8, hard: 10 } },
+  { type: 'hike', fields: ['distance', 'elevation', 'hr', 'pace'], paceMode: 'per_unit', maxDistanceM: 150_000, maxSpeedKmh: 12, met: { easy: 4.5, moderate: 6, hard: 7.8 } },
+  { type: 'swim', fields: ['distance', 'hr', 'pace'], paceMode: 'per_100m', maxDistanceM: 60_000, maxSpeedKmh: 8, met: { easy: 5.8, moderate: 7, hard: 9.8 } },
+  { type: 'row', fields: ['distance', 'hr', 'pace'], paceMode: 'per_500m', maxDistanceM: 200_000, maxSpeedKmh: 30, met: { easy: 4.8, moderate: 7, hard: 8.5 } },
+  { type: 'sport', fields: ['hr'], paceMode: null, met: { easy: 4.5, moderate: 6.5, hard: 8.5 } },
+  { type: 'class', fields: ['hr'], paceMode: null, met: { easy: 4, moderate: 6, hard: 8 } },
+  { type: 'yoga', fields: ['hr'], paceMode: null, met: { easy: 2.5, moderate: 3, hard: 4 } },
+  { type: 'mobility', fields: ['hr'], paceMode: null, met: { easy: 2.3, moderate: 2.8, hard: 3.5 } },
+  { type: 'stretch', fields: ['hr'], paceMode: null, met: { easy: 2.3, moderate: 2.5, hard: 3 } },
+  { type: 'custom', fields: ['distance', 'elevation', 'hr'], paceMode: null, maxDistanceM: 1_000_000, met: { easy: 3.5, moderate: 5, hard: 7 } },
 ];
 
 /**
- * Activity types in display order. `label` reads the approved dictionary (summary.activity.*) in the app's current
- * language on every lookup; `type` stays the stored value.
+ * Activity types in display order. `label` (summary.activity.*) and `noun` (activities.noun.*) read the dictionary in
+ * the app's current language on every lookup; `type` stays the stored value.
  */
 export const ACTIVITY_TYPES: ActivityTypeInfo[] = ACTIVITY_DEFS.map((d) =>
-  Object.defineProperty({ ...d } as ActivityTypeInfo, 'label', { enumerable: true, get: () => activityTypeLabel(d.type) }),
+  Object.defineProperties({ ...d } as ActivityTypeInfo, {
+    label: { enumerable: true, get: () => activityTypeLabel(d.type) },
+    noun: { enumerable: true, get: () => activityTypeNoun(d.type) },
+  }),
 );
 
 /** Display label for an activity type in `lang` (default: the current language): "Run" / "Hlaup". */
 export function activityTypeLabel(type: ActivityType, lang: Language = getLanguage()): string {
   return tKey(`summary.activity.${type}`, type, undefined, lang);
+}
+
+/** Noun for an activity type in `lang`, as used inside validation sentences: "run" / "hlaup". */
+export function activityTypeNoun(type: ActivityType, lang: Language = getLanguage()): string {
+  return tKey(`activities.noun.${type}`, type, undefined, lang);
 }
 
 const BY_TYPE = new Map(ACTIVITY_TYPES.map((t) => [t.type, t]));
@@ -72,8 +80,7 @@ export function activityLabel(a: Pick<ActivityLog, 'type' | 'customName'>, lang:
   if (a.type === 'custom') {
     const name = a.customName?.trim();
     if (name) return name;
-    // English keeps "Custom activity"; i18n: no approved Icelandic copy for it, so other languages use the type label.
-    return lang === 'en' ? 'Custom activity' : activityTypeLabel('custom', lang);
+    return t('activities.customFallback', undefined, lang);
   }
   return activityTypeLabel(activityTypeInfo(a.type).type, lang);
 }
@@ -154,13 +161,12 @@ const optNum = z.number().optional();
 export const activityInputSchema = z
   .object({
     type: z.enum(['walk', 'run', 'cycle', 'hike', 'swim', 'row', 'sport', 'class', 'yoga', 'mobility', 'stretch', 'custom']),
-    customName: z.string().trim().max(60, 'Keep the name under 60 characters').optional(),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose a date'),
+    customName: z.string().trim().max(60, { error: () => t('activities.validation.name_too_long') }).optional(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: () => t('activities.validation.choose_a_date') }),
     durationSec: z
-      .number({ error: 'Enter a duration' })
-      
-      .min(MIN_DURATION_SEC, 'Duration must be at least 1 minute')
-      .max(MAX_DURATION_SEC, 'Duration can be at most 24 hours'),
+      .number({ error: () => t('activities.validation.enter_a_duration') })
+      .min(MIN_DURATION_SEC, { error: () => t('activities.validation.duration_min') })
+      .max(MAX_DURATION_SEC, { error: () => t('activities.validation.duration_max') }),
     distanceM: optNum,
     elevationM: optNum,
     avgHr: optNum,
@@ -168,34 +174,34 @@ export const activityInputSchema = z
     intensity: z.enum(['easy', 'moderate', 'hard']).optional(),
     energyKcal: optNum,
     energySource: z.enum(['user', 'device', 'estimate']).optional(),
-    notes: z.string().max(2000, 'Notes can be at most 2000 characters').optional(),
+    notes: z.string().max(2000, { error: () => t('activities.validation.notes_too_long') }).optional(),
   })
   .superRefine((v, ctx) => {
     const info = activityTypeInfo(v.type);
     if (v.type === 'custom' && !v.customName?.trim()) {
-      ctx.addIssue({ code: 'custom', path: ['customName'], message: 'Give your activity a name' });
+      ctx.addIssue({ code: 'custom', path: ['customName'], message: t('activities.validation.give_your_activity_a_name') });
     }
     if (v.distanceM != null) {
-      if (v.distanceM <= 0) ctx.addIssue({ code: 'custom', path: ['distanceM'], message: 'Distance must be more than zero' });
+      if (v.distanceM <= 0) ctx.addIssue({ code: 'custom', path: ['distanceM'], message: t('activities.validation.distance_must_be_more_than_zero') });
       else if (info.maxDistanceM && v.distanceM > info.maxDistanceM)
-        ctx.addIssue({ code: 'custom', path: ['distanceM'], message: `That distance looks too long for a ${info.noun}` });
+        ctx.addIssue({ code: 'custom', path: ['distanceM'], message: t('activities.validation.that_distance_looks_too_long_for', { noun: info.noun }) });
       else if (info.maxSpeedKmh && v.durationSec > 0) {
         const kmh = v.distanceM / 1000 / (v.durationSec / 3600);
         if (kmh > info.maxSpeedKmh)
-          ctx.addIssue({ code: 'custom', path: ['distanceM'], message: `That pace looks too fast for a ${info.noun}. Check distance and duration` });
+          ctx.addIssue({ code: 'custom', path: ['distanceM'], message: t('activities.validation.that_pace_looks_too_fast_for', { noun: info.noun }) });
       }
     }
     if (v.elevationM != null && (v.elevationM < 0 || v.elevationM > 10_000))
-      ctx.addIssue({ code: 'custom', path: ['elevationM'], message: 'Elevation gain should be between 0 and 10,000 m' });
+      ctx.addIssue({ code: 'custom', path: ['elevationM'], message: t('activities.validation.elevation_gain_should_be_between_0') });
     for (const k of ['avgHr', 'maxHr'] as const) {
       const hr = v[k];
       if (hr != null && (hr < 30 || hr > 230 || !Number.isInteger(hr)))
-        ctx.addIssue({ code: 'custom', path: [k], message: 'Heart rate should be a whole number from 30 to 230 bpm' });
+        ctx.addIssue({ code: 'custom', path: [k], message: t('activities.validation.heart_rate_should_be_a_whole') });
     }
     if (v.avgHr != null && v.maxHr != null && v.avgHr > v.maxHr)
-      ctx.addIssue({ code: 'custom', path: ['avgHr'], message: 'Average heart rate can’t be higher than maximum' });
+      ctx.addIssue({ code: 'custom', path: ['avgHr'], message: t('activities.validation.average_heart_rate_cant_be_higher') });
     if (v.energyKcal != null && (v.energyKcal < 0 || v.energyKcal > 10_000))
-      ctx.addIssue({ code: 'custom', path: ['energyKcal'], message: 'Energy should be between 0 and 10,000 kcal' });
+      ctx.addIssue({ code: 'custom', path: ['energyKcal'], message: t('activities.validation.energy_should_be_between_0_and') });
   });
 
 export type ActivityInput = z.input<typeof activityInputSchema>;
@@ -212,8 +218,8 @@ export function validateActivity(input: ActivityInput): { ok: true; value: z.out
 }
 
 /* ---------------------------------------------------------- energy (approx) */
-export const ENERGY_ESTIMATE_NOTE =
-  'Approximate: MET × body weight (kg) × hours, using typical MET values for the activity and intensity. Real energy use varies a lot between people.';
+/** How the approximate energy estimate is calculated, in `lang` (default: the current language). */
+export const energyEstimateNote = (lang: Language = getLanguage()) => t('activities.energyEstimateNote', undefined, lang);
 
 /**
  * Optional, clearly approximate energy estimate. Only call when the user asks for it and

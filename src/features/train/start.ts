@@ -93,6 +93,7 @@ export async function repeatSession(past: WorkoutSession, ctx: StartCtx): Promis
       name: past.name,
       status: 'active',
       templateId: past.templateId,
+      ...(past.nameEdited ? { nameEdited: true as const } : {}),
       date: todayISO(tz),
       timeZone: tz,
       startedAt: now,

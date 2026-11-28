@@ -3,6 +3,32 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 28 Nov 2026: Fully Icelandic app when the language is Icelandic — v1.0.8
+
+- Dictionaries: 4,500 approved keys added to `en.ts` / `is.ts` (exercise names/aliases/setup/execution/mistakes, recipe
+  names/steps/notes, ingredient names, amount/prep phrases, piece/category/protein-example labels, UI), Icelandic verbatim;
+  concatenated UI sentences were merged into whole templates with named placeholders (fragment keys removed). 8,769 keys
+  total (client + shared), identical in both languages.
+- Catalog text stays canonical English in data and storage and is localized at display time through
+  `src/data/catalogText.ts` (`exerciseDisplayName`, `exerciseAliases/Setup/Execution/Mistakes`, `recipeDisplayName`,
+  `recipeSteps/Notes`, `ingredientDisplayName`, `foodDisplayText/PrepText`, `pieceLabel`, `ingredientCategoryLabel`,
+  `proteinExampleText`). Custom exercises/foods and other user content are never translated.
+- Exercise search indexes names and aliases in every app language plus English; sorting follows the UI language.
+- Every screen that bypassed `t()` is wired (coaching, nutrition, social, activities, exercise library/detail, auth,
+  install, session detail, templates, program page); push reminder/missed/rest texts use `push.*` keys; recipe/meal-plan
+  screens use `mealLabel`/`allergenLabel`/`dietTagLabel`/`proteinGroupLabel` with the current language; shared meal-plan
+  warnings/day status take an optional display language via `PlanContext` (server output unchanged, bundles regenerated).
+- Workouts carry `nameEdited` (renamed template or renamed during the workout) so user-named sessions are never
+  auto-translated; History search matches localized and stored titles; History shows each session's real mark.
+- Review fixes: read-only workout labels (logger header, summary, history detail, coach client views) use
+  `workoutDisplayName` (templateId + name + nameEdited); editable fields keep the stored name. Additive migration
+  `supabase/migrations/20261201000001_client_overview_session_provenance.sql` adds `template_id` / `name_edited` to
+  `coach_client_overview` recent sessions (same signature, grants kept) — apply it before deploying the app.
+- Auth errors: `src/features/auth/authErrors.ts` maps Supabase auth error codes (and redirect `error_code`) to
+  translated messages with a localized fallback; provider prose is never shown.
+- Startup JS grew from ~873 KiB to ~2.0 MiB raw (230 → ~480 KiB gz) because both dictionaries ship in the entry chunk.
+  Follow-up worth doing: lazy-load the Icelandic dictionary (or the catalog half) before first render.
+
 ## 28 Nov 2026: Direction B icons, pattern tiles in lists, distinct program-session marks — v1.0.7
 
 - Direction B icon system (owner-approved mockup `icon-draft-B.png`): Lucide outlines at stroke 1.75 app-wide (`LucideProvider`

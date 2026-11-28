@@ -5,6 +5,7 @@ import type { GeocodeResult } from '@/backend/coachingContract';
 import { Button, Card, IconButton, Input, NumberInput, Segmented, Select } from '@/components/ui';
 import { LIMITS, emptyArea, type AreaRow, type FormErrors } from '@/domain/coaching/application';
 import { countryName, countryOptions } from '@/domain/coaching/options';
+import { useT } from '@/i18n';
 import { coachingError } from './common';
 
 /** Session cache: whether the server has a geocoding provider configured (null = unknown). */
@@ -20,14 +21,15 @@ export function ServiceAreasEditor({
   defaultCountry: string;
   disabled?: boolean;
 }) {
+  const { t, language } = useT();
   const [geoAvail, setGeoAvail] = useState<boolean | null>(geocodeAvailable);
-  const countries = useMemo(countryOptions, []);
+  const countries = useMemo(() => countryOptions(language), [language]);
   const update = (key: string, patch: Partial<AreaRow>) => onChange(areas.map((a) => (a.key === key ? { ...a, ...patch } : a)));
   const remove = (key: string) => onChange(areas.filter((a) => a.key !== key));
 
   return (
     <div className="flex flex-col gap-3">
-      {areas.length === 0 && <p className="text-sm text-muted px-1">{inPerson ? 'Add the towns, cities or regions where you meet clients in person.' : 'Optional for online coaching. Add places you’d like to be found for.'}</p>}
+      {areas.length === 0 && <p className="text-sm text-muted px-1">{inPerson ? t('coaching.directory.add_the_towns_cities_or_regions') : t('coaching.directory.optional_for_online_coaching_add_places')}</p>}
       {areas.map((a, i) => (
         <AreaRowEditor
           key={a.key}
@@ -52,10 +54,10 @@ export function ServiceAreasEditor({
         </p>
       )}
       <Button size="sm" variant="outline" icon={<Plus className="size-4" />} disabled={disabled || areas.length >= LIMITS.serviceAreas} onClick={() => onChange([...areas, emptyArea(defaultCountry)])} className="self-start">
-        Add service area
+        {t('coaching.directory.add_service_area')}
       </Button>
       {geoAvail === false && (
-        <p className="text-xs text-muted px-1">Map positions aren’t available in this version, so clients find you by the place names you enter. Distance search will work once map data is available.</p>
+        <p className="text-xs text-muted px-1">{t('coaching.directory.map_positions_arent_available_in_this')}</p>
       )}
     </div>
   );
@@ -75,6 +77,7 @@ function AreaRowEditor({
   onRemove: () => void;
   disabled?: boolean;
 }) {
+  const { t } = useT();
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<GeocodeResult[] | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -86,10 +89,10 @@ function AreaRowEditor({
     onChange({ ...patch, lat: null, lng: null, radiusKm: null, label: null });
   };
 
-  const query = [area.kind === 'city' ? area.city.trim() : '', area.kind !== 'country' ? area.region.trim() : '', area.country ? countryName(area.country) : ''].filter(Boolean).join(', ');
+  const query = [area.kind === 'city' ? area.city.trim() : '', area.kind !== 'country' ? area.region.trim() : '', area.country ? countryName(area.country, 'en') : ''].filter(Boolean).join(', ');
   const lookUp = async () => {
     if (!query || (area.kind === 'city' && !area.city.trim()) || (area.kind === 'region' && !area.region.trim())) {
-      setLookupError('Fill in the place first.');
+      setLookupError(t('coaching.directory.fill_in_the_place_first'));
       return;
     }
     setBusy(true);
@@ -99,7 +102,7 @@ function AreaRowEditor({
       onGeoAvail(r.available);
       setResults(r.available ? r.results : null);
     } catch (err) {
-      setLookupError(coachingError(err, 'Couldn’t look up that place.'));
+      setLookupError(coachingError(err, t('coaching.directory.couldnt_look_up_that_place')));
     } finally {
       setBusy(false);
     }
@@ -118,30 +121,30 @@ function AreaRowEditor({
   };
 
   return (
-    <Card className="p-3 flex flex-col gap-3" role="group" aria-label={`Service area ${index + 1}`}>
+    <Card className="p-3 flex flex-col gap-3" role="group" aria-label={t('coaching.directory.service_area_x', { number: index + 1 })}>
       <div className="flex items-center gap-2">
         <Segmented<AreaRow['kind']>
-          label={`Service area ${index + 1} type`}
+          label={t('coaching.directory.service_area_x_type', { number: index + 1 })}
           size="sm"
           className="flex-1"
           value={area.kind}
           onChange={(kind) => editPlace({ kind })}
           options={[
-            { value: 'city', label: 'City / town' },
-            { value: 'region', label: 'Region' },
-            { value: 'country', label: 'Whole country' },
+            { value: 'city', label: t('coaching.directory.city_town') },
+            { value: 'region', label: t('coaching.directory.region') },
+            { value: 'country', label: t('coaching.directory.whole_country') },
           ]}
         />
-        <IconButton label={`Remove service area ${index + 1}`} onClick={onRemove} disabled={disabled} className="text-muted">
+        <IconButton label={t('coaching.directory.remove_service_area_x', { number: index + 1 })} onClick={onRemove} disabled={disabled} className="text-muted">
           <Trash2 className="size-5" />
         </IconButton>
       </div>
-      {area.kind === 'city' && <Input label="City or town" value={area.city} maxLength={LIMITS.place} onChange={(ev) => editPlace({ city: ev.target.value })} error={e('city')} disabled={disabled} />}
+      {area.kind === 'city' && <Input label={t('coaching.directory.city_or_town')} value={area.city} maxLength={LIMITS.place} onChange={(ev) => editPlace({ city: ev.target.value })} error={e('city')} disabled={disabled} />}
       {area.kind !== 'country' && (
-        <Input label={area.kind === 'city' ? 'Region (optional)' : 'Region'} value={area.region} maxLength={LIMITS.place} onChange={(ev) => editPlace({ region: ev.target.value })} error={e('region')} disabled={disabled} />
+        <Input label={area.kind === 'city' ? t('coaching.directory.region_optional') : t('coaching.directory.region')} value={area.region} maxLength={LIMITS.place} onChange={(ev) => editPlace({ region: ev.target.value })} error={e('region')} disabled={disabled} />
       )}
-      <Select label="Country" value={area.country} onChange={(ev) => editPlace({ country: ev.target.value })} error={e('country')} disabled={disabled}>
-        <option value="">Choose…</option>
+      <Select label={t('coaching.directory.country')} value={area.country} onChange={(ev) => editPlace({ country: ev.target.value })} error={e('country')} disabled={disabled}>
+        <option value="">{t('coaching.apply.choose')}</option>
         {countries.map((c) => (
           <option key={c.value} value={c.value}>
             {c.label}
@@ -154,23 +157,23 @@ function AreaRowEditor({
           <div className="flex items-start gap-2">
             <MapPin className="size-4 text-accent shrink-0 mt-0.5" aria-hidden />
             <p className="text-sm flex-1 min-w-0">
-              Map position: <span className="font-medium">{area.label}</span>
+              {t('coaching.directory.map_position')} <span className="font-medium">{area.label}</span>
             </p>
-            <IconButton size="sm" label="Remove map position" onClick={() => onChange({ lat: null, lng: null, radiusKm: null, label: null })} disabled={disabled}>
+            <IconButton size="sm" label={t('coaching.directory.remove_map_position')} onClick={() => onChange({ lat: null, lng: null, radiusKm: null, label: null })} disabled={disabled}>
               <X className="size-4" />
             </IconButton>
           </div>
           {inPerson && (
             <NumberInput
-              label="How far you travel for in-person sessions"
+              label={t('coaching.directory.how_far_you_travel_for_in')}
               value={area.radiusKm}
               decimals={false}
               min={1}
               max={LIMITS.radiusKmMax}
-              suffix="km"
+              suffix={t('coaching.directory.km')}
               onChange={(v) => onChange({ radiusKm: v })}
               error={e('radiusKm')}
-              hint="Used for distance search. Clients see the place name and this distance, never an exact address."
+              hint={t('coaching.directory.used_for_distance_search_clients_see')}
             />
           )}
           {e('lat') && <p className="text-xs text-danger">{e('lat')}</p>}
@@ -179,9 +182,9 @@ function AreaRowEditor({
         geoAvail !== false && (
           <div className="flex flex-col gap-2">
             <Button size="sm" variant="ghost" className="self-start" icon={<MapPin className="size-4" />} loading={busy} onClick={() => void lookUp()} disabled={disabled}>
-              Find on map data
+              {t('coaching.directory.find_on_map_data')}
             </Button>
-            <p className="text-xs text-muted">Optional: attach a map position so clients nearby can find you by distance.</p>
+            <p className="text-xs text-muted">{t('coaching.directory.optional_attach_a_map_position_so')}</p>
           </div>
         )
       )}
@@ -193,9 +196,9 @@ function AreaRowEditor({
       {results && (
         <div className="rounded-xl border border-line overflow-hidden">
           {results.length === 0 ? (
-            <p className="text-sm text-muted p-3">No matching places found. The place name alone still works for search.</p>
+            <p className="text-sm text-muted p-3">{t('coaching.directory.no_matching_places_found_the_place')}</p>
           ) : (
-            <ul aria-label="Matching places" className="divide-y divide-line">
+            <ul aria-label={t('coaching.directory.matching_places')} className="divide-y divide-line">
               {results.map((g, i) => (
                 <li key={`${g.lat},${g.lng},${i}`}>
                   <button type="button" onClick={() => pick(g)} className="w-full text-left px-3 py-2.5 min-h-11 hover:bg-surface-2 text-sm">

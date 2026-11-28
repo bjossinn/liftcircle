@@ -10,16 +10,18 @@ import { coachGoalLabel, languageName, specialtyLabel } from '@/domain/coaching/
 import { distanceText } from '@/domain/coaching/search';
 import { ApprovedBadge, CoachPhoto, CoachingAccessNotice, FactRow, TagList, useCoachingAccess, useLoad } from './directory/common';
 import { PublicCoachProfile } from './directory/PublicDirectory';
+import { useT } from '@/i18n';
 
 export default function CoachProfilePage() {
   const nav = useNavigate();
   const { id } = useParams();
   const { access, meId } = useCoachingAccess();
+  const { t } = useT();
   return (
     <Page
-      title="Coach"
+      title={t('nav.coach')}
       back={
-        <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+        <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
           <ChevronLeft />
         </IconButton>
       }
@@ -31,29 +33,30 @@ export default function CoachProfilePage() {
       ) : id ? (
         <CoachProfile coachId={id} meId={meId} />
       ) : (
-        <EmptyState title="Coach not found" />
+        <EmptyState title={t('coaching.profile.coach_not_found')} />
       )}
     </Page>
   );
 }
 
 function CoachProfile({ coachId, meId }: { coachId: string; meId: string | undefined }) {
-  const coach = useLoad(() => coachingApi.getCoach(coachId), [coachId], { fallback: 'Couldn’t load this coach.' });
+  const { t, tp, language } = useT();
+  const coach = useLoad(() => coachingApi.getCoach(coachId), [coachId], { fallback: t('coaching.profile.couldnt_load_this_coach') });
   const rels = useLoad(() => coachingApi.myRelationships(), []);
   const [reportOpen, setReportOpen] = useState(false);
 
-  if (coach.loading && coach.data === undefined) return <Spinner label="Loading coach" />;
-  if (coach.error) return <ErrorState title="Couldn’t load this coach" message={coach.error} onRetry={coach.reload} />;
+  if (coach.loading && coach.data === undefined) return <Spinner label={t('coaching.profile.loading_coach')} />;
+  if (coach.error) return <ErrorState title={t('coaching.profile.couldnt_load_this_coach')} message={coach.error} onRetry={coach.reload} />;
   const c = coach.data;
   if (!c) {
     return (
       <EmptyState
         icon={<UserX className="size-6" aria-hidden />}
-        title="This coach isn’t listed"
-        body="The profile may have been unpublished or the link is wrong."
+        title={t('coaching.profile.this_coach_isnt_listed')}
+        body={t('coaching.profile.the_profile_may_have_been_unpublished')}
         action={
           <Link to="/coaching/find" className="inline-flex min-h-11 items-center px-4 rounded-xl border border-line hover:bg-surface-2">
-            Find a coach
+            {t('nav.findCoach')}
           </Link>
         }
       />
@@ -72,7 +75,7 @@ function CoachProfile({ coachId, meId }: { coachId: string; meId: string | undef
         <div className="min-w-0 flex-1 flex flex-col gap-1.5">
           <h2 className="text-xl font-bold leading-tight break-words">{c.displayName}</h2>
           <ApprovedBadge />
-          {c.approvedSince && <p className="text-xs text-muted">Approved since {dateText(c.approvedSince)}</p>}
+          {c.approvedSince && <p className="text-xs text-muted">{t('coaching.profile.approved_since_x', { date: dateText(c.approvedSince, false, language) })}</p>}
           {location && (
             <p className="text-sm text-muted inline-flex items-center gap-1.5">
               <MapPin className="size-4 shrink-0" aria-hidden />
@@ -83,13 +86,13 @@ function CoachProfile({ coachId, meId }: { coachId: string; meId: string | undef
         </div>
       </div>
 
-      <p className={`mt-3 text-sm font-medium ${c.acceptingClients ? 'text-accent' : 'text-warn'}`}>{c.acceptingClients ? 'Accepting new clients' : 'Not taking new clients right now'}</p>
+      <p className={`mt-3 text-sm font-medium ${c.acceptingClients ? 'text-accent' : 'text-warn'}`}>{c.acceptingClients ? t('coaching.apply.accepting_new_clients') : t('coaching.directory.not_taking_new_clients_right_now')}</p>
 
       <div className="mt-4 flex flex-col gap-2">
         {block ? (
           <>
             <button type="button" disabled aria-describedby="request-blocked" className="w-full min-h-14 rounded-xl bg-disabled text-disabled-ink font-semibold cursor-not-allowed">
-              Request coaching
+              {t('coaching.profile.request_coaching')}
             </button>
             <p id="request-blocked" className="text-sm text-muted">
               {REQUEST_BLOCK_TEXT[block]}
@@ -97,7 +100,7 @@ function CoachProfile({ coachId, meId }: { coachId: string; meId: string | undef
                 <>
                   {' '}
                   <Link to="/coaching/my" className="text-accent font-medium">
-                    Go to My coach
+                    {t('coaching.profile.go_to_my_coach')}
                   </Link>
                 </>
               )}
@@ -108,53 +111,53 @@ function CoachProfile({ coachId, meId }: { coachId: string; meId: string | undef
             to={`/coaching/request/${encodeURIComponent(c.userId)}`}
             className="w-full min-h-14 rounded-xl ember-fill font-semibold inline-flex items-center justify-center"
           >
-            Request coaching
+            {t('coaching.profile.request_coaching')}
           </Link>
         )}
       </div>
 
       {c.bio && (
         <>
-          <SectionTitle>About</SectionTitle>
+          <SectionTitle>{t('coaching.profile.about')}</SectionTitle>
           <Card className="p-4">
             <p className="text-[15px] whitespace-pre-line break-words">{c.bio}</p>
           </Card>
         </>
       )}
 
-      <SectionTitle>Coaching</SectionTitle>
+      <SectionTitle>{t('ai.channels.human')}</SectionTitle>
       <Card className="px-4 py-2">
         <dl className="divide-y divide-line">
-          <FactRow label="Format">
+          <FactRow label={t('coaching.directory.format')}>
             <span className="inline-flex items-center gap-1.5">
               <Globe className="size-4 text-muted" aria-hidden />
-              {formatsText(c.formats)}
+              {formatsText(c.formats, language)}
             </span>
           </FactRow>
           {c.languages.length > 0 && (
-            <FactRow label="Languages">
+            <FactRow label={t('coaching.directory.languages')}>
               <span className="inline-flex items-center gap-1.5">
                 <MessageSquare className="size-4 text-muted" aria-hidden />
-                {c.languages.map(languageName).join(', ')}
+                {c.languages.map((l) => languageName(l, language)).join(', ')}
               </span>
             </FactRow>
           )}
           {c.specialties.length > 0 && (
-            <FactRow label="Specialties">
+            <FactRow label={t('coaching.directory.specialties')}>
               <div className="pt-1">
-                <TagList label="Specialties" items={c.specialties.map(specialtyLabel)} />
+                <TagList label={t('coaching.directory.specialties')} items={c.specialties.map(specialtyLabel)} />
               </div>
             </FactRow>
           )}
           {c.goals.length > 0 && (
-            <FactRow label="Helps clients with">
+            <FactRow label={t('coaching.profile.helps_clients_with')}>
               <div className="pt-1">
-                <TagList label="Goals" items={c.goals.map(coachGoalLabel)} />
+                <TagList label={t('progress.goals')} items={c.goals.map(coachGoalLabel)} />
               </div>
             </FactRow>
           )}
           {c.serviceAreas.length > 0 && (
-            <FactRow label="Service areas">
+            <FactRow label={t('coaching.admin.service_areas')}>
               <ul className="flex flex-col gap-0.5">
                 {c.serviceAreas.map((a) => (
                   <li key={a.id}>{areaWithRadius(a)}</li>
@@ -167,11 +170,11 @@ function CoachProfile({ coachId, meId }: { coachId: string; meId: string | undef
 
       {(c.experience || c.experienceYears != null) && (
         <>
-          <SectionTitle>Experience</SectionTitle>
+          <SectionTitle>{t('onboarding.experience.group')}</SectionTitle>
           <Card className="p-4 flex flex-col gap-2">
             {c.experienceYears != null && (
               <p className="font-medium">
-                {c.experienceYears} year{c.experienceYears === 1 ? '' : 's'} coaching
+                {tp('coaching.profile.years_coaching', c.experienceYears)}
               </p>
             )}
             {c.experience && <p className="text-[15px] whitespace-pre-line break-words text-ink">{c.experience}</p>}
@@ -181,7 +184,7 @@ function CoachProfile({ coachId, meId }: { coachId: string; meId: string | undef
 
       {c.approvedQualifications.length > 0 && (
         <>
-          <SectionTitle>Qualifications</SectionTitle>
+          <SectionTitle>{t('coaching.admin.qualifications')}</SectionTitle>
           <Card className="overflow-hidden">
             <ul className="divide-y divide-line">
               {c.approvedQualifications.map((q) => (
@@ -190,22 +193,22 @@ function CoachProfile({ coachId, meId }: { coachId: string; meId: string | undef
                   <div className="min-w-0">
                     <p className="font-medium break-words">{q.title}</p>
                     <p className="text-xs text-muted">{[q.issuer, q.year].filter(Boolean).join(' · ')}</p>
-                    <p className="text-xs text-accent mt-0.5">Qualification reviewed</p>
+                    <p className="text-xs text-accent mt-0.5">{t('coaching.profile.qualification_reviewed')}</p>
                   </div>
                 </li>
               ))}
             </ul>
           </Card>
-          <p className="text-xs text-muted px-1 mt-2">“Qualification reviewed” means our team looked at the details or document the coach supplied.</p>
+          <p className="text-xs text-muted px-1 mt-2">{t('coaching.profile.qualification_reviewed_means_our_team_looked')}</p>
         </>
       )}
 
-      <Notice className="mt-6">Coaching is separate from friendship. A coach only sees what you choose to share when you send a request, and you can change it anytime.</Notice>
+      <Notice className="mt-6">{t('coaching.profile.coaching_is_separate_from_friendship_a')}</Notice>
 
       {meId !== c.userId && (
         <button type="button" onClick={() => setReportOpen(true)} className="mt-4 inline-flex items-center gap-2 min-h-11 px-1 text-sm text-muted hover:text-danger">
           <Flag className="size-4" aria-hidden />
-          Report this profile
+          {t('coaching.profile.report_this_profile')}
         </button>
       )}
       <ReportSheet open={reportOpen} onClose={() => setReportOpen(false)} target={{ userId: c.userId }} what="coach profile" />

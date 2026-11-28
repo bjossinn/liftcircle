@@ -37,6 +37,8 @@ import { openCoachWith, SHORT_ON_TIME_MINUTES, type CoachRequest } from '@/featu
 import { activeRecordFor, adjustRecordLines, AI_SESSION_ADJUST_KEY, revertAdjustment, type AdjustRecords } from '@/features/coaching/ai/sessionAdjustStore';
 import { trackAiAction } from '@/analytics/analytics';
 import { getLanguage, numberText, t as tNow, useT, type Language } from '@/i18n';
+import { exerciseDisplayName } from '@/data/catalogText';
+import { workoutDisplayName } from '@/features/program/parts';
 
 /**
  * Persist a change; resolves true when saved (or nothing needed saving), false when the device couldn't store it.
@@ -381,8 +383,8 @@ export default function SessionPage() {
           <IconButton label={t('workout.minimise')} onClick={() => (registry.flushAll(), nav('/train'))}>
             <ChevronDown className="size-6" />
           </IconButton>
-          <button className="flex-1 min-w-0 min-h-11 text-left px-1" onClick={() => setRenameOpen(true)} aria-label={t('workout.nameAria', { name: session.name })}>
-            <div className="font-semibold truncate">{session.name}</div>
+          <button className="flex-1 min-w-0 min-h-11 text-left px-1" onClick={() => setRenameOpen(true)} aria-label={t('workout.nameAria', { name: workoutDisplayName(session) })}>
+            <div className="font-semibold truncate">{workoutDisplayName(session)}</div>
             <div className="text-xs text-muted tabular">
               {paused ? t('workout.paused') : formatDuration(ops.elapsedMs(session, now) / 1000)} · {t('workout.setProgress', { done, total })}
             </div>
@@ -537,7 +539,7 @@ export default function SessionPage() {
         <p className="text-sm text-muted mb-2">{t('workout.swapTodayExplanation')}</p>
         <div className="flex flex-col -mx-1">
           {withSetsLeft.map((se) => (
-            <MenuItem key={se.id} icon={<Wrench className="size-5 text-muted" />} label={get(se.exerciseId)?.name ?? t('workout.exerciseFallback')} trailing={<ChevronRight className="size-4 text-faint" />} onClick={() => void askCoach({ intent: 'swap', focusId: se.id })} />
+            <MenuItem key={se.id} icon={<Wrench className="size-5 text-muted" />} label={get(se.exerciseId) ? exerciseDisplayName(get(se.exerciseId)) : t('workout.exerciseFallback')} trailing={<ChevronRight className="size-4 text-faint" />} onClick={() => void askCoach({ intent: 'swap', focusId: se.id })} />
           ))}
         </div>
       </Sheet>
@@ -550,7 +552,7 @@ export default function SessionPage() {
               <MenuItem
                 key={se.id}
                 icon={<CircleHelp className="size-5 text-muted" />}
-                label={ex?.name ?? t('workout.exerciseFallback')}
+                label={(ex ? exerciseDisplayName(ex) : t('workout.exerciseFallback'))}
                 sub={shown}
                 trailing={<ChevronRight className="size-4 text-faint" />}
                 onClick={() => void askCoach({ intent: 'explain', focusId: se.id, ...(shown ? { shownTarget: shown } : {}) })}
@@ -577,7 +579,7 @@ export default function SessionPage() {
           nav('/train', { replace: true });
         }}
       />
-      <TextSheet open={renameOpen} title={t('workout.name')} value={session.name} onClose={() => setRenameOpen(false)} onSave={(v) => void update((s) => ({ ...s, name: v.trim() || s.name }))} />
+      <TextSheet open={renameOpen} title={t('workout.name')} value={session.name} onClose={() => setRenameOpen(false)} onSave={(v) => void update((s) => (v.trim() && v.trim() !== s.name ? { ...s, name: v.trim(), nameEdited: true } : s))} />
       <TextSheet open={notesOpen} title={t('workout.notes')} multiline value={session.notes ?? ''} onClose={() => setNotesOpen(false)} onSave={(v) => void update((s) => ({ ...s, notes: v.trim() || undefined }))} />
     </div>
     </DraftRegistryContext.Provider>
@@ -649,7 +651,7 @@ function ExerciseBlock(props: {
               className="pressable mt-0.5 flex shrink-0 rounded-xl"
               aria-expanded={showVisual}
               aria-controls={`vis-${se.id}`}
-              aria-label={t(showVisual ? 'exercise.visual.hide' : 'exercise.visual.show', { exercise: ex.name })}
+              aria-label={t(showVisual ? 'exercise.visual.hide' : 'exercise.visual.show', { exercise: exerciseDisplayName(ex) })}
               onClick={() => setShowVisual((v) => !v)}
               data-testid="exercise-thumb"
             >
@@ -676,7 +678,7 @@ function ExerciseBlock(props: {
           <h2 id={`ex-${se.id}`} className="text-[17px] font-semibold leading-tight mt-0.5">
             {ex ? (
               <Link to={`/train/exercises/${ex.id}`} className="hover:underline">
-                {ex.name}
+                {exerciseDisplayName(ex)}
               </Link>
             ) : (
               t('workout.unknownExercise')
@@ -691,7 +693,7 @@ function ExerciseBlock(props: {
           </p>
           {note && <p className="text-xs text-faint mt-0.5">{note}</p>}
         </div>
-        <IconButton label={t('workout.exerciseOptions', { exercise: ex?.name ?? t('workout.exerciseFallback') })} onClick={() => setMenu(true)}>
+        <IconButton label={t('workout.exerciseOptions', { exercise: (ex ? exerciseDisplayName(ex) : t('workout.exerciseFallback')) })} onClick={() => setMenu(true)}>
           <MoreHorizontal className="size-5" />
         </IconButton>
       </div>
@@ -721,7 +723,7 @@ function ExerciseBlock(props: {
         />
       )}
 
-      <div role="table" aria-label={t('workout.setsFor', { exercise: ex?.name ?? t('workout.exerciseFallback') })} className="px-2 pt-2 pb-1">
+      <div role="table" aria-label={t('workout.setsFor', { exercise: (ex ? exerciseDisplayName(ex) : t('workout.exerciseFallback')) })} className="px-2 pt-2 pb-1">
         <div role="row" className="flex items-center gap-1.5 px-1 text-[11px] uppercase tracking-wide text-faint">
           <span role="columnheader" className="w-11 text-center">{t('workout.set')}</span>
           {showLoad && (
@@ -786,7 +788,7 @@ function ExerciseBlock(props: {
       </div>
       {se.notes && <p className="px-4 pb-3 -mt-1 text-xs text-muted whitespace-pre-wrap">{t('workout.noteText', { note: se.notes })}</p>}
 
-      <Sheet open={menu} onClose={() => setMenu(false)} title={ex?.name ?? t('workout.exerciseFallback')}>
+      <Sheet open={menu} onClose={() => setMenu(false)} title={(ex ? exerciseDisplayName(ex) : t('workout.exerciseFallback'))}>
         <div className="flex flex-col">
           <MenuItem icon={<Repeat className="size-5" />} label={t('workout.swapExercise')} onClick={() => (setMenu(false), props.onSwap())} />
           {props.onAsk && se.sets.some((x) => !x.completed && x.type !== 'warmup') && (

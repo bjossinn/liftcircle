@@ -4,6 +4,7 @@
  */
 import type { CoachFormat, CoachingIntake, SharingScopes } from '@/backend/coachingContract';
 import type { Equipment, Experience, Goal, LimitationArea, OnboardingAnswers, PrivateProfile } from '@/domain/types';
+import { t } from '@/i18n';
 
 export const INTRO_MAX = 2000;
 export const NOTES_MAX = 1000;
@@ -83,9 +84,9 @@ export function buildIntake(d: IntakeDraft): CoachingIntake {
 }
 
 export function introProblem(msg: string): string | null {
-  const t = msg.trim();
-  if (!t) return 'Write a short introduction so the coach knows what you’re looking for.';
-  if (t.length > INTRO_MAX) return `Keep it under ${INTRO_MAX} characters.`;
+  const text = msg.trim();
+  if (!text) return t('coaching.request.write_a_short_introduction');
+  if (text.length > INTRO_MAX) return t('coaching.request.keep_it_under_chars', { max: INTRO_MAX });
   return null;
 }
 

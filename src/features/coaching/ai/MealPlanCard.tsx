@@ -15,11 +15,12 @@ import { kvGet, kvSet, newRecord, saveRecord } from '@/db/repo';
 import { formatDate, todayISO } from '@/lib/dates';
 import { displayMacro, mealLabel } from '@/domain/nutrition/recipes';
 import { numberText, useT } from '@/i18n';
-import { extraText, type PlanDay } from '@/domain/nutrition/mealplan';
+import { extraText, planTextContext, type PlanDay } from '@/domain/nutrition/mealplan';
 import {
   applyMealPlanSuggestion, isMealPlanApplied, previewMealPlan, undoMealPlanSuggestion, type MealPlanApplyMode, type MealPlanSuggestion,
 } from '@/domain/nutrition/aiActions';
 import { RECIPES_BY_ID } from '@/data/recipes';
+import { recipeDisplayName } from '@/data/catalogText';
 import type { MealPlan } from '@/domain/types';
 import { prefsFromAccount, useWeekPlan } from '@/features/nutrition/shared';
 
@@ -32,7 +33,7 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
   const { account, db } = useApp();
   const existing = useWeekPlan(s.weekStart);
   const prefs = useMemo(() => prefsFromAccount(account), [account]);
-  const preview = useMemo(() => previewMealPlan(s, prefs), [s, prefs]);
+  const preview = useMemo(() => previewMealPlan(s, prefs, planTextContext(language)), [s, prefs, language]);
   const today = todayISO(account.settings.timeZone);
   const applied = isMealPlanApplied(existing, s.id);
   const expired = s.weekEnd < today;
@@ -109,7 +110,7 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
               <ul className="text-xs text-muted">
                 {day.items.map((it) => (
                   <li key={it.id}>
-                    {mealLabel(it.slot, language)}: {RECIPES_BY_ID.get(it.recipeId)?.name ?? t('aiCard.mealPlan.recipeFallback')}
+                    {mealLabel(it.slot, language)}: {RECIPES_BY_ID.has(it.recipeId) ? recipeDisplayName(it.recipeId, language) : t('aiCard.mealPlan.recipeFallback')}
                     {it.servings !== 1 ? ` ×${numberText(it.servings)}` : ''}
                     {it.extras?.[0] ? ` + ${extraText(it.extras[0], undefined, language)}` : ''}
                   </li>

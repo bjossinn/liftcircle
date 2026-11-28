@@ -11,6 +11,11 @@
  */
 import type { ActivityLevel, Goal, NutritionTargets, SexParam, WeightUnit } from '@/domain/types';
 import { formatWeight, round } from '@/domain/units';
+import { numberText, t, tp, type MessageKey } from '@/i18n';
+
+/** Numbers inside explanation sentences: up to 3 decimals ("1.375"), never grouped. */
+const num = (v: number) => numberText(v, 3);
+const signed = (v: number) => `${v > 0 ? '+' : ''}${num(v)}`;
 
 export const PROTEIN_RANGE = { min: 1.6, max: 2.2, default: 1.8 } as const;
 /** Inputs outside this are rejected as typos rather than silently used. */
@@ -31,6 +36,11 @@ export const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
   extra: 'Extra active',
 };
 
+/** "Mostly sitting" in the app language (ACTIVITY_LABELS stays the canonical English). */
+export function activityLabel(level: ActivityLevel): string {
+  return t(`nutrition.targets.activity.${level}` as MessageKey);
+}
+
 /** Starting energy adjustment by goal, in percent of estimated maintenance. */
 export const GOAL_ADJUST_PCT: Record<Goal, number> = {
   general_fitness: 0,
@@ -46,6 +56,10 @@ export const GOAL_LABELS: Record<Goal, string> = {
   build_muscle: 'Build muscle',
   lose_fat: 'Lose fat',
 };
+/** "Strength" in the app language (GOAL_LABELS stays the canonical English). */
+export function goalLabel(goal: Goal): string {
+  return t(`nutrition.targets.goal.${goal}` as MessageKey);
+}
 /** Adjustments beyond this are clamped: avoid aggressive targets. */
 export const GOAL_ADJUST_LIMITS = { min: -20, max: 15 } as const;
 
@@ -102,13 +116,12 @@ export function allocateMacros(calories: number, proteinG: number, fatFloorKg: n
   const leftover = calories - proteinG * KCAL_PER_G.protein - fatG * KCAL_PER_G.fat;
   if (leftover < 0) {
     warnings.push(
-      `Protein (${proteinG} g = ${proteinG * 4} kcal) plus the minimum fat (${fatG} g = ${fatG * 9} kcal) already exceeds ${calories} kcal. ` +
-        'These targets are incompatible: lower the protein per kg, raise calories, or set targets manually.',
+      t('nutrition.calc.incompatible', { protein: num(proteinG), proteinKcal: num(proteinG * 4), fat: num(fatG), fatKcal: num(fatG * 9), kcal: num(calories) }),
     );
     return { proteinG, fatG, carbsG: null, energyKcal: proteinG * 4 + fatG * 9, warnings, incompatible: true };
   }
   const carbsG = Math.round(leftover / KCAL_PER_G.carbs);
-  if (carbsG < 50) warnings.push(`Only about ${carbsG} g carbohydrate is left after protein and fat. That is very low for most training; consider adjusting.`);
+  if (carbsG < 50) warnings.push(t('nutrition.calc.low_carbs', { grams: num(carbsG) }));
   return { proteinG, fatG, carbsG, energyKcal: proteinG * 4 + carbsG * 4 + fatG * 9, warnings, incompatible: false };
 }
 
@@ -122,14 +135,14 @@ export function reconcileMacros(m: { calories?: number; proteinG?: number; carbs
   const warnings: string[] = [];
   const parts = [m.proteinG, m.carbsG, m.fatG];
   if ([m.proteinG, m.carbsG, m.fatG, m.calories].some((v) => v != null && (v < 0 || !isFinite(v)))) {
-    return { energyKcal: null, diffKcal: null, ok: false, warnings: ['Targets cannot be negative.'] };
+    return { energyKcal: null, diffKcal: null, ok: false, warnings: [t('nutrition.calc.negative')] };
   }
   if (parts.some((v) => v == null) || m.calories == null) {
     // Partial targets are allowed; only check that what's given doesn't exceed calories.
     if (m.calories != null) {
       const known = (m.proteinG ?? 0) * 4 + (m.carbsG ?? 0) * 4 + (m.fatG ?? 0) * 9;
       if (known > m.calories * 1.05)
-        warnings.push(`The macros you entered add up to ${Math.round(known)} kcal, more than your ${m.calories} kcal target.`);
+        warnings.push(t('nutrition.calc.partial_over', { kcal: num(Math.round(known)), target: num(m.calories) }));
       return { energyKcal: null, diffKcal: null, ok: warnings.length === 0, warnings };
     }
     return { energyKcal: null, diffKcal: null, ok: true, warnings };
@@ -141,8 +154,9 @@ export function reconcileMacros(m: { calories?: number; proteinG?: number; carbs
   const ok = Math.abs(diff) <= tol;
   if (!ok)
     warnings.push(
-      `Protein ${m.proteinG} g × 4 + carbs ${m.carbsG} g × 4 + fat ${m.fatG} g × 9 = ${Math.round(energy)} kcal, ` +
-        `which is ${Math.abs(Math.round(diff))} kcal ${diff > 0 ? 'above' : 'below'} your ${m.calories} kcal target.`,
+      t(diff > 0 ? 'nutrition.calc.mismatch_above' : 'nutrition.calc.mismatch_below', {
+        protein: num(m.proteinG!), carbs: num(m.carbsG!), fat: num(m.fatG!), kcal: num(Math.round(energy)), diff: num(Math.abs(Math.round(diff))), target: num(m.calories),
+      }),
     );
   return { energyKcal: energy, diffKcal: diff, ok, warnings };
 }
@@ -164,59 +178,49 @@ export function computeNutritionTargets(input: TargetInput): { targets: Nutritio
   const base: NutritionTargets = { mode: input.mode, proteinPerKg: perKg, mealsPerDay, autoDisabledReason: null, updatedAt: Date.now() };
 
   if (input.individualizedNutrition) {
-    explanation.push(
-      'You told us your nutrition needs individual guidance (for example pregnancy, breastfeeding or a medical condition), so Hard Earned does not generate targets.',
-      'You can still log food and set your own targets, ideally with your healthcare professional or a registered dietitian.',
-    );
+    explanation.push(t('nutrition.calc.individualized_1'), t('nutrition.calc.individualized_2'));
     return { targets: { ...base, mode: 'manual', autoDisabledReason: 'individualized' }, explanation, warnings };
   }
   if (input.age != null && input.age < 18) {
-    explanation.push(
-      'Automatic calorie, weight-loss and protein targets are designed for adults, so they are turned off for under-18s.',
-      'You can still log food and set your own targets. A doctor or registered dietitian can help with what suits you.',
-    );
+    explanation.push(t('nutrition.calc.under18_1'), t('nutrition.calc.under18_2'));
     return { targets: { ...base, mode: 'manual', autoDisabledReason: 'under_18' }, explanation, warnings };
   }
 
   /* ---------------- protein */
-  if (perKgRaw !== perKg) warnings.push(`Protein per kg was limited to ${perKg} g/kg (allowed ${PROTEIN_PER_KG_LIMITS.min}–${PROTEIN_PER_KG_LIMITS.max}).`);
+  if (perKgRaw !== perKg) warnings.push(t('nutrition.calc.per_kg_limited', { perKg: num(perKg), min: num(PROTEIN_PER_KG_LIMITS.min), max: num(PROTEIN_PER_KG_LIMITS.max) }));
   const source = input.referenceWeightSource ?? (input.referenceWeightKg != null && input.weightKg == null ? 'custom' : 'current');
   const refKg = source === 'current' ? input.weightKg : input.referenceWeightKg;
-  const sourceLabel = source === 'current' ? 'your current weight' : source === 'goal' ? 'the goal weight you chose' : 'a reference weight you entered';
+  const sourceLabel = t(`nutrition.calc.source.${source}`);
   let proteinG: number | undefined;
   if (refKg == null || !(refKg > 0)) {
     warnings.push(
       source === 'current'
-        ? 'Add your current weight (or choose a reference weight) to calculate a protein target. You can also set one manually.'
-        : 'Enter the reference weight you want to use, or set a protein target manually.',
+        ? t('nutrition.calc.need_current_weight')
+        : t('nutrition.calc.need_reference_weight'),
     );
   } else {
     proteinG = proteinTarget(refKg, perKg);
-    explanation.push(`Reference weight: ${fmtKg(refKg, unit)} (${sourceLabel}). We never estimate an "ideal weight".`);
-    explanation.push(
-      `Protein: ${round(refKg, 1)} kg × ${perKg} g/kg = ${proteinG} g per day. ` +
-        `${PROTEIN_RANGE.min}–${PROTEIN_RANGE.max} g/kg is a practical range for adults who lift; ${PROTEIN_RANGE.default} g/kg is our editable starting point, not an exact requirement.`,
-    );
-    if (perKg > PROTEIN_RANGE.max) warnings.push(`${perKg} g/kg is above the ${PROTEIN_RANGE.max} g/kg range. Higher intake isn't automatically better.`);
-    if (perKg < PROTEIN_RANGE.min) explanation.push(`${perKg} g/kg is below the ${PROTEIN_RANGE.min}–${PROTEIN_RANGE.max} g/kg range often used for muscle growth. That's your choice to make.`);
+    const range = { min: num(PROTEIN_RANGE.min), max: num(PROTEIN_RANGE.max), default: num(PROTEIN_RANGE.default) };
+    explanation.push(t('nutrition.calc.reference_weight', { weight: fmtKg(refKg, unit), source: sourceLabel }));
+    explanation.push(t('nutrition.calc.protein', { kg: num(round(refKg, 1)), perKg: num(perKg), grams: num(proteinG), ...range }));
+    if (perKg > PROTEIN_RANGE.max) warnings.push(t('nutrition.calc.above_range', { perKg: num(perKg), max: range.max }));
+    if (perKg < PROTEIN_RANGE.min) explanation.push(t('nutrition.calc.below_range', { perKg: num(perKg), min: range.min, max: range.max }));
     const per = Math.round(proteinG / mealsPerDay);
-    explanation.push(`Spread across ${mealsPerDay} meal${mealsPerDay === 1 ? '' : 's'}: about ${per} g each.`);
+    explanation.push(tp('nutrition.calc.spread', mealsPerDay, { grams: num(per) }));
   }
   const targets: NutritionTargets = { ...base, proteinG, referenceWeightKg: refKg, referenceWeightSource: source };
-  if (input.age == null) explanation.push('Age not provided: these targets assume you are an adult (18+).');
+  if (input.age == null) explanation.push(t('nutrition.calc.age_missing'));
 
   if (input.mode === 'protein_only') return { targets, explanation, warnings };
 
   /* ---------------- energy */
   const missing: string[] = [];
-  if (input.weightKg == null) missing.push('current weight');
-  if (input.heightCm == null) missing.push('height');
-  if (input.age == null) missing.push('age');
-  if (input.sexParam == null) missing.push('the sex option for the equation');
+  if (input.weightKg == null) missing.push(t('nutrition.calc.missing_item.weight'));
+  if (input.heightCm == null) missing.push(t('nutrition.calc.missing_item.height'));
+  if (input.age == null) missing.push(t('nutrition.calc.missing_item.age'));
+  if (input.sexParam == null) missing.push(t('nutrition.calc.missing_item.sex'));
   if (missing.length) {
-    warnings.push(
-      `A calorie estimate needs ${missing.join(', ')}. Add ${missing.length === 1 ? 'it' : 'them'} to get an estimate, or set calories and macros manually.`,
-    );
+    warnings.push(tp('nutrition.calc.missing', missing.length, { items: missing.join(', ') }));
     return { targets, explanation, warnings };
   }
   const w = input.weightKg!;
@@ -225,40 +229,52 @@ export function computeNutritionTargets(input: TargetInput): { targets: Nutritio
   const sex = input.sexParam!;
   const resting = mifflinStJeor({ weightKg: w, heightCm: h, age: a, sex });
   explanation.push(
-    `Resting energy (Mifflin–St Jeor, ${sex}): 10 × ${round(w, 1)} kg + 6.25 × ${round(h, 1)} cm − 5 × ${a} y ${sex === 'male' ? '+ 5' : '− 161'} = ${Math.round(resting)} kcal. This is energy at rest, not your total daily use.`,
+    t('nutrition.calc.resting', {
+      sex: t(`nutrition.calc.sex.${sex}`),
+      kg: num(round(w, 1)),
+      cm: num(round(h, 1)),
+      age: num(a),
+      sexTerm: sex === 'male' ? '+ 5' : '− 161',
+      kcal: num(Math.round(resting)),
+    }),
   );
   const stdFactor = ACTIVITY_FACTORS[input.activityLevel];
   let factor = input.activityFactor ?? stdFactor;
   if (!(factor >= 1.0 && factor <= 2.5)) {
-    warnings.push('Activity factor must be between 1.0 and 2.5; using the standard value instead.');
+    warnings.push(t('nutrition.calc.factor_invalid'));
     factor = stdFactor;
   }
   const maintenance = resting * factor;
   explanation.push(
-    `Estimated maintenance: ${Math.round(resting)} × ${factor} (${factor === stdFactor ? `standard multiplier for "${ACTIVITY_LABELS[input.activityLevel]}"` : 'your custom activity factor'}) = ${Math.round(maintenance)} kcal. Activity multipliers are rough assumptions; adjust if your trend says otherwise.`,
+    t('nutrition.calc.maintenance', {
+      resting: num(Math.round(resting)),
+      factor: num(factor),
+      factorSource: factor === stdFactor ? t('nutrition.calc.factor_standard', { activity: activityLabel(input.activityLevel) }) : t('nutrition.calc.factor_custom'),
+      kcal: num(Math.round(maintenance)),
+    }),
   );
   let adj = input.goalAdjustPct ?? GOAL_ADJUST_PCT[input.goal];
   if (adj < GOAL_ADJUST_LIMITS.min || adj > GOAL_ADJUST_LIMITS.max) {
     const clamped = Math.min(GOAL_ADJUST_LIMITS.max, Math.max(GOAL_ADJUST_LIMITS.min, adj));
-    warnings.push(`Goal adjustment limited to ${clamped}% to avoid an aggressive target.`);
+    warnings.push(t('nutrition.calc.goal_limited', { pct: num(clamped) }));
     adj = clamped;
   }
   const calories = Math.round((maintenance * (1 + adj / 100)) / 10) * 10;
   explanation.push(
-    `Goal (${GOAL_LABELS[input.goal]}): ${adj > 0 ? '+' : ''}${adj}% → about ${calories} kcal per day. This is an adjustable starting assumption, not a guaranteed rate of change. Exercise calories are not added back automatically.`,
+    t('nutrition.calc.goal', { goal: goalLabel(input.goal), pct: signed(adj), kcal: num(calories) }),
   );
 
   const pG = proteinG ?? proteinTarget(w, perKg);
-  if (proteinG == null) explanation.push(`For macros, protein uses your current weight: ${pG} g.`);
+  if (proteinG == null) explanation.push(t('nutrition.calc.macro_protein', { grams: num(pG) }));
   const split = allocateMacros(calories, pG, refKg ?? w);
   warnings.push(...split.warnings);
   explanation.push(
-    `Fat: the larger of ${Math.round(FAT_SHARE * 100 * 10) / 10}% of calories and ${FAT_FLOOR_G_PER_KG} g/kg → ${split.fatG} g (${split.fatG * 9} kcal).`,
+    t('nutrition.calc.fat', { share: num(Math.round(FAT_SHARE * 100 * 10) / 10), floor: num(FAT_FLOOR_G_PER_KG), grams: num(split.fatG), kcal: num(split.fatG * 9) }),
   );
   if (split.carbsG != null) {
-    explanation.push(`Carbohydrate: the remaining energy ÷ 4 → ${split.carbsG} g.`);
+    explanation.push(t('nutrition.calc.carbs', { grams: num(split.carbsG) }));
     explanation.push(
-      `Check: ${pG} × 4 + ${split.carbsG} × 4 + ${split.fatG} × 9 = ${split.energyKcal} kcal (target ${calories} kcal).`,
+      t('nutrition.calc.check', { protein: num(pG), carbs: num(split.carbsG), fat: num(split.fatG), kcal: num(split.energyKcal), target: num(calories) }),
     );
   }
   return {

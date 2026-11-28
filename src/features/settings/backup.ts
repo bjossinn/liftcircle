@@ -22,7 +22,7 @@
  *  6. Everything selected is written in ONE local transaction together with its sync queue entries: if any
  *     write fails, nothing changes.
  */
-import { effectiveLanguage, getLanguage, t, type MessageKey, type Params } from '@/i18n';
+import { effectiveLanguage, getLanguage, t, tp, type MessageKey, type Params } from '@/i18n';
 import { SYNCED_ENTITIES, type LiftDb, type SyncedEntity } from '@/db/db';
 import { saveRecordsAtomic, tableFor, type BulkWrite } from '@/db/repo';
 import type { AccountState, ActivityLog, Exercise, Measurement, Program, SyncFields, WorkoutSession } from '@/domain/types';
@@ -331,10 +331,9 @@ async function referenceWarnings(db: LiftDb, backup: ValidatedBackup): Promise<s
   let unknownRecipes = 0;
   for (const mp of (backup.records.meal_plans ?? []) as unknown as { days: { items: { recipeId: string }[] }[] }[]) for (const d of mp.days) for (const it of d.items) if (!RECIPES_BY_ID.has(it.recipeId)) unknownRecipes++;
   const out: string[] = [];
-  // i18n: no approved Icelandic copy for these three reference warnings (see missing/g1b_settings.md).
-  if (unknownEx.size) out.push(`${unknownEx.size} exercise${unknownEx.size === 1 ? ' isn’t' : 's aren’t'} in this app or the backup (probably deleted custom exercises). Those entries are imported and shown by their stored id.`);
-  if (workoutsMissingProgram) out.push(`${workoutsMissingProgram} workout${workoutsMissingProgram === 1 ? ' belongs' : 's belong'} to a program that isn’t in the backup or on this device. The workouts are imported on their own.`);
-  if (unknownRecipes) out.push(`${unknownRecipes} meal plan item${unknownRecipes === 1 ? '' : 's'} refer${unknownRecipes === 1 ? 's' : ''} to recipes this app doesn’t have.`);
+  if (unknownEx.size) out.push(tp('settings.backupWarn.unknownExercises', unknownEx.size));
+  if (workoutsMissingProgram) out.push(tp('settings.backupWarn.missingProgram', workoutsMissingProgram));
+  if (unknownRecipes) out.push(tp('settings.backupWarn.unknownRecipes', unknownRecipes));
   return out;
 }
 

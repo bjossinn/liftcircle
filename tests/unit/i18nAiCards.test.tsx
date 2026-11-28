@@ -42,6 +42,7 @@ import { kvSet, saveRecord } from '@/db/repo';
 import { ToastProvider } from '@/components/toast';
 import { defaultAccountState } from '@/state/defaults';
 import { EXERCISES } from '@/data/exercises';
+import { exerciseDisplayName, ingredientDisplayName, recipeDisplayName } from '@/data/catalogText';
 import { RECIPES } from '@/data/recipes';
 import { createProgram, withNewVersion } from '@/domain/program/program';
 import {
@@ -302,7 +303,7 @@ describe('Icelandic AI cards: MealPlanCard', () => {
     const totals = norm(section.querySelector('[data-testid="ai-mealplan-totals"]')!.textContent);
     expect(totals).toMatch(/^\d+ g prótein \/ 61,25 g · \d+ kcal/);
     // Balancing may scale servings (decimal comma) and the side; the side reads "{{food}}: {{amount}}".
-    const esc = lunch.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const esc = recipeDisplayName(lunch.id, 'is').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     expect(norm(section.textContent)).toMatch(new RegExp(`Hádegismatur: ${esc}( ×\\d+(,\\d+)?)? \\+ Steikt kjúklingabringa: \\d+ g`));
     expect(norm(section.textContent)).toContain('Server summary as sent');
     expect(norm(section.textContent)).toContain('Server warning as sent');
@@ -341,19 +342,23 @@ describe('Icelandic AI cards: RecipeCards', () => {
     const card = c.querySelector('[data-testid="ai-recipe-card"]')!;
     expect(norm(card.textContent)).toContain(`${t(`aiCard.meal.${r.meal}`)} · 15 mín.`);
     expect(norm(card.textContent)).toContain('40 g prótein í skammti');
-    expect(norm(card.querySelector('[data-testid="ai-recipe-changes"]')!.textContent)).toBe('Sleppt: blueberries · Skipt út: skyr, plain → Cottage cheese, low-fat');
+    // Ingredient names are catalog display text in the app language.
+    const ing = (id: string) => ingredientDisplayName(id, 'is').replace(/\s*\(.*\)\s*$/, '');
+    expect(norm(card.querySelector('[data-testid="ai-recipe-changes"]')!.textContent)).toBe(
+      t('aiCard.recipe.omitted', { ingredients: ing('blueberries').toLocaleLowerCase('is') }) + ' · ' + t('aiCard.recipe.swap', { to: ing('cottage-cheese'), from: ing('skyr-plain').toLocaleLowerCase('is') }),
+    );
     expect(norm(card.querySelector('a')!.textContent)).toBe('Opna');
     expect(button('Vista', c)).toBeTruthy();
 
     click(button('Bæta við matseðil…', c));
     await waitFor(() => button('Bæta við matseðil'));
-    expect(bodyText()).toContain(`Bæta við matseðil: ${r.name}`);
+    expect(bodyText()).toContain(`Bæta við matseðil: ${recipeDisplayName(r, 'is')}`);
     expect(bodyText()).toContain('Dagur');
     expect(document.body.querySelector('[aria-label="Máltíð"]')).toBeTruthy();
     expect(bodyText()).toContain('Í dag');
     await waitFor(() => expect(button('Bæta við matseðil').disabled).toBe(false));
     click(button('Bæta við matseðil'));
-    await waitFor(() => expect(bodyText()).toContain(`Bætt við matseðil: ${r.name} · `));
+    await waitFor(() => expect(bodyText()).toContain(`Bætt við matseðil: ${recipeDisplayName(r, 'is')} · `));
     expect(button('Afturkalla')).toBeTruthy();
   });
 
@@ -376,7 +381,7 @@ describe('Icelandic AI cards: ProposalDetail', () => {
     expect(text).toContain(`Tillaga frá 27. okt. 2026 · uppfærir „My plan“ (útgáfu 1)`);
     expect(text).toContain('Af hverju leggur gervigreindin þetta til?');
     expect(text).toContain('Breytingar frá útgáfu 1');
-    expect(text).toContain(`Full body A: ${EX[0].name} 3×8–12 → 4×8–12.`);
+    expect(text).toContain(`Full body A: ${exerciseDisplayName(EX[0])} 3×8–12 → 4×8–12.`);
     expect(text).toContain('Samantekt gervigreindarinnar');
     expect(button('Hafna', c)).toBeTruthy();
     click(button('Nota tillögu', c));

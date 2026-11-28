@@ -26,6 +26,7 @@ import { addDays, diffDays, rangeDays, startOfWeek } from '@/lib/dates';
 import { formatWeight, fromKg, round, trimNum } from './units';
 import { getLanguage, localeFor, numberText, t, tp, type Language, type MessageKey, type Params } from '@/i18n';
 import { hasRecordedLoad, isCountableSet, isValidCompletedSet } from './setValidation';
+import { exerciseDisplayName } from '@/data/catalogText';
 
 export const VOLUME_CONVENTIONS: string[] = [
   'Warm-up sets are counted separately and are not included in working sets, volume or records.',
@@ -305,8 +306,8 @@ export function detectRecords(s: WorkoutSession, history: WorkoutSession[], byId
     if (prevSets.length === 0) continue;
     const cur = bestsFor(setsOf([s], ex.id), ex);
     const prev = bestsFor(prevSets, ex);
-    // The catalog/custom name is content: it goes into the sentence unchanged.
-    const exercise = ex.name;
+    // Catalog names are shown in the language of the sentence; custom names are user content and stay as typed.
+    const exercise = exerciseDisplayName(ex, undefined, lang);
     const weight = (kg: number, entered?: LoggedSet['entered']) => formatWeight(kg, unit, entered, lang);
     if (cur.heaviest != null && prev.heaviest != null && cur.heaviest > prev.heaviest + 1e-9) {
       const reps = cur.heaviestSet?.reps;
@@ -704,7 +705,7 @@ export function goalProgress(g: UserGoal, c: GoalContext, lang: Language = getLa
       const series = exerciseSeries(c.sessions, ex.id, ex);
       if (ex.tracking === 'assisted') {
         const vals = series.map((p) => p.minAssistanceKg).filter((v): v is number => v != null);
-        if (!vals.length) return { current: null, fraction: null, text: tx('progress.goalStatus.noExerciseSets', { exercise: ex.name }), reached: false };
+        if (!vals.length) return { current: null, fraction: null, text: tx('progress.goalStatus.noExerciseSets', { exercise: exerciseDisplayName(ex, undefined, lang) }), reached: false };
         const cur = Math.min(...vals);
         const start = vals[0];
         const reached = cur <= g.target + 1e-9;
@@ -712,7 +713,7 @@ export function goalProgress(g: UserGoal, c: GoalContext, lang: Language = getLa
         return { current: cur, fraction, text: tx('progress.goalStatus.assistance', { current: wt(cur), target: wt(g.target) }), reached };
       }
       const vals = series.map((p) => p.topWeightKg).filter((v): v is number => v != null);
-      if (!vals.length) return { current: null, fraction: null, text: tx('progress.goalStatus.noExerciseSets', { exercise: ex.name }), reached: false };
+      if (!vals.length) return { current: null, fraction: null, text: tx('progress.goalStatus.noExerciseSets', { exercise: exerciseDisplayName(ex, undefined, lang) }), reached: false };
       const cur = Math.max(...vals);
       return { current: cur, fraction: frac(cur, g.target), text: tx('progress.goalStatus.load', { current: wt(cur), target: wt(g.target) }), reached: cur >= g.target - 1e-9 };
     }

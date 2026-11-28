@@ -243,9 +243,7 @@ export default function ProgressPage() {
         <Segmented label={t('progress.range')} value={range} onChange={setRange} options={RANGES.map((r) => ({ value: r.value, label: t(r.label) }))} />
         <p className="text-xs text-muted mt-1.5 px-1">
           {formatDate(from, { day: 'numeric', month: 'short', year: 'numeric' })} – {formatDate(today, { day: 'numeric', month: 'short', year: 'numeric' })} ·{' '}
-          {language === 'en'
-            ? `weeks start on ${t(settings.weekStart === 1 ? 'settings.monday' : 'settings.sunday')}`
-            : `${t('settings.weekStart')} ${t(settings.weekStart === 1 ? 'settings.monday' : 'settings.sunday')}`}
+          {t('progress.weeks_start_on_x', { day: t(settings.weekStart === 1 ? 'settings.monday' : 'settings.sunday') })}
         </p>
       </div>
 

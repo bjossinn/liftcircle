@@ -4,11 +4,26 @@
  * app and the ai-coach function build identical plans; this module re-exports it and adds the app-only shopping list.
  */
 import type { ID, Ingredient, Recipe } from '@/domain/types';
-import { INGREDIENTS_BY_ID, INGREDIENT_CATEGORY_LABELS, PURCHASE_FORM } from '@/data/ingredients';
+import { INGREDIENTS_BY_ID, PURCHASE_FORM } from '@/data/ingredients';
+import { ingredientCategoryLabel, ingredientDisplayName, recipeDisplayName } from '@/data/catalogText';
+import { weekday, weekdayOn } from '@/lib/dates';
+import { getLanguage, locale, t, type Language } from '@/i18n';
 import { formatGrams, friendlyAmount, resolveIngredients, type IngredientIndex, type Swap } from './recipes';
-import type { PlanDraft } from '../../../supabase/functions/_shared/nutrition/mealplan';
+import type { PlanContext, PlanDraft } from '../../../supabase/functions/_shared/nutrition/mealplan';
 
 export * from '../../../supabase/functions/_shared/nutrition/mealplan';
+
+/**
+ * Context for the planner's warning and day-status texts in the app language: localized recipe names and "on Monday" /
+ * "á mánudaginn". Pass it (spread into any other context) to planWarnings, planDayStatus and planStatus.
+ */
+export function planTextContext(language: Language = getLanguage()): Required<Pick<PlanContext, 'lang' | 'recipeName' | 'weekdayOn'>> {
+  return {
+    lang: language,
+    recipeName: (r) => recipeDisplayName(r, language),
+    weekdayOn: (date) => weekdayOn(weekday(date), language),
+  };
+}
 
 /* ------------------------------------------------------------ shopping list */
 export interface ShoppingItem {
@@ -29,8 +44,11 @@ export interface ShoppingGroup {
 const CATEGORY_ORDER: Ingredient['category'][] = ['vegetable', 'fruit', 'protein', 'dairy', 'legume', 'grain', 'nut_seed', 'fat', 'condiment', 'other'];
 export const PROTEIN_SIDES_LABEL = 'Protein sides';
 
-/** Aggregate a plan's ingredients (recipes at their planned servings, plus protein sides) by purchase ingredient. */
-export function buildShoppingList(plan: PlanDraft, recipesById: Map<ID, Recipe>, byId: IngredientIndex = INGREDIENTS_BY_ID): ShoppingGroup[] {
+/**
+ * Aggregate a plan's ingredients (recipes at their planned servings, plus protein sides) by purchase ingredient.
+ * Item names, amounts and section labels are display text in `lang`; `recipeNames` stay canonical.
+ */
+export function buildShoppingList(plan: PlanDraft, recipesById: Map<ID, Recipe>, byId: IngredientIndex = INGREDIENTS_BY_ID, lang: Language = getLanguage()): ShoppingGroup[] {
   const acc = new Map<ID, { grams: number; recipes: Set<string>; convertedFrom?: ID }>();
   const add = (ingredient: Ingredient, gramsIn: number, source: string) => {
     let id = ingredient.id;
@@ -65,16 +83,17 @@ export function buildShoppingList(plan: PlanDraft, recipesById: Map<ID, Recipe>,
   const groups = new Map<Ingredient['category'], ShoppingItem[]>();
   for (const [id, v] of acc) {
     const ing = byId.get(id)!;
-    const friendly = ing.id === 'spices' ? 'to taste' : friendlyAmount(ing, v.grams);
-    const display = ing.id === 'spices' ? 'to taste' : friendly ? `${friendly} (${formatGrams(v.grams)})` : formatGrams(v.grams);
+    const toTaste = t('nutrition.shopping.to_taste', undefined, lang);
+    const friendly = ing.id === 'spices' ? toTaste : friendlyAmount(ing, v.grams, lang);
+    const display = ing.id === 'spices' ? toTaste : friendly ? `${friendly} (${formatGrams(v.grams, lang)})` : formatGrams(v.grams, lang);
     const list = groups.get(ing.category) ?? [];
-    list.push({ ingredientId: id, name: ing.name, grams: v.grams, display, recipeNames: [...v.recipes].sort(), convertedFrom: v.convertedFrom });
+    list.push({ ingredientId: id, name: ingredientDisplayName(ing, lang), grams: v.grams, display, recipeNames: [...v.recipes].sort(), convertedFrom: v.convertedFrom });
     groups.set(ing.category, list);
   }
   return CATEGORY_ORDER.filter((c) => groups.has(c)).map((c) => ({
     category: c,
-    label: INGREDIENT_CATEGORY_LABELS[c],
-    items: groups.get(c)!.sort((a, b) => a.name.localeCompare(b.name)),
+    label: ingredientCategoryLabel(c, lang),
+    items: groups.get(c)!.sort((a, b) => a.name.localeCompare(b.name, locale(lang))),
   }));
 }
 

@@ -15,6 +15,7 @@ import type {
 import { requireSupabase } from './supabase';
 import { BackendError, toBackendError } from './syncRemote';
 import { uuid } from '@/lib/id';
+import { t } from '@/i18n';
 
 /** Signed URL lifetimes (seconds). Short on purpose: revoked access stops working within this window. */
 export const COACH_SIGNED_URL_TTL = 300;
@@ -40,7 +41,7 @@ async function call<T>(fn: string, args?: Record<string, unknown>, fallback?: st
 async function session() {
   const { data } = await requireSupabase().auth.getSession();
   const s = data.session;
-  if (!s) throw new BackendError('You need to be signed in.', 'auth', 401);
+  if (!s) throw new BackendError(t('aiServer.auth.signIn'), 'auth', 401);
   return s;
 }
 
@@ -94,24 +95,27 @@ async function functionError(error: unknown, fallback: string): Promise<BackendE
   }
   const msg = String((error as Error)?.message ?? '') + String((error as Error)?.name ?? '');
   if (/FunctionsFetchError|FunctionsRelayError|Failed to send a request|failed to fetch/i.test(msg)) {
-    return new BackendError('You appear to be offline. Check your connection and try again.', 'network');
+    return new BackendError(t('sync.offlineError'), 'network');
   }
   return toBackendError(error, fallback);
 }
 
-function uploadError(error: { message?: string; statusCode?: string | number }, what: string): BackendError {
+type UploadWhat = 'photo' | 'document';
+
+function uploadError(error: { message?: string; statusCode?: string | number }, what: UploadWhat): BackendError {
   const status = Number(error.statusCode ?? 0);
   const m = error.message ?? '';
-  if (status === 413 || /too large|exceeded the maximum/i.test(m)) return new BackendError(`This ${what} is too large to upload.`, 'upload', 413);
-  if (status === 415 || /mime|content type/i.test(m)) return new BackendError(`This ${what} format isn’t supported.`, 'upload', 415);
-  if (status === 401 || /jwt|token/i.test(m)) return new BackendError('Your session has expired. Please sign in again.', 'auth', 401);
+  const photo = what === 'photo';
+  if (status === 413 || /too large|exceeded the maximum/i.test(m)) return new BackendError(t(photo ? 'coaching.api.photo_too_large' : 'coaching.api.document_too_large'), 'upload', 413);
+  if (status === 415 || /mime|content type/i.test(m)) return new BackendError(t(photo ? 'coaching.api.photo_format' : 'coaching.api.document_format'), 'upload', 415);
+  if (status === 401 || /jwt|token/i.test(m)) return new BackendError(t('ai.error.auth'), 'auth', 401);
   if (status === 403 || /row-level security|unauthorized|policy/i.test(m)) {
-    return new BackendError(`This ${what} can’t be uploaded here (the conversation may be read-only now).`, '42501', 403);
+    return new BackendError(t(photo ? 'coaching.api.photo_read_only' : 'coaching.api.document_read_only'), '42501', 403);
   }
-  return new BackendError(m || `Upload failed. Please try again.`, 'upload', status || undefined);
+  return new BackendError(m || t('coaching.api.upload_failed'), 'upload', status || undefined);
 }
 
-async function upload(bucket: string, path: string, blob: Blob, contentType: string, what: string): Promise<void> {
+async function upload(bucket: string, path: string, blob: Blob, contentType: string, what: UploadWhat): Promise<void> {
   const { error } = await requireSupabase().storage.from(bucket).upload(path, blob, { upsert: true, contentType, cacheControl: '3600' });
   if (error) throw uploadError(error as { message?: string; statusCode?: string | number }, what);
 }
@@ -276,7 +280,7 @@ interface RawOverview {
   relationship: RawRelationship;
   training: null | {
     active_program: { id: ID; name: string; current_version: number; managed_by: string | null } | null;
-    recent_sessions: { id: ID; date: string; name: string; status: string; duration_min: number | null; working_sets: number }[];
+    recent_sessions: { id: ID; date: string; name: string; status: string; duration_min: number | null; working_sets: number; template_id?: string | null; name_edited?: boolean | null }[];
     planned_last28: number | null;
     completed_last28: number;
   };
@@ -366,7 +370,7 @@ async function mapRelationships(list: RawRelationship[]): Promise<CoachingRelati
     },
     client: {
       userId: r.client_id,
-      displayName: r.client?.display_name || 'Hard Earned member',
+      displayName: r.client?.display_name || t('coaching.api.hard_earned_member'),
       avatarUrl: r.client?.avatar_path ? avatars.get(r.client.avatar_path) ?? null : null,
     },
     status: r.status,
@@ -518,12 +522,12 @@ export const coachingApi: CoachingApi = {
           documentPath: q.documentPath ?? null, documentName: q.documentName ?? null,
         })),
       },
-    }, 'Could not save your coach profile.');
+    }, t('coaching.api.could_not_save_coach_profile'));
     return (await mapProfiles([raw]))[0];
   },
 
   async submitApplication() {
-    const raw = await call<RawProfile>('submit_coach_application', undefined, 'Could not submit your application.');
+    const raw = await call<RawProfile>('submit_coach_application', undefined, t('coaching.api.could_not_submit_application'));
     return (await mapProfiles([raw]))[0];
   },
 
@@ -543,12 +547,12 @@ export const coachingApi: CoachingApi = {
 
   async documentUrl(path) {
     const { data, error } = await requireSupabase().storage.from(DOCS_BUCKET).createSignedUrl(path, COACH_DOCUMENT_URL_TTL);
-    if (error || !data?.signedUrl) throw new BackendError('This document isn’t available to you.', '42501', 403);
+    if (error || !data?.signedUrl) throw new BackendError(t('coaching.api.document_not_available'), '42501', 403);
     return data.signedUrl;
   },
 
   async setListing(listed, acceptingClients) {
-    await call('set_coach_listing', { p_listed: listed, p_accepting: acceptingClients }, 'Could not update your listing.');
+    await call('set_coach_listing', { p_listed: listed, p_accepting: acceptingClients }, t('coaching.api.could_not_update_listing'));
   },
 
   async myReviewEvents() {
@@ -573,7 +577,7 @@ export const coachingApi: CoachingApi = {
         limit: q.limit ?? 20,
         offset: q.offset ?? 0,
       },
-    }, 'Could not search coaches.');
+    }, t('coaching.api.could_not_search_coaches'));
     const items = arr(raw?.items);
     const photos = await signPaths(PHOTO_BUCKET, items.map((c) => c.photo_path));
     return { items: items.map((c) => cardFields(c, photos)), distanceAvailable: Boolean(raw?.distance_available) };
@@ -602,7 +606,7 @@ export const coachingApi: CoachingApi = {
       return unavailable;
     }
     if (res.error) {
-      const e = await functionError(res.error, 'Location search is unavailable.');
+      const e = await functionError(res.error, t('coaching.api.location_search_unavailable'));
       // Bad input and rate limits are the user's to fix; a missing function/provider is not an error.
       if (e.status === 400 || e.status === 429 || e.isAuth) throw e;
       return unavailable;
@@ -622,20 +626,20 @@ export const coachingApi: CoachingApi = {
   async requestCoaching(input) {
     const raw = await call<RawRelationship>('request_coaching', {
       p_id: input.id, p_coach: input.coachId, p_intake: input.intake ?? {}, p_message: input.introMessage ?? '', p_scopes: input.scopes,
-    }, 'Could not send the coaching request.');
+    }, t('coaching.api.could_not_send_request'));
     return (await mapRelationships([raw]))[0];
   },
 
   async cancelRequest(relationshipId) {
-    await call('cancel_coaching_request', { p_id: relationshipId }, 'Could not cancel the request.');
+    await call('cancel_coaching_request', { p_id: relationshipId }, t('coaching.api.could_not_cancel_request'));
   },
 
   async endCoaching(relationshipId, reason) {
-    await call('end_coaching', { p_id: relationshipId, p_reason: reason ?? null }, 'Could not end coaching.');
+    await call('end_coaching', { p_id: relationshipId, p_reason: reason ?? null }, t('coaching.api.could_not_end_coaching'));
   },
 
   async setScopes(relationshipId, scopes) {
-    await call('set_coaching_scopes', { p_id: relationshipId, p_scopes: scopes }, 'Could not update what you share.');
+    await call('set_coaching_scopes', { p_id: relationshipId, p_scopes: scopes }, t('coaching.api.could_not_update_sharing'));
   },
 
   async myRelationships() {
@@ -644,25 +648,27 @@ export const coachingApi: CoachingApi = {
 
   /* --------------------------------------------------- relationships (coach) */
   async respondRequest(relationshipId, accept, message) {
-    await call('respond_coaching_request', { p_id: relationshipId, p_accept: accept, p_message: message ?? null }, 'Could not respond to the request.');
+    await call('respond_coaching_request', { p_id: relationshipId, p_accept: accept, p_message: message ?? null }, t('coaching.api.could_not_respond_request'));
   },
 
   async clientOverview(relationshipId) {
-    const raw = await call<RawOverview>('coach_client_overview', { p_id: relationshipId }, 'Could not load this client.');
+    const raw = await call<RawOverview>('coach_client_overview', { p_id: relationshipId }, t('coaching.api.could_not_load_client'));
     const [relationship] = await mapRelationships([raw.relationship]);
-    const t = raw.training;
+    const tr = raw.training;
     const overview: ClientOverview = {
       relationship,
-      training: t
+      training: tr
         ? {
-            activeProgram: t.active_program
-              ? { id: t.active_program.id, name: t.active_program.name ?? 'Program', currentVersion: Number(t.active_program.current_version ?? 1), managedBy: t.active_program.managed_by }
+            activeProgram: tr.active_program
+              ? { id: tr.active_program.id, name: tr.active_program.name ?? 'Program', currentVersion: Number(tr.active_program.current_version ?? 1), managedBy: tr.active_program.managed_by }
               : null,
-            recentSessions: arr(t.recent_sessions).map((s) => ({
+            recentSessions: arr(tr.recent_sessions).map((s) => ({
               id: s.id, date: s.date, name: s.name ?? 'Workout', status: s.status ?? '', durationMin: num(s.duration_min), workingSets: Number(s.working_sets ?? 0),
+              ...(typeof s.template_id === 'string' && s.template_id ? { templateId: s.template_id } : {}),
+              ...(s.name_edited === true ? { nameEdited: true as const } : {}),
             })),
-            plannedLast28: num(t.planned_last28),
-            completedLast28: Number(t.completed_last28 ?? 0),
+            plannedLast28: num(tr.planned_last28),
+            completedLast28: Number(tr.completed_last28 ?? 0),
           }
         : null,
       measurements: raw.measurements ? raw.measurements.map((m) => ({ date: m.date, kind: m.kind, value: Number(m.value) })) : null,
@@ -685,16 +691,16 @@ export const coachingApi: CoachingApi = {
         message: input.message ?? null,
         effectiveDate: input.effectiveDate ?? null,
       },
-    }, 'Could not save the program proposal.');
+    }, t('coaching.api.could_not_save_program_proposal'));
     return mapProposal(raw);
   },
 
   async sendProposal(proposalId) {
-    await call('send_program_proposal', { p_id: proposalId }, 'Could not send the proposal.');
+    await call('send_program_proposal', { p_id: proposalId }, t('coaching.api.could_not_send_proposal'));
   },
 
   async withdrawProposal(proposalId) {
-    await call('withdraw_program_proposal', { p_id: proposalId }, 'Could not withdraw the proposal.');
+    await call('withdraw_program_proposal', { p_id: proposalId }, t('coaching.api.could_not_withdraw_proposal'));
   },
 
   async listProposals(filter) {
@@ -710,15 +716,15 @@ export const coachingApi: CoachingApi = {
   },
 
   async respondProposal(id, accept, applied) {
-    if (accept && !applied) throw new BackendError('Choose where to apply this program first.', 'P0001', 400);
+    if (accept && !applied) throw new BackendError(t('coaching.api.choose_where_to_apply'), 'P0001', 400);
     await call('respond_program_proposal', {
       p_id: id, p_accept: accept, p_program_id: applied?.programId ?? null, p_version: applied?.version ?? null,
-    }, 'Could not respond to the proposal.');
+    }, t('coaching.api.could_not_respond_proposal'));
   },
 
   async addFeedback(input) {
     await call('add_coach_feedback', { p_id: input.id, p_relationship: input.relationshipId, p_session: input.sessionId ?? null, p_body: input.body },
-      'Could not save your feedback.');
+      t('coaching.api.could_not_save_feedback'));
   },
 
   async listFeedback(relationshipId) {
@@ -728,7 +734,7 @@ export const coachingApi: CoachingApi = {
   /* ------------------------------------------------------------- check-ins */
   async submitCheckIn(input) {
     await call('submit_checkin', { p_id: input.id, p_relationship: input.relationshipId, p_answers: input.answers ?? {}, p_note: input.note ?? null },
-      'Could not send your check-in.');
+      t('coaching.api.could_not_send_checkin'));
   },
 
   async listCheckIns(relationshipId) {
@@ -736,13 +742,13 @@ export const coachingApi: CoachingApi = {
   },
 
   async respondCheckIn(id, response) {
-    await call('respond_checkin', { p_id: id, p_response: response }, 'Could not save your response.');
+    await call('respond_checkin', { p_id: id, p_response: response }, t('coaching.api.could_not_save_response'));
   },
 
   /* ------------------------------------------------------------- messaging */
   async listMessages(relationshipId, afterSeq = 0, limit = 100) {
     return mapMessages(await call<RawMessage[]>('list_coach_messages', { p_relationship: relationshipId, p_after_seq: afterSeq, p_limit: limit },
-      'Could not load messages.'));
+      t('coaching.api.could_not_load_messages')));
   },
 
   async sendMessage(input) {
@@ -752,7 +758,7 @@ export const coachingApi: CoachingApi = {
       p_body: input.body ?? '',
       p_media: (input.mediaIds ?? []).map((id) => ({ id })),
       p_shared_from_ai: Boolean(input.sharedFromAi),
-    }, 'Could not send the message.');
+    }, t('coaching.api.could_not_send_message'));
     return (await mapMessages([raw]))[0];
   },
 
@@ -766,7 +772,7 @@ export const coachingApi: CoachingApi = {
     await upload(MEDIA_BUCKET, mediaPath(relationshipId, messageId, mediaId), image, image.type || 'image/jpeg', 'photo');
     const { error } = await requireSupabase().functions.invoke('finalize-coach-media', { body: { messageId } });
     if (!error) return;
-    const e = await functionError(error, 'Could not send the photo. Please try again.');
+    const e = await functionError(error, t('coaching.api.could_not_send_photo'));
     const details = Array.isArray(e.details) ? (e.details as { problem?: string }[]) : [];
     if (e.status === 422 && details.length > 0 && details.every((d) => d.problem === 'not uploaded yet')) return; // more photos to come
     throw e;
@@ -783,17 +789,17 @@ export const coachingApi: CoachingApi = {
   async reportCoachingContent(input) {
     await call('report_coaching_content', {
       p_relationship: input.relationshipId, p_message: input.messageId ?? null, p_reason: input.reason, p_details: input.details ?? null,
-    }, 'Could not send the report.');
+    }, t('coaching.api.could_not_send_report'));
   },
 
   /* ----------------------------------------------------------------- admin */
   async adminListApplications(status) {
-    return mapProfiles(arr(await call<RawProfile[]>('admin_list_coach_applications', { p_filter: status ?? null }, 'Could not load applications.')));
+    return mapProfiles(arr(await call<RawProfile[]>('admin_list_coach_applications', { p_filter: status ?? null }, t('coaching.api.could_not_load_applications'))));
   },
 
   async adminGetApplication(coachId) {
     const raw = await call<{ profile: RawProfile; events: RawEvent[] } | null>('admin_get_coach_application', { p_coach: coachId },
-      'Could not load the application.');
+      t('coaching.api.could_not_load_application'));
     if (!raw) return null;
     const [profile] = await mapProfiles([raw.profile]);
     return { profile, events: arr(raw.events).map(mapEvent) };
@@ -801,7 +807,7 @@ export const coachingApi: CoachingApi = {
 
   async adminReview(coachId, action, reason, qualificationId) {
     await call('admin_review_coach', { p_coach: coachId, p_action: action, p_reason: reason ?? null, p_qualification: qualificationId ?? null },
-      'Could not save the review.');
+      t('coaching.api.could_not_save_review'));
   },
 };
 
@@ -824,7 +830,7 @@ export interface CoachingReport {
 
 export const coachingReportsApi = {
   async list(status: 'open' | 'actioned' | 'dismissed' | null = 'open'): Promise<CoachingReport[]> {
-    const raw = await call<Record<string, unknown>[]>('admin_list_coaching_reports', { p_status: status }, 'Could not load reports.');
+    const raw = await call<Record<string, unknown>[]>('admin_list_coaching_reports', { p_status: status }, t('coaching.api.could_not_load_reports'));
     return arr(raw).map((r) => ({
       id: r.id as ID, reporterId: r.reporter_id as ID, relationshipId: (r.relationship_id as ID) ?? null, messageId: (r.message_id as ID) ?? null,
       reportedUserId: (r.reported_user_id as ID) ?? null, coachId: (r.coach_id as ID) ?? null, reason: String(r.reason),
@@ -833,7 +839,7 @@ export const coachingReportsApi = {
     }));
   },
   async resolve(reportId: ID, action: 'dismiss' | 'actioned' | 'remove_message'): Promise<void> {
-    await call('admin_resolve_coaching_report', { p_id: reportId, p_action: action }, 'Could not resolve the report.');
+    await call('admin_resolve_coaching_report', { p_id: reportId, p_action: action }, t('coaching.api.could_not_resolve_report'));
   },
 };
 
@@ -859,13 +865,13 @@ export const publicCoachDirectory = {
         limit: Math.min(q.limit ?? 20, 20),
         offset: q.offset ?? 0,
       },
-    }, 'Could not load coaches.');
+    }, t('coaching.api.could_not_load_coaches'));
     const none = new Map<string, string>();
     return { items: arr(raw?.items).map((c) => cardFields({ ...c, photo_path: null, distance_km: null }, none)), hasMore: Boolean(raw?.has_more) };
   },
 
   async get(userId: ID): Promise<CoachDetail | null> {
-    const raw = await call<RawDetail | null>('public_get_coach', { p_coach: userId }, 'Could not load this coach.');
+    const raw = await call<RawDetail | null>('public_get_coach', { p_coach: userId }, t('coaching.api.could_not_load_coach'));
     if (!raw) return null;
     return {
       ...cardFields({ ...raw, photo_path: null, distance_km: null }, new Map()),

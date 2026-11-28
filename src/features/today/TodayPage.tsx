@@ -15,9 +15,10 @@ import { useToast } from '@/components/toast';
 import { BRAND } from '@/config/brand';
 import { BrandMoment } from '@/components/BrandMark';
 import { PlanOwnerBadge } from '@/features/program/PlanOwner';
-import { displaySessionName, SessionMarkTile } from '@/features/program/parts';
+import { displaySessionName, SessionMarkTile, workoutDisplayName } from '@/features/program/parts';
 import { useExercises } from '@/data/catalog';
 import { plannedWeekStreak } from '@/domain/program/streak';
+import { exerciseDisplayName } from '@/data/catalogText';
 
 /** A friendly greeting for the time of day (device clock). */
 export function greeting(hour = new Date().getHours()): string {
@@ -122,7 +123,7 @@ export default function TodayPage() {
         <Card className="p-4 flex items-center gap-3 border-accent/40">
           <Play className="size-5 text-accent" aria-hidden />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold truncate">{displaySessionName({ id: active.templateId ?? '', name: active.name })}</div>
+            <div className="font-semibold truncate">{workoutDisplayName(active)}</div>
             <div className="text-xs text-muted">{t('today.inProgress')}</div>
           </div>
           <Button variant="primary" onClick={() => nav(`/train/session/${active.id}`)}>
@@ -152,7 +153,7 @@ export default function TodayPage() {
                 </div>
               </div>
               {next.template.exercises.length > 0 && (
-                <p className="text-xs text-muted mt-3 line-clamp-2">{next.template.exercises.map((e) => byId.get(e.exerciseId)?.name ?? t('today.exerciseFallback')).join(' · ')}</p>
+                <p className="text-xs text-muted mt-3 line-clamp-2">{next.template.exercises.map((e) => (byId.get(e.exerciseId) ? exerciseDisplayName(byId.get(e.exerciseId)) : t('today.exerciseFallback'))).join(' · ')}</p>
               )}
               <Button
                 variant="primary"

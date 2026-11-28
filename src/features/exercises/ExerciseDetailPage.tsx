@@ -14,6 +14,9 @@ import {
 } from '@/data/exerciseMeta';
 import { EXERCISES } from '@/data/exercises';
 import { bundledExercise, useExercises } from '@/data/catalog';
+import { exerciseAliases, exerciseDisplayName, exerciseExecution, exerciseMistakes, exerciseSetup } from '@/data/catalogText';
+import { listText, useT } from '@/i18n';
+import { localizeGeneratedText } from '@/domain/program/localize';
 import { deleteRecord } from '@/db/repo';
 import { useApp } from '@/state/app';
 import { formatDate } from '@/lib/dates';
@@ -26,33 +29,34 @@ export default function ExerciseDetailPage() {
   const { id = '' } = useParams();
   const nav = useNavigate();
   const { db } = useApp();
+  const { t } = useT();
   const bundled = bundledExercise(id);
   // null = looked up and not found; undefined = still loading.
   const custom = useLiveQuery(async () => (bundled ? null : ((await db.customExercises.get(id)) ?? null)), [db, id, bundled]);
 
   const back = (
-    <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+    <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
       <ChevronLeft />
     </IconButton>
   );
 
   if (!bundled && custom === undefined)
     return (
-      <Page back={back} title="Exercise">
-        <Spinner label="Loading exercise" />
+      <Page back={back} title={t('workout.exerciseFallback')}>
+        <Spinner label={t('exercise.detail.loading_exercise')} />
       </Page>
     );
 
   const ex: Exercise | null = bundled ?? (custom && !custom.deletedAt ? custom : null);
   if (!ex)
     return (
-      <Page back={back} title="Exercise">
+      <Page back={back} title={t('workout.exerciseFallback')}>
         <EmptyState
-          title="Exercise not found"
-          body="It may have been deleted, or the link is out of date."
+          title={t('exercise.detail.exercise_not_found')}
+          body={t('exercise.detail.it_may_have_been_deleted_or')}
           action={
             <Button variant="primary" onClick={() => nav('/train/exercises', { replace: true })}>
-              Browse exercises
+              {t('exercise.detail.browse_exercises')}
             </Button>
           }
         />
@@ -65,6 +69,7 @@ export default function ExerciseDetailPage() {
 function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
   const nav = useNavigate();
   const toast = useToast();
+  const { t, tp, language } = useT();
   const { db, account, updateAccount } = useApp();
   const { byId } = useExercises();
   const fav = useFavoriteExercises();
@@ -91,9 +96,9 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
   async function toggleFav() {
     try {
       await fav.toggle(ex.id);
-      toast.show(isFav ? 'Removed from favourites' : 'Added to favourites', { tone: 'success' });
+      toast.show(isFav ? t('exercise.detail.removed_from_favourites') : t('exercise.detail.added_to_favourites'), { tone: 'success' });
     } catch (e) {
-      toast.show(e instanceof Error ? e.message : 'Could not update favourites', { tone: 'error' });
+      toast.show(e instanceof Error ? e.message : t('exercise.detail.could_not_update_favourites'), { tone: 'error' });
     }
   }
 
@@ -103,16 +108,25 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
       await deleteRecord('custom_exercises', ex.id, db);
       if (isFav)
         await updateAccount((a) => ({ ...a, favorites: { ...a.favorites, recipes: a.favorites?.recipes ?? [], exercises: (a.favorites?.exercises ?? []).filter((x) => x !== ex.id) } }));
-      toast.show('Exercise deleted', { tone: 'success' });
+      toast.show(t('exercise.detail.exercise_deleted'), { tone: 'success' });
       nav('/train/exercises', { replace: true });
     } catch (e) {
-      toast.show(e instanceof Error ? e.message : 'Could not delete the exercise', { tone: 'error' });
+      toast.show(e instanceof Error ? e.message : t('exercise.detail.could_not_delete_the_exercise'), { tone: 'error' });
       setDeleting(false);
       setConfirmDelete(false);
     }
   }
 
-  const loadLabel = ex.load === 'per_hand' ? `${LOAD_LABELS.per_hand}${ex.implements === 2 ? ' (pair)' : ' (single)'}` : LOAD_LABELS[ex.load];
+  const loadLabel =
+    ex.load === 'per_hand'
+      ? t(ex.implements === 2 ? 'exercise.detail.load_per_hand_pair' : 'exercise.detail.load_per_hand_single', { load: LOAD_LABELS.per_hand })
+      : LOAD_LABELS[ex.load];
+  const name = exerciseDisplayName(ex);
+  const aliases = exerciseAliases(ex);
+  const setup = exerciseSetup(ex);
+  const execution = exerciseExecution(ex);
+  const mistakes = exerciseMistakes(ex);
+  const patternLabel = PATTERN_LABELS[ex.pattern];
 
   return (
     <Page
@@ -120,11 +134,11 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
       actions={
         <>
           {isCustom && (
-            <IconButton label="Edit exercise" onClick={() => setEditing(true)}>
+            <IconButton label={t('workout.custom.edit')} onClick={() => setEditing(true)}>
               <Pencil className="size-5" />
             </IconButton>
           )}
-          <IconButton label={isFav ? 'Remove from favourites' : 'Add to favourites'} aria-pressed={isFav} onClick={toggleFav}>
+          <IconButton label={isFav ? t('exercise.detail.remove_from_favourites') : t('exercise.detail.add_to_favourites')} aria-pressed={isFav} onClick={toggleFav}>
             <Star className={isFav ? 'size-6 fill-current text-accent' : 'size-6'} />
           </IconButton>
         </>
@@ -133,13 +147,13 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
       <Card className="p-4 flex items-start gap-4">
         <ExerciseGlyphTile pattern={ex.pattern} size="lg" />
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold tracking-tight leading-tight">{ex.name}</h1>
-          {ex.aliases.length > 0 && <p className="mt-1 text-sm text-muted">Also called {ex.aliases.join(', ')}</p>}
+          <h1 className="text-2xl font-bold tracking-tight leading-tight">{name}</h1>
+          {aliases.length > 0 && <p className="mt-1 text-sm text-muted">{t('exercise.detail.also_called', { names: listText(aliases, language) })}</p>}
           <div className="mt-2 flex flex-wrap gap-1.5">
             <Badge tone="accent">{PATTERN_LABELS[ex.pattern]}</Badge>
             <Badge>{CATEGORY_LABELS[ex.category]}</Badge>
-            {isCustom && <Badge tone="info">Custom</Badge>}
-            {ex.mainLift && <Badge>Main lift</Badge>}
+            {isCustom && <Badge tone="info">{t('exercise.customBadge')}</Badge>}
+            {ex.mainLift && <Badge>{t('exercise.detail.main_lift')}</Badge>}
           </div>
         </div>
       </Card>
@@ -149,14 +163,14 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
 
       <Card className="mt-3 p-4">
         <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
-          <Fact label="Primary muscles" value={ex.primaryMuscles.map((m) => MUSCLE_LABELS[m]).join(', ')} />
-          {ex.secondaryMuscles.length > 0 && <Fact label="Secondary muscles" value={ex.secondaryMuscles.map((m) => MUSCLE_LABELS[m]).join(', ')} />}
-          <Fact label="Equipment" value={ex.equipment.map((q) => EQUIPMENT_LABELS[q]).join(', ')} />
-          {!isCustom && <Fact label="Difficulty" value={DIFFICULTY_LABELS[ex.difficulty]} />}
-          <Fact label="Tracking" value={TRACKING_LABELS[ex.tracking]} />
-          {ex.load !== 'none' && <Fact label="Load" value={loadLabel} />}
-          {ex.unilateral && <Fact label="Sides" value="One side at a time" />}
-          {ex.stresses.length > 0 && <Fact label="Joint areas loaded" value={ex.stresses.map((s) => LIMITATION_LABELS[s]).join(', ')} />}
+          <Fact label={t('workout.custom.primaryMuscles')} value={ex.primaryMuscles.map((m) => MUSCLE_LABELS[m]).join(', ')} />
+          {ex.secondaryMuscles.length > 0 && <Fact label={t('exercise.detail.secondary_muscles')} value={ex.secondaryMuscles.map((m) => MUSCLE_LABELS[m]).join(', ')} />}
+          <Fact label={t('workout.custom.equipment')} value={ex.equipment.map((q) => EQUIPMENT_LABELS[q]).join(', ')} />
+          {!isCustom && <Fact label={t('exercise.detail.difficulty')} value={DIFFICULTY_LABELS[ex.difficulty]} />}
+          <Fact label={t('workout.custom.tracking')} value={TRACKING_LABELS[ex.tracking]} />
+          {ex.load !== 'none' && <Fact label={t('exercise.detail.load')} value={loadLabel} />}
+          {ex.unilateral && <Fact label={t('exercise.detail.sides')} value={t('exercise.detail.one_side_at_a_time')} />}
+          {ex.stresses.length > 0 && <Fact label={t('exercise.detail.joint_areas_loaded')} value={ex.stresses.map((s) => LIMITATION_LABELS[s]).join(', ')} />}
         </dl>
       </Card>
 
@@ -168,24 +182,24 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
       )}
 
       {/* Library exercises show their (translated) cues under the illustration above; custom ones keep their own here. */}
-      {(ex.setup || ex.execution || (isCustom && ex.cues.length > 0) || ex.mistakes.length > 0) && (
+      {(setup || execution || (isCustom && ex.cues.length > 0) || mistakes.length > 0) && (
         <>
-          <SectionTitle>{isCustom ? 'Notes' : 'How to do it'}</SectionTitle>
+          <SectionTitle>{isCustom ? t('workout.custom.notes') : t('workout.howTo')}</SectionTitle>
           <Card className="p-4 flex flex-col gap-4 text-[15px] leading-relaxed">
-            {ex.setup && <TextBlock title={isCustom ? undefined : 'Setup'} body={ex.setup} />}
-            {ex.execution && <TextBlock title="Execution" body={ex.execution} />}
-            {isCustom && ex.cues.length > 0 && <BulletBlock title="Cues" items={ex.cues} />}
-            {ex.mistakes.length > 0 && <BulletBlock title="Common mistakes" items={ex.mistakes} tone="warn" />}
+            {setup && <TextBlock title={isCustom ? undefined : t('exercise.detail.setup')} body={setup} />}
+            {execution && <TextBlock title={t('exercise.detail.execution')} body={execution} />}
+            {isCustom && ex.cues.length > 0 && <BulletBlock title={t('exercise.detail.cues')} items={ex.cues} />}
+            {mistakes.length > 0 && <BulletBlock title={t('exercise.detail.common_mistakes')} items={mistakes} tone="warn" />}
           </Card>
         </>
       )}
 
-      <SectionTitle>Your recent sets</SectionTitle>
+      <SectionTitle>{t('exercise.detail.your_recent_sets')}</SectionTitle>
       <Card>
         {history === undefined ? (
-          <Spinner label="Loading history" />
+          <Spinner label={t('exercise.detail.loading_history')} />
         ) : history.length === 0 ? (
-          <p className="px-4 py-5 text-sm text-muted">No completed sets yet. Your last few sessions with this exercise will appear here.</p>
+          <p className="px-4 py-5 text-sm text-muted">{t('exercise.detail.no_completed_sets_yet_your_last')}</p>
         ) : (
           <ul className="divide-y divide-line">
             {history.map((h) => (
@@ -194,7 +208,7 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="text-[15px] font-medium">{formatDate(h.date)}</span>
-                      <span className="text-xs text-muted truncate">{h.sessionName}</span>
+                      <span className="text-xs text-muted truncate">{localizeGeneratedText(h.sessionName)}</span>
                     </div>
                     {h.sets.length ? (
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -205,11 +219,11 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
                         ))}
                       </div>
                     ) : (
-                      <p className="mt-1 text-sm text-muted">Warm-up sets only</p>
+                      <p className="mt-1 text-sm text-muted">{t('exercise.detail.warm_up_sets_only')}</p>
                     )}
                     {h.warmups > 0 && h.sets.length > 0 && (
                       <p className="mt-1 text-xs text-faint">
-                        + {h.warmups} warm-up set{h.warmups === 1 ? '' : 's'}
+                        {tp('exercise.detail.warmups', h.warmups)}
                       </p>
                     )}
                   </div>
@@ -223,14 +237,16 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
 
       {(subs.length > 0 || similar.length > 0) && (
         <>
-          <SectionTitle>{subs.length ? 'Substitutions' : 'Similar exercises'}</SectionTitle>
+          <SectionTitle>{subs.length ? t('exercise.detail.substitutions') : t('exercise.detail.similar_exercises')}</SectionTitle>
           <p className="px-1 -mt-1 mb-2 text-xs text-muted">
-            {subs.length ? 'Swap in one of these if equipment is busy or this movement doesn’t feel right.' : `Other ${PATTERN_LABELS[ex.pattern].toLowerCase()} movements from the library.`}
+            {subs.length
+              ? t('exercise.detail.swap_in_one_of_these_if')
+              : t('exercise.detail.other_x_movements_from_the_library', { pattern: language === 'en' ? patternLabel.toLowerCase() : patternLabel })}
             {hiddenSubs > 0 && fittingSubs.length > 0 && (
               <>
                 {' '}
                 <button className="font-medium text-accent underline" aria-pressed={showAllSubs} onClick={() => setShowAllSubs((v) => !v)}>
-                  {showAllSubs ? 'Only ones that fit your setup' : `Show all exercises (${hiddenSubs} more)`}
+                  {showAllSubs ? t('exercise.detail.only_ones_that_fit_your_setup') : t('exercise.detail.show_all_exercises_x_more', { count: hiddenSubs })}
                 </button>
               </>
             )}
@@ -250,10 +266,10 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
       {isCustom && (
         <div className="mt-6 flex gap-2">
           <Button className="flex-1" icon={<Pencil className="size-4" />} onClick={() => setEditing(true)}>
-            Edit
+            {t('common.edit')}
           </Button>
           <Button className="flex-1" variant="danger" icon={<Trash2 className="size-4" />} onClick={() => setConfirmDelete(true)}>
-            Delete
+            {t('common.delete')}
           </Button>
         </div>
       )}
@@ -263,16 +279,16 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
           <CustomExerciseForm open={editing} onClose={() => setEditing(false)} initial={ex as CustomExercise} />
           <ConfirmDialog
             open={confirmDelete}
-            title="Delete this exercise?"
+            title={t('exercise.detail.delete_this_exercise')}
             danger
-            confirmLabel="Delete"
+            confirmLabel={t('common.delete')}
             busy={deleting}
             onCancel={() => setConfirmDelete(false)}
             onConfirm={remove}
             body={
               usage
-                ? `“${ex.name}” appears in ${usage} workout${usage === 1 ? '' : 's'}. Those logged sets are kept, but the exercise will no longer be available to pick.`
-                : `“${ex.name}” will be removed from your library. This can’t be undone.`
+                ? tp('exercise.detail.x_appears_in_x_workoutx_those', usage, { name })
+                : t('exercise.detail.x_will_be_removed_from_your', { name })
             }
           />
         </>

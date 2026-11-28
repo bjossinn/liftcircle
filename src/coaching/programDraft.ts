@@ -8,17 +8,19 @@ import type { Equipment, Experience, Goal, ID, ISODate, LimitationArea, Onboardi
 import type { LiftDb } from '@/db/db';
 import { ALL_EQUIPMENT, WEEK_ORDER, emptyTemplate } from '@/domain/program/generator';
 import { uuid } from '@/lib/id';
+import { t } from '@/i18n';
 
 const shortId = () => uuid().replace(/-/g, '').slice(0, 10);
 export const newTemplateId = () => `coach:${shortId()}`;
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
-export function blankProposed(name = 'New plan'): ProposedProgram {
+/** Default names are prefills in the coach's UI language (the coach can rename them before sending). */
+export function blankProposed(name = t('coaching.client.new_plan_name')): ProposedProgram {
   return {
     name,
     reason: '',
-    templates: [emptyTemplate(newTemplateId(), 'Session A')],
+    templates: [emptyTemplate(newTemplateId(), t('onboarding.manualSessionName', { letter: 'A' }))],
     schedule: [],
     weeks: 8,
     reviewWeek: 8,
@@ -52,7 +54,7 @@ export function templatesAsSessions(templates: SessionTemplate[]): SessionTempla
   });
 }
 
-export function proposedFromTemplates(templates: SessionTemplate[], name = 'New plan'): ProposedProgram {
+export function proposedFromTemplates(templates: SessionTemplate[], name = t('coaching.client.new_plan_name')): ProposedProgram {
   const p = blankProposed(name);
   const sessions = templatesAsSessions(templates);
   return { ...p, templates: sessions.length ? sessions : p.templates };
@@ -93,17 +95,17 @@ const GOALS: Goal[] = ['build_muscle', 'strength', 'lose_fat', 'general_fitness'
 const EXPERIENCES: Experience[] = ['new', 'returning', 'intermediate', 'advanced'];
 const LIMITS: LimitationArea[] = ['knee', 'shoulder', 'lower_back', 'hip', 'wrist', 'elbow', 'neck', 'ankle'];
 
-/** Map the client's shared intake onto generator answers. Unknowns fall back to neutral defaults (listed in `assumed`). */
+/** Map the client's shared intake onto generator answers. Unknowns fall back to neutral defaults (listed in `assumed`, display text in the current language). */
 export function intakeToAnswers(intake: CoachingIntake, units: UnitPrefs): { answers: OnboardingAnswers; assumed: string[] } {
   const assumed: string[] = [];
-  const goal = GOALS.find((g) => g === intake.goal) ?? (assumed.push('goal: general fitness'), 'general_fitness');
+  const goal = GOALS.find((g) => g === intake.goal) ?? (assumed.push(t('coaching.client.assumed.goal')), 'general_fitness');
   const secondaryGoal = GOALS.find((g) => g === intake.secondaryGoal && g !== goal);
-  const experience = EXPERIENCES.find((x) => x === intake.experience) ?? (assumed.push('experience: intermediate'), 'intermediate');
-  const days = intake.daysPerWeek && intake.daysPerWeek >= 1 ? Math.min(6, Math.round(intake.daysPerWeek)) : (assumed.push('3 days per week'), 3);
-  const minutes = intake.sessionMinutes && intake.sessionMinutes >= 15 ? Math.min(180, intake.sessionMinutes) : (assumed.push('60-minute sessions'), 60);
+  const experience = EXPERIENCES.find((x) => x === intake.experience) ?? (assumed.push(t('coaching.client.assumed.experience')), 'intermediate');
+  const days = intake.daysPerWeek && intake.daysPerWeek >= 1 ? Math.min(6, Math.round(intake.daysPerWeek)) : (assumed.push(t('coaching.client.assumed.days')), 3);
+  const minutes = intake.sessionMinutes && intake.sessionMinutes >= 15 ? Math.min(180, intake.sessionMinutes) : (assumed.push(t('coaching.client.assumed.minutes')), 60);
   const equipment = (intake.equipment ?? []).filter((e): e is Equipment => (ALL_EQUIPMENT as string[]).includes(e));
   const location: OnboardingAnswers['location'] = equipment.length === 0 ? 'full_gym' : equipment.includes('barbell') && equipment.includes('rack') ? 'full_gym' : equipment.length <= 2 ? 'minimal' : 'home_gym';
-  if (equipment.length === 0) assumed.push('a full gym');
+  if (equipment.length === 0) assumed.push(t('coaching.client.assumed.full_gym'));
   const limitations = (intake.limitations ?? []).filter((l): l is LimitationArea => (LIMITS as string[]).includes(l));
   return {
     assumed,

@@ -243,7 +243,8 @@ export interface ClientOverview {
   relationship: CoachingRelationship;
   training: null | {
     activeProgram: { id: ID; name: string; currentVersion: number; managedBy?: string | null } | null;
-    recentSessions: { id: ID; date: ISODate; name: string; status: string; durationMin?: number | null; workingSets: number }[];
+    /** `templateId` / `nameEdited`: display provenance of the stored name (generated names are localized when shown). */
+    recentSessions: { id: ID; date: ISODate; name: string; status: string; durationMin?: number | null; workingSets: number; templateId?: ID; nameEdited?: true }[];
     plannedLast28: number | null;
     completedLast28: number;
   };

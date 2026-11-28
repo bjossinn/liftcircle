@@ -120,6 +120,7 @@ export function buildSessionFromTemplate(t: SessionTemplate, ctx: BuildCtx): Wor
     pausedTotalMs: 0,
     exercises,
   };
+  if (t.nameEdited) s.nameEdited = true;
   if (ctx.programId) s.programId = ctx.programId;
   if (ctx.programVersion != null) s.programVersion = ctx.programVersion;
   if (ctx.plannedDate) s.plannedDate = ctx.plannedDate;

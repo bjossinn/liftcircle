@@ -1,4 +1,5 @@
 import { friendlyError } from '@/social/pendingPosts';
+import { t } from '@/i18n';
 
 /** Network-type failure (offline, fetch failed) — queued work should simply wait and retry. */
 export function isNetworkError(e: unknown): boolean {
@@ -8,8 +9,8 @@ export function isNetworkError(e: unknown): boolean {
 }
 
 /** Short sentence a person can act on, for any coaching API error. */
-export function coachingError(e: unknown, fallback = 'Something went wrong. Please try again.'): string {
+export function coachingError(e: unknown, fallback = t('sync.genericError')): string {
   const raw = e instanceof Error ? e.message : '';
-  if (/not implemented/i.test(raw)) return 'Coaching isn’t available right now. Please try again later.';
+  if (/not implemented/i.test(raw)) return t('coaching.directory.coaching_unavailable_try_later');
   return friendlyError(e, fallback);
 }

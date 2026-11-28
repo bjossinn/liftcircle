@@ -8,6 +8,7 @@ import { useExercises } from '@/data/catalog';
 import { useFavoriteExercises, useRecentExerciseIds } from '@/features/exercises/useExerciseData';
 import { CustomExerciseForm } from '@/features/exercises/CustomExerciseForm';
 import { useT } from '@/i18n';
+import { exerciseDisplayName } from '@/data/catalogText';
 
 /* ------------------------------------------------------------ filters */
 export interface ExerciseFilterValue {
@@ -53,8 +54,7 @@ export function ExerciseFilterBar({ value, onChange, className }: { value: Exerc
       <ChipSelect label={t('workout.picker.movement')} anyLabel={t('workout.picker.anyMovement')} value={value.pattern} options={PATTERN_LABELS} onChange={(pattern) => onChange({ ...value, pattern })} />
       {hasFilters(value) && (
         <Button size="sm" variant="ghost" className="shrink-0 min-h-11" onClick={() => onChange({})}>
-          {/* i18n: no approved Icelandic copy */}
-          Clear
+          {t('common.clear')}
         </Button>
       )}
     </div>
@@ -69,10 +69,9 @@ export function ExerciseRowContent({ ex, favorite, right }: { ex: Exercise; favo
       <ExerciseThumb ex={ex} />
       <span className="min-w-0 flex-1 text-left">
         <span className="flex items-center gap-1.5">
-          <span className="min-w-0 text-[15px] font-medium line-clamp-2 break-words">{ex.name}</span>
+          <span className="min-w-0 text-[15px] font-medium line-clamp-2 break-words">{exerciseDisplayName(ex)}</span>
           {favorite && <Star strokeWidth={1.75} className="size-4 shrink-0 fill-current text-accent" aria-label={t('workout.picker.favourite')} />}
-          {/* i18n: no approved Icelandic copy */}
-          {ex.custom && <span className="shrink-0 rounded-full bg-surface-3 px-1.5 text-[11px] text-muted">Custom</span>}
+          {ex.custom && <span className="shrink-0 rounded-full bg-surface-3 px-1.5 text-[11px] text-muted">{t('exercise.customBadge')}</span>}
         </span>
         <span className="block text-xs text-muted truncate mt-0.5">{exerciseSubtitle(ex, language)}</span>
       </span>
@@ -140,7 +139,7 @@ export function ExercisePicker(props: {
 }
 
 function PickerBody({ onClose, onPick, suggestIds, excludeIds, fits, fitsNote, onlyIds, onlyNote }: { onClose: () => void; onPick: (ex: Exercise) => void; suggestIds?: ID[]; excludeIds?: ID[]; fits?: (ex: Exercise) => boolean; fitsNote?: string; onlyIds?: Set<ID>; onlyNote?: string }) {
-  const { t, tp } = useT();
+  const { t, tp, locale } = useT();
   const { list: fullList, byId } = useExercises();
   const list = useMemo(() => (onlyIds ? fullList.filter((e) => onlyIds.has(e.id)) : fullList), [fullList, onlyIds]);
   const allowCustom = !onlyIds;
@@ -159,7 +158,7 @@ function PickerBody({ onClose, onPick, suggestIds, excludeIds, fits, fitsNote, o
 
   const searching = query.trim() !== '' || hasFilters(filters);
   const results = useMemo(() => (searching ? searchExercises(available, query, filters) : []), [searching, available, query, filters]);
-  const all = useMemo(() => [...available].sort((a, b) => a.name.localeCompare(b.name)), [available]);
+  const all = useMemo(() => [...available].sort((a, b) => exerciseDisplayName(a).localeCompare(exerciseDisplayName(b), locale)), [available]);
 
   const pick = (ex: Exercise) => {
     onPick(ex);
@@ -168,7 +167,7 @@ function PickerBody({ onClose, onPick, suggestIds, excludeIds, fits, fitsNote, o
   const row = (ex: Exercise, key: string) => <PickRow key={key} ex={ex} favorite={fav.isFav(ex.id)} onPick={pick} />;
 
   const suggested = resolve(suggestIds);
-  const favourites = resolve(fav.ids).sort((a, b) => a.name.localeCompare(b.name));
+  const favourites = resolve(fav.ids).sort((a, b) => exerciseDisplayName(a).localeCompare(exerciseDisplayName(b), locale));
   const recent = resolve(recentIds).slice(0, 8);
 
   return (

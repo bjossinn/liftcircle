@@ -13,7 +13,7 @@
 import type { ID, ISODate, MealPlan, MealPlanItem, MealSlot } from '@/domain/types';
 import { RECIPES_BY_ID } from '@/data/recipes';
 import { INGREDIENTS_BY_ID } from '@/data/ingredients';
-import { balanceDay, planStatus, planSwapsFor, type PlanDay, type PlanDraft, type PlanPrefs, type PlanStatus } from './mealplan';
+import { balanceDay, planStatus, planSwapsFor, type PlanContext, type PlanDay, type PlanDraft, type PlanPrefs, type PlanStatus } from './mealplan';
 
 export interface MealPlanSuggestion {
   kind: 'meal_plan';
@@ -137,9 +137,9 @@ export function suggestedDays(s: MealPlanSuggestion, prefs: PlanPrefs): PlanDay[
 }
 
 /** What the card shows: each suggested day's totals vs the current targets (planStatus of the balanced days). */
-export function previewMealPlan(s: MealPlanSuggestion, prefs: PlanPrefs): { days: PlanDay[]; status: PlanStatus } {
+export function previewMealPlan(s: MealPlanSuggestion, prefs: PlanPrefs, textCtx: Pick<PlanContext, 'lang' | 'recipeName' | 'weekdayOn'> = {}): { days: PlanDay[]; status: PlanStatus } {
   const days = suggestedDays(s, prefs);
-  return { days, status: planStatus({ weekStart: s.weekStart, days, shoppingChecked: [] }, prefs) };
+  return { days, status: planStatus({ weekStart: s.weekStart, days, shoppingChecked: [] }, prefs, textCtx) };
 }
 
 export const isMealPlanApplied = (plan: Pick<MealPlan, 'days'> | null | undefined, actionId: string) =>

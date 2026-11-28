@@ -16,16 +16,21 @@ import { takeOverPlan } from '@/domain/program/proposals';
 import { PlanOwnerBadge } from './PlanOwner';
 import { emptyTemplate, regenerateTemplates, WEEK_ORDER } from '@/domain/program/generator';
 import { splitKeyOfVersion } from '@/domain/program/splits';
-import { SPLITS } from '@/domain/program/templates';
-import { formatDate, todayISO, WEEKDAY_SHORT } from '@/lib/dates';
+import { splitLabel } from '@/domain/program/templates';
+import { programDisplayName } from '@/domain/program/localize';
+import { formatDate, todayISO, weekdayShort } from '@/lib/dates';
 import type { Program, ProgramVersion, SessionTemplate } from '@/domain/types';
-import { PlanLegend, RenameSheet, SessionCard, versionReasonText, WeekStrip, WhyItFits } from './parts';
-import { dateTimeText } from '@/i18n';
+import { displaySessionName, PlanLegend, RenameSheet, SessionCard, versionReasonText, WeekStrip, WhyItFits } from './parts';
+import { dateTimeText, listText, t as translate, useT, type MessageKey, type Params } from '@/i18n';
+
+/** Stored plan text (names, version reasons) is canonical English; parts.tsx localizes it for display. */
+const enText = (key: MessageKey, params?: Params) => translate(key, params, 'en');
 
 export default function ProgramPage() {
   const nav = useNavigate();
   const { db, account } = useApp();
   const toast = useToast();
+  const { t, tp, language } = useT();
   const { list: catalog, byId } = useExercises();
   const programs = useLiveQuery(() => db.programs.toArray(), [db]);
   const [regenCount, setRegenCount] = useState<Record<string, number>>({});
@@ -41,15 +46,15 @@ export default function ProgramPage() {
   const today = todayISO(account.settings.timeZone);
 
   const back = (
-    <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+    <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
       <ChevronLeft />
     </IconButton>
   );
 
   if (programs === undefined) {
     return (
-      <Page title="Program" back={back}>
-        <Spinner label="Loading program" />
+      <Page title={t('train.program')} back={back}>
+        <Spinner label={t('program.loading_program')} />
       </Page>
     );
   }
@@ -60,7 +65,7 @@ export default function ProgramPage() {
       await saveRecord('programs', p, db);
       if (message) toast.show(message, { tone: 'success' });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save your program.');
+      setError(e instanceof Error ? e.message : t('program.saveFailed'));
     }
   }
 
@@ -70,19 +75,19 @@ export default function ProgramPage() {
       const v: ProgramVersion = {
         version: 1,
         createdAt: Date.now(),
-        reason: 'Created manually',
-        templates: [emptyTemplate('custom:a', 'Session A')],
+        reason: enText('onboarding.manualReason'),
+        templates: [emptyTemplate('custom:a', enText('onboarding.manualSessionName', { letter: 'A' }))],
         schedule: [],
         weeks: 8,
         reviewWeek: 8,
-        rationale: ['You built this program yourself. Add sessions, exercises and days. Every change is saved as a new version you can restore.'],
+        rationale: [enText('program.manualBuiltRationale')],
         warnings: [],
       };
       for (const p of alive(programs ?? []).filter((x) => x.active)) await saveRecord('programs', { ...p, active: false }, db);
-      await saveRecord('programs', createProgram(null, v, today, 'My program', 'manual'), db);
-      toast.show('Program created: add exercises to your first session.', { tone: 'success' });
+      await saveRecord('programs', createProgram(null, v, today, enText('onboarding.myProgram'), 'manual'), db);
+      toast.show(t('program.program_created_add_exercises_to_your'), { tone: 'success' });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not create the program.');
+      setError(e instanceof Error ? e.message : t('program.createFailed'));
     } finally {
       setBusy(false);
     }
@@ -90,19 +95,19 @@ export default function ProgramPage() {
 
   if (!active) {
     return (
-      <Page title="Program" back={back}>
+      <Page title={t('train.program')} back={back}>
         {error && <ErrorState message={error} onRetry={() => setError(null)} />}
         <EmptyState
           icon={<CalendarRange className="size-6" />}
-          title="No active program"
-          body="Answer a few questions and we’ll suggest a starting plan you can edit, or build your own routine from scratch."
+          title={t('program.no_active_program')}
+          body={t('program.answer_a_few_questions_and_well')}
           action={
             <div className="flex flex-col gap-2 w-full max-w-xs">
               <Button variant="primary" icon={<Sparkles className="size-4" />} onClick={() => nav('/onboarding')}>
-                Suggest a program
+                {t('train.suggest')}
               </Button>
               <Button icon={<Plus className="size-4" />} loading={busy} onClick={createManual}>
-                Create my own
+                {t('program.create_my_own')}
               </Button>
             </div>
           }
@@ -123,36 +128,40 @@ export default function ProgramPage() {
   };
   const commit = (patch: Partial<ProgramVersion>, reason: string, message?: string) => save(withNewVersion(program, versionData(patch, reason)), message);
 
-  const updateTemplate = (t: SessionTemplate, reason: string) => commit({ templates: v.templates.map((x) => (x.id === t.id ? t : x)) }, reason);
-  const setDays = (t: SessionTemplate, days: number[]) => {
-    const schedule = [...v.schedule.filter((s) => s.templateId !== t.id), ...days.map((weekday) => ({ weekday, templateId: t.id }))].sort(
+  const updateTemplate = (next: SessionTemplate, reason: string) => commit({ templates: v.templates.map((x) => (x.id === next.id ? next : x)) }, reason);
+  const setDays = (tpl: SessionTemplate, days: number[]) => {
+    const schedule = [...v.schedule.filter((s) => s.templateId !== tpl.id), ...days.map((weekday) => ({ weekday, templateId: tpl.id }))].sort(
       (a, b) => WEEK_ORDER.indexOf(a.weekday) - WEEK_ORDER.indexOf(b.weekday),
     );
-    void commit({ schedule }, `Changed days for ${t.name}`, 'Schedule updated');
+    void commit({ schedule }, enText('program.changedDays', { sessionName: tpl.name }), t('program.scheduleUpdated'));
   };
   const doubleBooked = WEEK_ORDER.filter((d) => v.schedule.filter((s) => s.weekday === d).length > 1);
 
-  const regenerate = (t: SessionTemplate) => {
+  const regenerate = (tpl: SessionTemplate) => {
     if (!answers) return;
-    const n = (regenCount[t.id] ?? 0) + 1;
-    setRegenCount({ ...regenCount, [t.id]: n });
-    const next = regenerateTemplates(v, [t.id], answers, catalog, n);
-    void commit({ templates: next.templates }, next.reason, `Shuffled exercises in ${t.name}. Same split; older versions stay in history`);
+    const n = (regenCount[tpl.id] ?? 0) + 1;
+    setRegenCount({ ...regenCount, [tpl.id]: n });
+    const next = regenerateTemplates(v, [tpl.id], answers, catalog, n);
+    void commit({ templates: next.templates }, next.reason, t('program.shuffledToast', { sessionName: displaySessionName(tpl) }));
   };
-  const duplicate = async (t: SessionTemplate) => {
+  const duplicate = async (tpl: SessionTemplate) => {
     try {
-      await saveRecord('templates', newRecord({ template: { ...t, id: `lib:${Date.now().toString(36)}` } }), db);
-      toast.show(`${t.name} saved to your templates`, { tone: 'success', action: { label: 'View', onClick: () => nav('/train/templates') } });
+      await saveRecord('templates', newRecord({ template: { ...tpl, id: `lib:${Date.now().toString(36)}` } }), db);
+      toast.show(t('program.x_saved_to_your_templates', { sessionName: displaySessionName(tpl) }), { tone: 'success', action: { label: t('program.view'), onClick: () => nav('/train/templates') } });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save the template.');
+      setError(e instanceof Error ? e.message : t('program.templateSaveFailed'));
     }
   };
-  const remove = (t: SessionTemplate) =>
-    commit({ templates: v.templates.filter((x) => x.id !== t.id), schedule: v.schedule.filter((s) => s.templateId !== t.id) }, `Deleted ${t.name}`, `${t.name} deleted`);
+  const remove = (tpl: SessionTemplate) =>
+    commit(
+      { templates: v.templates.filter((x) => x.id !== tpl.id), schedule: v.schedule.filter((s) => s.templateId !== tpl.id) },
+      enText('program.deletedSession', { sessionName: tpl.name }),
+      t('program.sessionDeletedToast', { sessionName: displaySessionName(tpl) }),
+    );
   const addSession = () => {
-    const letter = String.fromCharCode(65 + (v.templates.filter((t) => t.kind === 'lifting').length % 26));
-    const t = emptyTemplate(`custom:${Date.now().toString(36)}`, `Session ${letter}`);
-    void commit({ templates: [...v.templates, t] }, `Added ${t.name}`, `${t.name} added`);
+    const letter = String.fromCharCode(65 + (v.templates.filter((x) => x.kind === 'lifting').length % 26));
+    const tpl = emptyTemplate(`custom:${Date.now().toString(36)}`, enText('onboarding.manualSessionName', { letter }));
+    void commit({ templates: [...v.templates, tpl] }, enText('program.addedSession', { sessionName: tpl.name }), t('program.sessionAddedToast', { sessionName: displaySessionName(tpl) }));
   };
 
   const versions = [...program.versions].sort((a, b) => b.version - a.version);
@@ -160,10 +169,10 @@ export default function ProgramPage() {
 
   return (
     <Page
-      title="Program"
+      title={t('train.program')}
       back={back}
       actions={
-        <IconButton label="Version history" onClick={() => setHistoryOpen(true)}>
+        <IconButton label={t('program.version_history')} onClick={() => setHistoryOpen(true)}>
           <History className="size-5" />
         </IconButton>
       }
@@ -178,102 +187,102 @@ export default function ProgramPage() {
           <PlanOwnerBadge program={program} className="mb-1.5" />
           <p>
             {program.managedBy.kind === 'coach'
-              ? 'You can still adjust it. Every change is a new version; your coach sees that the plan changed and any update they were preparing will need revising before you can accept it.'
-              : 'You can adjust it like any plan. AI suggestions written for an older version of this plan can no longer be applied.'}
+              ? t('program.you_can_still_adjust_it_every')
+              : t('program.you_can_adjust_it_like_any')}
           </p>
           <Button size="sm" className="mt-2" onClick={() => setTakeOverOpen(true)}>
-            Make it self-managed
+            {t('program.make_it_self_managed')}
           </Button>
         </Notice>
       )}
       <ConfirmDialog
         open={takeOverOpen}
-        title="Manage this plan yourself?"
+        title={t('program.manage_this_plan_yourself')}
         body={
           program.managedBy?.kind === 'coach'
-            ? 'The plan stays exactly as it is, but it’s no longer marked as your coach’s plan. Your coaching relationship and messages aren’t affected, and your workouts don’t change.'
-            : 'The plan stays exactly as it is, but it’s no longer marked as AI-suggested. Your workouts don’t change.'
+            ? t('program.the_plan_stays_exactly_as_it_2')
+            : t('program.the_plan_stays_exactly_as_it')
         }
-        confirmLabel="Make self-managed"
+        confirmLabel={t('program.make_self_managed')}
         onConfirm={() => {
           setTakeOverOpen(false);
-          void save(takeOverPlan(program), 'You now manage this plan yourself');
+          void save(takeOverPlan(program), t('program.tookOverToast'));
         }}
         onCancel={() => setTakeOverOpen(false)}
       />
       <Card className="px-4 py-3">
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold leading-tight">{program.name}</h2>
+            <h2 className="text-lg font-semibold leading-tight">{programDisplayName(program.name)}</h2>
             <p className="text-sm text-muted mt-1">
-              Week {Math.min(week, v.weeks)} of {v.weeks} · review in week {v.reviewWeek} · started {formatDate(program.startDate)}
+              {t('program.weekLine', { week: Math.min(week, v.weeks), weeks: v.weeks, reviewWeek: v.reviewWeek, date: formatDate(program.startDate) })}
             </p>
             {splitKey && (
               <p className="text-sm mt-1">
-                <span className="text-muted">Split: </span>
-                {SPLITS[splitKey].label}
+                <span className="text-muted">{t('onboarding.result.splitLabel')} </span>
+                {splitLabel(splitKey)}
               </p>
             )}
             <div className="flex gap-1.5 mt-2 flex-wrap">
-              <Badge tone={program.source === 'generated' ? 'accent' : 'neutral'}>{program.source === 'generated' ? 'Suggested plan' : 'Your own plan'}</Badge>
-              <Badge>Version {v.version}</Badge>
+              <Badge tone={program.source === 'generated' ? 'accent' : 'neutral'}>{program.source === 'generated' ? t('program.suggested_plan') : t('program.your_own_plan')}</Badge>
+              <Badge>{t('program.version_xx', { version: v.version })}</Badge>
             </div>
           </div>
-          <IconButton label="Rename program" onClick={() => setRenaming(true)}>
+          <IconButton label={t('program.rename_program')} onClick={() => setRenaming(true)}>
             <Pencil className="size-4" />
           </IconButton>
         </div>
         {week >= v.reviewWeek && (
           <Notice tone="accent" className="mt-3">
-            It’s review time. How did the block go? Keep what worked, adjust days or swap exercises,{' '}
+            {t('program.its_review_time_how_did_the')}{' '}
             <button type="button" className="underline font-medium" onClick={() => nav('/onboarding')}>
-              or get a fresh suggestion
+              {t('program.or_get_a_fresh_suggestion')}
             </button>
             .
           </Notice>
         )}
       </Card>
 
-      <SectionTitle>This week</SectionTitle>
+      <SectionTitle>{t('today.thisWeek')}</SectionTitle>
       <WeekStrip version={v} weekStart={account.settings.weekStart} />
       {doubleBooked.length > 0 && (
         <Notice tone="warn" className="mt-2">
-          {doubleBooked.map((d) => WEEKDAY_SHORT[d]).join(', ')} {doubleBooked.length === 1 ? 'has' : 'have'} more than one session. That’s fine for an easy walk plus lifting, but avoid two hard sessions on one day.
+          {tp('program.doubleBooked', doubleBooked.length, { days: listText(doubleBooked.map((d) => weekdayShort(d, language)), language) })}
         </Notice>
       )}
 
       <SectionTitle
         action={
           <Button size="sm" variant="ghost" icon={<Plus className="size-4" />} onClick={addSession}>
-            Add session
+            {t('program.add_session')}
           </Button>
         }
       >
-        Sessions
+        {t('aiCard.proposal.sessions')}
       </SectionTitle>
       <PlanLegend />
       <div className="flex flex-col gap-3">
-        {v.templates.map((t) => (
+        {v.templates.map((tpl) => (
           <SessionCard
-            key={t.id}
-            template={t}
+            key={tpl.id}
+            template={tpl}
             byId={byId}
             catalog={catalog}
             unit={unit}
             editable
             experience={answers?.experience}
             goal={answers?.goal}
-            days={v.schedule.filter((s) => s.templateId === t.id).map((s) => s.weekday)}
+            days={v.schedule.filter((s) => s.templateId === tpl.id).map((s) => s.weekday)}
             defaultOpen={v.templates.length <= 3}
             onChange={(next, reason) => void updateTemplate(next, reason)}
-            onDaysChange={(d) => setDays(t, d)}
-            onRegenerate={answers && t.exercises.length > 0 ? () => regenerate(t) : undefined}
-            onDuplicate={t.exercises.length ? () => void duplicate(t) : undefined}
-            onDelete={() => void remove(t)}
+            onDaysChange={(d) => setDays(tpl, d)}
+            onRegenerate={answers && tpl.exercises.length > 0 ? () => regenerate(tpl) : undefined}
+            onDuplicate={tpl.exercises.length ? () => void duplicate(tpl) : undefined}
+            onDelete={() => void remove(tpl)}
           />
         ))}
         {v.templates.length === 0 && (
-          <EmptyState title="No sessions yet" body="Add a session and choose its exercises. A custom split from scratch." action={<Button onClick={addSession}>Add session</Button>} />
+          <EmptyState title={t('program.no_sessions_yet')} body={t('program.add_a_session_and_choose_its')} action={<Button onClick={addSession}>{t('program.add_session')}</Button>} />
         )}
       </div>
 
@@ -281,34 +290,34 @@ export default function ProgramPage() {
 
       <div className="mt-6 flex flex-col gap-2">
         <Button variant="outline" icon={<Wand2 className="size-4" />} onClick={() => nav('/onboarding')}>
-          Change split or get a new suggested program
+          {t('program.change_split_or_get_a_new')}
         </Button>
-        <p className="text-xs text-muted px-1">Runs setup again. Your current plan and workouts are kept; nothing changes until you accept a new plan.</p>
+        <p className="text-xs text-muted px-1">{t('program.runs_setup_again_your_current_plan')}</p>
       </div>
 
       <RenameSheet
         open={renaming}
-        value={program.name}
-        title="Rename program"
+        value={programDisplayName(program.name)}
+        title={t('program.rename_program')}
         onClose={() => setRenaming(false)}
         onSave={(name) => {
           setRenaming(false);
-          void save({ ...program, name }, 'Program renamed');
+          void save({ ...program, name }, t('program.renamedToast'));
         }}
       />
 
-      <Sheet open={historyOpen} onClose={() => setHistoryOpen(false)} title="Version history">
-        <p className="text-sm text-muted mb-3">Every change is saved as a version. Restoring creates a new version, and completed workouts are never changed.</p>
+      <Sheet open={historyOpen} onClose={() => setHistoryOpen(false)} title={t('program.version_history')}>
+        <p className="text-sm text-muted mb-3">{t('program.every_change_is_saved_as_a')}</p>
         <ul className="-mx-4 divide-y divide-line">
           {versions.map((ver) => (
             <li key={ver.version}>
               <ListRow
-                title={`Version ${ver.version}${ver.version === program.currentVersion ? ' (current)' : ''}`}
+                title={ver.version === program.currentVersion ? t('program.versionCurrent', { version: ver.version }) : t('program.version_xx', { version: ver.version })}
                 subtitle={`${dateTimeText(ver.createdAt, account.settings.timeZone, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${versionReasonText(ver.reason, ver.templates)}`}
                 right={
                   ver.version !== program.currentVersion ? (
                     <Button size="sm" onClick={() => setRestoreTarget(ver)}>
-                      Restore
+                      {t('program.restore')}
                     </Button>
                   ) : undefined
                 }
@@ -319,16 +328,16 @@ export default function ProgramPage() {
       </Sheet>
       <ConfirmDialog
         open={!!restoreTarget}
-        title={restoreTarget ? `Restore version ${restoreTarget.version}?` : 'Restore'}
-        body="This saves a copy of that version as the newest one. Your current version stays in history."
-        confirmLabel="Restore"
+        title={restoreTarget ? t('program.restore_version_x', { version: restoreTarget.version }) : t('program.restore')}
+        body={t('program.this_saves_a_copy_of_that')}
+        confirmLabel={t('program.restore')}
         onCancel={() => setRestoreTarget(null)}
         onConfirm={() => {
           if (!restoreTarget) return;
           const n = restoreTarget.version;
           setRestoreTarget(null);
           setHistoryOpen(false);
-          void save(restoreVersion(program, n), `Restored version ${n}`);
+          void save(restoreVersion(program, n), t('program.restoredVersion', { version: n }));
         }}
       />
     </Page>

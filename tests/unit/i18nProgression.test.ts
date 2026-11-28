@@ -200,12 +200,12 @@ describe('logged sets, records and activities', () => {
   const bench = ex('barbell-bench-press');
   const byId = new Map<string, Exercise>([[bench.id, bench]]);
 
-  it('record lines: exercise name unchanged, Icelandic sentence and plural forms', () => {
+  it('record lines: catalog exercise name in the sentence language, Icelandic sentence and plural forms', () => {
     const h1 = session('h1', '2026-01-01', [se(bench.id, [set({ weightKg: 80, reps: 5 }), set({ weightKg: 70, reps: 20 })])]);
     const cur = session('c', '2026-01-08', [se(bench.id, [set({ weightKg: 82.5, reps: 5 }), set({ weightKg: 70, reps: 21 })])]);
     const hits = detectRecords(cur, [h1], byId, 'kg', 'is');
-    expect(hits.find((h) => h.kind === 'heaviest')!.label).toBe('Barbell bench press: þyngsta sett 82,5 kg × 5');
-    expect(hits.find((h) => h.kind === 'reps_at_weight')!.label).toBe('Barbell bench press: 21 endurtekning með 70 kg');
+    expect(hits.find((h) => h.kind === 'heaviest')!.label).toBe('Bekkpressa með stöng: þyngsta sett 82,5 kg × 5');
+    expect(hits.find((h) => h.kind === 'reps_at_weight')!.label).toBe('Bekkpressa með stöng: 21 endurtekning með 70 kg');
     expect(detectRecords(cur, [h1], byId, 'kg', 'en').find((h) => h.kind === 'reps_at_weight')!.label).toBe('Barbell bench press: 21 reps at 70 kg');
     expect(recordKindLabel('heaviest', 'is')).toBe('Þyngsta vinnusett');
     const pr = personalRecords([h1, cur], bench, 'kg', 'is');

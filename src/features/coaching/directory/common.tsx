@@ -11,6 +11,7 @@ import { friendlyError } from '@/social/pendingPosts';
 import { initials } from '@/domain/coaching/display';
 import { authHref } from '@/features/auth/authReturn';
 import { isFeatureEnabled } from '@/config/featureFlags';
+import { t as tr, useT } from '@/i18n';
 
 /* ================================================================ access */
 export type CoachingAccess = 'personal' | 'loading' | 'guest' | 'expired' | 'offline' | 'ok';
@@ -29,6 +30,7 @@ export function useCoachingAccess(): { access: CoachingAccess; meId: string | un
 export function CoachingAccessNotice({ access }: { access: Exclude<CoachingAccess, 'ok'> }) {
   const nav = useNavigate();
   const { pathname } = useLocation();
+  const { t } = useT();
   switch (access) {
     case 'loading':
       return <Spinner />;
@@ -36,23 +38,23 @@ export function CoachingAccessNotice({ access }: { access: Exclude<CoachingAcces
       return (
         <EmptyState
           icon={<ServerOff className="size-6" aria-hidden />}
-          title="Coaching needs the online version"
-          body="Coaching connects you with real coaches, so it’s part of the account-based, online version of Hard Earned. Your workouts, programs, nutrition and progress keep working fully on this device."
+          title={t('coaching.directory.coaching_needs_the_online_version')}
+          body={t('coaching.directory.coaching_connects_you_with_real_coaches')}
         />
       );
     case 'guest':
       return (
         <EmptyState
           icon={<GraduationCap className="size-6" aria-hidden />}
-          title={isFeatureEnabled('coachMarketplace') ? 'Train with a coach' : 'Your training assistant'}
+          title={isFeatureEnabled('coachMarketplace') ? t('coaching.directory.train_with_a_coach') : t('aiConsent.title')}
           body={
             isFeatureEnabled('coachMarketplace')
-              ? 'Find an approved coach near you or online, or apply to coach others. Sign in to get started. Your workouts on this device can come with you.'
-              : 'Sign in to use the training assistant and keep your coaching in one place. Your workouts on this device can come with you.'
+              ? t('coaching.directory.find_an_approved_coach_near_you')
+              : t('coaching.directory.sign_in_to_use_the_training')
           }
           action={
             <Button variant="primary" onClick={() => nav(authHref('signup', pathname))}>
-              Sign in or create an account
+              {t('ai.guest.signIn')}
             </Button>
           }
         />
@@ -61,17 +63,17 @@ export function CoachingAccessNotice({ access }: { access: Exclude<CoachingAcces
       return (
         <EmptyState
           icon={<Lock className="size-6" aria-hidden />}
-          title="Sign in again"
-          body="Your session has expired. Sign in to use coaching. Your workouts still save on this device."
+          title={t('settings.signInAgain')}
+          body={t('coaching.directory.your_session_has_expired_sign_in')}
           action={
             <Button variant="primary" onClick={() => nav(authHref('signin', pathname))}>
-              Sign in
+              {t('settings.signIn')}
             </Button>
           }
         />
       );
     case 'offline':
-      return <EmptyState icon={<WifiOff className="size-6" aria-hidden />} title="You’re offline" body="Coaching needs a connection. Your workouts still save." />;
+      return <EmptyState icon={<WifiOff className="size-6" aria-hidden />} title={t('ai.unavailable.offline.title')} body={t('coaching.directory.coaching_needs_a_connection_your_workouts')} />;
   }
 }
 
@@ -83,12 +85,13 @@ export const authLink = (path: string) => authHref('signup', path);
 export function GuestCoachingIntro({ browse = true }: { browse?: boolean }) {
   const nav = useNavigate();
   const { pathname } = useLocation();
+  const { t } = useT();
   // Marketplace off: AI-first, no human-coach pitch a guest couldn't act on.
   const marketplace = isFeatureEnabled('coachMarketplace');
   return (
     <div className="flex flex-col gap-3 pt-1">
       <p className="text-[15px] text-muted px-1">
-        {marketplace ? 'Choose how you’d like to be coached. You can use either one, or both.' : 'Get answers and plan suggestions from the training assistant.'}
+        {marketplace ? t('coaching.directory.choose_how_youd_like_to_be') : t('coaching.directory.get_answers_and_plan_suggestions_from')}
       </p>
       {marketplace && (
         <Card as="section" aria-labelledby="guest-human" className="p-4 flex flex-col gap-2">
@@ -97,18 +100,17 @@ export function GuestCoachingIntro({ browse = true }: { browse?: boolean }) {
               <GraduationCap className="size-5" aria-hidden />
             </span>
             <h2 id="guest-human" className="font-semibold">
-              A human coach
+              {t('coaching.directory.a_human_coach')}
             </h2>
           </div>
-          <p className="text-sm">A real coach, approved by our team, who works with you in person or online.</p>
+          <p className="text-sm">{t('coaching.directory.a_real_coach_approved_by_our')}</p>
           <p className="text-sm text-muted">
-            <span className="font-medium text-ink">What they see:</span> only your request and intro until they accept. After that, only the categories you
-            allow: training, measurements, nutrition, check-ins. You can change or revoke this at any time.
+            <span className="font-medium text-ink">{t('coaching.directory.what_they_see')}</span> {t('coaching.directory.only_your_request_and_intro_until')}
           </p>
           {browse && (
             <Link to="/coaching/find" className="mt-1 inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl bg-surface-2 text-ink hover:bg-surface-3 border border-line text-[15px]">
               <Search className="size-4" aria-hidden />
-              Browse approved coaches
+              {t('coaching.directory.browse_approved_coaches')}
             </Link>
           )}
         </Card>
@@ -119,27 +121,26 @@ export function GuestCoachingIntro({ browse = true }: { browse?: boolean }) {
             <Bot className="size-5" aria-hidden />
           </span>
           <h2 id="guest-ai" className="font-semibold">
-            The training assistant
+            {t('coaching.directory.the_training_assistant')}
           </h2>
         </div>
-        <p className="text-sm">An automated assistant that answers questions and suggests changes to your plan. Its messages are always labelled as AI, and nothing changes unless you accept it.</p>
+        <p className="text-sm">{t('coaching.directory.an_automated_assistant_that_answers_questions')}</p>
         <p className="text-sm text-muted">
-          <span className="font-medium text-ink">What it sees:</span> only the categories you turn on. Your profile and training by default; measurements and
-          nutrition only if you allow them. Your messages are processed by an AI provider. It never sees your photos, posts or human-coach chats.
+          <span className="font-medium text-ink">{t('coaching.directory.what_it_sees')}</span> {t('coaching.directory.only_the_categories_you_turn_on')}
         </p>
       </Card>
-      <Notice>{marketplace ? 'Both need' : 'It needs'} an account, so your records and conversations stay in your account and are shared only as you choose. Workouts already on this device can come with you.</Notice>
+      <Notice>{marketplace ? t('coaching.directory.both_need_an_account') : t('coaching.directory.it_needs_an_account')}</Notice>
       <Button variant="primary" size="lg" block onClick={() => nav(authLink(pathname))}>
-        Sign in or create an account
+        {t('ai.guest.signIn')}
       </Button>
     </div>
   );
 }
 
 /** Human-readable error for coaching calls. */
-export function coachingError(e: unknown, fallback = 'Something went wrong. Please try again.'): string {
+export function coachingError(e: unknown, fallback: string = tr('sync.genericError')): string {
   const raw = e instanceof Error ? e.message : typeof e === 'string' ? e : '';
-  if (/not implemented/i.test(raw)) return 'Coaching isn’t available right now. Please try again later.';
+  if (/not implemented/i.test(raw)) return tr('coaching.directory.coaching_unavailable_try_later');
   return friendlyError(e, fallback);
 }
 
@@ -207,10 +208,11 @@ export function CoachPhoto({ name, url, size = 56, className }: { name: string; 
 
 /** Platform approval only — deliberately not "verified" or "certified". */
 export function ApprovedBadge() {
+  const { t } = useT();
   return (
     <Badge tone="accent">
       <BadgeCheck className="size-4" aria-hidden />
-      Listed coach
+      {t('coaching.hub.listed_coach')}
     </Badge>
   );
 }

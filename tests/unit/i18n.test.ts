@@ -15,9 +15,9 @@ describe('dictionaries', () => {
   const enKeys = Object.keys(EN).sort();
   const isKeys = Object.keys(IS).sort();
 
-  it('have the same 3654 keys in English and Icelandic', () => {
+  it('have the same 8778 keys in English and Icelandic', () => {
     expect(enKeys).toEqual(isKeys);
-    expect(enKeys).toHaveLength(3654);
+    expect(enKeys).toHaveLength(8778);
   });
 
   it('have no empty values and the same placeholder names in both languages', () => {
@@ -25,6 +25,17 @@ describe('dictionaries', () => {
       expect(EN[k].trim(), k).not.toBe('');
       expect(IS[k].trim(), k).not.toBe('');
       expect(ph(IS[k]), k).toEqual(ph(EN[k]));
+    }
+  });
+
+  it('have no empty or unnamed placeholders and no sentence fragments', () => {
+    for (const k of enKeys as MessageKey[]) {
+      for (const v of [EN[k], IS[k]]) {
+        expect(v, k).not.toMatch(/\{\{\s*\}\}/);
+        // nav.unread.* is an aria-label suffix appended to a tab name (", 3 unread"), the only intended fragment.
+        if (!k.startsWith('nav.unread.')) expect(v, k).not.toMatch(/^[,;]/);
+        expect(v.split('{{').length, k).toBe(v.split('}}').length);
+      }
     }
   });
 

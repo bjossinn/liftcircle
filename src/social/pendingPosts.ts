@@ -15,22 +15,23 @@ import type { LiftDb } from '@/db/db';
 import { saveRecord } from '@/db/repo';
 import { socialApi } from '@/backend/social';
 import { useApp, useDb } from '@/state/app';
+import { t } from '@/i18n';
 
 /* ============================================================ errors */
 
 /** Turn any backend/network error into a short sentence a person can act on. */
-export function friendlyError(e: unknown, fallback = 'Something went wrong. Please try again.'): string {
+export function friendlyError(e: unknown, fallback = t('sync.genericError')): string {
   const raw = e instanceof Error ? e.message : typeof e === 'string' ? e : '';
   const status = (e as { status?: number } | null)?.status;
   const msg = raw.toLowerCase();
   if ((typeof navigator !== 'undefined' && navigator.onLine === false) || /failed to fetch|networkerror|network request failed|load failed/.test(msg)) {
-    return 'Couldn’t reach the server. Check your connection and try again.';
+    return t('social.error.unreachable');
   }
-  if (status === 401 || /jwt|not authenticated|session.*expired|invalid token/.test(msg)) return 'Your session has expired. Sign in again to continue.';
-  if (status === 429 || /rate limit|too many/.test(msg)) return 'You’re doing that a lot. Wait a moment and try again.';
-  if (status === 413 || /payload too large|too large/.test(msg)) return 'That file is too large to upload.';
-  if (/not implemented/.test(msg)) return 'Social features aren’t available right now.';
-  if (e instanceof DOMException && e.name === 'AbortError') return 'Cancelled.';
+  if (status === 401 || /jwt|not authenticated|session.*expired|invalid token/.test(msg)) return t('social.error.session_expired');
+  if (status === 429 || /rate limit|too many/.test(msg)) return t('social.error.rate_limited');
+  if (status === 413 || /payload too large|too large/.test(msg)) return t('social.error.file_too_large');
+  if (/not implemented/.test(msg)) return t('social.error.unavailable');
+  if (e instanceof DOMException && e.name === 'AbortError') return t('sync.cancelled');
   // Messages written for people (short, no codes/JSON/SQL) are passed through.
   if (raw && raw.length <= 140 && !/[{}<>]|pgrst|violates|constraint|sql|syntax|undefined|null|stack|\bat\b.*:\d+/i.test(raw)) return raw;
   return fallback;
@@ -255,7 +256,7 @@ async function publishOne(id: ID, db: LiftDb): Promise<void> {
         await db.pendingPosts.update(id, {
           status: offline ? 'waiting' : 'error',
           attempts: offline ? r.attempts : attempts,
-          error: offline ? undefined : friendlyError(e, 'The upload didn’t finish.'),
+          error: offline ? undefined : friendlyError(e, t('social.error.upload_unfinished')),
         });
         if (!offline) nextAttemptAt.set(id, Date.now() + backoffDelay(attempts));
       }
@@ -330,7 +331,7 @@ export function PendingPostsRunner(): null {
 
 /** Status line for UI. Never implies the post is visible to anyone. */
 export function pendingStatusLabel(p: Pick<PendingPost, 'status'>): string {
-  if (p.status === 'uploading') return 'Uploading…';
-  if (p.status === 'error') return 'Upload failed: Retry';
-  return 'Waiting to upload';
+  if (p.status === 'uploading') return t('workout.share.uploading');
+  if (p.status === 'error') return t('social.upload_failed_retry');
+  return t('workout.share.waitingUpload');
 }

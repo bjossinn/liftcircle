@@ -4,6 +4,7 @@ import type { Exercise } from '@/domain/types';
 import { EXERCISE_MEDIA_FULL_SIZE, exerciseCueKeys, exerciseMedia } from '@/data/exerciseMedia';
 import { ExerciseGlyphTile } from '@/components/ExerciseGlyph';
 import { useT } from '@/i18n';
+import { exerciseDisplayName } from '@/data/catalogText';
 
 /**
  * Exercise illustrations (src/data/exerciseMedia.ts): one two-panel image per library exercise (start and end position
@@ -29,7 +30,7 @@ export function ExerciseIllustration({ ex, compact, className }: { ex: Exercise;
           <div className={clsx('mx-auto aspect-square overflow-hidden rounded-xl bg-surface-2', compact ? 'max-w-72' : 'max-w-sm')}>
             <img
               src={media.full}
-              alt={t('exercise.visual.alt', { exercise: ex.name })}
+              alt={t('exercise.visual.alt', { exercise: exerciseDisplayName(ex) })}
               width={EXERCISE_MEDIA_FULL_SIZE}
               height={EXERCISE_MEDIA_FULL_SIZE}
               loading="lazy"

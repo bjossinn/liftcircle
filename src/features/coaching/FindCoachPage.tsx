@@ -13,6 +13,7 @@ import {
 import { CoachCardView } from './directory/CoachCardView';
 import { CoachingAccessNotice, coachingError, useCoachingAccess } from './directory/common';
 import { PublicFindCoach } from './directory/PublicDirectory';
+import { useT } from '@/i18n';
 
 /** Per-session knowledge about optional server capabilities (null = not yet known). */
 let geocodeAvailableCache: boolean | null = null;
@@ -25,11 +26,12 @@ interface NavState {
 export default function FindCoachPage() {
   const nav = useNavigate();
   const { access } = useCoachingAccess();
+  const { t } = useT();
   return (
     <Page
-      title="Find a coach"
+      title={t('nav.findCoach')}
       back={
-        <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+        <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
           <ChevronLeft />
         </IconButton>
       }
@@ -47,6 +49,7 @@ interface Results {
 
 export function FindContent() {
   const { account } = useApp();
+  const { t, tp, language } = useT();
   const location = useLocation();
   const [params, setParams] = useSearchParams();
   const defaultCountry = useMemo(() => countryFromTimeZone(account.settings.timeZone), [account.settings.timeZone]);
@@ -103,7 +106,7 @@ export function FindContent() {
         setResults({ items: r.items, distanceAvailable: r.distanceAvailable, hasMore: r.items.length >= limit });
       })
       .catch((e) => {
-        if (!stale) setError(coachingError(e, 'Couldn’t search for coaches.'));
+        if (!stale) setError(coachingError(e, t('coaching.directory.couldnt_search_for_coaches')));
       })
       .finally(() => {
         if (!stale) setLoading(false);
@@ -134,7 +137,7 @@ export function FindContent() {
       // Remember how far the list goes so "back" restores it (no new search).
       setParams(encodeSearch({ ...applied, pages: applied.pages + 1 }), { replace: true, state: navState });
     } catch (e) {
-      setMoreError(coachingError(e, 'Couldn’t load more coaches.'));
+      setMoreError(coachingError(e, t('coaching.directory.couldnt_load_more_coaches')));
     } finally {
       setLoadingMore(false);
     }
@@ -161,10 +164,11 @@ export function FindContent() {
     if (applied.searched) commit({ ...form, radiusKm: null }, null);
   };
 
-  const placeQuery = [form.city.trim(), form.region.trim(), form.country ? countryName(form.country) : ''].filter(Boolean).join(', ');
+  // Geocoder query: country in English (a lookup string, not display text).
+  const placeQuery = [form.city.trim(), form.region.trim(), form.country ? countryName(form.country, 'en') : ''].filter(Boolean).join(', ');
   const lookUpPlace = async () => {
     if (!form.city.trim() && !form.region.trim()) {
-      setLookupError('Type a city, town or region first.');
+      setLookupError(t('coaching.directory.type_a_city_town_or_region_first'));
       return;
     }
     setLookingUp(true);
@@ -176,7 +180,7 @@ export function FindContent() {
       setGeocodeAvailable(r.available);
       if (r.available) setSuggestions(r.results);
     } catch (e) {
-      setLookupError(coachingError(e, 'Couldn’t look up that place. You can still search by name.'));
+      setLookupError(coachingError(e, t('coaching.directory.couldnt_look_up_that_place_search_by_name')));
     } finally {
       setLookingUp(false);
     }
@@ -204,21 +208,21 @@ export function FindContent() {
 
   const formPoint = searchPoint(form, device);
   const radiusOn = radiusUsable(formPoint, distanceAvailable === true);
-  const countries = useMemo(countryOptions, []);
-  const languages = useMemo(languageOptions, []);
+  const countries = useMemo(() => countryOptions(language), [language]);
+  const languages = useMemo(() => languageOptions(language), [language]);
   const activeFilters = [form.specialty, form.goal, form.language, form.acceptingOnly, radiusOn && form.radiusKm].filter(Boolean).length;
   const split = results ? splitResults(results.items) : null;
-  const near = placeLabel(applied, appliedPoint, countryName);
+  const near = placeLabel(applied, appliedPoint, (c) => countryName(c, language));
 
   return (
     <>
-      <form onSubmit={submit} noValidate aria-label="Search for coaches" className="flex flex-col gap-3">
+      <form onSubmit={submit} noValidate aria-label={t('coaching.directory.search_for_coaches')} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input label="City or town" value={form.city} maxLength={80} autoComplete="address-level2" onChange={(e) => editPlace({ city: e.target.value })} />
-          <Input label="Region (optional)" value={form.region} maxLength={80} autoComplete="address-level1" onChange={(e) => editPlace({ region: e.target.value })} />
+          <Input label={t('coaching.directory.city_or_town')} value={form.city} maxLength={80} autoComplete="address-level2" onChange={(e) => editPlace({ city: e.target.value })} />
+          <Input label={t('coaching.directory.region_optional')} value={form.region} maxLength={80} autoComplete="address-level1" onChange={(e) => editPlace({ region: e.target.value })} />
         </div>
-        <Select label="Country" value={form.country} onChange={(e) => editPlace({ country: e.target.value })}>
-          <option value="">Any country</option>
+        <Select label={t('coaching.directory.country')} value={form.country} onChange={(e) => editPlace({ country: e.target.value })}>
+          <option value="">{t('coaching.directory.any_country')}</option>
           {countries.map((c) => (
             <option key={c.value} value={c.value}>
               {c.label}
@@ -228,33 +232,33 @@ export function FindContent() {
 
         {form.place && (
           <p className="text-xs text-muted inline-flex items-center gap-1.5">
-            <MapPin className="size-4 text-accent" aria-hidden /> Using {form.place.label}
+            <MapPin className="size-4 text-accent" aria-hidden /> {t('coaching.directory.using_x', { place: form.place.label })}
           </p>
         )}
 
         <div className="flex flex-wrap gap-2">
           {geocodeAvailable !== false && (
             <Button size="sm" variant="outline" icon={<MapPin className="size-4" />} loading={lookingUp} onClick={() => void lookUpPlace()}>
-              Find this place
+              {t('coaching.directory.find_this_place')}
             </Button>
           )}
           {device ? (
             <Button size="sm" variant="outline" icon={<X className="size-4" />} onClick={clearDevice}>
-              Stop using my location
+              {t('coaching.directory.stop_using_my_location')}
             </Button>
           ) : (
             <Button size="sm" variant="outline" icon={locating ? <Loader2 className="size-4 animate-spin" /> : <Crosshair className="size-4" />} disabled={locating} onClick={() => void useMyLocation()}>
-              {locating ? 'Finding you…' : 'Use my location'}
+              {locating ? t('coaching.directory.finding_you') : t('coaching.directory.use_my_location')}
             </Button>
           )}
         </div>
-        {device && <p className="text-xs text-muted">Using your approximate location (about 1 km). It’s only used for this search and isn’t saved.</p>}
+        {device && <p className="text-xs text-muted">{t('coaching.directory.using_your_approximate_location_about_1')}</p>}
         {geoMessage && (
           <Notice tone="warn">
             <span role="status">{geoMessage}</span>
           </Notice>
         )}
-        {geocodeAvailable === false && <p className="text-xs text-muted">Coaches are matched by the place names you type.</p>}
+        {geocodeAvailable === false && <p className="text-xs text-muted">{t('coaching.directory.coaches_are_matched_by_the_place')}</p>}
         {lookupError && (
           <p role="alert" className="text-xs text-danger">
             {lookupError}
@@ -263,9 +267,9 @@ export function FindContent() {
         {suggestions && (
           <div className="rounded-xl border border-line bg-surface overflow-hidden">
             {suggestions.length === 0 ? (
-              <p className="text-sm text-muted p-3">No matching places found. You can still search by the name you typed.</p>
+              <p className="text-sm text-muted p-3">{t('coaching.directory.no_matching_places_found_you_can')}</p>
             ) : (
-              <ul aria-label="Suggested places" className="divide-y divide-line">
+              <ul aria-label={t('coaching.directory.suggested_places')} className="divide-y divide-line">
                 {suggestions.map((g, i) => (
                   <li key={`${g.lat},${g.lng},${i}`}>
                     <button type="button" onClick={() => pickSuggestion(g)} className="w-full text-left px-3 py-2.5 min-h-11 hover:bg-surface-2 flex items-center gap-2 text-sm">
@@ -280,13 +284,13 @@ export function FindContent() {
         )}
 
         <Segmented<FormatFilter>
-          label="Coaching format"
+          label={t('coaching.directory.coaching_format')}
           value={form.format}
           onChange={(v) => setForm((f) => ({ ...f, format: v }))}
           options={[
-            { value: 'any', label: 'Any' },
-            { value: 'in_person', label: 'In person' },
-            { value: 'online', label: 'Online' },
+            { value: 'any', label: t('coaching.directory.any') },
+            { value: 'in_person', label: t('coaching.directory.in_person') },
+            { value: 'online', label: t('coaching.directory.online') },
           ]}
         />
 
@@ -298,90 +302,91 @@ export function FindContent() {
           className="flex items-center gap-2 min-h-11 text-sm font-medium text-ink"
         >
           <SlidersHorizontal className="size-4" aria-hidden />
-          More filters{activeFilters ? ` (${activeFilters})` : ''}
+          {t('coaching.directory.more_filters')}
+          {activeFilters ? ` (${activeFilters})` : ''}
           <ChevronDown className={`size-4 transition-transform ${filtersOpen ? 'rotate-180' : ''}`} aria-hidden />
         </button>
         <div id="coach-filters" hidden={!filtersOpen} className="flex flex-col gap-3">
-          <Select label="Specialty" value={form.specialty} onChange={(e) => setForm((f) => ({ ...f, specialty: e.target.value }))}>
-            <option value="">Any specialty</option>
+          <Select label={t('coaching.directory.specialty')} value={form.specialty} onChange={(e) => setForm((f) => ({ ...f, specialty: e.target.value }))}>
+            <option value="">{t('coaching.directory.any_specialty')}</option>
             {SPECIALTIES.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
             ))}
           </Select>
-          <Select label="Goal" value={form.goal} onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))}>
-            <option value="">Any goal</option>
+          <Select label={t('coaching.directory.goal')} value={form.goal} onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))}>
+            <option value="">{t('coaching.directory.any_goal')}</option>
             {COACH_GOALS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
             ))}
           </Select>
-          <Select label="Language" value={form.language} onChange={(e) => setForm((f) => ({ ...f, language: e.target.value }))}>
-            <option value="">Any language</option>
+          <Select label={t('settings.languageTitle')} value={form.language} onChange={(e) => setForm((f) => ({ ...f, language: e.target.value }))}>
+            <option value="">{t('coaching.directory.any_language')}</option>
             {languages.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
             ))}
           </Select>
-          <Toggle label="Accepting new clients" description="Only show coaches who are taking on new clients now." checked={form.acceptingOnly} onChange={(v) => setForm((f) => ({ ...f, acceptingOnly: v }))} />
+          <Toggle label={t('coaching.apply.accepting_new_clients')} description={t('coaching.directory.only_show_coaches_who_are_taking')} checked={form.acceptingOnly} onChange={(v) => setForm((f) => ({ ...f, acceptingOnly: v }))} />
           <Select
-            label="Distance"
+            label={t('workout.share.distance')}
             value={radiusOn && form.radiusKm != null ? String(form.radiusKm) : ''}
             disabled={!radiusOn}
             onChange={(e) => setForm((f) => ({ ...f, radiusKm: e.target.value ? Number(e.target.value) : null }))}
             hint={
               !formPoint
-                ? 'To filter by distance, use your location or pick a suggested place.'
+                ? t('coaching.directory.to_filter_by_distance_use_your')
                 : distanceAvailable === false
-                  ? 'Distance search isn’t available. Showing matches by place.'
+                  ? t('coaching.directory.distance_search_isnt_available_showing_matches')
                   : distanceAvailable == null
-                    ? 'Search once to check whether distance filtering is available.'
+                    ? t('coaching.directory.search_once_to_check_whether_distance')
                     : undefined
             }
           >
-            <option value="">Any distance</option>
+            <option value="">{t('coaching.directory.any_distance')}</option>
             {RADIUS_OPTIONS.map((r) => (
               <option key={r} value={r}>
-                Within {r} km
+                {t('coaching.directory.within_x_km', { km: r })}
               </option>
             ))}
           </Select>
         </div>
 
         <Button type="submit" variant="primary" block icon={<Search className="size-4" />} loading={loading && !results}>
-          Search
+          {t('coaching.directory.search')}
         </Button>
       </form>
 
-      <p className="text-xs text-muted mt-3 px-1">Every coach listed here has been approved by the Hard Earned team. Approval isn’t a check of qualifications unless a profile says a qualification was reviewed.</p>
+      <p className="text-xs text-muted mt-3 px-1">{t('coaching.directory.every_coach_listed_here_has_been')}</p>
 
       <div aria-live="polite" className="sr-only">
-        {results && !loading ? `${results.items.length} coach${results.items.length === 1 ? '' : 'es'} found` : ''}
+        {results && !loading ? tp('coaching.directory.coaches_found', results.items.length) : ''}
       </div>
 
       {!applied.searched ? (
         <EmptyState
           icon={<Search className="size-6" aria-hidden />}
-          title="Search your area or anywhere"
-          body="Type a city or region, or use your location. Online coaches can work with you wherever you are."
+          title={t('coaching.directory.search_your_area_or_anywhere')}
+          body={t('coaching.directory.type_a_city_or_region_or')}
           action={
             <Button variant="outline" icon={<Globe className="size-4" />} onClick={() => commit({ ...form, format: 'online' }, device)}>
-              Browse online coaches
+              {t('coaching.directory.browse_online_coaches')}
             </Button>
           }
         />
       ) : error ? (
-        <ErrorState title="Couldn’t search for coaches" message={error} onRetry={() => setRetryTick((n) => n + 1)} />
+        <ErrorState title={t('coaching.directory.couldnt_search_for_coaches')} message={error} onRetry={() => setRetryTick((n) => n + 1)} />
       ) : loading || !results || !split ? (
-        <Spinner label="Searching" />
+        <Spinner label={t('coaching.directory.searching')} />
       ) : results.items.length === 0 ? (
         <EmptyState
           icon={<Search className="size-6" aria-hidden />}
-          title="No coaches match yet"
-          body="Try a nearby city or just the region, remove a filter, or include online coaches."
+          title={t('coaching.directory.no_coaches_match_yet')}
+          body={t('coaching.directory.try_a_nearby_city_or_just')}
           action={
             applied.format !== 'any' || applied.specialty || applied.goal || applied.language || applied.acceptingOnly || applied.radiusKm ? (
               <Button
@@ -392,7 +397,7 @@ export function FindContent() {
                   commit(next, device);
                 }}
               >
-                Clear filters
+                {t('coaching.directory.clear_filters')}
               </Button>
             ) : undefined
           }
@@ -400,11 +405,11 @@ export function FindContent() {
       ) : (
         <>
           {appliedPoint && results.distanceAvailable === false && (
-            <Notice className="mt-4">Distance search isn’t available. Showing matches by place.</Notice>
+            <Notice className="mt-4">{t('coaching.directory.distance_search_isnt_available_showing_matches')}</Notice>
           )}
           {split.local.length > 0 && (
             <section aria-labelledby="near-heading">
-              <SectionTitle id="near-heading">{near ? `Near ${near}` : 'Coaches in your search area'}</SectionTitle>
+              <SectionTitle id="near-heading">{near ? t('coaching.directory.near_x', { place: near }) : t('coaching.directory.coaches_in_your_search_area')}</SectionTitle>
               <ul className="flex flex-col gap-2">
                 {split.local.map((c) => (
                   <CoachCardView key={c.userId} coach={c} />
@@ -414,8 +419,8 @@ export function FindContent() {
           )}
           {split.remote.length > 0 && (
             <section aria-labelledby="online-heading">
-              <SectionTitle id="online-heading">Online coaches</SectionTitle>
-              <p className="text-xs text-muted px-1 -mt-1 mb-2">These coaches work with clients remotely, wherever you are.</p>
+              <SectionTitle id="online-heading">{t('coaching.directory.online_coaches')}</SectionTitle>
+              <p className="text-xs text-muted px-1 -mt-1 mb-2">{t('coaching.directory.these_coaches_work_with_clients_remotely')}</p>
               <ul className="flex flex-col gap-2">
                 {split.remote.map((c) => (
                   <CoachCardView key={c.userId} coach={c} />
@@ -425,7 +430,7 @@ export function FindContent() {
           )}
           {split.local.length === 0 && near && applied.format !== 'online' && (
             <p className="text-sm text-muted px-1 mt-3">
-              No coaches list {near} as a service area yet.
+              {t('coaching.directory.no_coaches_list_x_as_a_service_area', { place: near })}
             </p>
           )}
           {moreError && (
@@ -435,7 +440,7 @@ export function FindContent() {
           )}
           {results.hasMore && (
             <Button block className="mt-4" loading={loadingMore} onClick={() => void loadMore()}>
-              Load more
+              {t('social.load_more')}
             </Button>
           )}
         </>
