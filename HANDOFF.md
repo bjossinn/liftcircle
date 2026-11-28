@@ -3,6 +3,22 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 28 Nov 2026: Pages open at the top (scroll reset on navigation) — v1.0.11
+
+- Bug: tapping an exercise in the Library opened its detail page scrolled to the bottom. The window is the scroll
+  container, Shell stays mounted and only `<Outlet />` swaps, and nothing reset `window.scrollY` on navigation, so the
+  105-row list's position carried over and the browser clamped it to the bottom of the shorter page.
+- Fix: `src/app/ScrollReset.tsx`, mounted in Shell before `<Outlet />` (sibling layout effects run in tree order, so page
+  effects run after it). PUSH/REPLACE to a new pathname → top; search-only updates (library `?q=`/`?tab=`,
+  `/settings?section=`, nutrition dates) keep the position; POP → the position saved for that history entry
+  (`location.key`), retried for up to 1.5 s while a lazy page grows, stopped by user input; first load and `#hash`
+  locations are left alone; `/feed` keeps restoring itself (FeedPage's own layout effect). `history.scrollRestoration`
+  is set to `manual`. Deliberately not `<ScrollRestoration />` (it would jump on search-param updates and fight
+  Settings' `scrollIntoView`).
+- E2E `tests/e2e/scroll.spec.ts`: scrolled library → detail at the top → Back restores the list; typing in the library
+  search keeps the position; `/settings?section=app` still lands on (and focuses) its heading, directly and from the index.
+- Also: fixed the stale `prone_pulldown` comment in `ExerciseGlyph.tsx` (it is a side view since v1.0.10).
+
 ## 28 Nov 2026: Glyph polish for the real 24 px size — v1.0.10
 
 - Redrawn after checking every glyph at 24 px (1×) as well as 96 px: `prone_pulldown` (side view, face down on the
