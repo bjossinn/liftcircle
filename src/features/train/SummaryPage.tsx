@@ -18,6 +18,7 @@ import { celebrateOnce } from '@/components/celebrate';
 import { openCoachWith } from '@/features/coaching/ai/workoutContext';
 import { numberText, useT } from '@/i18n';
 import { exerciseDisplayName } from '@/data/catalogText';
+import { workoutDisplayName } from '@/features/program/parts';
 
 /** Only a workout finished in the last few minutes gets the brief celebration; reopening an old summary stays calm. */
 const JUST_FINISHED_MS = 5 * 60 * 1000;
@@ -67,7 +68,7 @@ function WorkoutSummary({ id }: { id: string }) {
       <Card className="p-5" tint="accent">
         <div className="flex items-center gap-2 text-accent">
           <CheckCircle2 className="size-5" aria-hidden />
-          <span className="font-semibold">{session.name}</span>
+          <span className="font-semibold">{workoutDisplayName(session)}</span>
         </div>
         <p className="text-sm text-muted mt-0.5">{formatDate(session.date, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
         <p className="font-display text-lg font-bold mt-2">{records.length > 0 ? t('summary.savedWithRecords') : t('summary.saved')}</p>

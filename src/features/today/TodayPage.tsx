@@ -15,7 +15,7 @@ import { useToast } from '@/components/toast';
 import { BRAND } from '@/config/brand';
 import { BrandMoment } from '@/components/BrandMark';
 import { PlanOwnerBadge } from '@/features/program/PlanOwner';
-import { displaySessionName, SessionMarkTile } from '@/features/program/parts';
+import { displaySessionName, SessionMarkTile, workoutDisplayName } from '@/features/program/parts';
 import { useExercises } from '@/data/catalog';
 import { plannedWeekStreak } from '@/domain/program/streak';
 import { exerciseDisplayName } from '@/data/catalogText';
@@ -123,7 +123,7 @@ export default function TodayPage() {
         <Card className="p-4 flex items-center gap-3 border-accent/40">
           <Play className="size-5 text-accent" aria-hidden />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold truncate">{displaySessionName({ id: active.templateId ?? '', name: active.name, nameEdited: active.nameEdited })}</div>
+            <div className="font-semibold truncate">{workoutDisplayName(active)}</div>
             <div className="text-xs text-muted">{t('today.inProgress')}</div>
           </div>
           <Button variant="primary" onClick={() => nav(`/train/session/${active.id}`)}>

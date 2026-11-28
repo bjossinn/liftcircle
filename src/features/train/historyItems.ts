@@ -4,7 +4,7 @@
  */
 import type { Program, WorkoutSession } from '@/domain/types';
 import { workoutMarkSource } from '@/domain/program/sessionMark';
-import { displaySessionName } from '@/features/program/parts';
+import { workoutDisplayName } from '@/features/program/parts';
 
 export interface WorkoutHistoryRow {
   title: string;
@@ -18,7 +18,7 @@ export function workoutHistoryRow(
   exerciseNames: readonly string[],
   programs: readonly Program[] = [],
 ): WorkoutHistoryRow {
-  const title = displaySessionName({ id: s.templateId ?? '', name: s.name, nameEdited: s.nameEdited });
+  const title = workoutDisplayName(s);
   const search = [...new Set([title, s.name])].concat(s.notes ?? '', exerciseNames).join(' ').toLocaleLowerCase();
   return { title, search, mark: workoutMarkSource(s, programs) };
 }

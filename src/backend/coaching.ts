@@ -280,7 +280,7 @@ interface RawOverview {
   relationship: RawRelationship;
   training: null | {
     active_program: { id: ID; name: string; current_version: number; managed_by: string | null } | null;
-    recent_sessions: { id: ID; date: string; name: string; status: string; duration_min: number | null; working_sets: number }[];
+    recent_sessions: { id: ID; date: string; name: string; status: string; duration_min: number | null; working_sets: number; template_id?: string | null; name_edited?: boolean | null }[];
     planned_last28: number | null;
     completed_last28: number;
   };
@@ -664,6 +664,8 @@ export const coachingApi: CoachingApi = {
               : null,
             recentSessions: arr(tr.recent_sessions).map((s) => ({
               id: s.id, date: s.date, name: s.name ?? 'Workout', status: s.status ?? '', durationMin: num(s.duration_min), workingSets: Number(s.working_sets ?? 0),
+              ...(typeof s.template_id === 'string' && s.template_id ? { templateId: s.template_id } : {}),
+              ...(s.name_edited === true ? { nameEdited: true as const } : {}),
             })),
             plannedLast28: num(tr.planned_last28),
             completedLast28: Number(tr.completed_last28 ?? 0),

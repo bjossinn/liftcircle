@@ -10,7 +10,7 @@ import { TopActions } from '@/app/TopActions';
 import { useActiveProgram, useAllSessions, useStarters } from './hooks';
 import { currentVersion } from '@/domain/program/program';
 import { PlanOwnerBadge } from '@/features/program/PlanOwner';
-import { displaySessionName, SessionMarkTile } from '@/features/program/parts';
+import { displaySessionName, SessionMarkTile, workoutDisplayName } from '@/features/program/parts';
 import { nextPlannedSession } from '@/domain/program/schedule';
 import { formatDate, formatMinutes, todayISO, weekdayShort } from '@/lib/dates';
 import { useT } from '@/i18n';
@@ -39,7 +39,7 @@ export default function TrainPage() {
         <Card className="p-4 flex items-center gap-3 border-accent/40">
           <Play className="size-5 text-accent" aria-hidden />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold truncate">{displaySessionName({ id: active.templateId ?? '', name: active.name, nameEdited: active.nameEdited })}</div>
+            <div className="font-semibold truncate">{workoutDisplayName(active)}</div>
             <div className="text-xs text-muted">{tr('train.inProgress')}</div>
           </div>
           <Button variant="primary" onClick={() => nav(`/train/session/${active.id}`)}>

@@ -4,6 +4,7 @@ import { Button, Card, Input, Notice, Page, Spinner } from '@/components/ui';
 import { supabase } from '@/backend/supabase';
 import { useToast } from '@/components/toast';
 import { authHref, peekReturn, takeReturn } from './authReturn';
+import { authErrorMessage, authRedirectError } from './authErrors';
 import { t as translate, useT } from '@/i18n';
 
 /** Handles email confirmation and password-recovery redirects (PKCE code exchange happens in supabase-js). */
@@ -14,7 +15,7 @@ export default function AuthCallbackPage() {
   const [params] = useSearchParams();
   const wantsReset = params.get('next') === 'reset';
   const [state, setState] = useState<'waiting' | 'reset' | 'error'>('waiting');
-  const [error, setError] = useState<string | null>(params.get('error_description'));
+  const [error, setError] = useState<string | null>(() => authRedirectError(params));
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -71,7 +72,7 @@ export default function AuthCallbackPage() {
             setBusy(true);
             const { error: err } = await supabase()!.auth.updateUser({ password: pw });
             setBusy(false);
-            if (err) return setError(err.message);
+            if (err) return setError(authErrorMessage(err));
             toast.show(t('auth.password_updated'), { tone: 'success' });
             nav(takeReturn() ?? '/', { replace: true });
           }}

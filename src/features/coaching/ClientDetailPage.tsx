@@ -21,6 +21,7 @@ import { BackButton, CheckInAnswers, CoachingAccessNotice, IntakeSummary, Panel,
 import { CoachGate, TrainingSummary, useCoachStatus } from './tools/coach';
 import { programDisplayName } from '@/domain/program/localize';
 import { t as tNow, tKey, useT } from '@/i18n';
+import { workoutDisplayName } from '@/features/program/parts';
 
 export default function ClientDetailPage() {
   const { relationshipId = '' } = useParams();
@@ -197,7 +198,7 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
                             <li key={s.id} className="px-4 py-3">
                               <div className="flex items-start gap-2">
                                 <div className="min-w-0 flex-1">
-                                  <p className="font-medium truncate">{s.name}</p>
+                                  <p className="font-medium truncate">{workoutDisplayName(s)}</p>
                                   <p className="text-xs text-muted">
                                     {[
                                       formatDate(s.date),
@@ -209,7 +210,7 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
                                       .join(' · ')}
                                   </p>
                                 </div>
-                                <Button size="sm" variant="ghost" icon={<MessageSquarePlus className="size-4" />} onClick={() => setFbFor({ sessionId: s.id, label: `${s.name} · ${formatDate(s.date)}` })}>
+                                <Button size="sm" variant="ghost" icon={<MessageSquarePlus className="size-4" />} onClick={() => setFbFor({ sessionId: s.id, label: `${workoutDisplayName(s)} · ${formatDate(s.date)}` })}>
                                   {t('coaching.client.feedback')}
                                 </Button>
                               </div>

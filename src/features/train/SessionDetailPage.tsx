@@ -21,6 +21,7 @@ import { socialApi } from '@/backend/social';
 import { useStarters } from './hooks';
 import { t as tGlobal, useT } from '@/i18n';
 import { exerciseDisplayName } from '@/data/catalogText';
+import { workoutDisplayName } from '@/features/program/parts';
 
 export default function SessionDetailPage() {
   const { id = '' } = useParams();
@@ -75,7 +76,7 @@ export default function SessionDetailPage() {
 
   return (
     <Page
-      title={session.name}
+      title={workoutDisplayName(session)}
       back={
         <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
           <ChevronLeft />
@@ -83,7 +84,7 @@ export default function SessionDetailPage() {
       }
     >
       <Card className="p-4 space-y-3">
-        <Input label={t('workout.custom.name')} defaultValue={session.name} maxLength={80} onBlur={(e) => e.target.value.trim() && e.target.value !== session.name && void save((s) => ({ ...s, name: e.target.value.trim() }))} />
+        <Input label={t('workout.custom.name')} defaultValue={session.name} maxLength={80} onBlur={(e) => e.target.value.trim() && e.target.value !== session.name && void save((s) => ({ ...s, name: e.target.value.trim(), nameEdited: true }))} />
         <div className="grid grid-cols-2 gap-3">
           <Input
             label={t('progress.date')}

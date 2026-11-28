@@ -31,6 +31,7 @@ import { BackButton, CoachingAccessNotice, ProposalStatusBadge, fmtDateTime, slo
 import { CoachGate, useCoachStatus } from './tools/coach';
 import { ProgramEditor } from './tools/ProgramEditor';
 import { exerciseDisplayName } from '@/data/catalogText';
+import { displaySessionName } from '@/features/program/parts';
 
 const BUNDLED_IDS = new Set(EXERCISES.map((e) => e.id));
 
@@ -553,7 +554,7 @@ function TemplatePicker({ open, templates, onClose, onPick }: { open: boolean; t
               <label className="flex items-center gap-3 min-h-12 px-2 rounded-xl hover:bg-surface-2 cursor-pointer">
                 <input type="checkbox" className="size-5 accent-[var(--color-accent)]" checked={on} onChange={() => setSel(on ? sel.filter((x) => x !== st.id) : [...sel, st.id])} />
                 <span className="min-w-0">
-                  <span className="block font-medium truncate">{st.template.name}</span>
+                  <span className="block font-medium truncate">{displaySessionName(st.template)}</span>
                   <span className="block text-xs text-muted">
                     {tp('coaching.client.exercises_count', st.template.exercises.length)} · ~{t('coaching.client.x_min', { minutes: st.template.estimatedMinutes })}
                   </span>

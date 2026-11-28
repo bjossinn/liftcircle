@@ -322,24 +322,7 @@ export default function MessagesPage() {
             void send();
           }}
         >
-          {/* pt/pr keep the remove buttons' 44 px hit area (size-7 + after:-inset-2, offset -1.5) inside the scrollport, which clips overflow. */}
-          {(photos.length > 0 || preparing > 0) && (
-            <ul className="flex gap-2 pt-3.5 pr-3.5 pb-2 overflow-x-auto" aria-label={t('coaching.messages.photos_to_send')}>
-              {photos.map((p, i) => (
-                <li key={p.id} className="relative shrink-0">
-                  <img src={p.url} alt={t('coaching.messages.photo_x_to_send', { n: i + 1 })} className="size-16 rounded-xl object-cover bg-surface-3" />
-                  <button type="button" onClick={() => removePhoto(p.id)} aria-label={t('coaching.messages.remove_photo_x', { n: i + 1 })} className="absolute -top-1.5 -right-1.5 size-7 after:absolute after:-inset-2 rounded-full bg-surface-3 border border-line flex items-center justify-center">
-                    <X className="size-4" />
-                  </button>
-                </li>
-              ))}
-              {preparing > 0 && (
-                <li className="size-16 rounded-xl bg-surface-2 flex items-center justify-center" role="status" aria-label={t('social.preparing_photo')}>
-                  <Loader2 className="size-5 animate-spin text-muted" aria-hidden />
-                </li>
-              )}
-            </ul>
-          )}
+          <AttachedPhotos photos={photos} preparing={preparing} onRemove={removePhoto} />
           {sendError && (
             <p role="alert" className="text-xs text-danger pb-1">
               {sendError}
@@ -435,6 +418,41 @@ export default function MessagesPage() {
 }
 
 /** A draft that can no longer be sent (coaching ended / paused): kept so the text isn't lost. */
+/**
+ * Photos attached to the message being written. Each remove button is itself a 44 × 44 px target (a transparent box
+ * around the 28 px visual circle), centred on the thumbnail's corner; the list's top/right padding (14 px = the part of
+ * the target outside the thumbnail) keeps the whole target inside the horizontal scrollport, which clips overflow.
+ */
+export function AttachedPhotos({ photos, preparing, onRemove }: { photos: { id: string; url: string }[]; preparing: number; onRemove: (id: string) => void }) {
+  const { t } = useT();
+  if (photos.length === 0 && preparing === 0) return null;
+  return (
+    <ul className="flex gap-2 pt-3.5 pr-3.5 pb-2 overflow-x-auto" aria-label={t('coaching.messages.photos_to_send')}>
+      {photos.map((p, i) => (
+        <li key={p.id} className="relative shrink-0">
+          <img src={p.url} alt={t('coaching.messages.photo_x_to_send', { n: i + 1 })} className="size-16 rounded-xl object-cover bg-surface-3" />
+          <button
+            type="button"
+            onClick={() => onRemove(p.id)}
+            aria-label={t('coaching.messages.remove_photo_x', { n: i + 1 })}
+            data-testid="remove-photo"
+            className="absolute -top-3.5 -right-3.5 size-11 flex items-center justify-center rounded-full"
+          >
+            <span className="size-7 rounded-full bg-surface-3 border border-line flex items-center justify-center" aria-hidden>
+              <X className="size-4" />
+            </span>
+          </button>
+        </li>
+      ))}
+      {preparing > 0 && (
+        <li className="size-16 rounded-xl bg-surface-2 flex items-center justify-center" role="status" aria-label={t('social.preparing_photo')}>
+          <Loader2 className="size-5 animate-spin text-muted" aria-hidden />
+        </li>
+      )}
+    </ul>
+  );
+}
+
 function UnsentDraft({ body, photoCount, onDiscard }: { body: string; photoCount: number; onDiscard: () => void }) {
   const toast = useToast();
   const { t, tp } = useT();

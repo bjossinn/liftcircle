@@ -38,6 +38,7 @@ import { activeRecordFor, adjustRecordLines, AI_SESSION_ADJUST_KEY, revertAdjust
 import { trackAiAction } from '@/analytics/analytics';
 import { getLanguage, numberText, t as tNow, useT, type Language } from '@/i18n';
 import { exerciseDisplayName } from '@/data/catalogText';
+import { workoutDisplayName } from '@/features/program/parts';
 
 /**
  * Persist a change; resolves true when saved (or nothing needed saving), false when the device couldn't store it.
@@ -382,8 +383,8 @@ export default function SessionPage() {
           <IconButton label={t('workout.minimise')} onClick={() => (registry.flushAll(), nav('/train'))}>
             <ChevronDown className="size-6" />
           </IconButton>
-          <button className="flex-1 min-w-0 min-h-11 text-left px-1" onClick={() => setRenameOpen(true)} aria-label={t('workout.nameAria', { name: session.name })}>
-            <div className="font-semibold truncate">{session.name}</div>
+          <button className="flex-1 min-w-0 min-h-11 text-left px-1" onClick={() => setRenameOpen(true)} aria-label={t('workout.nameAria', { name: workoutDisplayName(session) })}>
+            <div className="font-semibold truncate">{workoutDisplayName(session)}</div>
             <div className="text-xs text-muted tabular">
               {paused ? t('workout.paused') : formatDuration(ops.elapsedMs(session, now) / 1000)} · {t('workout.setProgress', { done, total })}
             </div>

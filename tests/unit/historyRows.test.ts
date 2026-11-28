@@ -6,6 +6,7 @@ import { sessionDisplayName } from '@/domain/program/localize';
 import { sessionMark, workoutMarkSource } from '@/domain/program/sessionMark';
 import { buildSessionFromTemplate } from '@/domain/program/session';
 import { workoutHistoryRow } from '@/features/train/historyItems';
+import { workoutDisplayName } from '@/features/program/parts';
 import { defaultAccountState } from '@/state/defaults';
 import type { OnboardingAnswers, Program, SessionTemplate, WorkoutSession } from '@/domain/types';
 
@@ -59,5 +60,16 @@ describe('history rows', () => {
     expect(sessionMark(workoutMarkSource({ name: 'Mobility', templateId: 'act:mobility' }, [])!).family).toBe('mobility');
     expect(sessionMark(workoutMarkSource({ name: 'Long run', templateId: 'end:long' }, [])!).family).toBe('cardio_long');
     expect(workoutMarkSource({ name: 'Free workout' }, progs)).toBeNull();
+  });
+
+  it('workoutDisplayName: generated names localized, renamed and custom names as stored', () => {
+    setLanguage('is');
+    const shown = sessionDisplayName(lifting, 'is');
+    expect(workoutDisplayName({ name: lifting.name, templateId: lifting.id })).toBe(shown);
+    expect(workoutDisplayName({ name: lifting.name, templateId: lifting.id, nameEdited: true })).toBe(lifting.name);
+    expect(workoutDisplayName({ name: lifting.name })).toBe(lifting.name);
+    expect(workoutDisplayName({ name: 'Leg day', templateId: lifting.id })).toBe('Leg day');
+    setLanguage('en');
+    expect(workoutDisplayName({ name: lifting.name, templateId: lifting.id })).toBe(lifting.name);
   });
 });

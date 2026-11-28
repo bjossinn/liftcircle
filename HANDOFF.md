@@ -20,6 +20,12 @@ Supabase project **LiftCircle** (display name, unchanged: renaming it is an owne
   warnings/day status take an optional display language via `PlanContext` (server output unchanged, bundles regenerated).
 - Workouts carry `nameEdited` (renamed template or renamed during the workout) so user-named sessions are never
   auto-translated; History search matches localized and stored titles; History shows each session's real mark.
+- Review fixes: read-only workout labels (logger header, summary, history detail, coach client views) use
+  `workoutDisplayName` (templateId + name + nameEdited); editable fields keep the stored name. Additive migration
+  `supabase/migrations/20261201000001_client_overview_session_provenance.sql` adds `template_id` / `name_edited` to
+  `coach_client_overview` recent sessions (same signature, grants kept) — apply it before deploying the app.
+- Auth errors: `src/features/auth/authErrors.ts` maps Supabase auth error codes (and redirect `error_code`) to
+  translated messages with a localized fallback; provider prose is never shown.
 - Startup JS grew from ~873 KiB to ~2.0 MiB raw (230 → ~480 KiB gz) because both dictionaries ship in the entry chunk.
   Follow-up worth doing: lazy-load the Icelandic dictionary (or the catalog half) before first render.
 

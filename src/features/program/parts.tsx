@@ -75,6 +75,15 @@ export function displaySessionName(t: Pick<SessionTemplate, 'id' | 'name' | 'nam
   return sessionDisplayName(t);
 }
 
+/**
+ * Read-only label for a logged workout (logger header, summary, history, coach views): the stored name, localized only
+ * when it is an unrenamed generated/manual session name (same rules as displaySessionName). Editable fields keep
+ * showing and saving the stored name.
+ */
+export function workoutDisplayName(s: { name: string; templateId?: string | null; nameEdited?: boolean }): string {
+  return displaySessionName({ id: s.templateId ?? '', name: s.name, nameEdited: s.nameEdited ? true : undefined });
+}
+
 /** Plan text the onboarding/editor stores in English (manual-setup rationale/reason), else generated-text recognizer. */
 export function planTextForDisplay(text: string): string {
   if (text === enText('onboarding.manualRationale')) return translate('onboarding.manualRationale');

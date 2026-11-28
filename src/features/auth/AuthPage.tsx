@@ -9,6 +9,7 @@ import { BRAND } from '@/config/brand';
 import { rememberReturn, safeReturnPath } from './authReturn';
 import { PrivacySummary } from './PrivacySummary';
 import { t as translate, useT } from '@/i18n';
+import { authErrorMessage, type AuthErrorLike } from './authErrors';
 
 // Messages are read when validating, so they follow the current language.
 const emailSchema = z.string().trim().email({ error: () => translate('auth.invalidEmail') });
@@ -90,16 +91,7 @@ export default function AuthPage() {
         setSent('reset');
       }
     } catch (err) {
-      const msg = (err as Error).message || t('common.error');
-      setErrors({
-        form: /invalid login/i.test(msg)
-          ? t('auth.wrongCredentials')
-          : /not confirmed/i.test(msg)
-            ? t('auth.confirmEmailFirst')
-            : /rate|too many/i.test(msg)
-              ? t('auth.tooManyAttempts')
-              : msg,
-      });
+      setErrors({ form: authErrorMessage(err as AuthErrorLike) });
     } finally {
       setBusy(false);
     }
