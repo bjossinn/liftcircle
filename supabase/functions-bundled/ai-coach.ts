@@ -295,6 +295,51 @@ var SHARED_EN = {
   "aiServer.week.skipped.other": "{{names}} are skipped this week",
   "aiServer.week.stays": "**{{name}}** stays on {{date}}",
   "aiServer.week.twoOnSameDay": "Two sessions on {{date}}; use one session per day.",
+  "mealPlanner.change.addSide": "add {{side}} to {{meal}}",
+  "mealPlanner.change.line": "{{changes}} ({{delta}} g protein).",
+  "mealPlanner.change.removeSide": "leave out the {{side}} at {{meal}}",
+  "mealPlanner.change.replaceSide": "make the {{meal}} side {{side}}",
+  "mealPlanner.change.servings.one": "have {{count}} serving of {{recipe}} (was {{was}})",
+  "mealPlanner.change.servings.other": "have {{count}} servings of {{recipe}} (was {{was}})",
+  "mealPlanner.change.swap": "swap {{from}} for {{to}}",
+  "mealPlanner.fallback.anotherRecipe": "another recipe",
+  "mealPlanner.fallback.theMeal": "the meal",
+  "mealPlanner.fallback.thisMeal": "this meal",
+  "mealPlanner.problem.allergens.one": "contains {{allergens}}",
+  "mealPlanner.problem.allergens.other": "contains {{allergens}}",
+  "mealPlanner.problem.diet": "isn't {{diets}}",
+  "mealPlanner.problem.proteins": "includes {{proteins}}, which you marked Not for me",
+  "mealPlanner.problem.sideAllergens.one": "has a side of {{side}}, which contains {{allergens}}",
+  "mealPlanner.problem.sideAllergens.other": "has a side of {{side}}, which contains {{allergens}}",
+  "mealPlanner.problem.skipped": "includes an ingredient you skip",
+  "mealPlanner.slotCount.breakfast.one": "breakfast",
+  "mealPlanner.slotCount.breakfast.other": "breakfasts",
+  "mealPlanner.slotCount.dinner.one": "dinner",
+  "mealPlanner.slotCount.dinner.other": "dinners",
+  "mealPlanner.slotCount.lunch.one": "lunch",
+  "mealPlanner.slotCount.lunch.other": "lunches",
+  "mealPlanner.slotCount.snack.one": "snack",
+  "mealPlanner.slotCount.snack.other": "snacks",
+  "mealPlanner.status.cannotClose": "Portions and protein sides that fit your settings cannot close this gap.",
+  "mealPlanner.status.empty": "No meals are planned for this day.",
+  "mealPlanner.status.evenWithChanges": "Even with the changes below this day reaches about {{grams}} g with your current settings.",
+  "mealPlanner.status.kcal": "{{kcal}} of your {{target}} kcal target is planned.",
+  "mealPlanner.status.neverRelaxed": "Your allergy and diet settings are never relaxed to reach a target.",
+  "mealPlanner.status.over": "{{planned}} g protein is planned, {{over}} g above your {{target}} g target.",
+  "mealPlanner.status.short": "{{planned}} g of your {{target}} g protein target is planned: {{gap}} g short.",
+  "mealPlanner.suggestion.extraMeal": "Planning {{meals}} meals a day adds a snack, for example {{idea}}.",
+  "mealPlanner.suggestion.idea": "{{food}} ({{grams}} g)",
+  "mealPlanner.suggestion.longerCooking": "Allowing up to {{minutes}} minutes of cooking adds options such as {{recipe}} ({{grams}} g protein per serving).",
+  "mealPlanner.suggestion.nothingElse": "No other recipe or protein side in the catalogue fits all of your settings for this day. You can add your own foods to the day, or review your cooking time and meals per day.",
+  "mealPlanner.suggestion.swap": "Swap {{from}} for {{to}} (+{{grams}} g protein).",
+  "mealPlanner.warning.fewRecipes.one": "Only {{count}} {{meals}} fits your choices, so some repeat this week: allow one more protein or a longer cook time?",
+  "mealPlanner.warning.fewRecipes.other": "Only {{count}} {{meals}} fit your choices, so some repeat this week: allow one more protein or a longer cook time?",
+  "mealPlanner.warning.mealConflict": "{{recipe}} {{day}} {{problems}}. Swap it or edit the meal.",
+  "mealPlanner.warning.missingRecipe": "A meal {{day}} uses a recipe that is no longer available. Swap or remove it.",
+  "mealPlanner.warning.noRecipes": "No {{meal}} recipes match your diet and allergy settings, so that meal is left empty.",
+  "mealPlanner.warning.noRecipesProteins": "No {{meal}} recipes match your diet, allergy and protein choices, so that meal is left empty. Allow one more protein or a longer cook time?",
+  "mealPlanner.warning.oneServing": "Portions are one serving each. Adjust servings to suit your appetite.",
+  "mealPlanner.warning.timeRelaxed": "No {{meal}} recipes fit within {{minutes}} minutes; some take longer.",
   "progression.action.add_reps": "Add reps",
   "progression.action.calibrate": "Calibrate",
   "progression.action.discomfort_hold": "No increase",
@@ -603,6 +648,51 @@ var SHARED_IS = {
   "aiServer.week.skipped.other": "{{names}} falla ni\xF0ur \xFEessa viku",
   "aiServer.week.stays": "**{{name}}** ver\xF0ur \xE1fram {{date}}",
   "aiServer.week.twoOnSameDay": "Tv\xE6r \xE6fingar eru \xE1\xE6tla\xF0ar sama dag, {{date}}. Veldu eina \xE6fingu \xE1 dag.",
+  "mealPlanner.change.addSide": "b\xE6ttu \u201E{{side}}\u201C vi\xF0 {{meal}}",
+  "mealPlanner.change.line": "{{changes}} ({{delta}} g pr\xF3tein).",
+  "mealPlanner.change.removeSide": "slepptu me\xF0l\xE6tinu \u201E{{side}}\u201C fyrir {{meal}}",
+  "mealPlanner.change.replaceSide": "breyttu me\xF0l\xE6tinu fyrir {{meal}} \xED \u201E{{side}}\u201C",
+  "mealPlanner.change.servings.one": "haf\xF0u {{count}} skammt af \u201E{{recipe}}\u201C (\xE1\xF0ur {{was}})",
+  "mealPlanner.change.servings.other": "haf\xF0u {{count}} skammta af \u201E{{recipe}}\u201C (\xE1\xF0ur {{was}})",
+  "mealPlanner.change.swap": "skiptu \u201E{{from}}\u201C \xFAt fyrir \u201E{{to}}\u201C",
+  "mealPlanner.fallback.anotherRecipe": "\xF6nnur uppskrift",
+  "mealPlanner.fallback.theMeal": "m\xE1lt\xED\xF0in",
+  "mealPlanner.fallback.thisMeal": "\xFEessi m\xE1lt\xED\xF0",
+  "mealPlanner.problem.allergens.one": "inniheldur ofn\xE6misvald ({{allergens}})",
+  "mealPlanner.problem.allergens.other": "inniheldur ofn\xE6misvalda ({{allergens}})",
+  "mealPlanner.problem.diet": "uppfyllir ekki matar\xE6\xF0isstillinguna {{diets}}",
+  "mealPlanner.problem.proteins": "inniheldur pr\xF3teingjafa sem \xFE\xFA merktir Hentar m\xE9r ekki ({{proteins}})",
+  "mealPlanner.problem.sideAllergens.one": "er me\xF0 me\xF0l\xE6ti\xF0 \u201E{{side}}\u201C sem inniheldur ofn\xE6misvald ({{allergens}})",
+  "mealPlanner.problem.sideAllergens.other": "er me\xF0 me\xF0l\xE6ti\xF0 \u201E{{side}}\u201C sem inniheldur ofn\xE6misvalda ({{allergens}})",
+  "mealPlanner.problem.skipped": "inniheldur hr\xE1efni sem \xFE\xFA vilt sleppa",
+  "mealPlanner.slotCount.breakfast.one": "morgunmat",
+  "mealPlanner.slotCount.breakfast.other": "morgunmat",
+  "mealPlanner.slotCount.dinner.one": "kv\xF6ldmat",
+  "mealPlanner.slotCount.dinner.other": "kv\xF6ldmat",
+  "mealPlanner.slotCount.lunch.one": "h\xE1degismat",
+  "mealPlanner.slotCount.lunch.other": "h\xE1degismat",
+  "mealPlanner.slotCount.snack.one": "millim\xE1l",
+  "mealPlanner.slotCount.snack.other": "millim\xE1l",
+  "mealPlanner.status.cannotClose": "Skammtar og pr\xF3teinme\xF0l\xE6ti sem passa vi\xF0 stillingarnar \xFE\xEDnar duga ekki til a\xF0 br\xFAa \xFEetta bil.",
+  "mealPlanner.status.empty": "Engar m\xE1lt\xED\xF0ir eru skipulag\xF0ar \xFEennan dag.",
+  "mealPlanner.status.evenWithChanges": "Jafnvel me\xF0 breytingunum h\xE9r fyrir ne\xF0an n\xE6r dagurinn a\xF0eins um {{grams}} g me\xF0 n\xFAverandi stillingum.",
+  "mealPlanner.status.kcal": "Skipulag\xF0ar eru {{kcal}} af {{target}} kcal orkumarkmi\xF0inu \xFE\xEDnu.",
+  "mealPlanner.status.neverRelaxed": "Ofn\xE6mis- og matar\xE6\xF0isstillingunum \xFE\xEDnum er aldrei slaka\xF0 til a\xF0 n\xE1 markmi\xF0i.",
+  "mealPlanner.status.over": "Skipul\xF6g\xF0 eru {{planned}} g af pr\xF3teini, {{over}} g yfir {{target}} g markmi\xF0inu \xFE\xEDnu.",
+  "mealPlanner.status.short": "Skipul\xF6g\xF0 eru {{planned}} g af {{target}} g pr\xF3teinmarkmi\xF0inu \xFE\xEDnu: {{gap}} g vantar upp \xE1.",
+  "mealPlanner.suggestion.extraMeal": "Me\xF0 {{meals}} m\xE1lt\xED\xF0um \xE1 dag b\xE6tist vi\xF0 millim\xE1l, til d\xE6mis {{idea}}.",
+  "mealPlanner.suggestion.idea": "{{food}} ({{grams}} g)",
+  "mealPlanner.suggestion.longerCooking": "Ef \xFE\xFA leyfir allt a\xF0 {{minutes}} m\xEDn\xFAtna eldunart\xEDma b\xE6tast vi\xF0 valkostir eins og \u201E{{recipe}}\u201C ({{grams}} g pr\xF3tein \xED skammti).",
+  "mealPlanner.suggestion.nothingElse": "Engin \xF6nnur uppskrift e\xF0a pr\xF3teinme\xF0l\xE6ti \xED safninu passar vi\xF0 allar stillingarnar \xFE\xEDnar \xFEennan dag. \xDE\xFA getur b\xE6tt eigin mat vi\xF0 daginn e\xF0a endursko\xF0a\xF0 eldunart\xEDma og fj\xF6lda m\xE1lt\xED\xF0a \xE1 dag.",
+  "mealPlanner.suggestion.swap": "Skiptu \u201E{{from}}\u201C \xFAt fyrir \u201E{{to}}\u201C (+{{grams}} g pr\xF3tein).",
+  "mealPlanner.warning.fewRecipes.one": "A\xF0eins {{count}} uppskrift fyrir {{meals}} passar vi\xF0 vali\xF0 \xFEitt, svo m\xE1lt\xED\xF0ir endurtaka sig \xED vikunni. Viltu leyfa einn pr\xF3teingjafa \xED vi\xF0b\xF3t e\xF0a lengri eldunart\xEDma?",
+  "mealPlanner.warning.fewRecipes.other": "A\xF0eins {{count}} uppskriftir fyrir {{meals}} passa vi\xF0 vali\xF0 \xFEitt, svo sumar endurtaka sig \xED vikunni. Viltu leyfa einn pr\xF3teingjafa \xED vi\xF0b\xF3t e\xF0a lengri eldunart\xEDma?",
+  "mealPlanner.warning.mealConflict": "{{recipe}} {{day}} {{problems}}. Skiptu um uppskrift e\xF0a breyttu m\xE1lt\xED\xF0inni.",
+  "mealPlanner.warning.missingRecipe": "M\xE1lt\xED\xF0 {{day}} notar uppskrift sem er ekki lengur til. Skiptu henni \xFAt e\xF0a fjarl\xE6g\xF0u hana.",
+  "mealPlanner.warning.noRecipes": "Engin uppskrift fyrir {{meal}} passar vi\xF0 matar\xE6\xF0is- og ofn\xE6misstillingarnar \xFE\xEDnar, svo s\xFA m\xE1lt\xED\xF0 er au\xF0.",
+  "mealPlanner.warning.noRecipesProteins": "Engin uppskrift fyrir {{meal}} passar vi\xF0 matar\xE6\xF0is-, ofn\xE6mis- og pr\xF3teinvali\xF0 \xFEitt, svo s\xFA m\xE1lt\xED\xF0 er au\xF0. Viltu leyfa einn pr\xF3teingjafa \xED vi\xF0b\xF3t e\xF0a lengri eldunart\xEDma?",
+  "mealPlanner.warning.oneServing": "Hver m\xE1lt\xED\xF0 er einn skammtur. Breyttu sk\xF6mmtunum eftir matarlyst.",
+  "mealPlanner.warning.timeRelaxed": "Engin uppskrift fyrir {{meal}} r\xFAmast innan {{minutes}} m\xEDn\xFAtna, svo sumar taka lengri t\xEDma.",
   "progression.action.add_reps": "Fj\xF6lga endurtekningum",
   "progression.action.calibrate": "Finna vi\xF0mi\xF0",
   "progression.action.discomfort_hold": "Engin aukning",
@@ -5852,34 +5942,57 @@ function generateMealPlan(weekStart, prefs, ctx = {}) {
   return { plan, warnings: planWarnings(plan, prefs, ctx) };
 }
 var weekdayName = (date) => formatDate(date, { weekday: "long" });
+function textCtx(ctx) {
+  const lang = ctx.lang ?? "en";
+  const tr = sharedT(lang);
+  const en = lang === "en";
+  return {
+    lang,
+    tr,
+    en,
+    name: (r) => ctx.recipeName ? ctx.recipeName(r) : r.name,
+    day: (date) => ctx.weekdayOn ? ctx.weekdayOn(date) : `on ${weekdayName(date)}`,
+    /** Lower-case meal for sentences: "breakfast" / "morgunmat" (Icelandic object form). */
+    meal: (slot) => tr.t(`aiServer.mealSlotFor.${slot}`),
+    /** Numbers as the English text always printed them; locale-formatted in other languages. */
+    num: (n) => en ? String(n) : n,
+    lower: (x) => x.toLocaleLowerCase(localeFor(lang)),
+    /** Fragments joined with "and" (English kept as before: "a and b and c"). */
+    and: (parts2) => en ? parts2.join(" and ") : listText(parts2, lang),
+    cap: (x) => x.charAt(0).toLocaleUpperCase(localeFor(lang)) + x.slice(1)
+  };
+}
 function planWarnings(plan, prefs, ctx = {}) {
   const byId = ctx.byId ?? catalog().byId;
   const recipesById = new Map((ctx.recipes ?? catalog().recipes).map((r) => [r.id, r]));
+  const x = textCtx(ctx);
+  const { tr } = x;
   const out = [];
   const excluded = prefs.proteinExcluded ?? [];
+  const allergenList = (list) => x.en ? list.map((a) => allergenLabel(a).toLowerCase()).join(", ") : listText(list.map((a) => x.lower(allergenLabel(a, x.lang))), x.lang);
   for (const slot of new Set(slotsForMeals(prefs.mealsPerDay))) {
     const { recipes, relaxedTime } = rankedCandidates(slot, prefs, ctx);
     if (recipes.length === 0)
-      out.push(excluded.length ? `No ${MEAL_LABELS[slot].toLowerCase()} recipes match your diet, allergy and protein choices, so that meal is left empty. Allow one more protein or a longer cook time?` : `No ${MEAL_LABELS[slot].toLowerCase()} recipes match your diet and allergy settings, so that meal is left empty.`);
+      out.push(tr.t(excluded.length ? "mealPlanner.warning.noRecipesProteins" : "mealPlanner.warning.noRecipes", { meal: x.meal(slot) }));
     else if (excluded.length && recipes.length < FEW_RECIPES)
-      out.push(`Only ${recipes.length} ${recipes.length === 1 ? MEAL_LABELS[slot].toLowerCase() : MEAL_PLURALS[slot]} fit${recipes.length === 1 ? "s" : ""} your choices, so some repeat this week: allow one more protein or a longer cook time?`);
-    else if (relaxedTime) out.push(`No ${MEAL_LABELS[slot].toLowerCase()} recipes fit within ${prefs.maxCookMinutes} minutes; some take longer.`);
+      out.push(tr.tp("mealPlanner.warning.fewRecipes", recipes.length, { meals: tr.tp(`mealPlanner.slotCount.${slot}`, recipes.length) }));
+    else if (relaxedTime) out.push(tr.t("mealPlanner.warning.timeRelaxed", { meal: x.meal(slot), minutes: x.num(prefs.maxCookMinutes) }));
   }
   for (const day of plan.days) {
     for (const it of day.items) {
       const r = recipesById.get(it.recipeId);
       if (!r) {
-        out.push(`A meal on ${weekdayName(day.date)} uses a recipe that is no longer available. Swap or remove it.`);
+        out.push(tr.t("mealPlanner.warning.missingRecipe", { day: x.day(day.date) }));
         continue;
       }
       const swaps = it.swaps;
       const problems = [];
       const allergens = new Set(recipeAllergens(r, swaps, byId));
       const hit = prefs.allergens.filter((a) => allergens.has(a));
-      if (hit.length) problems.push(`contains ${hit.map((a) => ALLERGEN_LABELS[a].toLowerCase()).join(", ")}`);
+      if (hit.length) problems.push(tr.tp("mealPlanner.problem.allergens", hit.length, { allergens: allergenList(hit) }));
       for (const e of it.extras ?? []) {
         const sideHit = prefs.allergens.filter((a) => byId.get(e.ingredientId)?.allergens.includes(a));
-        if (sideHit.length) problems.push(`has a side of ${extraText(e, byId)}, which contains ${sideHit.map((a) => ALLERGEN_LABELS[a].toLowerCase()).join(", ")}`);
+        if (sideHit.length) problems.push(tr.tp("mealPlanner.problem.sideAllergens", sideHit.length, { side: extraText(e, byId, x.lang), allergens: allergenList(sideHit) }));
       }
       const tags = recipeDietTags(r, swaps, byId);
       const extrasOk = (t) => (it.extras ?? []).every((e) => {
@@ -5887,9 +6000,12 @@ function planWarnings(plan, prefs, ctx = {}) {
         return !ing || ingredientAllowed(ing, { tags: [t] });
       });
       const notMet = prefs.tags.filter((t) => !satisfiesTag(tags, t) || !extrasOk(t));
-      if (notMet.length) problems.push(`isn't ${notMet.map((t) => DIET_TAG_LABELS[t].toLowerCase()).join(" or ")}`);
-      const ids = [...resolveIngredients(r, swaps, byId).map((x) => x.ingredientId), ...(it.extras ?? []).map((e) => e.ingredientId)];
-      if (prefs.dislikedIngredientIds.some((d) => ids.includes(d))) problems.push("includes an ingredient you skip");
+      if (notMet.length)
+        problems.push(tr.t("mealPlanner.problem.diet", {
+          diets: x.en ? notMet.map((t) => dietTagLabel(t).toLowerCase()).join(" or ") : listText(notMet.map((t) => `\u201E${dietTagLabel(t, x.lang)}\u201C`), x.lang, "disjunction")
+        }));
+      const ids = [...resolveIngredients(r, swaps, byId).map((i) => i.ingredientId), ...(it.extras ?? []).map((e) => e.ingredientId)];
+      if (prefs.dislikedIngredientIds.some((d) => ids.includes(d))) problems.push(tr.t("mealPlanner.problem.skipped"));
       if (excluded.length) {
         const groups = new Set(recipeProteinGroups(r, swaps, byId));
         for (const e of it.extras ?? []) {
@@ -5897,16 +6013,15 @@ function planWarnings(plan, prefs, ctx = {}) {
           if (g) groups.add(g);
         }
         const hitG = excluded.filter((g) => groups.has(g));
-        if (hitG.length) problems.push(`includes ${proteinListText(hitG)}, which you marked Not for me`);
+        if (hitG.length) problems.push(tr.t("mealPlanner.problem.proteins", { proteins: proteinListText(hitG, x.lang) }));
       }
-      if (problems.length) out.push(`${r.name} on ${weekdayName(day.date)} ${problems.join(" and ")}. Swap it or edit the meal.`);
+      if (problems.length) out.push(tr.t("mealPlanner.warning.mealConflict", { recipe: x.name(r), day: x.day(day.date), problems: x.and(problems) }));
     }
   }
-  if (!prefs.proteinTarget && !prefs.kcalTarget) out.push("Portions are one serving each. Adjust servings to suit your appetite.");
+  if (!prefs.proteinTarget && !prefs.kcalTarget) out.push(tr.t("mealPlanner.warning.oneServing"));
   return [...new Set(out)];
 }
 var FEW_RECIPES = 5;
-var MEAL_PLURALS = { breakfast: "breakfasts", lunch: "lunches", dinner: "dinners", snack: "snacks" };
 
 // supabase/functions/_shared/ai/meals.ts
 var fold2 = (s) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();

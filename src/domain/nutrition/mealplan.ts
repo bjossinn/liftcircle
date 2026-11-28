@@ -5,12 +5,25 @@
  */
 import type { ID, Ingredient, Recipe } from '@/domain/types';
 import { INGREDIENTS_BY_ID, PURCHASE_FORM } from '@/data/ingredients';
-import { ingredientCategoryLabel, ingredientDisplayName } from '@/data/catalogText';
+import { ingredientCategoryLabel, ingredientDisplayName, recipeDisplayName } from '@/data/catalogText';
+import { weekday, weekdayOn } from '@/lib/dates';
 import { getLanguage, locale, t, type Language } from '@/i18n';
 import { formatGrams, friendlyAmount, resolveIngredients, type IngredientIndex, type Swap } from './recipes';
-import type { PlanDraft } from '../../../supabase/functions/_shared/nutrition/mealplan';
+import type { PlanContext, PlanDraft } from '../../../supabase/functions/_shared/nutrition/mealplan';
 
 export * from '../../../supabase/functions/_shared/nutrition/mealplan';
+
+/**
+ * Context for the planner's warning and day-status texts in the app language: localized recipe names and "on Monday" /
+ * "á mánudaginn". Pass it (spread into any other context) to planWarnings, planDayStatus and planStatus.
+ */
+export function planTextContext(language: Language = getLanguage()): Required<Pick<PlanContext, 'lang' | 'recipeName' | 'weekdayOn'>> {
+  return {
+    lang: language,
+    recipeName: (r) => recipeDisplayName(r, language),
+    weekdayOn: (date) => weekdayOn(weekday(date), language),
+  };
+}
 
 /* ------------------------------------------------------------ shopping list */
 export interface ShoppingItem {

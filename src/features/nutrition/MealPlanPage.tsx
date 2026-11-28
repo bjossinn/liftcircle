@@ -18,7 +18,7 @@ import {
 import { ingredientDisplayName, recipeDisplayName } from '@/data/catalogText';
 import { useT } from '@/i18n';
 import {
-  addPlanItem, allowedAddOns, balancePlan, extraText, generateMealPlan, planItemNutrition, planStatus, planWarnings, PORTION_STEP, PROTEIN_ADDONS,
+  addPlanItem, allowedAddOns, balancePlan, extraText, generateMealPlan, planItemNutrition, planStatus, planTextContext, planWarnings, PORTION_STEP, PROTEIN_ADDONS,
   rankedCandidates, removePlanItem, replacePlanDay, swapMeal, updatePlanItem, type PlanDayStatus, type PlanPrefs,
 } from '@/domain/nutrition/mealplan';
 import { AllergenNote, prefsFromAccount, useWeekPlan } from './shared';
@@ -72,8 +72,9 @@ export default function MealPlanPage() {
   const prefs = useMemo(() => prefsFromAccount(account), [account]);
   // Warnings, totals and gaps are derived from the saved plan and current settings, so they survive a reload
   // and update after swaps, portion changes, substitutions, edits and target changes.
-  const warnings = useMemo(() => (plan ? planWarnings(plan, prefs) : []), [plan, prefs]);
-  const status = useMemo(() => (plan ? planStatus(plan, prefs) : null), [plan, prefs]);
+  const textCtx = useMemo(() => planTextContext(language), [language]);
+  const warnings = useMemo(() => (plan ? planWarnings(plan, prefs, textCtx) : []), [plan, prefs, textCtx]);
+  const status = useMemo(() => (plan ? planStatus(plan, prefs, textCtx) : null), [plan, prefs, textCtx]);
   const energyTarget = prefs.kcalTarget != null;
   const canBalanceAll = !!status?.days.some((d) => d.balanced);
 

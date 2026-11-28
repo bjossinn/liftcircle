@@ -15,7 +15,7 @@ import { kvGet, kvSet, newRecord, saveRecord } from '@/db/repo';
 import { formatDate, todayISO } from '@/lib/dates';
 import { displayMacro, mealLabel } from '@/domain/nutrition/recipes';
 import { numberText, useT } from '@/i18n';
-import { extraText, type PlanDay } from '@/domain/nutrition/mealplan';
+import { extraText, planTextContext, type PlanDay } from '@/domain/nutrition/mealplan';
 import {
   applyMealPlanSuggestion, isMealPlanApplied, previewMealPlan, undoMealPlanSuggestion, type MealPlanApplyMode, type MealPlanSuggestion,
 } from '@/domain/nutrition/aiActions';
@@ -33,7 +33,7 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
   const { account, db } = useApp();
   const existing = useWeekPlan(s.weekStart);
   const prefs = useMemo(() => prefsFromAccount(account), [account]);
-  const preview = useMemo(() => previewMealPlan(s, prefs), [s, prefs]);
+  const preview = useMemo(() => previewMealPlan(s, prefs, planTextContext(language)), [s, prefs, language]);
   const today = todayISO(account.settings.timeZone);
   const applied = isMealPlanApplied(existing, s.id);
   const expired = s.weekEnd < today;
