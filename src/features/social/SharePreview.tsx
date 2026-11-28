@@ -10,7 +10,7 @@ import { uuid } from '@/lib/id';
 import { buildActivitySnapshot, buildWorkoutSnapshot } from '@/social/snapshot';
 import { cancelPendingPost, friendlyError, processPendingPosts, queuePost, retryPendingPost, usePendingProgress } from '@/social/pendingPosts';
 import { AccessNotice, SnapshotView, useSocialAccess } from './common';
-import { AUDIENCE_OPTIONS, CAPTION_MAX } from './PostCard';
+import { CAPTION_MAX, useAudienceOptions } from './PostCard';
 import { PhotoPicker, usePhotoPicker } from './PhotoPicker';
 import { isFeatureEnabled } from '@/config/featureFlags';
 import { useT } from '@/i18n';
@@ -25,6 +25,7 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
   const toast = useToast();
   const { byId } = useExercises();
   const { t } = useT();
+  const audienceOptions = useAudienceOptions();
 
   const [postId, setPostId] = useState<ID>(() => uuid());
   const [fields, setFields] = useState<ShareFields>(() => ({ ...settings.social.autoShare.fields }));
@@ -201,7 +202,7 @@ export function SharePreview(props: { session?: WorkoutSession; activity?: Activ
           setTouchedAudience(true);
           setAudience(v);
         }}
-        options={AUDIENCE_OPTIONS}
+        options={audienceOptions}
       />
       <p className="text-xs text-muted mt-2 px-1">{audience === 'friends' ? t('workout.share.friendsHint') : t('workout.share.privateHint')}</p>
 

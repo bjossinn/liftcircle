@@ -12,7 +12,7 @@ import { MemoryRouter } from 'react-router';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const h = vi.hoisted(() => ({ app: null as unknown }));
-vi.mock('@/state/app', () => ({ useApp: () => h.app }));
+vi.mock('@/state/app', () => ({ useApp: () => h.app, useDb: () => (h.app as { db: unknown }).db }));
 
 import { ToastProvider } from '@/components/toast';
 import AuthPage from '@/features/auth/AuthPage';

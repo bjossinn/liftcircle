@@ -6,10 +6,12 @@ import { useDb } from '@/state/app';
 import { SharePreview } from './SharePreview';
 import { isFeatureEnabled } from '@/config/featureFlags';
 import type { ID } from '@/domain/types';
+import { useT } from '@/i18n';
 
 /** /feed/new — standalone text/photo post, or share a finished workout (?session=) / activity (?activity=). */
 export default function ComposePage() {
   const nav = useNavigate();
+  const { t } = useT();
   const db = useDb();
   const [params] = useSearchParams();
   const sessionId = params.get('session');
@@ -27,7 +29,7 @@ export default function ComposePage() {
     return { kind: 'text' as const };
   }, [db, sessionId, activityId]);
 
-  const title = sessionId ? 'Share workout' : activityId ? 'Share activity' : 'New post';
+  const title = sessionId ? t('social.share_workout') : activityId ? t('social.share_activity') : t('social.new_post');
   // With the feed on, land on it. With it off, open the new post (or, if it's still waiting to upload, go back to
   // where the share started: the workout, or Today when the page was opened directly).
   const done = (postId: ID | null) => {
@@ -40,11 +42,17 @@ export default function ComposePage() {
   let body;
   if (!source) body = <Spinner />;
   else if (source.kind === 'session' && !source.session)
-    body = <EmptyState title="Workout not found" body="It may have been deleted or isn’t on this device." action={<Button onClick={() => nav(-1)}>Go back</Button>} />;
+    body = <EmptyState title={t('workout.notFound')} body={t('social.it_may_have_been_deleted_or')} action={<Button onClick={() => nav(-1)}>{t('nav.goBack')}</Button>} />;
   else if (source.kind === 'session' && source.session!.status !== 'completed')
-    body = <EmptyState title="Finish the workout first" body="You can share a workout once it’s completed." action={<Button onClick={() => nav(`/train/session/${source.session!.id}`)}>Back to workout</Button>} />;
+    body = (
+      <EmptyState
+        title={t('social.finish_the_workout_first')}
+        body={t('social.you_can_share_a_workout_once')}
+        action={<Button onClick={() => nav(`/train/session/${source.session!.id}`)}>{t('aiCard.session.back')}</Button>}
+      />
+    );
   else if (source.kind === 'activity' && !source.activity)
-    body = <EmptyState title="Activity not found" body="It may have been deleted or isn’t on this device." action={<Button onClick={() => nav(-1)}>Go back</Button>} />;
+    body = <EmptyState title={t('summary.activityNotFound')} body={t('social.it_may_have_been_deleted_or')} action={<Button onClick={() => nav(-1)}>{t('nav.goBack')}</Button>} />;
   else
     body = (
       <SharePreview
@@ -59,7 +67,7 @@ export default function ComposePage() {
     <Page
       title={title}
       back={
-        <IconButton label="Back" onClick={() => nav(-1)}>
+        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
           <ChevronLeft className="size-6" />
         </IconButton>
       }

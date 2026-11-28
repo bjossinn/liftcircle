@@ -8,7 +8,10 @@ import { planPrefsFrom, type PlanPrefs } from '@/domain/nutrition/mealplan';
 import { displayMacro } from '@/domain/nutrition/recipes';
 import { computeNutritionTargets, type TargetInput } from '@/domain/nutrition/targets';
 import { remainingVsTargets, type DayTotals, type MacroKey } from '@/domain/nutrition/log';
-import { numberText, t, useT } from '@/i18n';
+import { getLanguage, numberText, t, useT, type Language } from '@/i18n';
+import { INGREDIENTS_BY_ID } from '@/data/ingredients';
+import { RECIPES_BY_ID } from '@/data/recipes';
+import { ingredientDisplayName, recipeDisplayName } from '@/data/catalogText';
 
 /** Macro display names in the current language (read at render). */
 export const MACRO_LABEL: Readonly<Record<MacroKey, string>> = {
@@ -138,6 +141,30 @@ export function macroLine(e: { kcal?: number; protein?: number; carbs?: number; 
   if (full && (e.carbs != null || e.fat != null))
     parts.push(t('aiCard.macro.lineCarbs', { amount: amount(e.carbs, 'carbs') }), t('aiCard.macro.lineFat', { amount: amount(e.fat, 'fat') }));
   return parts.join(' · ');
+}
+
+/** Suffix the recipe screen adds to the stored name when a recipe is logged with swaps (stored data, English). */
+const WITH_SWAPS = ' (with swaps)';
+
+/**
+ * Name to show for a logged entry. The stored name stays as stored; when the entry refers to a bundled recipe or
+ * ingredient and its name is still the catalog name (not renamed by the user), the localized catalog name is shown.
+ */
+export function entryDisplayName(e: Pick<FoodLogEntry, 'name' | 'source'>, lang: Language = getLanguage()): string {
+  const ref = e.source?.refId;
+  if (!ref) return e.name;
+  if (e.source.kind === 'recipe') {
+    const r = RECIPES_BY_ID.get(ref);
+    if (!r) return e.name;
+    if (e.name === r.name) return recipeDisplayName(r, lang);
+    if (e.name === r.name + WITH_SWAPS) return t('nutrition.recipe.with_swaps_name', { name: recipeDisplayName(r, lang) }, lang);
+    return e.name;
+  }
+  if (e.source.kind === 'ingredient') {
+    const ing = INGREDIENTS_BY_ID.get(ref);
+    return ing && e.name === ing.name ? ingredientDisplayName(ing, lang) : e.name;
+  }
+  return e.name;
 }
 
 export function prefsFromAccount(account: AccountState, variant = 0): PlanPrefs {

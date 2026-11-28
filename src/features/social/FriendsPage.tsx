@@ -10,6 +10,7 @@ import { friendlyError } from '@/social/pendingPosts';
 import { AccessNotice, Avatar, Time, shareLink, usernameProblem, useSocialAccess } from './common';
 import { useMyProfile } from './useMyProfile';
 import { NoFriendsArt } from '@/components/illustrations';
+import { useT } from '@/i18n';
 
 type Tab = 'friends' | 'requests' | 'blocked';
 type PersonLike = Pick<SocialProfile, 'id' | 'username' | 'displayName' | 'avatarUrl'>;
@@ -41,23 +42,25 @@ function PersonRow({ person, sub, children }: { person: PersonLike; sub?: ReactN
 
 export default function FriendsPage() {
   const nav = useNavigate();
+  const { t } = useT();
   const { access, meId } = useSocialAccess();
   return (
     <Page
-      title="Friends"
+      title={t('profile.friends')}
       back={
-        <IconButton label="Back" onClick={() => nav(-1)}>
+        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
           <ChevronLeft className="size-6" />
         </IconButton>
       }
     >
-      {access !== 'ok' ? <AccessNotice access={access} what="Friends" guestTitle="Find your friends" /> : <FriendsContent meId={meId!} />}
+      {access !== 'ok' ? <AccessNotice access={access} what="friends" guestTitle={t('social.access.find_your_friends')} /> : <FriendsContent meId={meId!} />}
     </Page>
   );
 }
 
 function FriendsContent({ meId }: { meId: string }) {
   const toast = useToast();
+  const { t } = useT();
   const me = useMyProfile(meId);
   const [tab, setTab] = useState<Tab>('friends');
   const [lists, setLists] = useState<Lists | null>(null);
@@ -71,9 +74,9 @@ function FriendsContent({ meId }: { meId: string }) {
       const [friends, reqs, blocked] = await Promise.all([socialApi.listFriends(), socialApi.listFriendRequests(), socialApi.listBlocked()]);
       setLists({ friends, incoming: reqs.incoming, outgoing: reqs.outgoing, blocked });
     } catch (e) {
-      setError(friendlyError(e, 'Couldn’t load your friends.'));
+      setError(friendlyError(e, t('social.couldnt_load_your_friends')));
     }
-  }, []);
+  }, [t]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -102,9 +105,9 @@ function FriendsContent({ meId }: { meId: string }) {
     <>
       {me.known && !me.profile && (
         <Notice tone="accent" className="mb-3">
-          <p>Create a profile so friends can find you by username.</p>
+          <p>{t('social.create_a_profile_so_friends_can_2')}</p>
           <Link to="/profile/edit" className="inline-flex min-h-11 items-center font-semibold text-accent">
-            Create profile
+            {t('profile.create')}
           </Link>
         </Notice>
       )}
@@ -117,38 +120,38 @@ function FriendsContent({ meId }: { meId: string }) {
           size="sm"
           className="mt-2"
           icon={<Share2 className="size-4" />}
-          onClick={() => void shareLink(`${publicAppUrl.replace(/\/$/, '')}/u/${encodeURIComponent(me.profile!.username)}`, `${me.profile!.displayName} on Hard Earned`, toast)}
+          onClick={() => void shareLink(`${publicAppUrl.replace(/\/$/, '')}/u/${encodeURIComponent(me.profile!.username)}`, t('social.share_title', { name: me.profile!.displayName }), toast)}
         >
-          Share my profile link
+          {t('social.share_my_profile_link')}
         </Button>
       )}
 
       <div className="mt-5">
         <Segmented
-          label="Friends sections"
+          label={t('social.friends_sections')}
           value={tab}
           onChange={setTab}
           options={[
-            { value: 'friends', label: `Friends${lists ? ` (${lists.friends.length})` : ''}` },
-            { value: 'requests', label: `Requests${lists && lists.incoming.length ? ` (${lists.incoming.length})` : ''}` },
-            { value: 'blocked', label: 'Blocked' },
+            { value: 'friends', label: lists ? t('social.friendsx', { count: lists.friends.length }) : t('profile.friends') },
+            { value: 'requests', label: lists && lists.incoming.length ? t('social.requestsx', { count: lists.incoming.length }) : t('social.requests') },
+            { value: 'blocked', label: t('social.blocked') },
           ]}
         />
       </div>
 
       {error ? (
-        <ErrorState title="Couldn’t load your friends" message={error} onRetry={load} />
+        <ErrorState title={t('social.couldnt_load_your_friends')} message={error} onRetry={load} />
       ) : !lists ? (
-        <Spinner label="Loading friends" />
+        <Spinner label={t('social.loading_friends')} />
       ) : tab === 'friends' ? (
         lists.friends.length === 0 ? (
-          <EmptyState illustration={<NoFriendsArt />} title="No friends yet" body="Training is better together. Find people by their exact username, or share your profile link." />
+          <EmptyState illustration={<NoFriendsArt />} title={t('social.no_friends_yet')} body={t('social.training_is_better_together_find_people')} />
         ) : (
           <Card className="mt-3 overflow-hidden">
             <ul className="divide-y divide-line">
               {lists.friends.map((f) => (
                 <PersonRow key={f.id} person={f}>
-                  <IconButton label={`Remove ${nameOf(f)} as a friend`} onClick={() => setConfirmRemove(f)} className="text-muted">
+                  <IconButton label={t('social.remove_x_as_a_friend', { name: nameOf(f) })} onClick={() => setConfirmRemove(f)} className="text-muted">
                     <UserMinus className="size-5" />
                   </IconButton>
                 </PersonRow>
@@ -158,18 +161,22 @@ function FriendsContent({ meId }: { meId: string }) {
         )
       ) : tab === 'requests' ? (
         <>
-          <SectionTitle>Received</SectionTitle>
+          <SectionTitle>{t('social.received')}</SectionTitle>
           {lists.incoming.length === 0 ? (
-            <p className="text-sm text-muted px-1">No requests waiting for you.</p>
+            <p className="text-sm text-muted px-1">{t('social.no_requests_waiting_for_you')}</p>
           ) : (
             <Card className="overflow-hidden">
               <ul className="divide-y divide-line">
                 {lists.incoming.map((r) => (
                   <PersonRow key={r.id} person={r.other} sub={<> · <Time iso={r.createdAt} /></>}>
-                    <Button size="sm" variant="primary" loading={busyId === r.id} icon={<Check className="size-4" />} onClick={() => act(r.id, () => socialApi.respondFriendRequest(r.id, true), `You and ${nameOf(r.other)} are now friends`, 'Couldn’t accept the request.')}>
-                      Accept
+                    <Button size="sm" variant="primary" loading={busyId === r.id} icon={<Check className="size-4" />} onClick={() => act(r.id, () => socialApi.respondFriendRequest(r.id, true), t('social.now_friends_with', { name: nameOf(r.other) }), t('social.error.accept'))}>
+                      {t('social.accept')}
                     </Button>
-                    <IconButton label={`Decline request from ${nameOf(r.other)}`} disabled={busyId === r.id} onClick={() => act(r.id, () => socialApi.respondFriendRequest(r.id, false), 'Request declined', 'Couldn’t decline the request.')}>
+                    <IconButton
+                      label={t('social.decline_request_from_x', { name: nameOf(r.other) })}
+                      disabled={busyId === r.id}
+                      onClick={() => act(r.id, () => socialApi.respondFriendRequest(r.id, false), t('social.request_declined'), t('social.error.decline'))}
+                    >
                       <X className="size-5" />
                     </IconButton>
                   </PersonRow>
@@ -177,16 +184,16 @@ function FriendsContent({ meId }: { meId: string }) {
               </ul>
             </Card>
           )}
-          <SectionTitle>Sent</SectionTitle>
+          <SectionTitle>{t('social.sent')}</SectionTitle>
           {lists.outgoing.length === 0 ? (
-            <p className="text-sm text-muted px-1">You haven’t sent any requests.</p>
+            <p className="text-sm text-muted px-1">{t('social.you_havent_sent_any_requests')}</p>
           ) : (
             <Card className="overflow-hidden">
               <ul className="divide-y divide-line">
                 {lists.outgoing.map((r) => (
-                  <PersonRow key={r.id} person={r.other} sub={<> · sent <Time iso={r.createdAt} /></>}>
-                    <Button size="sm" loading={busyId === r.id} onClick={() => act(r.id, () => socialApi.cancelFriendRequest(r.id), 'Request cancelled', 'Couldn’t cancel the request.')}>
-                      Cancel
+                  <PersonRow key={r.id} person={r.other} sub={<> · {t('social.sent_lower')} <Time iso={r.createdAt} /></>}>
+                    <Button size="sm" loading={busyId === r.id} onClick={() => act(r.id, () => socialApi.cancelFriendRequest(r.id), t('social.request_cancelled'), t('social.error.cancel_request'))}>
+                      {t('common.cancel')}
                     </Button>
                   </PersonRow>
                 ))}
@@ -195,7 +202,7 @@ function FriendsContent({ meId }: { meId: string }) {
           )}
         </>
       ) : lists.blocked.length === 0 ? (
-        <EmptyState icon={<Ban className="size-6" aria-hidden />} title="No one is blocked" body="People you block can’t see your profile or posts, or send you requests." />
+        <EmptyState icon={<Ban className="size-6" aria-hidden />} title={t('social.no_one_is_blocked')} body={t('social.people_you_block_cant_see_your')} />
       ) : (
         <Card className="mt-3 overflow-hidden">
           <ul className="divide-y divide-line">
@@ -206,8 +213,8 @@ function FriendsContent({ meId }: { meId: string }) {
                   <span className="block font-medium truncate">{nameOf(b)}</span>
                   <span className="block text-xs text-muted truncate">@{b.username}</span>
                 </span>
-                <Button size="sm" loading={busyId === b.id} onClick={() => act(b.id, () => socialApi.unblockUser(b.id), `${nameOf(b)} is unblocked`, 'Couldn’t unblock.')}>
-                  Unblock
+                <Button size="sm" loading={busyId === b.id} onClick={() => act(b.id, () => socialApi.unblockUser(b.id), t('social.x_unblocked', { name: nameOf(b) }), t('social.error.unblock'))}>
+                  {t('social.unblock')}
                 </Button>
               </li>
             ))}
@@ -217,14 +224,14 @@ function FriendsContent({ meId }: { meId: string }) {
 
       <ConfirmDialog
         open={!!confirmRemove}
-        title={confirmRemove ? `Remove ${nameOf(confirmRemove)} as a friend?` : 'Remove friend?'}
-        body="You’ll stop seeing each other’s friends-only posts. They won’t be notified."
-        confirmLabel="Remove friend"
+        title={confirmRemove ? t('social.remove_x_as_a_friend_2', { name: nameOf(confirmRemove) }) : t('social.remove_friend_2')}
+        body={t('social.youll_stop_seeing_each_others_friends')}
+        confirmLabel={t('social.remove_friend')}
         danger
         busy={!!confirmRemove && busyId === confirmRemove.id}
         onConfirm={async () => {
           const f = confirmRemove!;
-          await act(f.id, () => socialApi.removeFriend(f.id), `${nameOf(f)} removed from friends`, 'Couldn’t remove this friend.');
+          await act(f.id, () => socialApi.removeFriend(f.id), t('social.x_removed_from_friends', { name: nameOf(f) }), t('social.error.remove_friend'));
           setConfirmRemove(null);
         }}
         onCancel={() => setConfirmRemove(null)}
@@ -236,6 +243,7 @@ function FriendsContent({ meId }: { meId: string }) {
 /* ================================================================ search */
 function FindByUsername({ meId, onChanged }: { meId: string; onChanged: () => void }) {
   const toast = useToast();
+  const { t } = useT();
   const [q, setQ] = useState('');
   const [searching, setSearching] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -246,7 +254,7 @@ function FindByUsername({ meId, onChanged }: { meId: string; onChanged: () => vo
   const search = async () => {
     const problem = usernameProblem(normalized);
     if (problem) {
-      setError(normalized ? 'Usernames are 3–20 lowercase letters, numbers or underscores.' : 'Enter a username.');
+      setError(normalized ? t('social.username.format') : t('social.username.enter'));
       setResult(null);
       return;
     }
@@ -256,7 +264,7 @@ function FindByUsername({ meId, onChanged }: { meId: string; onChanged: () => vo
       const r = await socialApi.getProfileByUsername(normalized);
       setResult(!r || r.relation === 'blocked_by' ? 'none' : r.profile.id === meId ? 'self' : r);
     } catch (e) {
-      setError(friendlyError(e, 'Search didn’t work. Try again.'));
+      setError(friendlyError(e, t('social.error.search')));
     } finally {
       setSearching(false);
     }
@@ -293,8 +301,8 @@ function FindByUsername({ meId, onChanged }: { meId: string; onChanged: () => vo
       >
         <div className="flex-1">
         <Input
-          label="Find by username"
-          placeholder="exact_username"
+          label={t('social.find_by_username')}
+          placeholder={t('social.exact_username')}
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -307,37 +315,37 @@ function FindByUsername({ meId, onChanged }: { meId: string; onChanged: () => vo
           error={error}
         />
         </div>
-        <IconButton label="Search" type="submit" disabled={searching} className="bg-surface-2 border border-line shrink-0">
+        <IconButton label={t('social.search')} type="submit" disabled={searching} className="bg-surface-2 border border-line shrink-0">
           <Search className="size-5" />
         </IconButton>
       </form>
-      {searching && <Spinner label="Searching" />}
+      {searching && <Spinner label={t('coaching.directory.searching')} />}
       {result === 'none' && (
         <p className="text-sm text-muted mt-3" role="status">
-          No one found with the username @{normalized}. Usernames are exact: check the spelling.
+          {t('social.no_one_found_with_the_username', { username: normalized })}
         </p>
       )}
       {result === 'self' && (
         <p className="text-sm text-muted mt-3" role="status">
-          That’s you!
+          {t('social.thats_you')}
         </p>
       )}
       {result && typeof result === 'object' && (
         <ul className="mt-2 -mx-3">
           <PersonRow person={result.profile}>
             {result.relation === 'none' && (
-              <Button size="sm" variant="primary" loading={busy} icon={<UserPlus className="size-4" />} onClick={() => act(() => socialApi.sendFriendRequest(result.profile.id), 'Friend request sent', 'Couldn’t send the request.')}>
-                Add
+              <Button size="sm" variant="primary" loading={busy} icon={<UserPlus className="size-4" />} onClick={() => act(() => socialApi.sendFriendRequest(result.profile.id), t('social.friend_request_sent'), t('social.error.send_request'))}>
+                {t('foodLog.add')}
               </Button>
             )}
-            {result.relation === 'outgoing' && <Badge>Requested</Badge>}
+            {result.relation === 'outgoing' && <Badge>{t('social.requested')}</Badge>}
             {result.relation === 'incoming' && result.requestId && (
-              <Button size="sm" variant="primary" loading={busy} icon={<Check className="size-4" />} onClick={() => act(() => socialApi.respondFriendRequest(result.requestId!, true), 'You’re now friends', 'Couldn’t accept the request.')}>
-                Accept
+              <Button size="sm" variant="primary" loading={busy} icon={<Check className="size-4" />} onClick={() => act(() => socialApi.respondFriendRequest(result.requestId!, true), t('social.now_friends'), t('social.error.accept'))}>
+                {t('social.accept')}
               </Button>
             )}
-            {result.relation === 'friends' && <Badge tone="accent">Friends</Badge>}
-            {result.relation === 'blocked' && <Badge tone="danger">Blocked</Badge>}
+            {result.relation === 'friends' && <Badge tone="accent">{t('profile.friends')}</Badge>}
+            {result.relation === 'blocked' && <Badge tone="danger">{t('social.blocked')}</Badge>}
           </PersonRow>
         </ul>
       )}

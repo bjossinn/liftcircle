@@ -16,63 +16,66 @@ import { INTRO_MAX, NOTES_MAX, buildIntake, defaultScopes, hasValue, introProble
 import { REQUEST_BLOCK_TEXT, activeCoach, requestBlock } from '@/domain/coaching/eligibility';
 import { FORMAT_LABELS } from '@/domain/coaching/options';
 import { CoachPhoto, CoachingAccessNotice, coachingError, useCoachingAccess, useLoad } from './directory/common';
+import { useT, type MessageKey } from '@/i18n';
 
-const EXPERIENCE_LABELS: Record<Experience, string> = {
-  new: 'New to training',
-  returning: 'Returning after a break',
-  intermediate: 'Intermediate',
-  advanced: 'Advanced',
+const EXPERIENCE_KEYS: Record<Experience, MessageKey> = {
+  new: 'coaching.request.experience.new',
+  returning: 'onboarding.experience.returning',
+  intermediate: 'onboarding.experience.intermediate',
+  advanced: 'onboarding.experience.advanced',
 };
 
-const SCOPE_INFO: Record<ScopeKey, { label: string; body: string }> = {
-  training: { label: 'Training', body: 'Your workouts, how often you train, your current program and goals. Coaches use this to plan and adjust your program.' },
-  measurements: { label: 'Measurements', body: 'Bodyweight and body measurements you log.' },
-  nutrition: { label: 'Nutrition', body: 'Your food log totals and nutrition targets.' },
-  checkins: { label: 'Check-ins', body: 'Check-ins you send this coach, including any photos you choose to attach to them.' },
+const SCOPE_INFO: Record<ScopeKey, { label: MessageKey; body: MessageKey }> = {
+  training: { label: 'ai.scope.training', body: 'coaching.request.your_workouts_how_often_you_train' },
+  measurements: { label: 'ai.scope.measurements', body: 'coaching.request.bodyweight_and_body_measurements_you_log' },
+  nutrition: { label: 'today.nutrition', body: 'coaching.request.your_food_log_totals_and_nutrition' },
+  checkins: { label: 'coaching.shareScope.check_ins', body: 'coaching.request.check_ins_you_send_this_coach' },
 };
 
-const NEED_TEXT: Record<ScopeNeed, string> = {
-  recommended: 'Recommended for program coaching',
-  often_useful: 'Often useful for this coach’s services',
-  optional: 'Optional',
+const NEED_TEXT: Record<ScopeNeed, MessageKey> = {
+  recommended: 'coaching.request.need.recommended',
+  often_useful: 'coaching.request.need.often_useful',
+  optional: 'common.optional',
 };
 
 export default function RequestCoachingPage() {
   const nav = useNavigate();
   const { coachId } = useParams();
   const { access, meId } = useCoachingAccess();
+  const { t } = useT();
   return (
     <Page
-      title="Request coaching"
+      title={t('coaching.profile.request_coaching')}
       back={
-        <IconButton label="Back" onClick={() => nav(-1)}>
+        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
           <ChevronLeft className="size-6" />
         </IconButton>
       }
     >
-      {access !== 'ok' ? <CoachingAccessNotice access={access} /> : coachId ? <RequestLoader coachId={coachId} meId={meId} /> : <EmptyState title="Coach not found" />}
+      {access !== 'ok' ? <CoachingAccessNotice access={access} /> : coachId ? <RequestLoader coachId={coachId} meId={meId} /> : <EmptyState title={t('coaching.profile.coach_not_found')} />}
     </Page>
   );
 }
 
 function RequestLoader({ coachId, meId }: { coachId: string; meId: string | undefined }) {
   const { db } = useApp();
-  const coach = useLoad(() => coachingApi.getCoach(coachId), [coachId], { fallback: 'Couldn’t load this coach.' });
+  const { t } = useT();
+  const coach = useLoad(() => coachingApi.getCoach(coachId), [coachId], { fallback: t('coaching.profile.couldnt_load_this_coach') });
   const rels = useLoad(() => coachingApi.myRelationships(), []);
   const programs = useLiveQuery(() => db.programs.toArray(), [db]);
-  if ((coach.loading && coach.data === undefined) || programs === undefined || (rels.loading && rels.data === undefined)) return <Spinner label="Loading" />;
-  if (coach.error) return <ErrorState title="Couldn’t load this coach" message={coach.error} onRetry={coach.reload} />;
-  if (!coach.data) return <EmptyState title="This coach isn’t listed" body="The profile may have been unpublished." />;
+  if ((coach.loading && coach.data === undefined) || programs === undefined || (rels.loading && rels.data === undefined)) return <Spinner label={t('common.loading')} />;
+  if (coach.error) return <ErrorState title={t('coaching.profile.couldnt_load_this_coach')} message={coach.error} onRetry={coach.reload} />;
+  if (!coach.data) return <EmptyState title={t('coaching.profile.this_coach_isnt_listed')} body={t('coaching.request.the_profile_may_have_been_unpublished')} />;
   const active = alive(programs).filter((p) => p.active).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
   const block = requestBlock({ coachId, acceptingClients: coach.data.acceptingClients, meId, relationships: rels.data });
   if (block) {
     return (
       <EmptyState
-        title="You can’t send this request"
+        title={t('coaching.request.you_cant_send_this_request')}
         body={REQUEST_BLOCK_TEXT[block]}
         action={
           <Link to="/coaching/my" className="inline-flex min-h-11 items-center px-4 rounded-xl border border-line hover:bg-surface-2">
-            Go to My coach
+            {t('coaching.profile.go_to_my_coach')}
           </Link>
         }
       />
@@ -85,6 +88,7 @@ function RequestLoader({ coachId, meId }: { coachId: string; meId: string | unde
 function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; inputs: Parameters<typeof prefillIntake>[1]; currentCoachName: string | null }) {
   const nav = useNavigate();
   const toast = useToast();
+  const { t, tp } = useT();
   const { account } = useApp();
   const initial = useMemo(() => prefillIntake(account.profile, inputs, coach.formats), [account.profile, inputs, coach.formats]);
   const [draft, setDraft] = useState<IntakeDraft>(initial);
@@ -108,10 +112,10 @@ function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; 
     setError(null);
     try {
       await coachingApi.requestCoaching({ id: requestId.current, coachId: coach.userId, intake: buildIntake(draft), introMessage: intro.trim(), scopes });
-      toast.show(`Request sent to ${coach.displayName}`, { tone: 'success' });
+      toast.show(t('coaching.request.request_sent_to_x', { name: coach.displayName }), { tone: 'success' });
       nav('/coaching/my', { replace: true });
     } catch (e) {
-      setError(coachingError(e, 'Your request couldn’t be sent. Please try again.'));
+      setError(coachingError(e, t('coaching.request.couldnt_send')));
     } finally {
       setBusy(false);
     }
@@ -119,6 +123,7 @@ function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; 
 
   const goalOptions = (Object.keys(GOAL_LABELS) as Goal[]).map((g) => ({ value: g, label: GOAL_LABELS[g] }));
   const sent = buildIntake(draft);
+  const [coachedBefore, coachedAfter] = currentCoachName ? t('coaching.request.currently_coached_by_x', { name: '\u0000' }).split('\u0000') : ['', ''];
 
   return (
     <form
@@ -133,35 +138,37 @@ function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; 
         <CoachPhoto name={coach.displayName} url={coach.photoUrl} size={48} />
         <div className="min-w-0">
           <p className="font-semibold truncate">{coach.displayName}</p>
-          <p className="text-xs text-muted">The coach sees only this request until they accept.</p>
+          <p className="text-xs text-muted">{t('coaching.request.the_coach_sees_only_this_request')}</p>
         </div>
       </Card>
 
       {currentCoachName && (
         <Notice tone="warn" className="mt-3">
-          You’re currently coached by <strong>{currentCoachName}</strong>. You can have one coach at a time: if {coach.displayName} accepts, your coaching with {currentCoachName} ends automatically. Until then nothing changes. Your workouts and accepted programs stay yours either way.
+          {coachedBefore}
+          <strong>{currentCoachName}</strong>
+          {coachedAfter} {t('coaching.request.one_coach_at_a_time', { coach: coach.displayName, current: currentCoachName })}
         </Notice>
       )}
 
-      <SectionTitle>Introduce yourself</SectionTitle>
+      <SectionTitle>{t('coaching.request.introduce_yourself')}</SectionTitle>
       <Textarea
-        label="Message to the coach"
+        label={t('coaching.request.message_to_the_coach')}
         value={intro}
         maxLength={INTRO_MAX}
         onChange={(e) => setIntro(e.target.value)}
         onBlur={() => setIntroTouched(true)}
         error={introErr}
-        hint={`What you’d like help with, and anything the coach should know. ${intro.length}/${INTRO_MAX}`}
+        hint={t('coaching.request.what_youd_like_help_with_and', { count: intro.length, max: INTRO_MAX })}
         className="min-h-32"
         required
       />
 
-      <SectionTitle>About your training</SectionTitle>
-      <p className="text-sm text-muted px-1 mb-2">Filled in from your profile and program. Edit anything, or remove what you’d rather not share. Only what’s kept is sent.</p>
+      <SectionTitle>{t('coaching.request.about_your_training')}</SectionTitle>
+      <p className="text-sm text-muted px-1 mb-2">{t('coaching.request.filled_in_from_your_profile_and')}</p>
       <Card className="divide-y divide-line">
-        <IntakeRow label="Main goal" k="goal" draft={draft} keep={keep} summary={draft.goal ? GOAL_LABELS[draft.goal] : null}>
-          <Select aria-label="Main goal" value={draft.goal ?? ''} onChange={(e) => set('goal', (e.target.value || undefined) as Goal | undefined)}>
-            <option value="">Choose…</option>
+        <IntakeRow label={t('onboarding.goal.group')} k="goal" draft={draft} keep={keep} summary={draft.goal ? GOAL_LABELS[draft.goal] : null}>
+          <Select aria-label={t('onboarding.goal.group')} value={draft.goal ?? ''} onChange={(e) => set('goal', (e.target.value || undefined) as Goal | undefined)}>
+            <option value="">{t('coaching.apply.choose')}</option>
             {goalOptions.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
@@ -169,9 +176,9 @@ function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; 
             ))}
           </Select>
         </IntakeRow>
-        <IntakeRow label="Second goal" k="secondaryGoal" draft={draft} keep={keep} summary={draft.secondaryGoal ? GOAL_LABELS[draft.secondaryGoal] : null}>
-          <Select aria-label="Second goal" value={draft.secondaryGoal ?? ''} onChange={(e) => set('secondaryGoal', (e.target.value || undefined) as Goal | undefined)}>
-            <option value="">None</option>
+        <IntakeRow label={t('coaching.request.second_goal')} k="secondaryGoal" draft={draft} keep={keep} summary={draft.secondaryGoal ? GOAL_LABELS[draft.secondaryGoal] : null}>
+          <Select aria-label={t('coaching.request.second_goal')} value={draft.secondaryGoal ?? ''} onChange={(e) => set('secondaryGoal', (e.target.value || undefined) as Goal | undefined)}>
+            <option value="">{t('coaching.admin.none')}</option>
             {goalOptions
               .filter((o) => o.value !== draft.goal)
               .map((o) => (
@@ -181,84 +188,82 @@ function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; 
               ))}
           </Select>
         </IntakeRow>
-        <IntakeRow label="Experience" k="experience" draft={draft} keep={keep} summary={draft.experience ? EXPERIENCE_LABELS[draft.experience] : null}>
-          <Select aria-label="Experience" value={draft.experience ?? ''} onChange={(e) => set('experience', (e.target.value || undefined) as Experience | undefined)}>
-            <option value="">Choose…</option>
-            {(Object.keys(EXPERIENCE_LABELS) as Experience[]).map((x) => (
+        <IntakeRow label={t('onboarding.experience.group')} k="experience" draft={draft} keep={keep} summary={draft.experience ? t(EXPERIENCE_KEYS[draft.experience]) : null}>
+          <Select aria-label={t('onboarding.experience.group')} value={draft.experience ?? ''} onChange={(e) => set('experience', (e.target.value || undefined) as Experience | undefined)}>
+            <option value="">{t('coaching.apply.choose')}</option>
+            {(Object.keys(EXPERIENCE_KEYS) as Experience[]).map((x) => (
               <option key={x} value={x}>
-                {EXPERIENCE_LABELS[x]}
+                {t(EXPERIENCE_KEYS[x])}
               </option>
             ))}
           </Select>
         </IntakeRow>
-        <IntakeRow label="Training days per week" k="daysPerWeek" draft={draft} keep={keep} summary={draft.daysPerWeek != null ? `${draft.daysPerWeek} day${draft.daysPerWeek === 1 ? '' : 's'}` : null}>
-          <NumberInput ariaLabel="Training days per week" value={draft.daysPerWeek ?? null} decimals={false} min={1} max={7} onChange={(v) => set('daysPerWeek', v ?? undefined)} suffix="days" />
+        <IntakeRow label={t('coaching.request.training_days_per_week')} k="daysPerWeek" draft={draft} keep={keep} summary={draft.daysPerWeek != null ? tp('coaching.request.days_count', draft.daysPerWeek) : null}>
+          <NumberInput ariaLabel={t('coaching.request.training_days_per_week')} value={draft.daysPerWeek ?? null} decimals={false} min={1} max={7} onChange={(v) => set('daysPerWeek', v ?? undefined)} suffix={t('progress.goalDaysUnit')} />
         </IntakeRow>
-        <IntakeRow label="Session length" k="sessionMinutes" draft={draft} keep={keep} summary={draft.sessionMinutes != null ? `${draft.sessionMinutes} min` : null}>
-          <NumberInput ariaLabel="Session length in minutes" value={draft.sessionMinutes ?? null} decimals={false} min={10} max={240} onChange={(v) => set('sessionMinutes', v ?? undefined)} suffix="min" />
+        <IntakeRow label={t('coaching.request.session_length')} k="sessionMinutes" draft={draft} keep={keep} summary={draft.sessionMinutes != null ? t('coaching.request.minutes_value', { count: draft.sessionMinutes }) : null}>
+          <NumberInput ariaLabel={t('coaching.request.session_length_in_minutes')} value={draft.sessionMinutes ?? null} decimals={false} min={10} max={240} onChange={(v) => set('sessionMinutes', v ?? undefined)} suffix={t('progress.minutesUnit')} />
         </IntakeRow>
-        <IntakeRow label="Equipment" k="equipment" draft={draft} keep={keep} summary={draft.equipment?.length ? draft.equipment.map((q) => EQUIPMENT_LABELS[q]).join(', ') : null}>
+        <IntakeRow label={t('workout.custom.equipment')} k="equipment" draft={draft} keep={keep} summary={draft.equipment?.length ? draft.equipment.map((q) => EQUIPMENT_LABELS[q]).join(', ') : null}>
           <ChipGroup<Equipment>
-            label="Equipment you have"
+            label={t('coaching.request.equipment_you_have')}
             values={draft.equipment ?? []}
             onChange={(v) => set('equipment', v)}
             options={(Object.keys(EQUIPMENT_LABELS) as Equipment[]).map((q) => ({ value: q, label: EQUIPMENT_LABELS[q] }))}
           />
         </IntakeRow>
         <IntakeRow
-          label="Areas to be careful with"
+          label={t('coaching.request.areas_to_be_careful_with')}
           k="limitations"
           draft={draft}
           keep={keep}
           summary={draft.limitations?.length ? draft.limitations.map((l) => LIMITATION_LABELS[l]).join(', ') : null}
-          help="Body areas only: no medical details are shared. Tell the coach more in your message if you want to."
+          help={t('coaching.request.body_areas_only')}
         >
           <ChipGroup<LimitationArea>
-            label="Areas to be careful with"
+            label={t('coaching.request.areas_to_be_careful_with')}
             values={draft.limitations ?? []}
             onChange={(v) => set('limitations', v)}
             options={(Object.keys(LIMITATION_LABELS) as LimitationArea[]).map((l) => ({ value: l, label: LIMITATION_LABELS[l] }))}
           />
         </IntakeRow>
         {coach.formats.length > 0 && (
-          <IntakeRow label="Preferred format" k="preferredFormat" draft={draft} keep={keep} summary={draft.preferredFormat ? FORMAT_LABELS[draft.preferredFormat] : null}>
+          <IntakeRow label={t('coaching.request.preferred_format')} k="preferredFormat" draft={draft} keep={keep} summary={draft.preferredFormat ? FORMAT_LABELS[draft.preferredFormat] : null}>
             <Segmented<CoachFormat | ''>
-              label="Preferred format"
+              label={t('coaching.request.preferred_format')}
               value={draft.preferredFormat ?? ''}
               onChange={(v) => set('preferredFormat', v || undefined)}
-              options={[{ value: '' as const, label: 'No preference' }, ...coach.formats.map((f) => ({ value: f, label: FORMAT_LABELS[f] }))]}
+              options={[{ value: '' as const, label: t('coaching.request.no_preference') }, ...coach.formats.map((f) => ({ value: f, label: FORMAT_LABELS[f] }))]}
             />
           </IntakeRow>
         )}
-        <IntakeRow label="Anything else" k="notes" draft={draft} keep={keep} summary={draft.notes?.trim() ? draft.notes.trim() : null} alwaysEditable>
-          <Textarea aria-label="Anything else for the coach" value={draft.notes ?? ''} maxLength={NOTES_MAX} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value, kept: { ...d.kept, notes: e.target.value.trim().length > 0 } }))} placeholder="Schedule constraints, preferences…" className="min-h-20" />
+        <IntakeRow label={t('coaching.request.anything_else')} k="notes" draft={draft} keep={keep} summary={draft.notes?.trim() ? draft.notes.trim() : null} alwaysEditable>
+          <Textarea aria-label={t('coaching.request.anything_else_for_the_coach')} value={draft.notes ?? ''} maxLength={NOTES_MAX} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value, kept: { ...d.kept, notes: e.target.value.trim().length > 0 } }))} placeholder={t('coaching.request.schedule_constraints_preferences')} className="min-h-20" />
         </IntakeRow>
       </Card>
-      {Object.keys(sent).length === 0 && <p className="text-xs text-muted px-1 mt-2">No training details will be sent. Just your message.</p>}
+      {Object.keys(sent).length === 0 && <p className="text-xs text-muted px-1 mt-2">{t('coaching.request.no_training_details_will_be_sent')}</p>}
 
-      <SectionTitle>What this coach can see once they accept</SectionTitle>
+      <SectionTitle>{t('coaching.request.what_this_coach_can_see_once')}</SectionTitle>
       <Card className="px-4 py-1 divide-y divide-line">
         {(Object.keys(SCOPE_INFO) as ScopeKey[]).map((k) => (
           <Toggle
             key={k}
-            label={SCOPE_INFO[k].label}
+            label={t(SCOPE_INFO[k].label)}
             checked={scopes[k]}
             onChange={(v) => setScopes((s) => ({ ...s, [k]: v }))}
             description={
               <>
-                {SCOPE_INFO[k].body} <span className={needs[k] === 'optional' ? 'text-faint' : 'text-accent'}>{NEED_TEXT[needs[k]]}.</span>
+                {t(SCOPE_INFO[k].body)} <span className={needs[k] === 'optional' ? 'text-faint' : 'text-accent'}>{t(NEED_TEXT[needs[k]])}.</span>
               </>
             }
           />
         ))}
       </Card>
-      {!scopes.training && <p className="text-xs text-warn px-1 mt-2">Without training access the coach can’t see your workouts, so they can’t review your progress or adjust your program.</p>}
+      {!scopes.training && <p className="text-xs text-warn px-1 mt-2">{t('coaching.request.without_training_access_the_coach_cant')}</p>}
       <Notice className="mt-3">
         <span className="inline-flex items-start gap-2">
           <ShieldCheck className="size-4 text-accent shrink-0 mt-0.5" aria-hidden />
-          <span>
-            Nothing is shared until the coach accepts, and you can change these choices or end coaching anytime from My coach. Being friends with someone never gives them coaching access.
-          </span>
+          <span>{t('coaching.request.nothing_is_shared_until_the_coach')}</span>
         </span>
       </Notice>
 
@@ -269,10 +274,10 @@ function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; 
       )}
       <div className="flex gap-2 mt-6">
         <Button variant="ghost" icon={<X className="size-4" />} onClick={() => nav(-1)} disabled={busy}>
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" block loading={busy}>
-          Send request
+          {t('coaching.request.send_request')}
         </Button>
       </div>
     </form>
@@ -291,13 +296,14 @@ function IntakeRow({
   help?: string;
   alwaysEditable?: boolean;
 }) {
+  const { t } = useT();
   const [editing, setEditing] = useState(false);
   const kept = draft.kept[k];
   const empty = !hasValue(draft, k);
   if (alwaysEditable) {
     return (
       <div className="px-4 py-3 flex flex-col gap-2">
-        <span className="text-sm font-medium">{label} <span className="text-muted font-normal">(optional)</span></span>
+        <span className="text-sm font-medium">{label} <span className="text-muted font-normal">{t('coaching.request.optional')}</span></span>
         {children}
       </div>
     );
@@ -307,21 +313,21 @@ function IntakeRow({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium">{label}</p>
-          <p className={kept && !empty ? 'text-sm text-ink break-words' : 'text-sm text-faint'}>{!kept ? (empty ? 'Not added' : 'Not shared') : empty ? 'Not set' : summary}</p>
+          <p className={kept && !empty ? 'text-sm text-ink break-words' : 'text-sm text-faint'}>{!kept ? (empty ? t('coaching.request.not_added') : t('coaching.request.not_shared')) : empty ? t('activities.form.not_set') : summary}</p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {kept ? (
             <>
               <Button size="sm" variant="ghost" onClick={() => setEditing((v) => !v)} aria-expanded={editing}>
-                {editing ? 'Done' : empty ? 'Add' : 'Edit'}
+                {editing ? t('workout.done') : empty ? t('foodLog.add') : t('common.edit')}
               </Button>
-              <IconButton label={`Don’t share ${label.toLowerCase()}`} size="sm" onClick={() => { keep(k, false); setEditing(false); }}>
+              <IconButton label={t('coaching.request.dont_share_x', { label: label.toLowerCase() })} size="sm" onClick={() => { keep(k, false); setEditing(false); }}>
                 <X className="size-4" />
               </IconButton>
             </>
           ) : (
-            <Button size="sm" variant="ghost" icon={empty ? undefined : <Undo2 className="size-4" />} aria-label={`${empty ? 'Add' : 'Include'} ${label.toLowerCase()}`} onClick={() => { keep(k, true); if (empty) setEditing(true); }}>
-              {empty ? 'Add' : 'Include'}
+            <Button size="sm" variant="ghost" icon={empty ? undefined : <Undo2 className="size-4" />} aria-label={empty ? t('coaching.request.add_x', { label: label.toLowerCase() }) : t('coaching.request.include_x', { label: label.toLowerCase() })} onClick={() => { keep(k, true); if (empty) setEditing(true); }}>
+              {empty ? t('foodLog.add') : t('coaching.request.include')}
             </Button>
           )}
         </div>

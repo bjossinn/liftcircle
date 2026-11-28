@@ -21,11 +21,13 @@ import { SessionCard } from '@/features/program/parts';
 import { Avatar } from '@/features/social/common';
 import { BackButton, CoachingAccessNotice, IntakeSummary, ProposalStatusBadge, fmtDateTime, useCoachingAccess, useLoad } from './tools/common';
 import { ClientCard, CoachGate, useCoachStatus } from './tools/coach';
+import { useT } from '@/i18n';
 
 type OverviewState = Record<string, { data?: ClientOverview; error?: string }>;
 
 export default function CoachDashboardPage() {
   const nav = useNavigate();
+  const { t } = useT();
   const { access } = useCoachingAccess();
   const ok = access === 'ok';
   const coach = useCoachStatus(ok);
@@ -53,7 +55,7 @@ export default function CoachDashboardPage() {
     };
   }, [activeKey]);
 
-  const nameOf = (relId?: string | null) => rels.data?.find((r) => r.id === relId)?.client.displayName ?? 'Client';
+  const nameOf = (relId?: string | null) => rels.data?.find((r) => r.id === relId)?.client.displayName ?? t('coaching.client.client');
   const checkinsToAnswer = active.flatMap((r) => (overviews[r.id]?.data?.checkins ?? []).filter((c) => !c.coachResponse).map((c) => ({ rel: r, c })));
   const latestPerRel = useMemo(() => {
     const m = new Map<string, NonNullable<typeof proposals.data>[number]>();
@@ -70,26 +72,27 @@ export default function CoachDashboardPage() {
   );
 
   return (
-    <Page title="Your coaching workspace" back={<BackButton to="/coaching" />}>
+    <Page title={t('coaching.dashboard.your_coaching_workspace')} back={<BackButton to="/coaching" />}>
       {!ok ? (
         <CoachingAccessNotice access={access} what="The coach dashboard" />
       ) : !approved ? (
         <CoachGate state={coach.state} profile={coach.profile} error={coach.error} reload={coach.reload} />
       ) : rels.error && !rels.data ? (
-        <ErrorState title="Couldn’t load your clients" message={rels.error} onRetry={rels.reload} />
+        <ErrorState title={t('coaching.dashboard.couldnt_load_your_clients')} message={rels.error} onRetry={rels.reload} />
       ) : !rels.data ? (
-        <Spinner label="Loading your clients" />
+        <Spinner label={t('coaching.dashboard.loading_your_clients')} />
       ) : (
         <>
           {coach.profile && (!coach.profile.listed || !coach.profile.acceptingClients) && (
             <Notice className="mb-3">
-              {!coach.profile.listed ? 'Your listing is hidden from the directory.' : 'You’re not accepting new clients.'} Existing clients aren’t affected.
+              {!coach.profile.listed ? t('coaching.dashboard.your_listing_is_hidden_from_the') : t('coaching.dashboard.youre_not_accepting_new_clients')}{' '}
+              {t('coaching.dashboard.existing_clients_arent_affected')}
             </Notice>
           )}
 
-          <SectionTitle>Requests ({pending.length})</SectionTitle>
+          <SectionTitle>{t('coaching.dashboard.requests', { count: pending.length })}</SectionTitle>
           {pending.length === 0 ? (
-            <Card className="px-4 py-3 text-sm text-muted">No pending requests.</Card>
+            <Card className="px-4 py-3 text-sm text-muted">{t('coaching.dashboard.no_pending_requests')}</Card>
           ) : (
             <ul className="flex flex-col gap-2">
               {pending.map((r) => (
@@ -98,15 +101,20 @@ export default function CoachDashboardPage() {
             </ul>
           )}
 
-          <SectionTitle>Needs attention</SectionTitle>
+          <SectionTitle>{t('coaching.dashboard.needs_attention')}</SectionTitle>
           {checkinsToAnswer.length === 0 && programAttention.length === 0 ? (
-            <Card className="px-4 py-3 text-sm text-muted">You’re all caught up.</Card>
+            <Card className="px-4 py-3 text-sm text-muted">{t('coaching.dashboard.youre_all_caught_up')}</Card>
           ) : (
             <Card className="overflow-hidden">
               <ul className="divide-y divide-line">
                 {checkinsToAnswer.map(({ rel, c }) => (
                   <li key={c.id}>
-                    <ListRow title={`${rel.client.displayName}: check-in`} subtitle={`Sent ${fmtDateTime(c.createdAt)} · waiting for your reply`} right={<Badge tone="warn">Reply</Badge>} onClick={() => nav(`/coaching/client/${rel.id}#checkins`)} />
+                    <ListRow
+                      title={t('coaching.dashboard.x_check_in', { name: rel.client.displayName })}
+                      subtitle={t('coaching.dashboard.sent_x_waiting_for_your_reply', { date: fmtDateTime(c.createdAt) })}
+                      right={<Badge tone="warn">{t('coaching.client.reply')}</Badge>}
+                      onClick={() => nav(`/coaching/client/${rel.id}#checkins`)}
+                    />
                   </li>
                 ))}
                 {programAttention.map((p) => (
@@ -115,12 +123,12 @@ export default function CoachDashboardPage() {
                       title={`${nameOf(p.relationshipId)}: ${p.program.name}`}
                       subtitle={
                         p.status === 'declined'
-                          ? `Declined ${fmtDateTime(p.respondedAt)}: consider a revision`
+                          ? t('coaching.dashboard.declined_x_consider_a_revision', { date: fmtDateTime(p.respondedAt) })
                           : p.status === 'draft'
-                            ? 'Draft not sent yet'
+                            ? t('coaching.dashboard.draft_not_sent_yet')
                             : p.status === 'invalid'
-                              ? 'Didn’t pass validation'
-                              : `Accepted ${fmtDateTime(p.respondedAt)}`
+                              ? t('coaching.dashboard.didnt_pass_validation')
+                              : t('coaching.dashboard.accepted_x', { date: fmtDateTime(p.respondedAt) })
                       }
                       right={<ProposalStatusBadge status={p.status} />}
                       onClick={() => nav(`/coaching/client/${p.relationshipId}/program`)}
@@ -131,9 +139,11 @@ export default function CoachDashboardPage() {
             </Card>
           )}
 
-          <SectionTitle>Clients ({active.length})</SectionTitle>
+          <SectionTitle>{t('coaching.dashboard.clients', { count: active.length })}</SectionTitle>
           {active.length === 0 ? (
-            <EmptyState icon={<Users className="size-6" aria-hidden />} title="Your clients will appear here once they’re connected." body="When you accept a request, the client appears here. Clients choose what they share with you." />
+            <EmptyState icon={<Users className="size-6" aria-hidden />} title={t('coaching.dashboard.your_clients_will_appear_here_once')}
+              body={t('coaching.dashboard.when_you_accept_a_request_the')}
+            />
           ) : (
             <ul className="flex flex-col gap-2">
               {active.map((r) => (
@@ -152,21 +162,22 @@ export default function CoachDashboardPage() {
 /* ================================================================ requests */
 function RequestCard({ rel, onDone }: { rel: CoachingRelationship; onDone: () => Promise<void> }) {
   const toast = useToast();
+  const { t } = useT();
   const [mode, setMode] = useState<'accept' | 'decline' | null>(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const name = rel.client.displayName || 'This person';
+  const name = rel.client.displayName || t('coaching.dashboard.this_person');
   const respond = async () => {
     if (!mode) return;
     setBusy(true);
     try {
       await coachingApi.respondRequest(rel.id, mode === 'accept', message.trim() || undefined);
-      toast.show(mode === 'accept' ? `You’re now coaching ${name}.` : 'Request declined.', { tone: 'success' });
+      toast.show(mode === 'accept' ? t('coaching.dashboard.youre_now_coaching_x', { name }) : t('coaching.dashboard.request_declined'), { tone: 'success' });
       setMode(null);
       setMessage('');
       await onDone();
     } catch (e) {
-      toast.show(coachingError(e, 'Couldn’t respond to the request.'), { tone: 'error' });
+      toast.show(coachingError(e, t('social.error.respond')), { tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -177,41 +188,41 @@ function RequestCard({ rel, onDone }: { rel: CoachingRelationship; onDone: () =>
         <Avatar profile={{ displayName: name, username: '', avatarUrl: rel.client.avatarUrl }} size={40} />
         <div className="min-w-0 flex-1">
           <p className="font-semibold truncate">{name}</p>
-          <p className="text-xs text-muted">Requested {fmtDateTime(rel.requestedAt)}</p>
+          <p className="text-xs text-muted">{t('coaching.myCoach.requested_on', { date: fmtDateTime(rel.requestedAt) })}</p>
         </div>
         <Inbox className="size-5 text-muted" aria-hidden />
       </div>
       <IntakeSummary intake={rel.intake} intro={rel.introMessage} />
-      <p className="text-xs text-muted mt-3">Until you accept, you see only this intake and intro message. None of their records.</p>
+      <p className="text-xs text-muted mt-3">{t('coaching.dashboard.until_you_accept_you_see_only')}</p>
       <div className="flex gap-2 mt-3">
         <Button variant="ghost" icon={<X className="size-4" />} onClick={() => setMode('decline')}>
-          Decline
+          {t('aiCard.proposal.decline')}
         </Button>
         <Button variant="primary" icon={<Check className="size-4" />} onClick={() => setMode('accept')}>
-          Accept
+          {t('social.accept')}
         </Button>
       </div>
       <Sheet
         open={!!mode}
         onClose={() => setMode(null)}
-        title={mode === 'accept' ? `Accept ${name}?` : `Decline ${name}’s request?`}
+        title={mode === 'accept' ? t('coaching.dashboard.accept_x', { name }) : t('coaching.dashboard.decline_xs_request', { name })}
         footer={
           <>
             <Button variant="ghost" onClick={() => setMode(null)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button variant={mode === 'accept' ? 'primary' : 'danger'} loading={busy} onClick={respond}>
-              {mode === 'accept' ? 'Accept and start coaching' : 'Decline request'}
+              {mode === 'accept' ? t('coaching.dashboard.accept_and_start_coaching') : t('coaching.dashboard.decline_request')}
             </Button>
           </>
         }
       >
         <p className="text-sm text-muted mb-3">
           {mode === 'accept'
-            ? `Coaching starts now and a private conversation opens. You’ll see only what ${name} chose to share. If they have another coach, that coaching ends.`
-            : `${name} will be told you declined. A short, kind reason helps them find the right coach.`}
+            ? t('coaching.dashboard.coaching_starts_now_and_a_private', { name })
+            : t('coaching.dashboard.x_will_be_told_you_declined', { name })}
         </p>
-        <Textarea label="Message (optional)" maxLength={2000} value={message} onChange={(e) => setMessage(e.target.value)} />
+        <Textarea label={t('coaching.dashboard.message_optional')} maxLength={2000} value={message} onChange={(e) => setMessage(e.target.value)} />
       </Sheet>
     </Card>
   );
@@ -221,6 +232,7 @@ function RequestCard({ rel, onDone }: { rel: CoachingRelationship; onDone: () =>
 function CoachTemplates({ clients }: { clients: CoachingRelationship[] }) {
   const nav = useNavigate();
   const toast = useToast();
+  const { t } = useT();
   const { db, account } = useApp();
   const { list: catalog, byId } = useExercises();
   const rows = useLiveQuery(() => db.templates.toArray(), [db]);
@@ -231,14 +243,14 @@ function CoachTemplates({ clients }: { clients: CoachingRelationship[] }) {
     try {
       await saveRecord('templates', { ...rec, template }, db);
     } catch (e) {
-      toast.show(e instanceof Error ? e.message : 'Couldn’t save the template.', { tone: 'error' });
+      toast.show(e instanceof Error ? e.message : t('coaching.dashboard.couldnt_save_the_template'), { tone: 'error' });
     }
   };
   const create = async () => {
     try {
       await saveRecord('templates', newRecord({ template: emptyTemplate(`lib:${Date.now().toString(36)}`, 'New session template') }), db);
     } catch (e) {
-      toast.show(e instanceof Error ? e.message : 'Couldn’t create the template.', { tone: 'error' });
+      toast.show(e instanceof Error ? e.message : t('coaching.dashboard.couldnt_create_the_template'), { tone: 'error' });
     }
   };
 
@@ -248,17 +260,17 @@ function CoachTemplates({ clients }: { clients: CoachingRelationship[] }) {
         id="tpl-title"
         action={
           <Button size="sm" variant="ghost" icon={<Plus className="size-4" />} onClick={create}>
-            New template
+            {t('coaching.dashboard.new_template')}
           </Button>
         }
       >
-        Your session templates
+        {t('coaching.dashboard.your_session_templates')}
       </SectionTitle>
-      <p className="text-xs text-muted px-1 mb-2">Reusable sessions from your own template library. Edit them here, then duplicate one into a client’s program. The client gets a copy, never a link.</p>
+      <p className="text-xs text-muted px-1 mb-2">{t('coaching.dashboard.reusable_sessions_from_your_own_template')}</p>
       {rows === undefined ? (
-        <Spinner label="Loading templates" />
+        <Spinner label={t('coaching.dashboard.loading_templates')} />
       ) : templates.length === 0 ? (
-        <Card className="px-4 py-3 text-sm text-muted">No templates yet. Create one, or save a session to your library from any program.</Card>
+        <Card className="px-4 py-3 text-sm text-muted">{t('coaching.dashboard.no_templates_yet_create_one_or')}</Card>
       ) : (
         <ul className="flex flex-col gap-3">
           {templates.map((rec) => (
@@ -270,26 +282,26 @@ function CoachTemplates({ clients }: { clients: CoachingRelationship[] }) {
                 unit={account.settings.units.weight}
                 editable
                 defaultOpen={false}
-                onChange={(t) => void save(rec, t)}
+                onChange={(tpl) => void save(rec, tpl)}
                 onDelete={() => void deleteRecord('templates', rec.id, db)}
               />
               <div className="flex justify-end">
                 <Button size="sm" variant="ghost" icon={<CopyPlus className="size-4" />} disabled={!clients.length || rec.template.exercises.length === 0} onClick={() => setDupFor(rec)}>
-                  Duplicate for a client
+                  {t('coaching.dashboard.duplicate_for_a_client')}
                 </Button>
               </div>
             </li>
           ))}
         </ul>
       )}
-      <Sheet open={!!dupFor} onClose={() => setDupFor(null)} title={`Add “${dupFor?.template.name ?? ''}” to…`}>
+      <Sheet open={!!dupFor} onClose={() => setDupFor(null)} title={t('coaching.dashboard.add_x_to', { name: dupFor?.template.name ?? '' })}>
         <ul className="-mx-5 divide-y divide-line">
           {clients.map((r) => (
             <li key={r.id}>
               <ListRow
                 left={<Avatar profile={{ displayName: r.client.displayName, username: '', avatarUrl: r.client.avatarUrl }} size={32} />}
                 title={r.client.displayName}
-                subtitle="Opens their program builder with this session added"
+                subtitle={t('coaching.dashboard.opens_their_program_builder_with_this')}
                 onClick={() => {
                   const id = dupFor?.id;
                   setDupFor(null);

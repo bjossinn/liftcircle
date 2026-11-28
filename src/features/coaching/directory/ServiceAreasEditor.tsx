@@ -86,7 +86,7 @@ function AreaRowEditor({
     onChange({ ...patch, lat: null, lng: null, radiusKm: null, label: null });
   };
 
-  const query = [area.kind === 'city' ? area.city.trim() : '', area.kind !== 'country' ? area.region.trim() : '', area.country ? countryName(area.country) : ''].filter(Boolean).join(', ');
+  const query = [area.kind === 'city' ? area.city.trim() : '', area.kind !== 'country' ? area.region.trim() : '', area.country ? countryName(area.country, 'en') : ''].filter(Boolean).join(', ');
   const lookUp = async () => {
     if (!query || (area.kind === 'city' && !area.city.trim()) || (area.kind === 'region' && !area.region.trim())) {
       setLookupError('Fill in the place first.');

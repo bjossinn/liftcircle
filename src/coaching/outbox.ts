@@ -23,6 +23,7 @@ import { coachingApi } from '@/backend/coaching';
 import { useApp } from '@/state/app';
 import { relationshipWritable } from './relationship';
 import { coachingError, isNetworkError } from './errors';
+import { t } from '@/i18n';
 
 export const MESSAGE_MAX = 4000;
 export const MAX_PHOTOS = 4;
@@ -70,10 +71,10 @@ export interface QueueInput {
 export async function queueCoachMessage(input: QueueInput, db: LiftDb): Promise<void> {
   const body = input.body.trim();
   const photos = input.photos ?? [];
-  if (!body && photos.length === 0) throw new Error('Write a message or add a photo.');
-  if (body.length > MESSAGE_MAX) throw new Error(`Messages can be up to ${MESSAGE_MAX} characters.`);
-  if (photos.length > MAX_PHOTOS) throw new Error(`You can attach up to ${MAX_PHOTOS} photos.`);
-  if (db.isGuest) throw new Error('Sign in to message your coach.');
+  if (!body && photos.length === 0) throw new Error(t('coaching.outbox.write_or_photo'));
+  if (body.length > MESSAGE_MAX) throw new Error(t('coaching.outbox.too_long', { max: MESSAGE_MAX }));
+  if (photos.length > MAX_PHOTOS) throw new Error(t('coaching.outbox.too_many_photos', { max: MAX_PHOTOS }));
+  if (db.isGuest) throw new Error(t('coaching.outbox.sign_in'));
   await db.transaction('rw', db.coachOutbox, async () => {
     if (await db.coachOutbox.get(input.id)) return;
     await db.coachOutbox.add({
@@ -166,7 +167,7 @@ async function runOnce(db: LiftDb, opts: ProcessOptions) {
     if (!w.ok) {
       await db.coachOutbox.update(row.id, {
         status: 'failed',
-        error: `Not sent: ${w.reason} Your text is kept here so you can copy it.`,
+        error: t('coaching.outbox.not_sent_reason', { reason: w.reason }),
       });
       continue;
     }
@@ -210,7 +211,7 @@ async function sendOne(row: CoachOutboxItem, db: LiftDb): Promise<boolean> {
         return true;
       }
       const cur = await db.coachOutbox.get(row.id);
-      if (cur) await db.coachOutbox.update(row.id, { status: 'failed', attempts: cur.attempts + 1, error: coachingError(e, 'The message wasn’t sent.') });
+      if (cur) await db.coachOutbox.update(row.id, { status: 'failed', attempts: cur.attempts + 1, error: coachingError(e, t('coaching.outbox.message_not_sent')) });
     } catch {
       /* storage failure: leave as is */
     }
@@ -256,7 +257,7 @@ export function useCoachOutboxRunner(): void {
 
 /** Status line for an unsent message. Never claims "Sent". */
 export function outboxStatusLabel(item: Pick<CoachOutboxItem, 'status'>, online: boolean, sending = false): string {
-  if (item.status === 'failed') return 'Failed: Retry';
-  if (sending || item.status === 'sending') return 'Sending…';
-  return online ? 'Sending…' : 'Queued: will send when you’re back online';
+  if (item.status === 'failed') return t('coaching.outbox.failed_retry');
+  if (sending || item.status === 'sending') return t('ai.chat.sending');
+  return online ? t('ai.chat.sending') : t('coaching.outbox.queued');
 }
