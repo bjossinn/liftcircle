@@ -13,6 +13,7 @@ import { formatDistance } from '@/domain/units';
 import { exercisesDone, sessionDurationSec } from '@/domain/stats';
 import { NoWorkoutsArt } from '@/components/illustrations';
 import { exerciseDisplayName } from '@/data/catalogText';
+import { sessionDisplayName } from '@/domain/program/localize';
 
 type Kind = 'all' | 'workouts' | 'activities';
 interface Item {
@@ -50,7 +51,7 @@ export default function HistoryPage() {
         kind: 'workout',
         date: s.date,
         sort: s.startedAt,
-        title: s.name,
+        title: sessionDisplayName({ name: s.name, id: s.templateId }),
         subtitle: tp('train.historyMeta', exercisesDone(s), { duration: formatMinutes(sessionDurationSec(s)) }),
         search: [s.name, s.notes, ...names].join(' ').toLowerCase(),
         href: `/train/history/${s.id}`,

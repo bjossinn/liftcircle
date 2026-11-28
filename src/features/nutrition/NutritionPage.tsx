@@ -296,21 +296,21 @@ function DayView() {
                   {list.map((e) => {
                     const name = entryDisplayName(e, language);
                     return (
-                    <li key={e.id} className="flex items-center gap-1 pl-4 pr-1 py-2 min-h-14">
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[15px] font-medium truncate">{name}</div>
-                        <div className="text-xs text-muted truncate">
-                          {e.servings != null ? `${tp('nutrition.home.servings_amount', e.servings)} · ` : e.grams != null ? `${numberText(e.grams)} g · ` : ''}
-                          {macroLine(e, targets.mode !== 'protein_only')}
+                      <li key={e.id} className="flex items-center gap-1 pl-4 pr-1 py-2 min-h-14">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[15px] font-medium truncate">{name}</div>
+                          <div className="text-xs text-muted truncate">
+                            {e.servings != null ? `${tp('nutrition.home.servings_amount', e.servings)} · ` : e.grams != null ? `${numberText(e.grams)} g · ` : ''}
+                            {macroLine(e, targets.mode !== 'protein_only')}
+                          </div>
                         </div>
-                      </div>
-                      <IconButton label={t('foodLog.editNamed', { name })} size="sm" onClick={() => setEditing(e)}>
-                        <Pencil className="size-4" />
-                      </IconButton>
-                      <IconButton label={t('foodLog.deleteNamed', { name })} size="sm" onClick={() => remove(e)}>
-                        <Trash2 className="size-4" />
-                      </IconButton>
-                    </li>
+                        <IconButton label={t('foodLog.editNamed', { name })} size="sm" onClick={() => setEditing(e)}>
+                          <Pencil className="size-4" />
+                        </IconButton>
+                        <IconButton label={t('foodLog.deleteNamed', { name })} size="sm" onClick={() => remove(e)}>
+                          <Trash2 className="size-4" />
+                        </IconButton>
+                      </li>
                     );
                   })}
                 </ul>
@@ -332,23 +332,23 @@ function DayView() {
                     : recipeDisplayName(s.id, language, s.name);
                 const meta = { protein: displayMacro(s.protein, 'protein'), kcal: s.kcal };
                 return (
-                <li key={`${s.kind}:${s.id}`} className="flex items-center gap-2 pl-4 pr-2 py-2 min-h-14">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[15px] font-medium truncate">
-                      {foodText}
+                  <li key={`${s.kind}:${s.id}`} className="flex items-center gap-2 pl-4 pr-2 py-2 min-h-14">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[15px] font-medium truncate">
+                        {foodText}
+                      </div>
+                      <div className="text-xs text-muted">{t(s.kind === 'recipe' ? 'nutrition.home.gap_recipe_meta' : 'nutrition.home.gap_food_meta', meta)}</div>
                     </div>
-                    <div className="text-xs text-muted">{t(s.kind === 'recipe' ? 'nutrition.home.gap_recipe_meta' : 'nutrition.home.gap_food_meta', meta)}</div>
-                  </div>
-                  {s.kind === 'food' ? (
-                    <Button size="sm" onClick={() => logSuggestion(s.id, s.grams!)} aria-label={t('nutrition.home.log_x_x', { food: foodText })}>
-                      {t('foodLog.log')}
-                    </Button>
-                  ) : (
-                    <Link to={`/nutrition/recipes/${s.id}`} className="text-sm text-accent font-medium px-3 min-h-9 inline-flex items-center">
-                      {t('program.view')}
-                    </Link>
-                  )}
-                </li>
+                    {s.kind === 'food' ? (
+                      <Button size="sm" onClick={() => logSuggestion(s.id, s.grams!)} aria-label={t('nutrition.home.log_x_x', { food: foodText })}>
+                        {t('foodLog.log')}
+                      </Button>
+                    ) : (
+                      <Link to={`/nutrition/recipes/${s.id}`} className="text-sm text-accent font-medium px-3 min-h-9 inline-flex items-center">
+                        {t('program.view')}
+                      </Link>
+                    )}
+                  </li>
                 );
               })}
             </ul>

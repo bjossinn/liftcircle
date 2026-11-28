@@ -19,7 +19,7 @@ import { uuid } from '@/lib/id';
 import { estimateSessionMinutes } from '@/domain/program/generator';
 import { socialApi } from '@/backend/social';
 import { useStarters } from './hooks';
-import { useT } from '@/i18n';
+import { t as tGlobal, useT } from '@/i18n';
 import { exerciseDisplayName } from '@/data/catalogText';
 
 export default function SessionDetailPage() {
@@ -297,7 +297,7 @@ function SaveTemplateSheet({ open, onClose, session, byId, catalog }: { open: bo
                   targetRir: se.prescription?.targetRir ?? 2,
                   restSec: se.prescription?.restSec ?? account.settings.rest.defaultSec,
                   durationSec: ex?.tracking === 'duration' ? Math.max(...work.map((s) => s.durationSec ?? 30)) : undefined,
-                  warmup: se.sets.some((s) => s.type === 'warmup') ? 'Warm up with 1–2 lighter sets.' : '',
+                  warmup: se.sets.some((s) => s.type === 'warmup') ? tGlobal('program.template.warmupLighterSets', undefined, 'en') : '',
                   priority: 2,
                   alternatives: ex?.substitutions ?? [],
                 };

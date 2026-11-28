@@ -6,7 +6,8 @@ import { hasCompletedWork } from '@/domain/setValidation';
 import type { ActivityLog, ActivityType, ID, ISODate, PlanOverride, Program, SessionTemplate, WorkoutSession } from '@/domain/types';
 import { addDays, formatDate, rangeDays, startOfWeek, weekday } from '@/lib/dates';
 import { currentVersion, templateById } from './program';
-import { t } from '@/i18n';
+import { t, t as tx } from '@/i18n';
+import { sessionDisplayName } from './localize';
 
 export type PlannedStatus = 'planned' | 'today' | 'done' | 'missed' | 'skipped' | 'moved';
 export interface PlannedSession {
@@ -161,7 +162,7 @@ export function rescheduleMissed(
   sessions: WorkoutSession[],
 ): { program: Program; movedTo: ISODate | null; message: string } {
   const t = templateById(p, templateId);
-  if (!t) return { program: p, movedTo: null, message: 'This session is no longer part of your program.' };
+  if (!t) return { program: p, movedTo: null, message: tx('ui.this_session_is_no_longer_part') };
   const origin = originalKey(p, missedDate, templateId);
   const v = currentVersion(p);
   const exp = p.inputs?.experience;
@@ -177,7 +178,7 @@ export function rescheduleMissed(
       break;
     }
   }
-  if (earliest >= horizon) return finishSkip(p, origin, templateId, 'Your next ' + t.name + ' is coming up, so we skipped this one. Just carry on with the plan.');
+  if (earliest >= horizon) return finishSkip(p, origin, templateId, tx('program.schedule.skippedNextSoon', { name: sessionDisplayName(t) }));
 
   const others = plannedSessionsInRange(p, addDays(earliest, -1), horizon, today, sessions).filter(
     (x) => !(x.template.id === templateId && x.date === missedDate) && x.status !== 'skipped' && x.status !== 'moved',
@@ -195,8 +196,8 @@ export function rescheduleMissed(
       origin,
       templateId,
       strict && days.length
-        ? `There’s no free day before your next ${t.name} without back-to-back hard sessions, so we skipped it. Your plan continues as normal.`
-        : `There’s no free available day before your next ${t.name}, so we skipped it. Your plan continues as normal.`,
+        ? tx('program.schedule.noFreeDayAdjacent', { name: sessionDisplayName(t) })
+        : tx('program.schedule.noFreeDay', { name: sessionDisplayName(t) }),
     );
   }
   const overrides = p.overrides.filter((o) => !(o.date === origin && o.templateId === templateId));
@@ -205,7 +206,7 @@ export function rescheduleMissed(
   return {
     program: { ...p, overrides, updatedAt: Date.now() },
     movedTo: target,
-    message: `Moved ${t.name} to ${formatDate(target)}.${adjacent ? ' It’s next to another hard session, so keep the effort a little lower.' : ''}`,
+    message: tx(adjacent ? 'ui.moved_x_to_x_adjacent' : 'ui.moved_x_to_x_x', { name: sessionDisplayName(t), date: formatDate(target) }),
   };
 }
 
