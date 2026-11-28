@@ -196,11 +196,11 @@ export default function MessagesPage() {
 
   let content;
   if (access === 'personal' || access === 'guest' || access === 'loading') {
-    content = <CoachingAccessNotice access={access} what="Messaging" />;
+    content = <CoachingAccessNotice access={access} what={t('coaching.messages.what_messaging')} />;
   } else if (rel === undefined && relError) {
     content = <ErrorState title={t('coaching.messages.couldnt_open_this_conversation')} message={relError} onRetry={reloadRel} />;
   } else if (rel === undefined) {
-    content = access === 'offline' || access === 'expired' ? <CoachingAccessNotice access={access} what="Messaging" /> : <Spinner label={t('ai.chat.loadingConversation')} />;
+    content = access === 'offline' || access === 'expired' ? <CoachingAccessNotice access={access} what={t('coaching.messages.what_messaging')} /> : <Spinner label={t('ai.chat.loadingConversation')} />;
   } else if (rel === null) {
     content = (
       <EmptyState
@@ -406,7 +406,7 @@ export default function MessagesPage() {
               </li>
             </ul>
           </Sheet>
-          <ReportCoachingSheet open={!!report} onClose={() => setReport(null)} relationshipId={rel.id} messageId={report?.messageId} what={report?.messageId ? 'message' : 'conversation'} />
+          <ReportCoachingSheet open={!!report} onClose={() => setReport(null)} relationshipId={rel.id} messageId={report?.messageId} what={report?.messageId ? t('coaching.messages.what_message') : t('coaching.messages.what_conversation')} />
           <ConfirmDialog
             open={blockOpen}
             title={t('coaching.messages.block_x_confirm', { name: other.name })}

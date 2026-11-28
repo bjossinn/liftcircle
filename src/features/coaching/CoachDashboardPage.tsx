@@ -74,7 +74,7 @@ export default function CoachDashboardPage() {
   return (
     <Page title={t('coaching.dashboard.your_coaching_workspace')} back={<BackButton to="/coaching" />}>
       {!ok ? (
-        <CoachingAccessNotice access={access} what="The coach dashboard" />
+        <CoachingAccessNotice access={access} what={t('coaching.dashboard.what_dashboard')} />
       ) : !approved ? (
         <CoachGate state={coach.state} profile={coach.profile} error={coach.error} reload={coach.reload} />
       ) : rels.error && !rels.data ? (

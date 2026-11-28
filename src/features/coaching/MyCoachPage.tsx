@@ -38,7 +38,7 @@ export default function MyCoachPage() {
     <Page title={t('coaching.hub.my_coach')} back={<BackButton to="/coaching" />}>
       <TakeOverNotice activeRelationshipIds={active ? [active.id] : []} ready={!!rels.data} />
       {!ok ? (
-        <CoachingAccessNotice access={access} what="Your coaching details" />
+        <CoachingAccessNotice access={access} what={t('coaching.myCoach.what_coaching_details')} />
       ) : rels.error && !rels.data ? (
         <ErrorState title={t('coaching.hub.couldnt_load_your_coaching')} message={rels.error} onRetry={rels.reload} />
       ) : !rels.data ? (

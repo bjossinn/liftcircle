@@ -211,7 +211,7 @@ function CoachProfile({ coachId, meId }: { coachId: string; meId: string | undef
           {t('coaching.profile.report_this_profile')}
         </button>
       )}
-      <ReportSheet open={reportOpen} onClose={() => setReportOpen(false)} target={{ userId: c.userId }} what={t('coaching.profile.report_what')} />
+      <ReportSheet open={reportOpen} onClose={() => setReportOpen(false)} target={{ userId: c.userId }} what="coach profile" />
     </>
   );
 }

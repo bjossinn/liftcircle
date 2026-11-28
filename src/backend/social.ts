@@ -12,6 +12,7 @@ import type { FeedCursor, ModerationReport, NewPostInput, Page, ReportInput, Soc
 import { requireSupabase } from './supabase';
 import { BackendError, toBackendError } from './syncRemote';
 import { uuid } from '@/lib/id';
+import { t } from '@/i18n';
 
 /** Signed URL lifetime. Short on purpose: revoked access stops working within this window. */
 export const SIGNED_URL_TTL = 300;
@@ -34,7 +35,7 @@ async function call<T>(fn: string, args?: Record<string, unknown>, fallback?: st
 async function session() {
   const { data } = await requireSupabase().auth.getSession();
   const s = data.session;
-  if (!s) throw new BackendError('You need to be signed in.', 'auth', 401);
+  if (!s) throw new BackendError(t('aiServer.auth.signIn'), 'auth', 401);
   return s;
 }
 
@@ -264,7 +265,7 @@ async function functionError(error: unknown, fallback: string): Promise<BackendE
   }
   const e = toBackendError(error, fallback);
   return /FunctionsFetchError|Failed to send a request/i.test(String((error as Error)?.message ?? (error as Error)?.name))
-    ? new BackendError('You appear to be offline. Check your connection and try again.', 'network')
+    ? new BackendError(t('sync.offlineError'), 'network')
     : e;
 }
 
@@ -280,13 +281,13 @@ function uploadErrorMessage(status: number, body: string): string {
   } catch {
     /* not json */
   }
-  if (status === 413 || /too large|exceeded the maximum/i.test(msg)) return 'This photo is too large to upload.';
-  if (status === 415 || /mime|content type/i.test(msg)) return 'This image format isn’t supported. Use JPEG or WebP.';
-  if (status === 401 || /jwt|token/i.test(msg)) return 'Your session has expired. Please sign in again.';
+  if (status === 413 || /too large|exceeded the maximum/i.test(msg)) return t('social.error.photo_too_large_upload');
+  if (status === 415 || /mime|content type/i.test(msg)) return t('social.error.image_format');
+  if (status === 401 || /jwt|token/i.test(msg)) return t('social.error.session_expired_upload');
   if (status === 403 || /row-level security|unauthorized|policy/i.test(msg)) {
-    return 'This photo can’t be uploaded: the post was already published or deleted.';
+    return t('social.error.upload_forbidden');
   }
-  return msg || `Upload failed (${status}). Please try again.`;
+  return msg || t('social.error.upload_failed_status', { status: String(status) });
 }
 
 /** Upload one object with real progress via XHR to the Storage REST API (upsert = idempotent retry). */
@@ -309,8 +310,8 @@ function xhrUpload(path: string, blob: Blob, token: string, onProgress: (loaded:
         resolve();
       } else reject(new BackendError(uploadErrorMessage(xhr.status, xhr.responseText), `http_${xhr.status}`, xhr.status));
     };
-    xhr.onerror = () => reject(new BackendError('Upload failed. Check your connection and try again.', 'network'));
-    xhr.ontimeout = () => reject(new BackendError('Upload timed out. Please try again.', 'network'));
+    xhr.onerror = () => reject(new BackendError(t('social.error.upload_network'), 'network'));
+    xhr.ontimeout = () => reject(new BackendError(t('social.error.upload_timeout'), 'network'));
     xhr.onabort = () => reject(new DOMException('Upload cancelled.', 'AbortError'));
     const onAbort = () => xhr.abort();
     signal?.addEventListener('abort', onAbort, { once: true });
@@ -350,7 +351,7 @@ export const socialApi: SocialApi = {
       p_bio: p.bio ?? null,
       p_interests: p.interests ?? [],
       p_discoverable: p.discoverable,
-    }, 'Could not save your profile.');
+    }, t('social.error.save_profile'));
     return (await profilesWithAvatars([raw]))[0];
   },
 
@@ -361,7 +362,7 @@ export const socialApi: SocialApi = {
   async uploadAvatar(blob) {
     const s = await session();
     const before = await call<RawProfile | null>('get_my_profile');
-    if (!before) throw new BackendError('Set up your profile first.', 'P0001', 400);
+    if (!before) throw new BackendError(t('social.error.profile_first'), 'P0001', 400);
     const path = `${s.user.id}/avatar_${uuid()}.jpg`;
     const sb = requireSupabase();
     const { error } = await sb.storage.from(AVATAR_BUCKET).upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: false, cacheControl: '3600' });
@@ -369,7 +370,7 @@ export const socialApi: SocialApi = {
       const status = Number((error as { statusCode?: string | number }).statusCode ?? 0);
       throw new BackendError(uploadErrorMessage(status, JSON.stringify({ message: error.message })), 'upload', status || undefined);
     }
-    const raw = await call<RawProfile>('set_avatar_path', { p_path: path }, 'Could not update your photo.');
+    const raw = await call<RawProfile>('set_avatar_path', { p_path: path }, t('social.error.update_photo'));
     if (before.avatar_path && before.avatar_path !== path) {
       void sb.storage.from(AVATAR_BUCKET).remove([before.avatar_path]).catch(() => undefined); // best effort
     }
@@ -386,22 +387,22 @@ export const socialApi: SocialApi = {
 
   /* ----------------------------------------------------------- friends */
   async sendFriendRequest(userId) {
-    await call('send_friend_request', { p_target: userId }, 'Could not send the friend request.');
+    await call('send_friend_request', { p_target: userId }, t('social.error.send_request'));
   },
   async respondFriendRequest(requestId, accept) {
-    await call('respond_friend_request', { p_request_id: requestId, p_accept: accept }, 'Could not respond to the request.');
+    await call('respond_friend_request', { p_request_id: requestId, p_accept: accept }, t('social.error.respond'));
   },
   async cancelFriendRequest(requestId) {
-    await call('cancel_friend_request', { p_request_id: requestId }, 'Could not cancel the request.');
+    await call('cancel_friend_request', { p_request_id: requestId }, t('social.error.cancel_request'));
   },
   async removeFriend(userId) {
-    await call('remove_friend', { p_other: userId }, 'Could not remove this friend.');
+    await call('remove_friend', { p_other: userId }, t('social.error.remove_friend'));
   },
   async blockUser(userId) {
-    await call('block_user', { p_other: userId }, 'Could not block this person.');
+    await call('block_user', { p_other: userId }, t('social.error.block'));
   },
   async unblockUser(userId) {
-    await call('unblock_user', { p_other: userId }, 'Could not unblock this person.');
+    await call('unblock_user', { p_other: userId }, t('social.error.unblock'));
   },
   async listFriends() {
     return profilesWithAvatars(await call<RawProfile[]>('list_friends'));
@@ -414,7 +415,7 @@ export const socialApi: SocialApi = {
       id: r.id,
       requesterId: r.requester_id,
       addresseeId: r.addressee_id,
-      other: mapAuthor(r.other, avatars) ?? { id: '', username: 'unknown', displayName: 'Unknown', avatarUrl: null },
+      other: mapAuthor(r.other, avatars) ?? { id: '', username: 'unknown', displayName: t('social.unknown'), avatarUrl: null },
       status: r.status,
       createdAt: r.created_at,
     });
@@ -430,7 +431,7 @@ export const socialApi: SocialApi = {
       p_cursor_created_at: cursor?.createdAt ?? null,
       p_cursor_id: cursor?.id ?? null,
       p_limit: limit,
-    }, 'Could not load the feed.'));
+    }, t('social.couldnt_load_the_feed')));
   },
 
   async getUserPosts(userId, cursor, limit = 20) {
@@ -439,7 +440,7 @@ export const socialApi: SocialApi = {
       p_cursor_created_at: cursor?.createdAt ?? null,
       p_cursor_id: cursor?.id ?? null,
       p_limit: limit,
-    }, 'Could not load posts.'));
+    }, t('social.couldnt_load_posts')));
   },
 
   async getPost(id) {
@@ -461,7 +462,7 @@ export const socialApi: SocialApi = {
         height: Math.round(m.height),
         description: m.description ?? null,
       })),
-    }, 'Could not prepare the post.');
+    }, t('social.error.prepare_post'));
   },
 
   async uploadPostMedia(postId, mediaId, image, thumb, opts) {
@@ -483,38 +484,38 @@ export const socialApi: SocialApi = {
 
   async publishPost(postId) {
     const { error } = await requireSupabase().functions.invoke('finalize-post', { body: { postId } });
-    if (error) throw await functionError(error, 'Could not publish the post. Please try again.');
+    if (error) throw await functionError(error, t('social.error.publish'));
     const post = await socialApi.getPost(postId);
-    if (!post) throw new BackendError('The post was published but could not be loaded.');
+    if (!post) throw new BackendError(t('social.error.post_loaded'));
     return post;
   },
 
   async updatePost(postId, patch) {
-    await call('update_post', { p_post_id: postId, p_caption: patch.caption ?? null, p_audience: patch.audience ?? null }, 'Could not update the post.');
+    await call('update_post', { p_post_id: postId, p_caption: patch.caption ?? null, p_audience: patch.audience ?? null }, t('social.error.update_post'));
   },
 
   async deletePost(postId) {
-    await call('delete_post', { p_post_id: postId }, 'Could not delete the post.');
+    await call('delete_post', { p_post_id: postId }, t('social.error.delete_post'));
   },
 
   async like(postId) {
-    await call('like_post', { p_post_id: postId }, 'Could not like the post.');
+    await call('like_post', { p_post_id: postId }, t('social.error.like'));
   },
   async unlike(postId) {
-    await call('unlike_post', { p_post_id: postId }, 'Could not remove your like.');
+    await call('unlike_post', { p_post_id: postId }, t('social.error.unlike'));
   },
 
   async listComments(postId) {
-    return mapComments(await call<RawComment[]>('list_comments', { p_post_id: postId }, 'Could not load comments.'));
+    return mapComments(await call<RawComment[]>('list_comments', { p_post_id: postId }, t('social.couldnt_load_comments')));
   },
 
   async addComment(postId, id, body) {
-    const raw = await call<RawComment>('add_comment', { p_post_id: postId, p_id: id, p_body: body }, 'Could not post the comment.');
+    const raw = await call<RawComment>('add_comment', { p_post_id: postId, p_id: id, p_body: body }, t('social.error.post_comment'));
     return (await mapComments([raw]))[0];
   },
 
   async deleteComment(commentId) {
-    await call('delete_comment', { p_comment_id: commentId }, 'Could not delete the comment.');
+    await call('delete_comment', { p_comment_id: commentId }, t('social.error.remove_comment'));
   },
 
   async report(input: ReportInput) {
@@ -524,7 +525,7 @@ export const socialApi: SocialApi = {
       p_comment_id: input.commentId ?? null,
       p_user_id: input.userId ?? null,
       p_details: input.details ?? null,
-    }, 'Could not send the report.');
+    }, t('social.report.send_failed'));
   },
 
   /* ------------------------------------------------------ notifications */
@@ -560,7 +561,7 @@ export const socialApi: SocialApi = {
     }
   },
   async listReports(status = 'open') {
-    const raw = await call<RawReport[]>('list_reports', { p_status: status }, 'Could not load reports.');
+    const raw = await call<RawReport[]>('list_reports', { p_status: status }, t('coaching.admin.couldnt_load_reports'));
     return raw.map((r) => ({
       id: r.id,
       reporterId: r.reporter_id,
@@ -577,13 +578,13 @@ export const socialApi: SocialApi = {
     }));
   },
   async resolveReport(reportId, action) {
-    await call('resolve_report', { p_report_id: reportId, p_action: action }, 'Could not resolve the report.');
+    await call('resolve_report', { p_report_id: reportId, p_action: action }, t('social.error.resolve_report'));
   },
 
   /* ------------------------------------------------------------ account */
   async deleteAccount() {
     const { error } = await requireSupabase().functions.invoke('delete-account', { body: {} });
-    if (error) throw await functionError(error, 'Could not delete your account. Please try again.');
+    if (error) throw await functionError(error, t('social.error.delete_account'));
     clearSignedUrlCache();
     // The user no longer exists; drop the local session (the app's SIGNED_OUT handler clears caches).
     await requireSupabase().auth.signOut({ scope: 'local' }).catch(() => undefined);

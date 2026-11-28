@@ -20,12 +20,14 @@ import { alive } from '@/db/repo';
 import { describeChanges, validateProposedProgram } from '@/domain/program/proposals';
 import { generateProgram, suggestProgramName } from '@/domain/program/generator';
 import { todayISO } from '@/lib/dates';
+import { listText, useT } from '@/i18n';
+import { programDisplayName } from '@/domain/program/localize';
 import { uuid } from '@/lib/id';
 import { coachingError } from '@/coaching/errors';
 import {
   asVersion, blankProposed, intakeToAnswers, loadEditorDraft, proposedFromTemplates, proposedFromVersion, saveEditorDraft, type EditorDraft,
 } from '@/coaching/programDraft';
-import { BackButton, CoachingAccessNotice, ProposalStatusBadge, fmtDateTime, useCoachingAccess, useLoad } from './tools/common';
+import { BackButton, CoachingAccessNotice, ProposalStatusBadge, fmtDateTime, slot, useCoachingAccess, useLoad, withSlots } from './tools/common';
 import { CoachGate, useCoachStatus } from './tools/coach';
 import { ProgramEditor } from './tools/ProgramEditor';
 import { exerciseDisplayName } from '@/data/catalogText';
@@ -35,6 +37,7 @@ const BUNDLED_IDS = new Set(EXERCISES.map((e) => e.id));
 export default function ClientProgramPage() {
   const { relationshipId = '' } = useParams();
   const nav = useNavigate();
+  const { t } = useT();
   const { access } = useCoachingAccess();
   const ok = access === 'ok';
   const coach = useCoachStatus(ok);
@@ -46,21 +49,25 @@ export default function ClientProgramPage() {
   const proposals = useLoad(() => coachingApi.listProposals({ relationshipId }), [relationshipId], !!active);
 
   return (
-    <Page title="Client program" back={<BackButton to={`/coaching/client/${relationshipId}`} />}>
+    <Page title={t('coaching.client.client_program')} back={<BackButton to={`/coaching/client/${relationshipId}`} />}>
       {!ok ? (
-        <CoachingAccessNotice access={access} what="The program builder" />
+        <CoachingAccessNotice access={access} what={t('coaching.client.what_program_builder')} />
       ) : !approved ? (
         <CoachGate state={coach.state} profile={coach.profile} error={coach.error} reload={coach.reload} />
       ) : relQ.error && rel === undefined ? (
-        <ErrorState title="Couldn’t load this client" message={relQ.error} onRetry={relQ.reload} />
+        <ErrorState title={t('coaching.client.couldnt_load_this_client')} message={relQ.error} onRetry={relQ.reload} />
       ) : rel === undefined ? (
-        <Spinner label="Loading" />
+        <Spinner label={t('common.loading')} />
       ) : rel === null || !active ? (
-        <EmptyState title="Coaching isn’t active" body="You can build programs only for clients you’re actively coaching." action={<Button onClick={() => nav('/coaching/dashboard')}>Dashboard</Button>} />
+        <EmptyState
+          title={t('coaching.client.coaching_isnt_active')}
+          body={t('coaching.client.you_can_build_programs_only_for')}
+          action={<Button onClick={() => nav('/coaching/dashboard')}>{t('coaching.client.dashboard')}</Button>}
+        />
       ) : (overview.error && !overview.data) || (proposals.error && !proposals.data) ? (
-        <ErrorState title="Couldn’t load the client’s program" message={overview.error ?? proposals.error ?? undefined} onRetry={() => Promise.all([overview.reload(), proposals.reload()]).then(() => {})} />
+        <ErrorState title={t('coaching.client.couldnt_load_the_clients_program')} message={overview.error ?? proposals.error ?? undefined} onRetry={() => Promise.all([overview.reload(), proposals.reload()]).then(() => {})} />
       ) : !overview.data || !proposals.data ? (
-        <Spinner label="Loading the client’s plan" />
+        <Spinner label={t('coaching.client.loading_the_clients_plan')} />
       ) : (
         <Builder rel={rel} overview={overview.data} proposals={proposals.data} reloadProposals={proposals.reload} />
       )}
@@ -104,11 +111,14 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
   const toast = useToast();
   const nav = useNavigate();
   const [search, setSearch] = useSearchParams();
+  const { t, tp, language } = useT();
   const { db, account } = useApp();
   const { list: catalog, byId } = useExercises();
   const unit = account.settings.units.weight;
   const today = todayISO(account.settings.timeZone);
-  const who = rel.client.displayName || 'your client';
+  const who = rel.client.displayName || t('coaching.client.your_client');
+  // Default program name: a prefill in the coach's language; the coach can rename it before sending.
+  const defaultName = t('coaching.client.default_plan_name', { name: who });
   const base = useMemo(() => findBase(overview, proposals), [overview, proposals]);
   const { answers, assumed } = useMemo(() => intakeToAnswers(rel.intake, account.settings.units), [rel.intake, account.settings.units]);
   const templatesRows = useLiveQuery(() => db.templates.toArray(), [db]);
@@ -155,8 +165,8 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
         if (tpl) {
           if (local) {
             setDraft({ ...local, program: { ...local.program, templates: [...local.program.templates, ...proposedFromTemplates([tpl.template]).templates] } });
-            toast.show(`Added “${tpl.template.name}” to your draft.`, { tone: 'success' });
-          } else start(proposedFromTemplates([tpl.template], `${who}’s plan`), false);
+            toast.show(t('coaching.client.added_x_to_your_draft', { name: tpl.template.name }), { tone: 'success' });
+          } else start(proposedFromTemplates([tpl.template], defaultName), false);
           return;
         }
       }
@@ -174,19 +184,20 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
   const errors = useMemo(() => {
     if (!program) return [];
     const e = validateProposedProgram(program, BUNDLED_IDS);
-    if (program.reviewWeek < 1 || program.reviewWeek > program.weeks) e.push('Review week must be within the block.');
+    if (program.reviewWeek < 1 || program.reviewWeek > program.weeks) e.push(t('coaching.client.review_week_within_block'));
     return e;
-  }, [program]);
-  const unknownCustom = errors.some((e) => e.startsWith('Unknown exercise') || e.startsWith('Unknown substitution'));
+  }, [program, t]);
+  // Exercises (or substitutes) missing from the shared catalog: the coach's own custom exercises.
+  const unknownCustom = !!program?.templates.some((tpl) => tpl.exercises.some((rx) => !BUNDLED_IDS.has(rx.exerciseId) || (rx.alternatives ?? []).some((a) => !BUNDLED_IDS.has(a))));
   const nameOf = (id: string) => exerciseDisplayName(id, byId);
   const useBase = !!draft?.revise && !!base;
   const changes = useMemo(() => {
     if (!program) return [];
     if (!useBase) return describeChanges(null, program, nameOf);
     const known = base!.content ?? base!.approxContent;
-    if (!known) return [`Replaces the sessions of “${base!.name}” (version ${base!.version}) for future workouts.`, ...describeChanges(null, program, nameOf)];
+    if (!known) return [t('coaching.client.replaces_sessions_of_x', { name: programDisplayName(base!.name), version: base!.version }), ...describeChanges(null, program, nameOf)];
     return describeChanges(asVersion(known, base!.version), program, nameOf);
-  }, [program, useBase, base, byId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [program, useBase, base, byId, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const payload = () => ({
     id: draft!.proposalId,
@@ -205,10 +216,10 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
     try {
       const saved = await coachingApi.saveProposal(payload()); // idempotent on id
       setServerStatus(saved.status);
-      toast.show('Draft saved: the client can’t see drafts.', { tone: 'success' });
+      toast.show(t('coaching.client.draft_saved_the_client_cant_see'), { tone: 'success' });
       await reloadProposals();
     } catch (e) {
-      toast.show(coachingError(e, 'Couldn’t save the draft. It’s still kept on this device.'), { tone: 'error' });
+      toast.show(coachingError(e, t('coaching.client.couldnt_save_draft')), { tone: 'error' });
     } finally {
       setBusy(null);
     }
@@ -221,10 +232,10 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
       await coachingApi.sendProposal(draft.proposalId);
       setDraft(null);
       setServerStatus(null);
-      toast.show(`Sent to ${who}. Nothing changes until they accept.`, { tone: 'success' });
+      toast.show(t('coaching.client.sent_to_x_nothing_changes_until', { name: who }), { tone: 'success' });
       await reloadProposals();
     } catch (e) {
-      toast.show(coachingError(e, 'Couldn’t send. Your draft is kept on this device. Try again.'), { tone: 'error' });
+      toast.show(coachingError(e, t('coaching.client.couldnt_send')), { tone: 'error' });
     } finally {
       setBusy(null);
     }
@@ -235,10 +246,10 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
     try {
       await coachingApi.withdrawProposal(withdrawing.id);
       setWithdrawing(null);
-      toast.show('Proposal withdrawn', { tone: 'success' });
+      toast.show(t('coaching.client.proposal_withdrawn'), { tone: 'success' });
       await reloadProposals();
     } catch (e) {
-      toast.show(coachingError(e, 'Couldn’t withdraw it.'), { tone: 'error' });
+      toast.show(coachingError(e, t('coaching.client.couldnt_withdraw')), { tone: 'error' });
     } finally {
       setBusy(null);
     }
@@ -252,59 +263,62 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
   const serverDrafts = proposals.filter((p) => p.status === 'draft');
   const history = [...proposals].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-  if (draft === undefined) return <Spinner label="Loading" />;
+  if (draft === undefined) return <Spinner label={t('common.loading')} />;
 
   return (
     <>
       <Card className="px-4 py-3">
         <p className="text-sm">
-          Building for <span className="font-semibold">{who}</span>
+          {withSlots(t('coaching.client.building_for', { name: slot('name') }), { name: <span className="font-semibold">{who}</span> })}
         </p>
         <p className="text-xs text-muted mt-1">
           {overview.training === null
-            ? `${who} doesn’t share training, so you can’t see their current plan or workouts.`
+            ? t('coaching.client.x_doesnt_share_training_so_you', { name: who })
             : overview.training.activeProgram
-              ? `Current plan: ${overview.training.activeProgram.name} · version ${overview.training.activeProgram.currentVersion}${overview.training.activeProgram.managedBy === 'coach' ? ' · coach-managed' : ''}`
-              : `${who} has no active plan.`}
+              ? t(overview.training.activeProgram.managedBy === 'coach' ? 'coaching.client.current_plan_coach_managed' : 'coaching.client.current_plan_x_version_xx', {
+                  name: programDisplayName(overview.training.activeProgram.name),
+                  version: overview.training.activeProgram.currentVersion,
+                })
+              : t('coaching.client.x_has_no_active_plan', { name: who })}
         </p>
       </Card>
 
       {draft === null ? (
         <>
-          <SectionTitle>Start from</SectionTitle>
+          <SectionTitle>{t('coaching.client.start_from')}</SectionTitle>
           <Card className="overflow-hidden">
             <ul className="divide-y divide-line">
               {base && (
                 <li>
                   <ListRow
                     left={<Layers className="size-5 text-accent" aria-hidden />}
-                    title={`Revise “${base.name}”`}
+                    title={t('coaching.client.revise_x', { name: programDisplayName(base.name) })}
                     subtitle={
                       baseContent
                         ? base.content
-                          ? `Start from version ${base.version}`
-                          : `Start from the version you wrote. ${who} has changed it since (now v${base.version})`
-                        : 'Their plan’s content isn’t available to you. Start from a template or the generator and send it as an update'
+                          ? t('coaching.client.start_from_version_x', { version: base.version })
+                          : t('coaching.client.start_from_the_version_you_wrote', { name: who, version: base.version })
+                        : t('coaching.client.their_plans_content_isnt_available_to')
                     }
                     onClick={baseContent ? () => start(proposedFromVersion(baseContent, base.name), true) : undefined}
                   />
                 </li>
               )}
               <li>
-                <ListRow left={<Wand2 className="size-5 text-accent" aria-hidden />} title="Generate from intake" subtitle={`Uses ${who}’s shared goals, days, equipment and limitations`} onClick={fromGenerator} />
+                <ListRow left={<Wand2 className="size-5 text-accent" aria-hidden />} title={t('coaching.client.generate_from_intake')} subtitle={t('coaching.client.uses_xs_shared_goals_days_equipment', { name: who })} onClick={fromGenerator} />
               </li>
               <li>
-                <ListRow left={<FilePlus2 className="size-5 text-accent" aria-hidden />} title="Your templates" subtitle={`${myTemplates.length} session template${myTemplates.length === 1 ? '' : 's'} in your library`} onClick={myTemplates.length ? () => setPickTemplates(true) : undefined} />
+                <ListRow left={<FilePlus2 className="size-5 text-accent" aria-hidden />} title={t('coaching.client.your_templates')} subtitle={tp('coaching.client.session_templates_in_library', myTemplates.length)} onClick={myTemplates.length ? () => setPickTemplates(true) : undefined} />
               </li>
               <li>
-                <ListRow left={<Sparkles className="size-5 text-accent" aria-hidden />} title="Blank plan" subtitle="Add sessions and exercises yourself" onClick={() => start(blankProposed(`${who}’s plan`), !!base)} />
+                <ListRow left={<Sparkles className="size-5 text-accent" aria-hidden />} title={t('coaching.client.blank_plan')} subtitle={t('coaching.client.add_sessions_and_exercises_yourself')} onClick={() => start(blankProposed(defaultName), !!base)} />
               </li>
               {serverDrafts.map((p) => (
                 <li key={p.id}>
                   <ListRow
                     left={<Save className="size-5 text-muted" aria-hidden />}
-                    title={`Continue draft: ${p.program.name}`}
-                    subtitle={`Saved ${fmtDateTime(p.createdAt)}`}
+                    title={t('coaching.client.continue_draft_x', { name: programDisplayName(p.program.name) })}
+                    subtitle={t('coaching.client.saved_x', { date: fmtDateTime(p.createdAt) })}
                     onClick={() => {
                       setDraftState({ proposalId: p.id, program: proposedFromVersion(p.program, p.program.name), revise: !!p.baseProgramId && !!base, message: p.message ?? '', effectiveDate: p.effectiveDate ?? null, savedAt: Date.now() });
                       setServerStatus('draft');
@@ -314,39 +328,39 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
               ))}
             </ul>
           </Card>
-          {assumed.length > 0 && <p className="text-xs text-muted mt-2 px-1">The generator assumes {assumed.join(', ')} where the intake didn’t say.</p>}
+          {assumed.length > 0 && <p className="text-xs text-muted mt-2 px-1">{t('coaching.client.the_generator_assumes', { assumptions: listText(assumed, language) })}</p>}
         </>
       ) : (
         <>
           {restored && (
             <Notice className="mt-3">
-              Restored your unsaved draft from this device.{' '}
+              {t('coaching.client.restored_your_unsaved_draft_from_this')}{' '}
               <button type="button" className="underline font-medium" onClick={() => setDiscardOpen(true)}>
-                Discard it
+                {t('coaching.client.discard_it')}
               </button>
             </Notice>
           )}
           <div className="flex items-center gap-2 mt-3">
-            <Badge>{serverStatus === 'draft' ? 'Draft saved' : 'Not saved to the server yet'}</Badge>
-            <span className="text-xs text-faint">Autosaved on this device</span>
+            <Badge>{serverStatus === 'draft' ? t('coaching.apply.draft_saved') : t('coaching.client.not_saved_to_the_server_yet')}</Badge>
+            <span className="text-xs text-faint">{t('coaching.client.autosaved_on_this_device')}</span>
           </div>
 
           {base && (
             <div className="mt-3">
-              <span className="text-sm font-medium block mb-1.5">Send as</span>
+              <span className="text-sm font-medium block mb-1.5">{t('coaching.client.send_as')}</span>
               <Segmented
-                label="Send as"
+                label={t('coaching.client.send_as')}
                 value={draft.revise ? 'revise' : 'new'}
                 onChange={(v) => setDraft({ ...draft, revise: v === 'revise' })}
                 options={[
-                  { value: 'revise', label: `Update “${base.name}”` },
-                  { value: 'new', label: 'A new plan' },
+                  { value: 'revise', label: t('coaching.client.update_x', { name: programDisplayName(base.name) }) },
+                  { value: 'new', label: t('coaching.client.a_new_plan') },
                 ]}
               />
               <p className="text-xs text-muted mt-1">
                 {draft.revise
-                  ? `Adds a new version to their plan (based on version ${base.version}). If ${who} changes the plan before accepting, they’ll be asked to get a revision from you.`
-                  : 'Becomes their single active plan if they accept; their current plan stays in their history.'}
+                  ? t('coaching.client.adds_a_new_version_to_their', { version: base.version, name: who })
+                  : t('coaching.client.becomes_their_single_active_plan_if')}
               </p>
             </div>
           )}
@@ -358,7 +372,7 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
               byId={byId}
               catalog={catalog}
               pickerOnlyIds={BUNDLED_IDS}
-              pickerOnlyNote="Only exercises from the shared catalog can be sent. Your client’s app doesn’t have your custom exercises."
+              pickerOnlyNote={t('coaching.client.picker_only_note')}
               unit={unit}
               weekStart={account.settings.weekStart}
               experience={answers.experience}
@@ -366,63 +380,63 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
             />
           </div>
 
-          <SectionTitle>For {who}</SectionTitle>
+          <SectionTitle>{t('coaching.client.for_x', { name: who })}</SectionTitle>
           <Card className="px-4 py-3 flex flex-col gap-3">
-            <Textarea label="Message with the proposal (optional)" maxLength={2000} value={draft.message} onChange={(e) => setDraft({ ...draft, message: e.target.value })} />
+            <Textarea label={t('coaching.client.message_with_the_proposal_optional')} maxLength={2000} value={draft.message} onChange={(e) => setDraft({ ...draft, message: e.target.value })} />
             <Input
               type="date"
-              label={draft.revise && base ? 'Suggested start (optional)' : 'Start date (optional)'}
+              label={draft.revise && base ? t('coaching.client.suggested_start_optional') : t('coaching.client.start_date_optional')}
               min={today}
               value={draft.effectiveDate ?? ''}
               onChange={(e) => setDraft({ ...draft, effectiveDate: e.target.value || null })}
-              hint={draft.revise && base ? 'Updates apply to their next sessions once accepted.' : 'Leave empty to start when they accept.'}
+              hint={draft.revise && base ? t('coaching.client.updates_apply_to_their_next_sessions') : t('coaching.client.leave_empty_to_start_when_they')}
             />
           </Card>
 
-          <SectionTitle>Changes {useBase ? `vs. version ${base!.version}` : ''}</SectionTitle>
+          <SectionTitle>{useBase ? t('coaching.client.changes_vs_version', { version: base!.version }) : t('coaching.client.changes')}</SectionTitle>
           <Card className="px-4 py-3">
             {useBase && !base!.content && base!.approxContent && (
-              <p className="text-xs text-warn mb-2">Compared with the version you wrote. {who} has changed their plan since, so the comparison may miss their own edits.</p>
+              <p className="text-xs text-warn mb-2">{t('coaching.client.compared_with_the_version_you_wrote', { name: who })}</p>
             )}
             <ul className="list-disc pl-4 text-sm flex flex-col gap-1">
               {changes.map((c, i) => (
                 <li key={i}>{c}</li>
               ))}
             </ul>
-            <p className="text-xs text-muted mt-2">The client sees this list. Completed workouts never change.</p>
+            <p className="text-xs text-muted mt-2">{t('coaching.client.the_client_sees_this_list_completed')}</p>
           </Card>
 
           {errors.length > 0 && (
             <Notice tone="danger" className="mt-3">
-              <p className="font-medium mb-1">Fix before sending:</p>
+              <p className="font-medium mb-1">{t('coaching.client.fix_before_sending')}</p>
               <ul className="list-disc pl-4 flex flex-col gap-0.5" role="alert">
                 {errors.slice(0, 8).map((e) => (
                   <li key={e}>{e}</li>
                 ))}
               </ul>
-              {unknownCustom && <p className="mt-2 text-xs">Custom exercises from your own library can’t be sent. Your client doesn’t have them. Pick a catalog exercise instead.</p>}
+              {unknownCustom && <p className="mt-2 text-xs">{t('coaching.client.custom_exercises_from_your_own_library')}</p>}
             </Notice>
           )}
 
           <div className="mt-5 flex flex-col gap-2">
             <div className="flex gap-2">
               <Button className="flex-1" icon={<Save className="size-4" />} loading={busy === 'save'} disabled={!!busy || !draft.program.name.trim()} onClick={saveDraft}>
-                Save draft
+                {t('coaching.apply.save_draft')}
               </Button>
               <Button className="flex-[2]" variant="primary" icon={<Send className="size-4" />} loading={busy === 'send'} disabled={!!busy || errors.length > 0} onClick={send}>
-                Send to {who}
+                {t('coaching.client.send_to_x', { name: who })}
               </Button>
             </div>
             <Button variant="ghost" icon={<Undo2 className="size-4" />} onClick={() => setDiscardOpen(true)} disabled={!!busy}>
-              Start over
+              {t('onboarding.restart')}
             </Button>
           </div>
         </>
       )}
 
-      <SectionTitle>Proposal history</SectionTitle>
+      <SectionTitle>{t('coaching.client.proposal_history')}</SectionTitle>
       {history.length === 0 ? (
-        <Card className="px-4 py-3 text-sm text-muted">Nothing sent yet.</Card>
+        <Card className="px-4 py-3 text-sm text-muted">{t('coaching.client.nothing_sent_yet')}</Card>
       ) : (
         <Card className="overflow-hidden">
           <ul className="divide-y divide-line">
@@ -430,8 +444,12 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
               <li key={p.id} className="flex items-center">
                 <div className="flex-1 min-w-0">
                   <ListRow
-                    title={p.program.name}
-                    subtitle={`Revision ${p.revision} · ${p.baseProgramId ? `update to v${p.baseVersion}` : 'new plan'} · ${fmtDateTime(p.respondedAt ?? p.sentAt ?? p.createdAt)}`}
+                    title={programDisplayName(p.program.name)}
+                    subtitle={t('coaching.client.revision_x_x_x', {
+                      revision: p.revision,
+                      kind: p.baseProgramId ? t('coaching.client.update_to_vx', { version: p.baseVersion ?? '' }) : t('coaching.client.new_plan_lower'),
+                      date: fmtDateTime(p.respondedAt ?? p.sentAt ?? p.createdAt),
+                    })}
                     right={<ProposalStatusBadge status={p.status} />}
                     onClick={() => {
                       const keep = p.status === 'draft';
@@ -443,13 +461,13 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
                 </div>
                 {p.status === 'sent' && (
                   <Button size="sm" variant="ghost" className="mr-2" onClick={() => setWithdrawing(p)}>
-                    Withdraw
+                    {t('coaching.client.withdraw')}
                   </Button>
                 )}
               </li>
             ))}
           </ul>
-          <p className="px-4 py-2 text-xs text-muted">Tap a proposal to start a new revision from it (drafts reopen as they are).</p>
+          <p className="px-4 py-2 text-xs text-muted">{t('coaching.client.tap_a_proposal_to_start_a')}</p>
         </Card>
       )}
 
@@ -459,14 +477,14 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
         onClose={() => setPickTemplates(false)}
         onPick={(ts) => {
           setPickTemplates(false);
-          start(proposedFromTemplates(ts.map((t) => t.template), `${who}’s plan`), !!base);
+          start(proposedFromTemplates(ts.map((x) => x.template), defaultName), !!base);
         }}
       />
       <ConfirmDialog
         open={discardOpen}
-        title="Start over?"
-        body="This clears the editor and the copy saved on this device. Drafts already saved to the server stay in the history."
-        confirmLabel="Start over"
+        title={t('onboarding.restartTitle')}
+        body={t('coaching.client.this_clears_the_editor_and_the')}
+        confirmLabel={t('onboarding.restart')}
         danger
         onCancel={() => setDiscardOpen(false)}
         onConfirm={() => {
@@ -478,24 +496,25 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
       />
       <ConfirmDialog
         open={!!withdrawing}
-        title="Withdraw this proposal?"
-        body={`${who} won’t be able to accept it any more. Their current plan doesn’t change.`}
-        confirmLabel="Withdraw"
+        title={t('coaching.client.withdraw_this_proposal')}
+        body={t('coaching.client.x_wont_be_able_to_accept', { name: who })}
+        confirmLabel={t('coaching.client.withdraw')}
         busy={busy === 'withdraw'}
         onCancel={() => setWithdrawing(null)}
         onConfirm={withdraw}
       />
       <div className="sr-only" aria-live="polite">
-        {busy === 'send' ? 'Sending proposal' : ''}
+        {busy === 'send' ? t('coaching.client.sending_proposal') : ''}
       </div>
       <Button variant="ghost" className="mt-4" onClick={() => nav(`/coaching/client/${rel.id}`)}>
-        Back to {who}
+        {t('coaching.client.back_to_x', { name: who })}
       </Button>
     </>
   );
 }
 
 function TemplatePicker({ open, templates, onClose, onPick }: { open: boolean; templates: SavedTemplate[]; onClose: () => void; onPick: (t: SavedTemplate[]) => void }) {
+  const { t, tp } = useT();
   const [sel, setSel] = useState<string[]>([]);
   const close = () => {
     setSel([]);
@@ -505,38 +524,38 @@ function TemplatePicker({ open, templates, onClose, onPick }: { open: boolean; t
     <Sheet
       open={open}
       onClose={close}
-      title="Choose sessions"
+      title={t('coaching.client.choose_sessions')}
       footer={
         <>
           <Button variant="ghost" onClick={close}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant="primary"
             disabled={!sel.length}
             onClick={() => {
-              const picked = sel.map((id) => templates.find((t) => t.id === id)!).filter(Boolean);
+              const picked = sel.map((id) => templates.find((x) => x.id === id)!).filter(Boolean);
               setSel([]);
               onPick(picked);
             }}
           >
-            Use {sel.length || ''} session{sel.length === 1 ? '' : 's'}
+            {sel.length ? tp('coaching.client.use_sessions', sel.length) : t('coaching.client.use_sessions_none')}
           </Button>
         </>
       }
     >
-      <p className="text-sm text-muted mb-2">Each session is copied into the client’s plan. Editing it there doesn’t change your template.</p>
-      <ul className="flex flex-col gap-1" role="group" aria-label="Templates">
-        {templates.map((t) => {
-          const on = sel.includes(t.id);
+      <p className="text-sm text-muted mb-2">{t('coaching.client.each_session_is_copied_into_the')}</p>
+      <ul className="flex flex-col gap-1" role="group" aria-label={t('train.templateTitle')}>
+        {templates.map((st) => {
+          const on = sel.includes(st.id);
           return (
-            <li key={t.id}>
+            <li key={st.id}>
               <label className="flex items-center gap-3 min-h-12 px-2 rounded-xl hover:bg-surface-2 cursor-pointer">
-                <input type="checkbox" className="size-5 accent-[var(--color-accent)]" checked={on} onChange={() => setSel(on ? sel.filter((x) => x !== t.id) : [...sel, t.id])} />
+                <input type="checkbox" className="size-5 accent-[var(--color-accent)]" checked={on} onChange={() => setSel(on ? sel.filter((x) => x !== st.id) : [...sel, st.id])} />
                 <span className="min-w-0">
-                  <span className="block font-medium truncate">{t.template.name}</span>
+                  <span className="block font-medium truncate">{st.template.name}</span>
                   <span className="block text-xs text-muted">
-                    {t.template.exercises.length} exercise{t.template.exercises.length === 1 ? '' : 's'} · ~{t.template.estimatedMinutes} min
+                    {tp('coaching.client.exercises_count', st.template.exercises.length)} · ~{t('coaching.client.x_min', { minutes: st.template.estimatedMinutes })}
                   </span>
                 </span>
               </label>

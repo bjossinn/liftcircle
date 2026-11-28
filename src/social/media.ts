@@ -9,6 +9,8 @@
  * dependency and are unit-tested.
  */
 
+import { t } from '@/i18n';
+
 export const MAX_INPUT_BYTES = 25 * 1024 * 1024; // 25 MB
 export const MAX_PIXELS = 50_000_000; // 50 MP
 export const MAX_EDGE = 2048;
@@ -20,20 +22,13 @@ export const THUMB_QUALITY = 0.8;
 export type ImageKind = 'jpeg' | 'png' | 'gif' | 'webp' | 'heic' | 'avif';
 export type MediaErrorCode = 'too_large' | 'unsupported' | 'too_many_pixels' | 'decode_failed' | 'encode_failed' | 'metadata' | 'empty';
 
-const MESSAGES: Record<MediaErrorCode, string> = {
-  too_large: 'This photo is larger than 25 MB. Try a smaller one.',
-  unsupported: 'This format isn’t supported on this device. Try JPEG or PNG.',
-  too_many_pixels: 'This photo is too large (over 50 megapixels). Try a smaller one.',
-  decode_failed: 'This photo couldn’t be read. It may be damaged. Try another one.',
-  encode_failed: 'This photo couldn’t be prepared on this device. Try another one.',
-  metadata: 'This photo couldn’t be cleaned of location data, so it wasn’t added.',
-  empty: 'This file is empty.',
-};
+/** Shown to the person in the current language (the message is read when the error is created). */
+const message = (code: MediaErrorCode) => t(`social.media.${code}`);
 
 export class MediaError extends Error {
   readonly code: MediaErrorCode;
   constructor(code: MediaErrorCode) {
-    super(MESSAGES[code]);
+    super(message(code));
     this.name = 'MediaError';
     this.code = code;
   }
@@ -364,5 +359,5 @@ export async function processAvatar(file: Blob): Promise<Blob> {
 
 /** User-readable message for any error thrown by the pipeline. */
 export function mediaErrorMessage(e: unknown): string {
-  return e instanceof MediaError ? e.message : MESSAGES.decode_failed;
+  return e instanceof MediaError ? e.message : message('decode_failed');
 }

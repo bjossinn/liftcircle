@@ -10,11 +10,13 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { alive, kvGet, kvSet, newRecord, saveRecord } from '@/db/repo';
 import { addDays, formatDate, startOfWeek, todayISO } from '@/lib/dates';
 import type { Allergen, BudgetPref, DietPrefs, DietTag, ID, MealPlan, MealPlanExtra, MealPlanItem, MealSlot } from '@/domain/types';
-import { INGREDIENTS, INGREDIENTS_BY_ID } from '@/data/ingredients';
+import { INGREDIENTS } from '@/data/ingredients';
 import { RECIPES, RECIPES_BY_ID } from '@/data/recipes';
 import {
-  ALLERGEN_LABELS, DIET_TAG_LABELS, MEAL_LABELS, MEAL_ORDER, allowedSubstitutes, displayMacro, recipeMatches, recipeMinutes, LEFT_OUT,
+  ALLERGEN_LABELS, MEAL_ORDER, allergenLabel, allowedSubstitutes, dietTagLabel, displayMacro, mealLabel, recipeMatches, recipeMinutes, LEFT_OUT,
 } from '@/domain/nutrition/recipes';
+import { ingredientDisplayName, recipeDisplayName } from '@/data/catalogText';
+import { useT } from '@/i18n';
 import {
   addPlanItem, allowedAddOns, balancePlan, extraText, generateMealPlan, planItemNutrition, planStatus, planWarnings, PORTION_STEP, PROTEIN_ADDONS,
   rankedCandidates, removePlanItem, replacePlanDay, swapMeal, updatePlanItem, type PlanDayStatus, type PlanPrefs,
@@ -26,10 +28,23 @@ import { ProteinPicker, ProteinsForm, proteinPrefsSummary } from './ProteinPicke
 
 const VARIANT_KEY = 'nutrition:planVariant';
 
+/** `template` (with "\u0000" where the bold part goes) rendered with `value` in bold. */
+function withBold(template: string, value: string) {
+  const [before, after = ''] = template.split('\u0000');
+  return (
+    <>
+      {before}
+      <span className="font-semibold">{value}</span>
+      {after}
+    </>
+  );
+}
+
 export default function MealPlanPage() {
   const nav = useNavigate();
   const { account, db } = useApp();
   const toast = useToast();
+  const { t, tp, language } = useT();
   const today = todayISO(account.settings.timeZone);
   const thisWeek = startOfWeek(today, account.settings.weekStart);
   // ?week=YYYY-MM-DD (e.g. from the training assistant's "Add and edit") opens that week.
@@ -66,7 +81,7 @@ export default function MealPlanPage() {
     try {
       await saveRecord('meal_plans', next, db);
     } catch {
-      toast.show('Could not save the plan. Please try again.', { tone: 'error' });
+      toast.show(t('aiCard.mealPlan.saveError'), { tone: 'error' });
     }
   }
 
@@ -79,9 +94,9 @@ export default function MealPlanPage() {
       const source = diet ? { ...account, profile: { ...account.profile, diet } } : account;
       const { plan: draft } = generateMealPlan(weekStart, prefsFromAccount(source, variant));
       await saveRecord('meal_plans', existing ? { ...existing, ...draft } : newRecord(draft), db);
-      toast.show(existing ? 'New plan generated' : 'Plan ready', { tone: 'success' });
+      toast.show(existing ? t('nutrition.mealPlan.new_plan_generated') : t('nutrition.mealPlan.plan_ready'), { tone: 'success' });
     } catch {
-      toast.show('Could not create the plan. Please try again.', { tone: 'error' });
+      toast.show(t('nutrition.mealPlan.could_not_create_the_plan_please'), { tone: 'error' });
     } finally {
       setBusy(false);
       setConfirmRegen(false);
@@ -98,16 +113,16 @@ export default function MealPlanPage() {
         <SectionTitle
           id={`d-${day.date}`}
           action={
-            <IconButton label={`Add a meal on ${formatDate(day.date)}`} size="sm" onClick={() => setAdding(day.date)}>
+            <IconButton label={t('nutrition.mealPlan.add_a_meal_on_x', { date: formatDate(day.date) })} size="sm" onClick={() => setAdding(day.date)}>
               <Plus className="size-5" />
             </IconButton>
           }
         >
-          {day.date === today ? 'Today' : formatDate(day.date, { weekday: 'long', day: 'numeric', month: 'short' })}
+          {day.date === today ? t('nav.today') : formatDate(day.date, { weekday: 'long', day: 'numeric', month: 'short' })}
         </SectionTitle>
         <Card>
           {day.items.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-muted">No meals planned.</p>
+            <p className="px-4 py-3 text-sm text-muted">{t('nutrition.mealPlan.no_meals_planned')}</p>
           ) : (
             <ul className="divide-y divide-line">
               {[...day.items]
@@ -116,26 +131,27 @@ export default function MealPlanPage() {
                   const r = RECIPES_BY_ID.get(it.recipeId);
                   if (!r) return null;
                   const m = planItemNutrition(it, RECIPES_BY_ID);
+                  const name = recipeDisplayName(r, language);
                   return (
                     <li key={it.id} className="flex items-center gap-1 pl-4 pr-1 py-2 min-h-16">
                       <div className="min-w-0 flex-1">
-                        <div className="text-xs text-muted">{MEAL_LABELS[it.slot]}</div>
+                        <div className="text-xs text-muted">{mealLabel(it.slot, language)}</div>
                         {/* The item's ingredient swaps travel with the link, so removed ingredients stay removed. */}
                         <Link to={recipeLink(r.id, it.swaps)} className="text-[15px] font-medium hover:underline block truncate">
-                          {r.name}
+                          {name}
                         </Link>
                         {it.extras?.length ? (
-                          <div className="text-xs text-accent">+ {it.extras.map((e) => extraText(e)).join(', ')}</div>
+                          <div className="text-xs text-accent">+ {it.extras.map((e) => extraText(e, undefined, language)).join(', ')}</div>
                         ) : null}
                         <div className="text-xs text-muted">
-                          {it.servings} serving{it.servings === 1 ? '' : 's'} · {displayMacro(m.protein, 'protein')} g protein · {displayMacro(m.kcal, 'kcal')} kcal
-                          {it.swaps?.length ? ' · with swaps' : ''}
+                          {tp('nutrition.mealPlan.item_meta', it.servings, { protein: displayMacro(m.protein, 'protein'), kcal: displayMacro(m.kcal, 'kcal') })}
+                          {it.swaps?.length ? ` · ${t('nutrition.mealPlan.with_swaps')}` : ''}
                         </div>
                       </div>
-                      <IconButton label={`Swap ${r.name} for another recipe`} size="sm" onClick={() => save(swapMeal(plan, day.date, it.id, prefs))}>
+                      <IconButton label={t('nutrition.mealPlan.swap_x_for_another_recipe', { recipe: name })} size="sm" onClick={() => save(swapMeal(plan, day.date, it.id, prefs))}>
                         <Shuffle className="size-4" />
                       </IconButton>
-                      <IconButton label={`Edit ${r.name}`} size="sm" onClick={() => setEditing({ date: day.date, item: it })}>
+                      <IconButton label={t('foodLog.editNamed', { name })} size="sm" onClick={() => setEditing({ date: day.date, item: it })}>
                         <Pencil className="size-4" />
                       </IconButton>
                     </li>
@@ -146,13 +162,16 @@ export default function MealPlanPage() {
           <div className="px-4 py-2.5 border-t border-line text-xs text-muted tabular">
             <span className={st.state === 'on_target' ? 'text-accent font-medium' : st.state === 'short' || st.state === 'over' ? 'text-warn font-medium' : ''}>
               {st.state === 'on_target' && <CheckCircle2 className="inline size-3.5 mr-1 -mt-0.5" aria-hidden />}
-              Day total: {displayMacro(n.protein, 'protein')}
-              {st.proteinTarget != null ? ` / ${st.proteinTarget}` : ''} g protein
+              {st.proteinTarget != null
+                ? t('nutrition.mealPlan.day_total_target', { protein: displayMacro(n.protein, 'protein'), target: st.proteinTarget })
+                : t('nutrition.mealPlan.day_total', { protein: displayMacro(n.protein, 'protein') })}
             </span>
             {' · '}
-            {displayMacro(n.kcal, 'kcal')}
-            {st.kcalTarget != null ? ` / ${st.kcalTarget}` : ''} kcal{st.kcalTarget == null ? ' (for information)' : ''} · {displayMacro(n.carbs, 'carbs')} g carbs ·{' '}
-            {displayMacro(n.fat, 'fat')} g fat
+            {st.kcalTarget != null
+              ? t('nutrition.mealPlan.day_kcal_target', { kcal: displayMacro(n.kcal, 'kcal'), target: st.kcalTarget })
+              : t('nutrition.mealPlan.day_kcal_info', { kcal: displayMacro(n.kcal, 'kcal') })}
+            {' · '}
+            {t('nutrition.mealPlan.day_carbs_fat', { carbs: displayMacro(n.carbs, 'carbs'), fat: displayMacro(n.fat, 'fat') })}
           </div>
           {st.message && <DayGap status={st} onBalance={st.balanced ? () => save(replacePlanDay(plan, st.balanced!)) : undefined} />}
         </Card>
@@ -161,44 +180,48 @@ export default function MealPlanPage() {
   };
 
   const back = (
-    <IconButton label="Back" onClick={() => nav(-1)}>
+    <IconButton label={t('common.back')} onClick={() => nav(-1)}>
       <ChevronLeft className="size-6" />
     </IconButton>
   );
 
   return (
     <Page
-      title="Meal plan"
+      title={t('nutrition.home.meal_plan')}
       back={back}
       actions={
         <>
-          <IconButton label="Past meal plans" onClick={() => setHistoryOpen(true)}>
+          <IconButton label={t('nutrition.mealPlan.past_meal_plans')} onClick={() => setHistoryOpen(true)}>
             <History className="size-5" />
           </IconButton>
-          <IconButton label="Plan preferences" onClick={() => setPrefsOpen(true)}>
+          <IconButton label={t('nutrition.mealPlan.plan_preferences')} onClick={() => setPrefsOpen(true)}>
             <Settings2 className="size-5" />
           </IconButton>
         </>
       }
     >
       <div className="flex items-center justify-between gap-2 mb-3">
-        <IconButton label="Previous week" onClick={() => setWeekStart(addDays(weekStart, -7))}>
+        <IconButton label={t('nutrition.mealPlan.previous_week')} onClick={() => setWeekStart(addDays(weekStart, -7))}>
           <ChevronLeft className="size-5" />
         </IconButton>
         <div className="text-center">
-          <div className="font-semibold">{weekStart === thisWeek ? 'This week' : weekStart === addDays(thisWeek, 7) ? 'Next week' : `Week of ${formatDate(weekStart)}`}</div>
+          <div className="font-semibold">{weekStart === thisWeek
+              ? t('today.thisWeek')
+              : weekStart === addDays(thisWeek, 7)
+                ? t('format.relative.nextWeek')
+                : t('nutrition.mealPlan.week_of_x', { date: formatDate(weekStart) })}</div>
           <div className="text-xs text-muted">
             {formatDate(weekStart, { day: 'numeric', month: 'short' })} – {formatDate(addDays(weekStart, 6), { day: 'numeric', month: 'short' })}
           </div>
         </div>
-        <IconButton label="Next week" onClick={() => setWeekStart(addDays(weekStart, 7))}>
+        <IconButton label={t('format.relative.nextWeek')} onClick={() => setWeekStart(addDays(weekStart, 7))}>
           <ChevronRight className="size-5" />
         </IconButton>
       </div>
       {weekStart !== thisWeek && (
         <div className="flex justify-center -mt-1 mb-3">
           <Button size="sm" variant="ghost" onClick={() => setWeekStart(thisWeek)}>
-            Back to this week
+            {t('nutrition.mealPlan.back_to_this_week')}
           </Button>
         </div>
       )}
@@ -209,18 +232,18 @@ export default function MealPlanPage() {
         <Card>
           <EmptyState
             illustration={<NoMealPlanArt />}
-            title="No plan for this week"
+            title={t('nutrition.mealPlan.no_plan_for_this_week')}
             body={<PrefsSummary diet={account.profile.diet} />}
             action={
               <div className="flex flex-col gap-2 w-full max-w-xs">
                 <Button variant="primary" loading={busy} onClick={() => generate(null)}>
-                  Generate a week plan
+                  {t('nutrition.mealPlan.generate_a_week_plan')}
                 </Button>
                 <Button variant="ghost" icon={<Drumstick className="size-4" />} onClick={() => setProteinsOpen(true)}>
-                  Proteins
+                  {t('nutrition.mealPlan.proteins')}
                 </Button>
                 <Button variant="ghost" onClick={() => setPrefsOpen(true)}>
-                  Adjust preferences
+                  {t('nutrition.mealPlan.adjust_preferences')}
                 </Button>
               </div>
             }
@@ -231,18 +254,20 @@ export default function MealPlanPage() {
           {status && prefs.proteinTarget != null && status.withTarget > 0 && (
             <Notice tone={status.onTarget === status.withTarget ? 'accent' : 'warn'} className="mb-2">
               <p>
-                <span className="font-semibold">
-                  {status.onTarget} of {status.withTarget} day{status.withTarget === 1 ? '' : 's'}
-                </span>{' '}
-                within ±{status.days.find((d) => d.tolerance != null)?.tolerance ?? 0} g of your {prefs.proteinTarget} g protein target
-                {energyTarget ? ` and ${prefs.kcalTarget} kcal energy target` : ''}.
+                {withBold(
+                  t(energyTarget ? 'nutrition.mealPlan.and_x_kcal_energy_target' : 'nutrition.mealPlan.within', {
+                    days: '\u0000',
+                    tolerance: status.days.find((d) => d.tolerance != null)?.tolerance ?? 0,
+                    target: prefs.proteinTarget,
+                    kcal: prefs.kcalTarget ?? 0,
+                  }),
+                  tp('nutrition.mealPlan.days_count', status.withTarget, { done: status.onTarget }),
+                )}
               </p>
-              {!energyTarget && (
-                <p className="text-xs text-muted mt-1">You're tracking protein only, so calories are shown for information and the plan doesn't aim for an energy target.</p>
-              )}
+              {!energyTarget && <p className="text-xs text-muted mt-1">{t('nutrition.mealPlan.youre_tracking_protein_only_so_calories')}</p>}
               {canBalanceAll && (
                 <Button className="mt-2" icon={<Scale className="size-4" />} onClick={() => save(balancePlan(plan, prefs))}>
-                  Balance all days
+                  {t('nutrition.mealPlan.balance_all_days')}
                 </Button>
               )}
             </Notice>
@@ -254,13 +279,13 @@ export default function MealPlanPage() {
           ))}
           <div className="flex gap-2">
             <Link to={`/nutrition/shopping?week=${weekStart}`} className="flex-1 inline-flex items-center justify-center gap-2 min-h-11 rounded-xl ember-fill font-semibold px-4">
-              <ShoppingCart className="size-4" aria-hidden /> Shopping list
+              <ShoppingCart className="size-4" aria-hidden /> {t('nutrition.mealPlan.shopping_list')}
             </Link>
-            <IconButton label="Proteins" className="border border-line" onClick={() => setProteinsOpen(true)}>
+            <IconButton label={t('nutrition.mealPlan.proteins')} className="border border-line" onClick={() => setProteinsOpen(true)}>
               <Drumstick className="size-5" />
             </IconButton>
             <Button icon={<RefreshCw className="size-4" />} onClick={() => setConfirmRegen(true)}>
-              Regenerate
+              {t('nutrition.mealPlan.regenerate')}
             </Button>
           </div>
           {upcoming.map((dayIdx) => renderDay(dayIdx))}
@@ -271,31 +296,26 @@ export default function MealPlanPage() {
               onClick={() => setShowEarlier((v) => !v)}
               className="mt-4 w-full flex items-center justify-between gap-2 min-h-11 px-4 rounded-xl border border-line text-sm font-medium hover:bg-surface-2"
             >
-              <span>
-                Earlier this week · {earlier.length} day{earlier.length === 1 ? '' : 's'}
-              </span>
+              <span>{tp('nutrition.mealPlan.earlier_days', earlier.length)}</span>
               <ChevronDown className={`size-4 text-muted transition-transform${showEarlier ? ' rotate-180' : ''}`} aria-hidden />
             </button>
           )}
           {showEarlier && earlier.map((dayIdx) => renderDay(dayIdx))}
-          <p className="text-xs text-muted mt-4 px-1">
-            Plans are a starting point built from your preferences and approximate targets. Portions and protein sides are adjusted to bring each day close
-            to your protein target; change them to suit your appetite.
-          </p>
+          <p className="text-xs text-muted mt-4 px-1">{t('nutrition.mealPlan.plans_are_a_starting_point_built')}</p>
           <AllergenNote className="mt-2 px-1" />
         </>
       )}
 
       <ConfirmDialog
         open={confirmRegen}
-        title="Generate a new plan?"
-        body="This replaces this week's meals and clears shopping list ticks."
-        confirmLabel="Generate"
+        title={t('nutrition.mealPlan.generate_a_new_plan')}
+        body={t('nutrition.mealPlan.this_replaces_this_weeks_meals_and')}
+        confirmLabel={t('nutrition.mealPlan.generate')}
         busy={busy}
         onConfirm={() => generate(plan ?? null)}
         onCancel={() => setConfirmRegen(false)}
       />
-      <Sheet open={!!editing} onClose={() => setEditing(null)} title="Edit meal">
+      <Sheet open={!!editing} onClose={() => setEditing(null)} title={t('nutrition.mealPlan.edit_meal')}>
         {editing && plan && (
           <ItemEditor
             key={editing.item.id}
@@ -311,7 +331,7 @@ export default function MealPlanPage() {
           />
         )}
       </Sheet>
-      <Sheet open={!!adding} onClose={() => setAdding(null)} title="Add a meal">
+      <Sheet open={!!adding} onClose={() => setAdding(null)} title={t('nutrition.mealPlan.add_a_meal')}>
         {adding && plan && (
           <AddMeal
             onAdd={(slot, recipeId) => {
@@ -322,7 +342,7 @@ export default function MealPlanPage() {
         )}
       </Sheet>
       <PrefsSheet open={prefsOpen} onClose={() => setPrefsOpen(false)} />
-      <Sheet open={proteinsOpen} onClose={() => setProteinsOpen(false)} title="Proteins">
+      <Sheet open={proteinsOpen} onClose={() => setProteinsOpen(false)} title={t('nutrition.mealPlan.proteins')}>
         {proteinsOpen && (
           <ProteinsForm
             hasPlan={!!plan}
@@ -335,7 +355,7 @@ export default function MealPlanPage() {
           />
         )}
       </Sheet>
-      <Sheet open={historyOpen} onClose={() => setHistoryOpen(false)} title="Past meal plans">
+      <Sheet open={historyOpen} onClose={() => setHistoryOpen(false)} title={t('nutrition.mealPlan.past_meal_plans')}>
         {historyOpen && (
           <PastPlans
             thisWeek={thisWeek}
@@ -355,6 +375,7 @@ export default function MealPlanPage() {
 /** Weeks before this one that have a saved plan, newest first. Tapping one opens that week on this screen. */
 function PastPlans({ thisWeek, current, onPick }: { thisWeek: string; current: string; onPick: (weekStart: string) => void }) {
   const { db } = useApp();
+  const { t, tp } = useT();
   const weeks = useLiveQuery(async () => {
     const rows = alive(await db.mealPlans.where('weekStart').below(thisWeek).toArray());
     const latest = new Map<string, MealPlan>();
@@ -362,17 +383,20 @@ function PastPlans({ thisWeek, current, onPick }: { thisWeek: string; current: s
     return [...latest.values()].sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1));
   }, [db, thisWeek]);
   if (weeks === undefined) return <Spinner />;
-  if (weeks.length === 0) return <p className="text-sm text-muted">No earlier meal plans yet. Plans you make are kept here after their week ends.</p>;
+  if (weeks.length === 0) return <p className="text-sm text-muted">{t('nutrition.mealPlan.no_earlier_meal_plans_yet_plans')}</p>;
   return (
     <ul className="-mx-4 divide-y divide-line">
       {weeks.map((p) => {
         const meals = p.days.reduce((n, d) => n + d.items.length, 0);
-        const label = p.weekStart === addDays(thisWeek, -7) ? 'Last week' : `Week of ${formatDate(p.weekStart, { day: 'numeric', month: 'short' })}`;
+        const label = p.weekStart === addDays(thisWeek, -7) ? t('nutrition.mealPlan.last_week') : t('nutrition.mealPlan.week_of_x', { date: formatDate(p.weekStart, { day: 'numeric', month: 'short' }) });
         return (
           <li key={p.weekStart}>
             <ListRow
               title={label}
-              subtitle={`${formatDate(p.weekStart, { day: 'numeric', month: 'short' })} – ${formatDate(addDays(p.weekStart, 6), { day: 'numeric', month: 'short' })} · ${meals} meal${meals === 1 ? '' : 's'}${p.weekStart === current ? ' · showing' : ''}`}
+              subtitle={tp(p.weekStart === current ? 'nutrition.mealPlan.past_subtitle_showing' : 'nutrition.mealPlan.past_subtitle', meals, {
+                from: formatDate(p.weekStart, { day: 'numeric', month: 'short' }),
+                to: formatDate(addDays(p.weekStart, 6), { day: 'numeric', month: 'short' }),
+              })}
               right={<ChevronRight className="size-4" />}
               onClick={() => onPick(p.weekStart)}
             />
@@ -384,19 +408,22 @@ function PastPlans({ thisWeek, current, onPick }: { thisWeek: string; current: s
 }
 
 function PrefsSummary({ diet }: { diet: DietPrefs }) {
+  const { t, tp, language, locale } = useT();
+  const lower = (x: string) => x.toLocaleLowerCase(locale);
   const bits = [
-    `${diet.mealsPerDay || 3} meals a day`,
-    `up to ${diet.maxCookMinutes || 30} min`,
-    diet.budget === 'low' ? 'budget-friendly' : diet.budget === 'medium' ? 'moderate budget' : null,
-    ...diet.tags.map((t) => DIET_TAG_LABELS[t].toLowerCase()),
-    diet.allergens.length ? `avoiding ${diet.allergens.map((a) => ALLERGEN_LABELS[a].toLowerCase()).join(', ')}` : null,
-    proteinPrefsSummary(diet.proteinPrefs) || null,
+    tp('nutrition.mealPlan.summary.meals', diet.mealsPerDay || 3),
+    t('nutrition.mealPlan.summary.up_to', { minutes: diet.maxCookMinutes || 30 }),
+    diet.budget === 'low' ? t('nutrition.mealPlan.summary.budget_low') : diet.budget === 'medium' ? t('nutrition.mealPlan.summary.budget_medium') : null,
+    ...diet.tags.map((tag) => lower(dietTagLabel(tag, language))),
+    diet.allergens.length ? t('nutrition.mealPlan.summary.avoiding', { allergens: diet.allergens.map((a) => lower(allergenLabel(a, language))).join(', ') }) : null,
+    proteinPrefsSummary(diet.proteinPrefs, language) || null,
   ].filter(Boolean);
-  return <>We'll build seven days from the starter recipes: {bits.join(', ')}.</>;
+  return <>{t('nutrition.mealPlan.well_build_seven_days_from_the', { details: bits.join(', ') })}</>;
 }
 
 /** The visible gap for one day, why it exists, and practical changes (derived from the saved plan). */
 function DayGap({ status, onBalance }: { status: PlanDayStatus; onBalance?: () => void }) {
+  const { t } = useT();
   return (
     <div className="px-4 py-3 border-t border-line bg-warn-soft text-sm" role="status">
       <p>{status.message}</p>
@@ -409,7 +436,7 @@ function DayGap({ status, onBalance }: { status: PlanDayStatus; onBalance?: () =
       )}
       {onBalance && (
         <Button className="mt-2" icon={<Scale className="size-4" />} onClick={onBalance}>
-          Balance this day
+          {t('nutrition.mealPlan.balance_this_day')}
         </Button>
       )}
     </div>
@@ -420,6 +447,8 @@ function ItemEditor({
   item, prefs, onChange, onSwapMeal, onRemove, onDone,
 }: { item: MealPlanItem; prefs: PlanPrefs; onChange: (p: Partial<MealPlanItem>) => void; onSwapMeal: () => void; onRemove: () => void; onDone: () => void }) {
   const r = RECIPES_BY_ID.get(item.recipeId);
+  const { t, language } = useT();
+  const ingName = (id: ID) => ingredientDisplayName(id, language);
   const sideOptions = useMemo(
     () => allowedAddOns(item.slot, prefs).filter((a) => a.minutes === 0 || (r ? recipeMinutes(r) : 0) + a.minutes <= prefs.maxCookMinutes),
     [item.slot, prefs, r],
@@ -436,46 +465,50 @@ function ItemEditor({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <div className="font-semibold">{r.name}</div>
+        <div className="font-semibold">{recipeDisplayName(r, language)}</div>
         <div className="text-sm text-muted">
-          {displayMacro(m.protein, 'protein')} g protein · {displayMacro(m.kcal, 'kcal')} kcal · {displayMacro(m.carbs, 'carbs')} g carbs · {displayMacro(m.fat, 'fat')} g fat
-          {extras.length ? ' (including sides)' : ''}
+          {t(extras.length ? 'nutrition.mealPlan.item_macros_sides' : 'nutrition.mealPlan.item_macros', {
+            protein: displayMacro(m.protein, 'protein'),
+            kcal: displayMacro(m.kcal, 'kcal'),
+            carbs: displayMacro(m.carbs, 'carbs'),
+            fat: displayMacro(m.fat, 'fat'),
+          })}
         </div>
       </div>
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium" id="plan-serv">
-          Servings
+          {t('foodLog.custom.servings')}
         </span>
         <div className="flex items-center gap-2" role="group" aria-labelledby="plan-serv">
-          <IconButton label="Fewer servings" className="border border-line" disabled={item.servings <= 0.5} onClick={() => onChange({ servings: Math.max(0.5, item.servings - PORTION_STEP) })}>
+          <IconButton label={t('nutrition.mealPlan.fewer_servings')} className="border border-line" disabled={item.servings <= 0.5} onClick={() => onChange({ servings: Math.max(0.5, item.servings - PORTION_STEP) })}>
             <Minus className="size-4" />
           </IconButton>
           <span className="w-10 text-center font-semibold tabular" aria-live="polite">
             {item.servings}
           </span>
-          <IconButton label="More servings" className="border border-line" disabled={item.servings >= 6} onClick={() => onChange({ servings: Math.min(6, item.servings + PORTION_STEP) })}>
+          <IconButton label={t('nutrition.mealPlan.more_servings')} className="border border-line" disabled={item.servings >= 6} onClick={() => onChange({ servings: Math.min(6, item.servings + PORTION_STEP) })}>
             <Plus className="size-4" />
           </IconButton>
         </div>
       </div>
       <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-semibold">Protein sides</h3>
-        {extras.length === 0 && <p className="text-xs text-muted">None. Add one to raise this meal's protein without adding a meal.</p>}
+        <h3 className="text-sm font-semibold">{t('nutrition.mealPlan.protein_sides')}</h3>
+        {extras.length === 0 && <p className="text-xs text-muted">{t('nutrition.mealPlan.none_add_one_to_raise_this')}</p>}
         {extras.map((e, i) => {
           const amounts = PROTEIN_ADDONS.find((a) => a.ingredientId === e.ingredientId)?.amounts ?? [e.grams];
           const down = [...amounts].reverse().find((g) => g < e.grams);
           const up = amounts.find((g) => g > e.grams);
-          const text = extraText(e);
+          const text = extraText(e, undefined, language);
           return (
             <div key={`${e.ingredientId}-${i}`} className="flex items-center gap-1">
               <span className="flex-1 text-sm">{text}</span>
-              <IconButton label={`Less ${text}`} size="sm" className="border border-line" disabled={down == null} onClick={() => down != null && setExtras(extras.map((x, k) => (k === i ? { ...x, grams: down } : x)))}>
+              <IconButton label={t('nutrition.mealPlan.less_x', { item: text })} size="sm" className="border border-line" disabled={down == null} onClick={() => down != null && setExtras(extras.map((x, k) => (k === i ? { ...x, grams: down } : x)))}>
                 <Minus className="size-4" />
               </IconButton>
-              <IconButton label={`More ${text}`} size="sm" className="border border-line" disabled={up == null} onClick={() => up != null && setExtras(extras.map((x, k) => (k === i ? { ...x, grams: up } : x)))}>
+              <IconButton label={t('nutrition.mealPlan.more_x', { item: text })} size="sm" className="border border-line" disabled={up == null} onClick={() => up != null && setExtras(extras.map((x, k) => (k === i ? { ...x, grams: up } : x)))}>
                 <Plus className="size-4" />
               </IconButton>
-              <IconButton label={`Remove ${text}`} size="sm" onClick={() => setExtras(extras.filter((_, k) => k !== i))}>
+              <IconButton label={t('nutrition.mealPlan.remove_x', { item: text })} size="sm" onClick={() => setExtras(extras.filter((_, k) => k !== i))}>
                 <Trash2 className="size-4" />
               </IconButton>
             </div>
@@ -484,10 +517,10 @@ function ItemEditor({
         {sideOptions.length > 0 ? (
           <div className="flex items-end gap-2">
             <div className="min-w-0 flex-1">
-              <Select label="Add a protein side" value={chosenSide} onChange={(ev) => setSideId(ev.target.value)}>
+              <Select label={t('nutrition.mealPlan.add_a_protein_side')} value={chosenSide} onChange={(ev) => setSideId(ev.target.value)}>
                 {sideOptions.map((a) => (
                   <option key={a.ingredientId} value={a.ingredientId}>
-                    {INGREDIENTS_BY_ID.get(a.ingredientId)?.name}
+                    {ingName(a.ingredientId)}
                   </option>
                 ))}
               </Select>
@@ -502,22 +535,22 @@ function ItemEditor({
                 setExtras(existing >= 0 ? extras : [...extras, { ingredientId: a.ingredientId, grams }]);
               }}
             >
-              Add
+              {t('foodLog.add')}
             </Button>
           </div>
         ) : (
-          <p className="text-xs text-muted">No protein sides fit your allergy, diet, protein and budget settings for this meal.</p>
+          <p className="text-xs text-muted">{t('nutrition.mealPlan.no_protein_sides_fit_your_allergy')}</p>
         )}
       </div>
       {swappable.length > 0 && (
         <div className="flex flex-col gap-3">
-          <h3 className="text-sm font-semibold">Ingredient swaps</h3>
+          <h3 className="text-sm font-semibold">{t('nutrition.mealPlan.ingredient_swaps')}</h3>
           {swappable.map((ri) => {
             const cur = swaps.find((s) => s.from === ri.ingredientId)?.to ?? ri.ingredientId;
             return (
               <Select
                 key={ri.ingredientId}
-                label={INGREDIENTS_BY_ID.get(ri.ingredientId)?.name}
+                label={ingName(ri.ingredientId)}
                 value={cur}
                 onChange={(e) => {
                   const to = e.target.value;
@@ -525,10 +558,10 @@ function ItemEditor({
                   onChange({ swaps: to === ri.ingredientId ? rest : [...rest, { from: ri.ingredientId, to }] });
                 }}
               >
-                <option value={ri.ingredientId}>{INGREDIENTS_BY_ID.get(ri.ingredientId)?.name} (original)</option>
+                <option value={ri.ingredientId}>{t('nutrition.mealPlan.ingredient_original', { name: ingName(ri.ingredientId) })}</option>
                 {[...new Set([...subs(ri.ingredientId), ...(cur !== ri.ingredientId ? [cur] : [])])].map((a) => (
                   <option key={a} value={a}>
-                    {a === LEFT_OUT ? 'Left out' : INGREDIENTS_BY_ID.get(a)?.name}
+                    {a === LEFT_OUT ? t('nutrition.mealPlan.left_out') : ingName(a)}
                   </option>
                 ))}
               </Select>
@@ -538,14 +571,14 @@ function ItemEditor({
       )}
       <div className="flex flex-wrap gap-2 justify-between pt-1">
         <Button variant="danger" icon={<Trash2 className="size-4" />} onClick={onRemove}>
-          Remove
+          {t('common.remove')}
         </Button>
         <div className="flex gap-2">
           <Button icon={<Shuffle className="size-4" />} onClick={onSwapMeal}>
-            Different recipe
+            {t('nutrition.mealPlan.different_recipe')}
           </Button>
           <Button variant="primary" onClick={onDone}>
-            Done
+            {t('workout.done')}
           </Button>
         </div>
       </div>
@@ -555,6 +588,7 @@ function ItemEditor({
 
 function AddMeal({ onAdd }: { onAdd: (slot: MealSlot, recipeId: ID) => void }) {
   const { account } = useApp();
+  const { t, language } = useT();
   const [slot, setSlot] = useState<MealSlot>('snack');
   const prefs = useMemo(() => prefsFromAccount(account), [account]);
   const options = useMemo(() => {
@@ -565,20 +599,20 @@ function AddMeal({ onAdd }: { onAdd: (slot: MealSlot, recipeId: ID) => void }) {
   const chosen = options.some((o) => o.id === recipeId) ? recipeId : options[0]?.id ?? '';
   return (
     <div className="flex flex-col gap-3">
-      <Segmented label="Meal" value={slot} onChange={setSlot} options={MEAL_ORDER.map((m) => ({ value: m, label: MEAL_LABELS[m] }))} />
+      <Segmented label={t('aiCard.recipe.meal')} value={slot} onChange={setSlot} options={MEAL_ORDER.map((m) => ({ value: m, label: mealLabel(m, language) }))} />
       {options.length === 0 ? (
-        <p className="text-sm text-muted">No recipes match your diet, allergy and protein settings for this meal.</p>
+        <p className="text-sm text-muted">{t('nutrition.mealPlan.no_recipes_match_your_diet_allergy')}</p>
       ) : (
-        <Select label="Recipe" value={chosen} onChange={(e) => setRecipeId(e.target.value)}>
+        <Select label={t('aiCard.mealPlan.recipeFallback')} value={chosen} onChange={(e) => setRecipeId(e.target.value)}>
           {options.map((r) => (
             <option key={r.id} value={r.id}>
-              {r.name}
+              {recipeDisplayName(r, language)}
             </option>
           ))}
         </Select>
       )}
       <Button variant="primary" disabled={!chosen} onClick={() => onAdd(slot, chosen)}>
-        Add to day
+        {t('nutrition.mealPlan.add_to_day')}
       </Button>
     </div>
   );
@@ -587,8 +621,9 @@ function AddMeal({ onAdd }: { onAdd: (slot: MealSlot, recipeId: ID) => void }) {
 const DIET_OPTIONS: DietTag[] = ['vegetarian', 'vegan', 'pescatarian', 'dairy_free', 'gluten_free', 'high_protein'];
 
 function PrefsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useT();
   return (
-    <Sheet open={open} onClose={onClose} title="Plan preferences">
+    <Sheet open={open} onClose={onClose} title={t('nutrition.mealPlan.plan_preferences')}>
       {open && <PrefsForm onDone={onClose} />}
     </Sheet>
   );
@@ -597,6 +632,8 @@ function PrefsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 function PrefsForm({ onDone }: { onDone: () => void }) {
   const { account, updateAccount } = useApp();
   const toast = useToast();
+  const { t, language, locale } = useT();
+  const ingName = (id: ID) => ingredientDisplayName(id, language);
   const [d, setD] = useState<DietPrefs>(account.profile.diet);
   const [dislikeQuery, setDislikeQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -604,62 +641,67 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
     setBusy(true);
     try {
       await updateAccount((a) => ({ ...a, profile: { ...a.profile, diet: d }, nutrition: { ...a.nutrition, mealsPerDay: d.mealsPerDay } }));
-      toast.show('Preferences saved. Regenerate the plan to apply them.', { tone: 'success' });
+      toast.show(t('nutrition.mealPlan.preferences_saved_regenerate_the_plan_to'), { tone: 'success' });
       onDone();
     } catch {
-      toast.show('Could not save. Please try again.', { tone: 'error' });
+      toast.show(t('foodLog.saveError'), { tone: 'error' });
     } finally {
       setBusy(false);
     }
   }
-  const dislikeMatches = dislikeQuery.trim()
-    ? INGREDIENTS.filter((i) => i.name.toLowerCase().includes(dislikeQuery.trim().toLowerCase()) && !d.dislikedIngredientIds.includes(i.id)).slice(0, 6)
+  const dq = dislikeQuery.trim();
+  const dislikeMatches = dq
+    ? INGREDIENTS.filter(
+        (i) =>
+          (i.name.toLowerCase().includes(dq.toLowerCase()) || ingName(i.id).toLocaleLowerCase(locale).includes(dq.toLocaleLowerCase(locale))) &&
+          !d.dislikedIngredientIds.includes(i.id),
+      ).slice(0, 6)
     : [];
   return (
     <div className="flex flex-col gap-4">
-      <NumberInput label="Meals per day" value={d.mealsPerDay} decimals={false} min={1} max={6} onChange={(v) => v != null && setD({ ...d, mealsPerDay: v })} hint="4 or more adds snacks." />
-      <Select label="Maximum cooking time" value={String(d.maxCookMinutes)} onChange={(e) => setD({ ...d, maxCookMinutes: Number(e.target.value) })}>
+      <NumberInput label={t('nutrition.mealPlan.meals_per_day')} value={d.mealsPerDay} decimals={false} min={1} max={6} onChange={(v) => v != null && setD({ ...d, mealsPerDay: v })} hint={t('nutrition.mealPlan.4_or_more_adds_snacks')} />
+      <Select label={t('nutrition.mealPlan.maximum_cooking_time')} value={String(d.maxCookMinutes)} onChange={(e) => setD({ ...d, maxCookMinutes: Number(e.target.value) })}>
         {[15, 20, 30, 45, 60, 90].map((m) => (
           <option key={m} value={m}>
-            {m} minutes
+            {t('nutrition.mealPlan.minutes_option', { minutes: m })}
           </option>
         ))}
       </Select>
       <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">Budget</span>
+        <span className="text-sm font-medium">{t('nutrition.mealPlan.budget')}</span>
         <Segmented<BudgetPref>
-          label="Budget"
+          label={t('nutrition.mealPlan.budget')}
           value={d.budget}
           onChange={(budget) => setD({ ...d, budget })}
           options={[
-            { value: 'low', label: 'Low' },
-            { value: 'medium', label: 'Medium' },
-            { value: 'any', label: 'Any' },
+            { value: 'low', label: t('nutrition.mealPlan.low') },
+            { value: 'medium', label: t('nutrition.mealPlan.medium') },
+            { value: 'any', label: t('nutrition.mealPlan.budget_any') },
           ]}
         />
       </div>
       <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">Diet</span>
-        <ChipGroup label="Diet" values={d.tags} onChange={(tags) => setD({ ...d, tags })} options={DIET_OPTIONS.map((t) => ({ value: t, label: DIET_TAG_LABELS[t] }))} />
+        <span className="text-sm font-medium">{t('nutrition.mealPlan.diet')}</span>
+        <ChipGroup label={t('nutrition.mealPlan.diet')} values={d.tags} onChange={(tags) => setD({ ...d, tags })} options={DIET_OPTIONS.map((tag) => ({ value: tag, label: dietTagLabel(tag, language) }))} />
       </div>
       <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">Allergies & intolerances to avoid</span>
+        <span className="text-sm font-medium">{t('nutrition.mealPlan.allergies_intolerances_to_avoid')}</span>
         <ChipGroup<Allergen>
-          label="Allergens"
+          label={t('nutrition.mealPlan.allergens')}
           values={d.allergens}
           onChange={(allergens) => setD({ ...d, allergens })}
-          options={(Object.keys(ALLERGEN_LABELS) as Allergen[]).map((a) => ({ value: a, label: ALLERGEN_LABELS[a] }))}
+          options={(Object.keys(ALLERGEN_LABELS) as Allergen[]).map((a) => ({ value: a, label: allergenLabel(a, language) }))}
         />
       </div>
       <div className="flex flex-col gap-1.5" role="group" aria-labelledby="prefs-proteins">
         <span id="prefs-proteins" className="text-sm font-medium">
-          Proteins
+          {t('nutrition.mealPlan.proteins')}
         </span>
         <ProteinPicker value={d.proteinPrefs} onChange={(proteinPrefs) => setD({ ...d, proteinPrefs })} />
       </div>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="dislike-q" className="text-sm font-medium">
-          Ingredients you'd rather skip
+          {t('nutrition.mealPlan.ingredients_youd_rather_skip')}
         </label>
         {d.dislikedIngredientIds.length > 0 && (
           <div className="flex flex-wrap gap-2">
@@ -669,9 +711,9 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
                 type="button"
                 className="min-h-9 px-3 rounded-full border border-line text-sm inline-flex items-center gap-1 hover:bg-surface-2"
                 onClick={() => setD({ ...d, dislikedIngredientIds: d.dislikedIngredientIds.filter((x) => x !== id) })}
-                aria-label={`Remove ${INGREDIENTS_BY_ID.get(id)?.name ?? id}`}
+                aria-label={t('nutrition.mealPlan.remove_x', { item: ingName(id) })}
               >
-                {INGREDIENTS_BY_ID.get(id)?.name ?? id} ×
+                {ingName(id)} ×
               </button>
             ))}
           </div>
@@ -679,7 +721,7 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
         <input
           id="dislike-q"
           type="search"
-          placeholder="Search ingredients"
+          placeholder={t('nutrition.mealPlan.search_ingredients')}
           value={dislikeQuery}
           onChange={(e) => setDislikeQuery(e.target.value)}
           className="w-full min-h-11 rounded-xl bg-field border border-line-input px-3 text-[16px] text-ink placeholder:text-faint focus:border-accent"
@@ -696,7 +738,7 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
                     setDislikeQuery('');
                   }}
                 >
-                  {i.name}
+                  {ingName(i.id)}
                 </button>
               </li>
             ))}
@@ -706,10 +748,10 @@ function PrefsForm({ onDone }: { onDone: () => void }) {
       <AllergenNote />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onDone}>
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Button variant="primary" onClick={save} loading={busy}>
-          Save
+          {t('common.save')}
         </Button>
       </div>
     </div>

@@ -10,6 +10,7 @@ import { friendlyError } from '@/social/pendingPosts';
 import { AccessNotice, Avatar, ReportSheet, Time, useSocialAccess } from './common';
 import { feedHome } from './feedHome';
 import { PostCard } from './PostCard';
+import { useT } from '@/i18n';
 
 const COMMENT_MAX = 1000;
 
@@ -17,6 +18,7 @@ export default function PostPage() {
   const { id = '' } = useParams();
   const nav = useNavigate();
   const toast = useToast();
+  const { t } = useT();
   const { access, meId } = useSocialAccess();
   const [post, setPost] = useState<Post | null | undefined>(undefined);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -41,13 +43,13 @@ export default function PostPage() {
           setComments(await socialApi.listComments(id));
           setCommentsError(null);
         } catch (e) {
-          setCommentsError(friendlyError(e, 'Couldn’t load comments.'));
+          setCommentsError(friendlyError(e, t('social.couldnt_load_comments')));
         }
       }
     } catch (e) {
-      setError(friendlyError(e, 'Couldn’t load this post.'));
+      setError(friendlyError(e, t('social.couldnt_load_this_post')));
     }
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
     if (access === 'ok') void load();
@@ -66,7 +68,7 @@ export default function PostPage() {
       setBody('');
       setDraftId(uuid());
     } catch (e) {
-      setSendError(friendlyError(e, 'Your comment wasn’t sent. Try again.'));
+      setSendError(friendlyError(e, t('social.error.send_comment')));
     } finally {
       setSending(false);
     }
@@ -80,9 +82,9 @@ export default function PostPage() {
       setComments((cur) => cur.filter((c) => c.id !== toDelete.id));
       setPost((p) => (p ? { ...p, commentCount: Math.max(0, p.commentCount - 1) } : p));
       setToDelete(null);
-      toast.show('Comment removed', { tone: 'success' });
+      toast.show(t('social.comment_removed'), { tone: 'success' });
     } catch (e) {
-      toast.show(friendlyError(e, 'Couldn’t remove the comment.'), { tone: 'error' });
+      toast.show(friendlyError(e, t('social.error.remove_comment')), { tone: 'error' });
     } finally {
       setDeleting(false);
     }
@@ -92,21 +94,25 @@ export default function PostPage() {
 
   return (
     <Page
-      title="Post"
+      title={t('social.post')}
       back={
-        <IconButton label="Back" onClick={() => nav(-1)}>
+        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
           <ChevronLeft className="size-6" />
         </IconButton>
       }
     >
       {access !== 'ok' ? (
-        <AccessNotice access={access} what="This post" />
+        <AccessNotice access={access} what="post" />
       ) : error ? (
-        <ErrorState title="Couldn’t load this post" message={error} onRetry={load} />
+        <ErrorState title={t('social.couldnt_load_this_post')} message={error} onRetry={load} />
       ) : post === undefined ? (
-        <Spinner label="Loading post" />
+        <Spinner label={t('social.loading_post')} />
       ) : post === null ? (
-        <EmptyState title="This post isn’t available" body="It may have been deleted, or it isn’t shared with you." action={<Button onClick={() => nav(feedHome().path)}>{feedHome().label}</Button>} />
+        <EmptyState
+          title={t('social.this_post_isnt_available')}
+          body={t('social.it_may_have_been_deleted_or_2')}
+          action={<Button onClick={() => nav(feedHome().path)}>{feedHome().label}</Button>}
+        />
       ) : (
         <>
           <PostCard
@@ -119,20 +125,20 @@ export default function PostPage() {
           />
 
           <section aria-labelledby="comments-title">
-            <SectionTitle id="comments-title">Comments</SectionTitle>
+            <SectionTitle id="comments-title">{t('settings.comments')}</SectionTitle>
             {commentsError ? (
-              <ErrorState title="Couldn’t load comments" message={commentsError} onRetry={load} />
+              <ErrorState title={t('social.couldnt_load_comments')} message={commentsError} onRetry={load} />
             ) : comments.length === 0 ? (
-              <EmptyState icon={<MessageCircle className="size-6" aria-hidden />} title="No comments yet" body="Say something encouraging." />
+              <EmptyState icon={<MessageCircle className="size-6" aria-hidden />} title={t('social.no_comments_yet')} body={t('social.say_something_encouraging')} />
             ) : (
               <ul className="flex flex-col gap-1">
                 {comments.map((c) => {
                   const mine = c.authorId === meId;
-                  const name = c.author?.displayName || (c.author?.username ? `@${c.author.username}` : mine ? 'You' : 'Someone');
+                  const name = c.author?.displayName || (c.author?.username ? `@${c.author.username}` : mine ? t('social.you') : t('social.someone'));
                   return (
                     <li key={c.id} className="flex gap-3 rounded-xl px-1 py-2">
                       {c.author?.username ? (
-                        <Link to={`/u/${c.author.username}`} aria-label={`${name}’s profile`} className="shrink-0">
+                        <Link to={`/u/${c.author.username}`} aria-label={t('social.xs_profile', { name })} className="shrink-0">
                           <Avatar profile={c.author} size={36} />
                         </Link>
                       ) : (
@@ -145,11 +151,11 @@ export default function PostPage() {
                         <p className="text-[15px] whitespace-pre-wrap break-words">{c.body}</p>
                       </div>
                       {mine || isPostAuthor ? (
-                        <IconButton label={mine ? 'Delete your comment' : `Remove comment by ${name}`} onClick={() => setToDelete(c)} className="text-muted">
+                        <IconButton label={mine ? t('social.delete_your_comment') : t('social.remove_comment_by_x', { name })} onClick={() => setToDelete(c)} className="text-muted">
                           <Trash2 className="size-4" />
                         </IconButton>
                       ) : (
-                        <IconButton label={`Report comment by ${name}`} onClick={() => setToReport(c)} className="text-muted">
+                        <IconButton label={t('social.report_comment_by_x', { name })} onClick={() => setToReport(c)} className="text-muted">
                           <Flag className="size-4" />
                         </IconButton>
                       )}
@@ -167,7 +173,7 @@ export default function PostPage() {
               }}
             >
               <Textarea
-                label="Add a comment"
+                label={t('social.add_a_comment')}
                 value={body}
                 maxLength={COMMENT_MAX}
                 onChange={(e) => setBody(e.target.value)}
@@ -177,7 +183,7 @@ export default function PostPage() {
               />
               <div className="flex justify-end">
                 <Button type="submit" variant="primary" loading={sending} disabled={!body.trim()} icon={<Send className="size-4" />}>
-                  Comment
+                  {t('social.comment_2')}
                 </Button>
               </div>
             </form>
@@ -185,9 +191,9 @@ export default function PostPage() {
 
           <ConfirmDialog
             open={!!toDelete}
-            title={toDelete?.authorId === meId ? 'Delete your comment?' : 'Remove this comment?'}
-            body={toDelete?.authorId === meId ? 'It will be removed from the post.' : 'It will be removed from your post for everyone.'}
-            confirmLabel={toDelete?.authorId === meId ? 'Delete' : 'Remove'}
+            title={toDelete?.authorId === meId ? t('social.delete_your_comment_2') : t('social.remove_this_comment')}
+            body={toDelete?.authorId === meId ? t('social.it_will_be_removed_from_the') : t('social.it_will_be_removed_from_your')}
+            confirmLabel={toDelete?.authorId === meId ? t('common.delete') : t('common.remove')}
             danger
             busy={deleting}
             onConfirm={removeComment}

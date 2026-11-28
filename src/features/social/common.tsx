@@ -233,14 +233,14 @@ const REASONS: { value: ReportInput['reason']; label: MessageKey }[] = [
   { value: 'inappropriate', label: 'coaching.editor.inappropriate_content' },
   { value: 'other', label: 'coaching.editor.something_else' },
 ];
-const REPORT_TITLES = {
+const REPORT_TITLES: Record<string, MessageKey> = {
   post: 'social.report_post',
   comment: 'social.report_comment',
   profile: 'social.report_profile',
-  'coach profile': 'social.report_coach_profile',
-} as const satisfies Record<string, MessageKey>;
+};
 
-export function ReportSheet({ open, onClose, target, what }: { open: boolean; onClose: () => void; target: Omit<ReportInput, 'reason' | 'details'>; what: keyof typeof REPORT_TITLES }) {
+/** `what`: 'post' | 'comment' | 'profile', or an already translated noun (accusative) for "Report {{what}}". */
+export function ReportSheet({ open, onClose, target, what }: { open: boolean; onClose: () => void; target: Omit<ReportInput, 'reason' | 'details'>; what: string }) {
   const { t } = useT();
   const toast = useToast();
   const [reason, setReason] = useState<ReportInput['reason'] | null>(null);
@@ -271,7 +271,7 @@ export function ReportSheet({ open, onClose, target, what }: { open: boolean; on
     <Sheet
       open={open}
       onClose={close}
-      title={t(REPORT_TITLES[what])}
+      title={REPORT_TITLES[what] ? t(REPORT_TITLES[what]) : t('coaching.editor.report_x', { what })}
       footer={
         <>
           <Button variant="ghost" onClick={close}>

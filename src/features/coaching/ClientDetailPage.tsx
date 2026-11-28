@@ -19,10 +19,13 @@ import { RELATIONSHIP_STATUS_LABEL, SCOPE_INFO, SCOPE_KEYS } from '@/coaching/re
 import { Avatar } from '@/features/social/common';
 import { BackButton, CheckInAnswers, CoachingAccessNotice, IntakeSummary, Panel, ProposalStatusBadge, fmtDateTime, useCoachingAccess, useLoad, useScrollToHash } from './tools/common';
 import { CoachGate, TrainingSummary, useCoachStatus } from './tools/coach';
+import { programDisplayName } from '@/domain/program/localize';
+import { t as tNow, tKey, useT } from '@/i18n';
 
 export default function ClientDetailPage() {
   const { relationshipId = '' } = useParams();
   const nav = useNavigate();
+  const { t } = useT();
   const { access } = useCoachingAccess();
   const ok = access === 'ok';
   const coach = useCoachStatus(ok);
@@ -31,17 +34,21 @@ export default function ClientDetailPage() {
   const rel = relQ.data;
 
   return (
-    <Page title={rel?.client.displayName || 'Client'} back={<BackButton to="/coaching/dashboard" />}>
+    <Page title={rel?.client.displayName || t('coaching.client.client')} back={<BackButton to="/coaching/dashboard" />}>
       {!ok ? (
-        <CoachingAccessNotice access={access} what="Client details" />
+        <CoachingAccessNotice access={access} what={t('coaching.client.what_client_details')} />
       ) : !approved ? (
         <CoachGate state={coach.state} profile={coach.profile} error={coach.error} reload={coach.reload} />
       ) : relQ.error && rel === undefined ? (
-        <ErrorState title="Couldn’t load this client" message={relQ.error} onRetry={relQ.reload} />
+        <ErrorState title={t('coaching.client.couldnt_load_this_client')} message={relQ.error} onRetry={relQ.reload} />
       ) : rel === undefined ? (
-        <Spinner label="Loading client" />
+        <Spinner label={t('coaching.client.loading_client')} />
       ) : rel === null ? (
-        <EmptyState title="Client not found" body="This coaching relationship doesn’t exist or isn’t yours." action={<Button onClick={() => nav('/coaching/dashboard')}>Dashboard</Button>} />
+        <EmptyState
+          title={t('coaching.client.client_not_found')}
+          body={t('coaching.client.this_coaching_relationship_doesnt_exist_or')}
+          action={<Button onClick={() => nav('/coaching/dashboard')}>{t('coaching.client.dashboard')}</Button>}
+        />
       ) : (
         <ClientBody rel={rel} reloadRel={relQ.reload} />
       )}
@@ -52,12 +59,13 @@ export default function ClientDetailPage() {
 function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: () => Promise<void> }) {
   const nav = useNavigate();
   const toast = useToast();
+  const { t, tp } = useT();
   const { account } = useApp();
   const unit = account.settings.units.weight;
   const lengthUnit = account.settings.units.length;
-  const who = rel.client.displayName || 'your client';
+  const who = rel.client.displayName || t('coaching.client.your_client');
   const isActive = rel.status === 'active';
-  const overview = useLoad(() => coachingApi.clientOverview(rel.id), [rel.id], isActive, 'Couldn’t load this client’s records.');
+  const overview = useLoad(() => coachingApi.clientOverview(rel.id), [rel.id], isActive, tNow('coaching.client.couldnt_load_this_clients_records'));
   const proposals = useLoad(() => coachingApi.listProposals({ relationshipId: rel.id }), [rel.id], rel.status !== 'requested');
   const feedback = useLoad(() => coachingApi.listFeedback(rel.id), [rel.id], isActive);
   const [fbFor, setFbFor] = useState<{ sessionId: string | null; label: string } | null>(null);
@@ -68,7 +76,7 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
 
   const ov = overview.data;
   useScrollToHash(!!ov);
-  const t = ov?.training;
+  const training = ov?.training;
   const fbBySession = new Map<string, CoachFeedback[]>();
   for (const f of feedback.data ?? []) {
     const k = f.sessionId ?? '';
@@ -80,10 +88,10 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
     try {
       await coachingApi.endCoaching(rel.id, endReason.trim() || undefined);
       setEnding(false);
-      toast.show(`Coaching with ${who} has ended.`, { tone: 'success' });
+      toast.show(t('coaching.client.coaching_with_x_has_ended', { name: who }), { tone: 'success' });
       await reloadRel();
     } catch (e) {
-      toast.show(coachingError(e, 'Couldn’t end coaching.'), { tone: 'error' });
+      toast.show(coachingError(e, t('coaching.client.couldnt_end_coaching')), { tone: 'error' });
     } finally {
       setEndBusy(false);
     }
@@ -97,30 +105,34 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
           <div className="min-w-0 flex-1">
             <h2 className="text-lg font-semibold truncate">{who}</h2>
             <p className="text-sm text-muted">
-              {RELATIONSHIP_STATUS_LABEL[rel.status]}
-              {rel.respondedAt && rel.status === 'active' ? ` · coaching since ${fmtDateTime(rel.respondedAt)}` : ''}
-              {rel.endedAt ? ` · ended ${fmtDateTime(rel.endedAt)}` : ''}
+              {[
+                RELATIONSHIP_STATUS_LABEL[rel.status],
+                rel.respondedAt && rel.status === 'active' ? t('coaching.client.coaching_since_x', { date: fmtDateTime(rel.respondedAt) }) : null,
+                rel.endedAt ? t('coaching.client.ended_x', { date: fmtDateTime(rel.endedAt) }) : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </p>
           </div>
         </div>
         <div className="flex gap-2 mt-3 flex-wrap">
           {rel.status !== 'requested' && (
             <Button variant={isActive ? 'primary' : 'secondary'} icon={<MessageCircle className="size-4" />} onClick={() => nav(`/coaching/messages/${rel.id}`)}>
-              {isActive ? 'Message' : 'Conversation history'}
+              {isActive ? t('coaching.messages.message') : t('coaching.client.conversation_history')}
               {rel.unread > 0 ? ` (${rel.unread})` : ''}
             </Button>
           )}
           {isActive && (
             <Button icon={<CalendarRange className="size-4" />} onClick={() => nav(`/coaching/client/${rel.id}/program`)}>
-              {t?.activeProgram ? 'Revise program' : 'Build program'}
+              {training?.activeProgram ? t('coaching.client.revise_program') : t('coaching.client.build_program')}
             </Button>
           )}
         </div>
         {isActive && (
-          <div className="mt-3 flex flex-wrap gap-1.5" aria-label="What this client shares with you">
+          <div className="mt-3 flex flex-wrap gap-1.5" aria-label={t('coaching.client.what_this_client_shares_with_you')}>
             {SCOPE_KEYS.map((k) => (
               <Badge key={k} tone={rel.scopes[k] ? 'accent' : 'neutral'}>
-                {SCOPE_INFO[k].label}: {rel.scopes[k] ? 'shared' : 'not shared'}
+                {SCOPE_INFO[k].label}: {rel.scopes[k] ? t('coaching.client.shared') : t('coaching.client.not_shared')}
               </Badge>
             ))}
           </div>
@@ -129,54 +141,56 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
 
       {rel.status === 'requested' && (
         <Notice className="mt-3">
-          This is a pending request. You see only the intake and intro message.{' '}
+          {t('coaching.client.this_is_a_pending_request_you')}{' '}
           <button type="button" className="underline font-medium" onClick={() => nav('/coaching/dashboard')}>
-            Respond from your dashboard
+            {t('coaching.client.respond_from_your_dashboard')}
           </button>
           .
         </Notice>
       )}
-      {!isActive && rel.status !== 'requested' && <Notice className="mt-3">Coaching isn’t active, so this client’s records are no longer available to you.</Notice>}
+      {!isActive && rel.status !== 'requested' && <Notice className="mt-3">{t('coaching.client.coaching_isnt_active_so_this_clients')}</Notice>}
 
-      <SectionTitle>Intake & goals</SectionTitle>
+      <SectionTitle>{t('coaching.client.intake_goals')}</SectionTitle>
       <Card className="px-4 py-3">
         <IntakeSummary intake={rel.intake} intro={rel.introMessage} />
       </Card>
 
       {isActive && (
         <>
-          {overview.error && !ov && <ErrorState title="Couldn’t load records" message={overview.error} onRetry={overview.reload} />}
-          {!ov && !overview.error && <Spinner label="Loading records" />}
+          {overview.error && !ov && <ErrorState title={t('coaching.client.couldnt_load_records')} message={overview.error} onRetry={overview.reload} />}
+          {!ov && !overview.error && <Spinner label={t('coaching.client.loading_records')} />}
           {ov && (
             <>
-              <SectionTitle>Training</SectionTitle>
-              <Panel value={t} who={who} what="Training history, adherence and the current program">
+              <SectionTitle>{t('ai.scope.training')}</SectionTitle>
+              <Panel value={training} who={who} what={t('coaching.client.what_training')}>
                 {(tr) => (
                   <div className="flex flex-col gap-3">
                     <Card className="px-4 py-3">
                       {tr.activeProgram ? (
                         <>
-                          <p className="font-medium">{tr.activeProgram.name}</p>
+                          <p className="font-medium">{programDisplayName(tr.activeProgram.name)}</p>
                           <p className="text-sm text-muted">
-                            Version {tr.activeProgram.currentVersion} · managed by{' '}
-                            {tr.activeProgram.managedBy === 'coach' ? 'a coach' : tr.activeProgram.managedBy === 'ai' ? 'the training assistant' : who}
+                            {t('coaching.client.managed_by', {
+                              version: tr.activeProgram.currentVersion,
+                              manager: tr.activeProgram.managedBy === 'coach' ? t('coaching.client.a_coach') : tr.activeProgram.managedBy === 'ai' ? t('coaching.client.the_training_assistant') : who,
+                            })}
                           </p>
                         </>
                       ) : (
-                        <p className="text-sm text-muted">No active program.</p>
+                        <p className="text-sm text-muted">{t('progress.noProgram')}</p>
                       )}
                       <div className="grid grid-cols-2 gap-3 mt-3">
-                        <Stat label="Completed (28 days)" value={tr.completedLast28} />
-                        <Stat label="Planned (28 days)" value={tr.plannedLast28 ?? '–'} />
+                        <Stat label={t('coaching.client.completed_28_days')} value={tr.completedLast28} />
+                        <Stat label={t('coaching.client.planned_28_days')} value={tr.plannedLast28 ?? '–'} />
                       </div>
                       <div className="mt-2">
                         <TrainingSummary training={tr} who={who} />
                       </div>
                     </Card>
                     <Card className="overflow-hidden">
-                      <h3 className="px-4 pt-3 text-sm font-semibold">Recent sessions</h3>
+                      <h3 className="px-4 pt-3 text-sm font-semibold">{t('coaching.client.recent_sessions')}</h3>
                       {tr.recentSessions.length === 0 ? (
-                        <p className="px-4 py-3 text-sm text-muted">No sessions logged recently.</p>
+                        <p className="px-4 py-3 text-sm text-muted">{t('coaching.client.no_sessions_logged_recently')}</p>
                       ) : (
                         <ul className="divide-y divide-line">
                           {tr.recentSessions.map((s) => (
@@ -185,12 +199,18 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
                                 <div className="min-w-0 flex-1">
                                   <p className="font-medium truncate">{s.name}</p>
                                   <p className="text-xs text-muted">
-                                    {formatDate(s.date)} · {s.status === 'completed' ? 'Completed' : s.status === 'active' ? 'In progress' : s.status}
-                                    {s.durationMin ? ` · ${s.durationMin} min` : ''} · {s.workingSets} working sets
+                                    {[
+                                      formatDate(s.date),
+                                      s.status === 'completed' ? t('coaching.client.completed') : s.status === 'active' ? t('train.inProgress') : s.status,
+                                      s.durationMin ? t('coaching.client.x_min', { minutes: s.durationMin }) : null,
+                                      tp('coaching.client.working_sets_count', s.workingSets),
+                                    ]
+                                      .filter(Boolean)
+                                      .join(' · ')}
                                   </p>
                                 </div>
                                 <Button size="sm" variant="ghost" icon={<MessageSquarePlus className="size-4" />} onClick={() => setFbFor({ sessionId: s.id, label: `${s.name} · ${formatDate(s.date)}` })}>
-                                  Feedback
+                                  {t('coaching.client.feedback')}
                                 </Button>
                               </div>
                               {(fbBySession.get(s.id) ?? []).map((f) => (
@@ -202,17 +222,17 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
                           ))}
                         </ul>
                       )}
-                      <p className="px-4 pb-3 text-xs text-muted">You can comment on sessions; you can’t change what {who} logged.</p>
+                      <p className="px-4 pb-3 text-xs text-muted">{t('coaching.client.you_can_comment_on_sessions_you', { name: who })}</p>
                     </Card>
                   </div>
                 )}
               </Panel>
 
-              <SectionTitle>Measurements</SectionTitle>
-              <Panel value={ov.measurements} who={who} what="Bodyweight and body measurements">
+              <SectionTitle>{t('ai.scope.measurements')}</SectionTitle>
+              <Panel value={ov.measurements} who={who} what={t('coaching.client.what_measurements')}>
                 {(ms) =>
                   ms.length === 0 ? (
-                    <Card className="px-4 py-3 text-sm text-muted">No measurements logged.</Card>
+                    <Card className="px-4 py-3 text-sm text-muted">{t('coaching.client.no_measurements_logged')}</Card>
                   ) : (
                     <Card className="overflow-hidden">
                       <ul className="divide-y divide-line">
@@ -222,7 +242,7 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
                           .map((m, i) => (
                             <li key={`${m.date}-${m.kind}-${i}`}>
                               <ListRow
-                                title={m.kind === 'bodyweight' ? 'Bodyweight' : m.kind === 'bodyfat_pct' ? 'Body fat' : m.kind.charAt(0).toUpperCase() + m.kind.slice(1)}
+                                title={m.kind === 'bodyfat_pct' ? t('progress.bodyFat') : tKey(`progress.${m.kind}`, m.kind.charAt(0).toUpperCase() + m.kind.slice(1))}
                                 subtitle={formatDate(m.date)}
                                 right={<span className="tabular text-ink">{m.kind === 'bodyweight' ? formatWeight(m.value, unit) : m.kind === 'bodyfat_pct' ? `${m.value}%` : formatCircumference(m.value, lengthUnit)}</span>}
                               />
@@ -234,11 +254,11 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
                 }
               </Panel>
 
-              <SectionTitle>Nutrition</SectionTitle>
-              <Panel value={ov.nutrition} who={who} what="Food log totals">
+              <SectionTitle>{t('today.nutrition')}</SectionTitle>
+              <Panel value={ov.nutrition} who={who} what={t('coaching.client.what_nutrition')}>
                 {(ns) =>
                   ns.length === 0 ? (
-                    <Card className="px-4 py-3 text-sm text-muted">No food logged recently.</Card>
+                    <Card className="px-4 py-3 text-sm text-muted">{t('coaching.client.no_food_logged_recently')}</Card>
                   ) : (
                     <Card className="overflow-hidden">
                       <ul className="divide-y divide-line">
@@ -251,8 +271,9 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
                                 title={formatDate(n.date)}
                                 right={
                                   <span className="tabular text-ink text-sm">
-                                    {n.protein != null ? `${Math.round(n.protein)} g protein` : '–'}
-                                    {n.kcal != null ? ` · ${Math.round(n.kcal)} kcal` : ''}
+                                    {[n.protein != null ? t('coaching.client.x_g_protein', { grams: Math.round(n.protein) }) : '–', n.kcal != null ? t('coaching.client.x_kcal', { kcal: Math.round(n.kcal) }) : null]
+                                      .filter(Boolean)
+                                      .join(' · ')}
                                   </span>
                                 }
                               />
@@ -264,11 +285,11 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
                 }
               </Panel>
 
-              <SectionTitle id="checkins">Check-ins</SectionTitle>
-              <Panel value={ov.checkins} who={who} what="Check-ins">
+              <SectionTitle id="checkins">{t('coaching.shareScope.check_ins')}</SectionTitle>
+              <Panel value={ov.checkins} who={who} what={t('coaching.shareScope.check_ins')}>
                 {(cs) =>
                   cs.length === 0 ? (
-                    <Card className="px-4 py-3 text-sm text-muted">No check-ins yet.</Card>
+                    <Card className="px-4 py-3 text-sm text-muted">{t('coaching.client.no_check_ins_yet')}</Card>
                   ) : (
                     <ul className="flex flex-col gap-2">
                       {[...cs]
@@ -279,12 +300,12 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
                             <CheckInAnswers c={c} unit={unit} />
                             {c.coachResponse ? (
                               <p className="mt-3 rounded-xl bg-accent-soft px-3 py-2 text-sm whitespace-pre-wrap break-words">
-                                <span className="block text-xs font-medium text-accent">Your reply</span>
+                                <span className="block text-xs font-medium text-accent">{t('coaching.client.your_reply')}</span>
                                 {c.coachResponse}
                               </p>
                             ) : (
                               <Button size="sm" className="mt-3" onClick={() => setRespondTo(c)}>
-                                Reply
+                                {t('coaching.client.reply')}
                               </Button>
                             )}
                           </Card>
@@ -295,8 +316,8 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
               </Panel>
 
               <div className="mt-3">
-                <Button variant="ghost" icon={<MessageSquarePlus className="size-4" />} onClick={() => setFbFor({ sessionId: null, label: 'General feedback' })}>
-                  Send general feedback
+                <Button variant="ghost" icon={<MessageSquarePlus className="size-4" />} onClick={() => setFbFor({ sessionId: null, label: t('coaching.client.general_feedback') })}>
+                  {t('coaching.client.send_general_feedback')}
                 </Button>
                 {(fbBySession.get('') ?? []).map((f) => (
                   <p key={f.id} className="mt-2 rounded-xl bg-surface-2 px-3 py-2 text-sm whitespace-pre-wrap break-words">
@@ -311,13 +332,13 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
 
       {rel.status !== 'requested' && (
         <>
-          <SectionTitle>Program proposals</SectionTitle>
+          <SectionTitle>{t('coaching.client.program_proposals')}</SectionTitle>
           {proposals.error && !proposals.data ? (
-            <ErrorState title="Couldn’t load proposals" message={proposals.error} onRetry={proposals.reload} />
+            <ErrorState title={t('coaching.client.couldnt_load_proposals')} message={proposals.error} onRetry={proposals.reload} />
           ) : !proposals.data ? (
-            <Spinner label="Loading proposals" />
+            <Spinner label={t('coaching.client.loading_proposals')} />
           ) : proposals.data.length === 0 ? (
-            <Card className="px-4 py-3 text-sm text-muted">No proposals yet.</Card>
+            <Card className="px-4 py-3 text-sm text-muted">{t('coaching.client.no_proposals_yet')}</Card>
           ) : (
             <Card className="overflow-hidden">
               <ul className="divide-y divide-line">
@@ -326,8 +347,12 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
                   .map((p) => (
                     <li key={p.id}>
                       <ListRow
-                        title={p.program.name}
-                        subtitle={`Revision ${p.revision} · ${p.baseProgramId ? `update to v${p.baseVersion}` : 'new plan'} · ${fmtDateTime(p.respondedAt ?? p.sentAt ?? p.createdAt)}`}
+                        title={programDisplayName(p.program.name)}
+                        subtitle={t('coaching.client.revision_x_x_x', {
+                          revision: p.revision,
+                          kind: p.baseProgramId ? t('coaching.client.update_to_vx', { version: p.baseVersion ?? '' }) : t('coaching.client.new_plan_lower'),
+                          date: fmtDateTime(p.respondedAt ?? p.sentAt ?? p.createdAt),
+                        })}
                         right={<ProposalStatusBadge status={p.status} />}
                         onClick={isActive ? () => nav(`/coaching/client/${rel.id}/program?proposal=${p.id}`) : undefined}
                       />
@@ -342,7 +367,7 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
       {isActive && (
         <div className="mt-6">
           <Button variant="danger" icon={<UserX className="size-4" />} onClick={() => setEnding(true)}>
-            End coaching
+            {t('coaching.client.end_coaching')}
           </Button>
         </div>
       )}
@@ -351,15 +376,15 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
       <RespondSheet checkin={respondTo} who={who} onClose={() => setRespondTo(null)} onSaved={overview.reload} />
       <ConfirmDialog
         open={ending}
-        title={`End coaching with ${who}?`}
+        title={t('coaching.client.end_coaching_with_x', { name: who })}
         danger
-        confirmLabel="End coaching"
+        confirmLabel={t('coaching.client.end_coaching')}
         busy={endBusy}
         onCancel={() => setEnding(false)}
         onConfirm={end}
-        body={`You immediately lose access to ${who}’s shared records. Their workouts and accepted programs stay theirs, and your conversation stays readable but closed to new messages.`}
+        body={t('coaching.client.you_immediately_lose_access_to_xs', { name: who })}
       >
-        <Textarea className="mt-3" label="Reason (optional, shared with the client)" maxLength={500} value={endReason} onChange={(e) => setEndReason(e.target.value)} />
+        <Textarea className="mt-3" label={t('coaching.client.reason_optional_shared_with_the_client')} maxLength={500} value={endReason} onChange={(e) => setEndReason(e.target.value)} />
       </ConfirmDialog>
     </>
   );
@@ -367,6 +392,7 @@ function ClientBody({ rel, reloadRel }: { rel: CoachingRelationship; reloadRel: 
 
 function FeedbackSheet({ target, relationshipId, onClose, onSaved }: { target: { sessionId: string | null; label: string } | null; relationshipId: string; onClose: () => void; onSaved: () => Promise<void> }) {
   const toast = useToast();
+  const { t } = useT();
   const [body, setBody] = useState('');
   const [id, setId] = useState(() => uuid());
   const [busy, setBusy] = useState(false);
@@ -381,13 +407,13 @@ function FeedbackSheet({ target, relationshipId, onClose, onSaved }: { target: {
     setError(null);
     try {
       await coachingApi.addFeedback({ id, relationshipId, sessionId: target.sessionId, body: body.trim() });
-      toast.show('Feedback sent', { tone: 'success' });
+      toast.show(t('coaching.client.feedback_sent'), { tone: 'success' });
       setBody('');
       setId(uuid());
       onClose();
       await onSaved();
     } catch (e) {
-      setError(coachingError(e, 'Your feedback wasn’t sent. Try again.'));
+      setError(coachingError(e, t('coaching.client.feedback_not_sent')));
     } finally {
       setBusy(false);
     }
@@ -396,25 +422,26 @@ function FeedbackSheet({ target, relationshipId, onClose, onSaved }: { target: {
     <Sheet
       open={!!target}
       onClose={close}
-      title={target?.label ?? 'Feedback'}
+      title={target?.label ?? t('coaching.client.feedback')}
       footer={
         <>
           <Button variant="ghost" onClick={close}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button variant="primary" loading={busy} disabled={!body.trim()} onClick={save}>
-            Send feedback
+            {t('coaching.client.send_feedback')}
           </Button>
         </>
       }
     >
-      <Textarea label="Feedback" maxLength={2000} value={body} onChange={(e) => setBody(e.target.value)} error={error} hint="The client sees this with the workout. Their logged results stay exactly as they recorded them." />
+      <Textarea label={t('coaching.client.feedback')} maxLength={2000} value={body} onChange={(e) => setBody(e.target.value)} error={error} hint={t('coaching.client.the_client_sees_this_with_the')} />
     </Sheet>
   );
 }
 
 function RespondSheet({ checkin, who, onClose, onSaved }: { checkin: CheckIn | null; who: string; onClose: () => void; onSaved: () => Promise<void> }) {
   const toast = useToast();
+  const { t } = useT();
   const { account } = useApp();
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
@@ -425,12 +452,12 @@ function RespondSheet({ checkin, who, onClose, onSaved }: { checkin: CheckIn | n
     setError(null);
     try {
       await coachingApi.respondCheckIn(checkin.id, body.trim());
-      toast.show('Reply sent', { tone: 'success' });
+      toast.show(t('coaching.client.reply_sent'), { tone: 'success' });
       setBody('');
       onClose();
       await onSaved();
     } catch (e) {
-      setError(coachingError(e, 'Your reply wasn’t sent. Try again.'));
+      setError(coachingError(e, t('coaching.client.reply_not_sent')));
     } finally {
       setBusy(false);
     }
@@ -439,14 +466,14 @@ function RespondSheet({ checkin, who, onClose, onSaved }: { checkin: CheckIn | n
     <Sheet
       open={!!checkin}
       onClose={onClose}
-      title={`Reply to ${who}`}
+      title={t('coaching.client.reply_to_x', { name: who })}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button variant="primary" loading={busy} disabled={!body.trim()} onClick={save}>
-            Send reply
+            {t('coaching.client.send_reply')}
           </Button>
         </>
       }
@@ -456,7 +483,7 @@ function RespondSheet({ checkin, who, onClose, onSaved }: { checkin: CheckIn | n
           <CheckInAnswers c={checkin} unit={account.settings.units.weight} />
         </div>
       )}
-      <Textarea label="Your reply" maxLength={2000} value={body} onChange={(e) => setBody(e.target.value)} error={error} />
+      <Textarea label={t('coaching.client.your_reply')} maxLength={2000} value={body} onChange={(e) => setBody(e.target.value)} error={error} />
     </Sheet>
   );
 }
