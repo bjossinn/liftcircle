@@ -30,7 +30,9 @@ export default function FeedPage() {
     const y = recalledScroll(key);
     if (y > 0) window.scrollTo(0, y);
   }, [key, list.items.length]);
-  useEffect(() => {
+  // Saved in a layout cleanup: on the way out it runs in the same commit, before Shell's ScrollReset scrolls the new page
+  // to the top (a passive cleanup would run after that and remember 0).
+  useLayoutEffect(() => {
     if (!key) return;
     return () => rememberScroll(key, window.scrollY);
   }, [key]);

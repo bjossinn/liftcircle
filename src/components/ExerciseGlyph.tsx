@@ -461,7 +461,7 @@ export const GLYPHS: Record<GlyphKey, ReactNode> = {
       <Ground />
     </>
   ),
-  // Prone floor pulldown, seen from above: face down on a mat, arms drawn back in a W.
+  // Prone floor pulldown, side view: lying face down on the floor, chest up, elbow pulled back (the W seen from the side).
   prone_pulldown: (
     <>
       <Head cx={18} cy={15.8} />

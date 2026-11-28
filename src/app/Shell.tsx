@@ -1,4 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
+import { ScrollReset } from './ScrollReset';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Dumbbell, Home, LineChart, MessageCircle, Play, Users, WifiOff } from 'lucide-react';
 import { useCoachingUnread } from '@/features/coaching/useCoachingUnread';
@@ -82,6 +83,7 @@ export function Shell() {
           {health.storage === 'unavailable' || health.storage === 'quota' ? t('nav.offline') : t('nav.offlineSaved')}
         </div>
       )}
+      <ScrollReset />
       <SyncRunner />
       <StorageHealthRunner />
       <PendingPostsRunner />
