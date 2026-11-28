@@ -1,0 +1,22 @@
+Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,Notes,Workout Notes,RPE
+2024-01-15 07:45:12,"Push Day",1h 5m,"Bench Press (Barbell)",W,40,10,0,0,"","Good session, slept well",
+2024-01-15 07:45:12,"Push Day",1h 5m,"Bench Press (Barbell)",1,80,8,0,0,"Paused reps, ""touch and go"" last set","Good session, slept well",8
+2024-01-15 07:45:12,"Push Day",1h 5m,"Bench Press (Barbell)",2,80,7,0,0,"","Good session, slept well",8.5
+2024-01-15 07:45:12,"Push Day",1h 5m,"Bench Press (Barbell)",3,80,6,0,0,"","Good session, slept well",9
+2024-01-15 07:45:12,"Push Day",1h 5m,"Overhead Press (Barbell)",1,50,8,0,0,"","Good session, slept well",
+2024-01-15 07:45:12,"Push Day",1h 5m,"Overhead Press (Barbell)",2,50,8,0,0,"","Good session, slept well",
+2024-01-15 07:45:12,"Push Day",1h 5m,"Triceps Pushdown (Cable - Straight Bar)",1,30,12,0,0,"","Good session, slept well",
+2024-01-15 07:45:12,"Push Day",1h 5m,"Triceps Pushdown (Cable - Straight Bar)",D,20,10,0,0,"","Good session, slept well",
+2024-01-15 07:45:12,"Push Day",1h 5m,"Landmine Press",1,25,10,0,0,"","Good session, slept well",
+2024-01-15 07:45:12,"Push Day",1h 5m,"Plank",1,0,0,0,60,"","Good session, slept well",
+
+2024-01-17 18:02:40,"Pull Day",58m,"Deadlift (Barbell)",W,60,5,0,0,"","",
+2024-01-17 18:02:40,"Pull Day",58m,"Deadlift (Barbell)",1,140,5,0,0,"","",
+2024-01-17 18:02:40,"Pull Day",58m,"Deadlift (Barbell)",2,140,5,0,0,"","",
+2024-01-17 18:02:40,"Pull Day",58m,"Pull Up",1,0,10,0,0,"","",
+2024-01-17 18:02:40,"Pull Day",58m,"Pull Up",2,0,8,0,0,"","",
+2024-01-17 18:02:40,"Pull Day",58m,"Pull Up (Assisted)",1,20,8,0,0,"","",
+2024-01-17 18:02:40,"Pull Day",58m,"Bicep Curl (Barbell)",F,30,10,0,0,"","",
+2024-01-17 18:02:40,"Pull Day",58m,"Rest Timer",Rest Timer,0,0,0,90,"","",
+2024-01-17 18:02:40,"Pull Day",58m,"Running",1,0,0,2.5,900,"","",
+2024-01-17 18:02:40,"Pull Day",58m,"Seated Row (Cable)",1,0,0,0,0,"","",

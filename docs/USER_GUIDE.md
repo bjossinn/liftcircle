@@ -248,6 +248,13 @@ install an update while a workout is in progress.
   finishes fully or changes nothing. The preview shows what's new, identical and different. Records you deleted on this
   device are never brought back. For records that differ, and for each part of Settings & targets, you choose whether
   to keep yours (default) or use the backup's.
+- **Import from Strong or Hevy:** export your workouts as CSV in that app, then *Settings → Your data → Import from
+  Strong or Hevy*. A preview shows the workouts and sets found, the date range, which exercises matched the library and
+  which become new custom exercises (nothing is dropped; when a library exercise can't hold what was logged, e.g.
+  Mountain Climbers counted in reps, a custom "Mountain Climbers (Strong)" is used). Strong files don't say kg or lb,
+  so the preview asks; files whose dates could be day/month or month/day ask which one too.
+  Importing the same file again adds nothing. Imported workouts show in history, progression and Progress, but never
+  trigger coach cheers, sharing or notifications.
 - **CSV exports** neutralise text that starts with = + - @ so spreadsheets don't run it as a formula.
 - With an account, records sync automatically. If the same record was edited on two devices, you're asked which
   version to keep (or keep both) — nothing is silently lost.
