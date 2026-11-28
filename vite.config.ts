@@ -75,13 +75,26 @@ export default defineConfig({
       workbox: {
         // Precache the app shell and bundled exercise/recipe data (they're JS chunks).
         globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2}'],
+        // Exercise illustrations are NOT precached (~3.1 MB): they're cached on first view by the runtime rule below.
+        globIgnores: ['exercise-media/**'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/auth\/v1/, /^\/rest\/v1/, /^\/storage\/v1/, /^\/functions\/v1/],
         cleanupOutdatedCaches: true,
-        // Deliberately NO runtimeCaching entries: Supabase auth, REST/RPC responses,
-        // friends' photos and signed media URLs must never land in the SW cache.
-        // Personal offline data lives in account-scoped IndexedDB instead.
-        runtimeCaching: [],
+        // The ONLY runtime cache: our own, public, non-personal exercise illustrations (same origin, versioned path).
+        // Supabase auth, REST/RPC responses, friends' photos and signed media URLs must never land in the SW cache;
+        // personal offline data lives in account-scoped IndexedDB instead. Keep this rule same-origin and path-scoped.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith('/exercise-media/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'exercise-media-v2',
+              // 105 exercises × (full + thumb) = 210 files: enough to keep every viewed image.
+              expiration: { maxEntries: 220, maxAgeSeconds: 60 * 60 * 24 * 90, purgeOnQuotaError: true },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+        ],
         // Push + notificationclick handlers (public/push-sw.js). They add no routes or caching.
         importScripts: ['push-sw.js'],
       },

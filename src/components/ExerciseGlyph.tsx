@@ -3,7 +3,7 @@ import type { MovementPattern } from '@/domain/types';
 
 /**
  * Intentional visual placeholder: a simple line glyph per movement pattern.
- * Used instead of photos/video (we only ship media we can verify licensing for).
+ * Used for custom exercises, and as the fallback when an exercise illustration fails to load (src/data/exerciseMedia.ts).
  * Draws with currentColor so it follows the surrounding text colour/theme.
  */
 const Ground = () => <path d="M6 42h36" strokeOpacity={0.35} />;

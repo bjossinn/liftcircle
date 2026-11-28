@@ -40,6 +40,9 @@ Workouts & rest timer → Celebrations**. With your phone's "reduce motion" sett
 - **Each set:** type the weight and reps (the numeric keypad opens; a decimal comma works), then tap ✓. What you type is
   saved as you type, even if you don't leave the field. A set needs at least 1 rep (or a time/distance for timed
   moves) to count as done. Values carry into the next set; tap ✓ again to undo. The grey hint shows what you did last time.
+- **See how it's done:** every library exercise shows a small picture next to its name. Tap it to see the start and
+  end positions side by side, with a few key technique points underneath. The exercise page shows the same picture
+  and points. Pictures you've opened stay available offline. Custom exercises show a simple movement icon instead.
 - **Swapping an exercise** offers alternatives that fit your equipment and limitations (**Show all exercises** to see
   every option). Switching between rep-based and timed moves rebuilds the sets; finished sets never change.
 - **Warm-ups** are always lighter than your working weight. Set your empty bar weight in Settings → Workout.

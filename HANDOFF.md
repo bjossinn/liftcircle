@@ -3,6 +3,23 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 28 Nov 2026: Exercise illustrations and technique cues (roadmap item 13, PR 2 of 3) — v1.0.5
+
+- All 105 library exercises show a first-party, AI-generated illustration (made with ChatGPT; ours, no attribution):
+  one 800×800 two-panel image (start | end position) on the exercise page and in the logger (tap the 44 px thumbnail
+  next to the exercise name), and 256×256 thumbnails in exercise lists and the picker. Custom exercises keep the
+  movement-pattern glyph; a failed load falls back to it (or hides the image and keeps the cues). A failure is
+  remembered per image, so a swapped-in exercise is always tried.
+- 4 short technique cues per exercise under the image, as i18n strings `exercise.cues.<id>.<n>`, in English and
+  Icelandic (Icelandic made with ChatGPT from `cues-is.json` on branch `ai-exercise-media-v2`, pasted verbatim; a
+  native-speaker review is still worthwhile).
+- Files: `public/exercise-media/v2/<id>/{full,thumb}.webp` (~3.1 MB), from `hard-earned-exercise-media-v2.tar.gz`
+  (branch `ai-exercise-media-v2`). Not precached; one Workbox runtime route (same-origin `/exercise-media/`,
+  CacheFirst, cache `exercise-media-v2`, 220 entries / 90 days). `public/_headers` serves them immutable (versioned path).
+- Owner task: check each AI image against its exercise for form/anatomy errors before release.
+- The earlier Everkinetic (CC BY-SA) drawings and their credits page were removed. docs/THIRD_PARTY_MEDIA.md records
+  the sources. Also fixed the Icelandic `import.error.dateOrder` wording. No migration, no backend change.
+
 ## 27 Nov 2026: CSV workout import from Strong and Hevy (roadmap item 13, PR 1 of 3) — v1.0.4
 
 - Settings → Data → *Import from Strong or Hevy*: parsers for both CSV exports (auto-detected; comma/semicolon,

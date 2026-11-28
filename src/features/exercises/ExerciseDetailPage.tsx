@@ -6,6 +6,7 @@ import type { CustomExercise, Exercise } from '@/domain/types';
 import { Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, Page, SectionTitle, Spinner } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { ExerciseGlyphTile } from '@/components/ExerciseGlyph';
+import { ExerciseIllustration } from '@/components/ExerciseVisual';
 import { ExerciseRowContent, exerciseRowClass } from '@/components/ExercisePicker';
 import {
   CATEGORY_LABELS, DIFFICULTY_LABELS, EQUIPMENT_LABELS, LIMITATION_LABELS, LOAD_LABELS, loadConventionNote, MUSCLE_LABELS,
@@ -143,6 +144,9 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
         </div>
       </Card>
 
+      {/* Image + technique cues; renders nothing for custom exercises (the glyph above stays). */}
+      <ExerciseIllustration ex={ex} className="mt-3 rounded-2xl bg-surface border border-line card-shadow p-4" />
+
       <Card className="mt-3 p-4">
         <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
           <Fact label="Primary muscles" value={ex.primaryMuscles.map((m) => MUSCLE_LABELS[m]).join(', ')} />
@@ -163,13 +167,14 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
         </div>
       )}
 
-      {(ex.setup || ex.execution || ex.cues.length > 0 || ex.mistakes.length > 0) && (
+      {/* Library exercises show their (translated) cues under the illustration above; custom ones keep their own here. */}
+      {(ex.setup || ex.execution || (isCustom && ex.cues.length > 0) || ex.mistakes.length > 0) && (
         <>
           <SectionTitle>{isCustom ? 'Notes' : 'How to do it'}</SectionTitle>
           <Card className="p-4 flex flex-col gap-4 text-[15px] leading-relaxed">
             {ex.setup && <TextBlock title={isCustom ? undefined : 'Setup'} body={ex.setup} />}
             {ex.execution && <TextBlock title="Execution" body={ex.execution} />}
-            {ex.cues.length > 0 && <BulletBlock title="Cues" items={ex.cues} />}
+            {isCustom && ex.cues.length > 0 && <BulletBlock title="Cues" items={ex.cues} />}
             {ex.mistakes.length > 0 && <BulletBlock title="Common mistakes" items={ex.mistakes} tone="warn" />}
           </Card>
         </>

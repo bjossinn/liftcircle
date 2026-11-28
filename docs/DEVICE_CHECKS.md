@@ -81,7 +81,7 @@ The checks below run on a production build with the service worker, Chromium, an
 | Area | Where |
 |---|---|
 | Precache: every build asset is cached before "Ready to work offline"; no foreign or Supabase URLs in caches | `tests/e2e/pwa.spec.ts` |
-| SW has only precache plus a navigation fallback; no runtime routes; Supabase `/auth|rest|storage|functions/v1` are deny-listed | `tests/e2e/pwa.spec.ts` |
+| SW has only precache, a navigation fallback and one runtime route (same-origin `/exercise-media/` illustrations, CacheFirst, ≤ 220 entries / 90 days, never precached); Supabase `/auth|rest|storage|functions/v1` are deny-listed | `tests/e2e/pwa.spec.ts`, `tests/e2e/exercise-visuals.spec.ts` |
 | Offline navigation after the first load | `tests/e2e/pwa.spec.ts` |
 | Offline log / reload / reopen / finish; rest timer recalculated from the stored deadline | `tests/e2e/logging.spec.ts`, `tests/unit/sessionOps.test.ts` |
 | SW registration failure shown, and the tracker still works | `tests/e2e/pwa.spec.ts`, `tests/unit/pwaUpdate.test.ts` |

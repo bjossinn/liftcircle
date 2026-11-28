@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronDown, Plus, Search, Star } from 'lucide-react';
 import type { Equipment, Exercise, ID, MovementPattern, MuscleGroup } from '@/domain/types';
 import { Button, EmptyState, Input, Sheet, Spinner, cx } from '@/components/ui';
-import { ExerciseGlyphTile } from '@/components/ExerciseGlyph';
+import { ExerciseThumb } from '@/components/ExerciseVisual';
 import { EQUIPMENT_LABELS, exerciseSubtitle, MUSCLE_LABELS, PATTERN_LABELS, searchExercises } from '@/data/exerciseMeta';
 import { useExercises } from '@/data/catalog';
 import { useFavoriteExercises, useRecentExerciseIds } from '@/features/exercises/useExerciseData';
@@ -66,7 +66,7 @@ export function ExerciseRowContent({ ex, favorite, right }: { ex: Exercise; favo
   const { t, language } = useT();
   return (
     <>
-      <ExerciseGlyphTile pattern={ex.pattern} />
+      <ExerciseThumb ex={ex} />
       <span className="min-w-0 flex-1 text-left">
         <span className="flex items-center gap-1.5">
           <span className="min-w-0 text-[15px] font-medium line-clamp-2 break-words">{ex.name}</span>
