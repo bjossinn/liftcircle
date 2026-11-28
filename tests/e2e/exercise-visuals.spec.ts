@@ -30,7 +30,11 @@ test('lists and the picker show movement-pattern tiles, never the photo thumbnai
   });
   await page.goto('/train/exercises?tab=all');
   const row = page.locator('a[href="/train/exercises/barbell-back-squat"]');
-  await expect(row.getByTestId('exercise-glyph-tile').locator('svg[data-pattern="squat"]')).toBeVisible();
+  await expect(row.getByTestId('exercise-glyph-tile').locator('svg[data-pattern="squat"][data-glyph="barbell_squat"]')).toBeVisible();
+  // Each library exercise shows its own glyph, not just its movement pattern's.
+  await expect(page.locator('a[href="/train/exercises/push-up"] svg[data-glyph="push_up"]')).toBeVisible();
+  await expect(page.locator('a[href="/train/exercises/chest-supported-dumbbell-row"] svg[data-glyph="chest_supported_row"]')).toBeVisible();
+  await expect(page.locator('a[href="/train/exercises/dumbbell-lateral-raise"] svg[data-glyph="lateral_raise"]')).toBeVisible();
   await expect(page.locator('a[href^="/train/exercises/"] img')).toHaveCount(0);
   const box = await row.getByTestId('exercise-glyph-tile').boundingBox();
   expect(Math.round(box!.width)).toBe(44);
@@ -73,7 +77,7 @@ test('the logger thumbnail expands the illustration and the viewed images work o
   const thumb = page.getByRole('button', { name: 'Show how to do Barbell bench press' });
   await expect(thumb).toBeVisible();
   // Compact row: the Direction B pattern tile, not the photo thumbnail.
-  await expect(thumb.getByTestId('exercise-glyph-tile').locator('svg[data-pattern="horizontal_push"]')).toBeVisible();
+  await expect(thumb.getByTestId('exercise-glyph-tile').locator('svg[data-pattern="horizontal_push"][data-glyph="bench_press"]')).toBeVisible();
   await expect(thumb.locator('img')).toHaveCount(0);
   // Fixed-size thumbnail: no layout shift when it loads.
   const box = await thumb.boundingBox();

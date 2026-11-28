@@ -1,7 +1,7 @@
 {
   "name": "hard-earned",
   "private": true,
-  "version": "1.0.8",
+  "version": "1.0.9",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,7 +17,9 @@
     "test:live": "vitest run --config vitest.live.config.ts",
     "test:all": "npm run typecheck && npm test && npm run test:rls && npm run test:ai-db && npm run test:push-db && npm run test:analytics-db && npm run test:e2e",
     "test:push-db": "node tests/rls/push-run.mjs",
-    "test:analytics-db": "node tests/rls/analytics-run.mjs"
+    "test:analytics-db": "node tests/rls/analytics-run.mjs",
+    "glyphs:sheet": "UPDATE_GLYPH_SHEET=1 vitest run tests/unit/exerciseGlyphs.test.tsx",
+    "glyphs:png": "node scripts/glyph-sheet-png.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
