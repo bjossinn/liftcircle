@@ -66,7 +66,7 @@ describe('ExerciseIllustration', () => {
 
   it('uses the Icelandic alt text and heading', () => {
     const el = mount(createElement(ExerciseIllustration, { ex: squat }), 'is');
-    expect(el.querySelector('img')?.getAttribute('alt')).toBe('Barbell back squat – upphafs- og lokastaða');
+    expect(el.querySelector('img')?.getAttribute('alt')).toBe('Hnébeygja með stöng á baki – upphafs- og lokastaða');
     expect(el.textContent).toContain('Lykilatriði');
     expect(cueTexts(el)).toEqual([1, 2, 3, 4].map((n) => `${n}${IS[`exercise.cues.barbell-back-squat.${n}` as keyof typeof IS]}`));
     expect(cueTexts(el)[1]).toBe('2Spenntu kviðinn fyrir hverja endurtekningu');

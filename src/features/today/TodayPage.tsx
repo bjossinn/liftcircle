@@ -17,6 +17,7 @@ import { BrandMoment } from '@/components/BrandMark';
 import { PlanOwnerBadge } from '@/features/program/PlanOwner';
 import { useExercises } from '@/data/catalog';
 import { plannedWeekStreak } from '@/domain/program/streak';
+import { exerciseDisplayName } from '@/data/catalogText';
 
 /** A friendly greeting for the time of day (device clock). */
 export function greeting(hour = new Date().getHours()): string {
@@ -153,7 +154,7 @@ export default function TodayPage() {
                 </div>
               </div>
               {next.template.exercises.length > 0 && (
-                <p className="text-xs text-muted mt-3 line-clamp-2">{next.template.exercises.map((e) => byId.get(e.exerciseId)?.name ?? t('today.exerciseFallback')).join(' · ')}</p>
+                <p className="text-xs text-muted mt-3 line-clamp-2">{next.template.exercises.map((e) => (byId.get(e.exerciseId) ? exerciseDisplayName(byId.get(e.exerciseId)) : t('today.exerciseFallback'))).join(' · ')}</p>
               )}
               <Button
                 variant="primary"

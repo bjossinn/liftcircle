@@ -28,6 +28,7 @@ import { sanitizeImportedSession, setFieldsFor, validateLoggedSet } from '@/doma
 import { t } from '@/i18n';
 import { createMatcher, matchKey, qualifierEquipment, splitQualifier } from './matching';
 import type { ImportDistanceUnit, ImportSource, ImportStart, ParsedExercise, ParsedImport, ParsedSet, ParsedWorkout } from './types';
+import { exerciseDisplayName } from '@/data/catalogText';
 
 export interface ImportOptions {
   timeZone: string;
@@ -354,7 +355,7 @@ export async function buildImportPlan(file: ParsedImport, library: Exercise[], e
     for (const e of w.exercises) {
       const ex = exerciseFor(e);
       const lk = `${keyOf(e.name)}\u0000${ex.id}`;
-      const line = lines.get(lk) ?? { name: e.name.trim(), exerciseId: ex.id, exerciseName: ex.name, sets: 0, isNew: newIds.has(ex.id) };
+      const line = lines.get(lk) ?? { name: e.name.trim(), exerciseId: ex.id, exerciseName: exerciseDisplayName(ex), sets: 0, isNew: newIds.has(ex.id) };
       line.sets += e.sets.length;
       lines.set(lk, line);
     }

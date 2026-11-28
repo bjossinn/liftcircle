@@ -17,6 +17,7 @@ import { formatLoggedSet } from '@/features/exercises/useExerciseData';
 import { celebrateOnce } from '@/components/celebrate';
 import { openCoachWith } from '@/features/coaching/ai/workoutContext';
 import { numberText, useT } from '@/i18n';
+import { exerciseDisplayName } from '@/data/catalogText';
 
 /** Only a workout finished in the last few minutes gets the brief celebration; reopening an old summary stays calm. */
 const JUST_FINISHED_MS = 5 * 60 * 1000;
@@ -59,7 +60,7 @@ function WorkoutSummary({ id }: { id: string }) {
   if (!data) return <Spinner />;
   const { summary, records, next } = data;
   const vol = summary.volume;
-  const recordsForShare = records.map((r) => ({ exercise: byId.get(r.exerciseId)?.name ?? t('workout.exerciseFallback'), label: r.label }));
+  const recordsForShare = records.map((r) => ({ exercise: (byId.get(r.exerciseId) ? exerciseDisplayName(byId.get(r.exerciseId)) : t('workout.exerciseFallback')), label: r.label }));
 
   return (
     <Page title={t('summary.complete')}>
@@ -95,7 +96,7 @@ function WorkoutSummary({ id }: { id: string }) {
                   <Award className="size-4" aria-hidden />
                 </span>
                 <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">{byId.get(r.exerciseId)?.name}</div>
+                  <div className="text-sm font-medium truncate">{byId.get(r.exerciseId) ? exerciseDisplayName(byId.get(r.exerciseId)) : null}</div>
                   <div className="text-xs text-muted">{r.label}</div>
                 </div>
               </div>
@@ -113,7 +114,7 @@ function WorkoutSummary({ id }: { id: string }) {
             <div key={se.id} className="px-4 py-3">
               <div className="flex items-center gap-2">
                 <Dumbbell className="size-4 text-muted" aria-hidden />
-                <span className="font-medium text-sm">{ex?.name ?? t('workout.exerciseFallback')}</span>
+                <span className="font-medium text-sm">{(ex ? exerciseDisplayName(ex) : t('workout.exerciseFallback'))}</span>
                 {se.discomfort && <Badge tone="warn">{t('summary.discomfort')}</Badge>}
               </div>
               <p className="text-xs text-muted mt-1">
@@ -133,7 +134,7 @@ function WorkoutSummary({ id }: { id: string }) {
                       <button
                         type="button"
                         className="ml-auto inline-flex items-center gap-1 min-h-8 px-2 rounded-lg text-accent font-medium hover:bg-surface-2"
-                        aria-label={t('summary.explainTarget', { exercise: ex?.name ?? t('summary.thisExercise') })}
+                        aria-label={t('summary.explainTarget', { exercise: ex ? exerciseDisplayName(ex) : t('summary.thisExercise') })}
                         onClick={() =>
                           void openCoachWith(db, nav, { intent: 'explain', sessionId: session.id, focusId: se.id, shownTarget: `${target.text} (${target.label})`, userId: auth.userId })
                         }

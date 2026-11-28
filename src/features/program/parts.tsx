@@ -18,6 +18,7 @@ import { weekdayShort } from '@/lib/dates';
 import { rationaleLineText, versionReasonText as proposalReasonText } from '@/domain/program/proposals';
 import { EN, loadText, locale, t as translate, useT, type MessageKey, type Params } from '@/i18n';
 import type { Exercise, Experience, Goal, ID, Prescription, ProgramVersion, SessionTemplate, WeightUnit } from '@/domain/types';
+import { exerciseDisplayName } from '@/data/catalogText';
 
 const KIND_KEYS: Record<SessionTemplate['kind'], MessageKey> = {
   lifting: 'program.kind.strength',
@@ -180,7 +181,7 @@ export function SessionCard(props: SessionCardProps) {
     onChange?.({ ...next, estimatedMinutes: estimateSessionMinutes(next, catalog) }, reason);
   };
   const setExercises = (exercises: Prescription[], reason: string) => commit({ ...t, exercises }, reason);
-  const nameOf = (id: ID) => byId.get(id)?.name ?? tr('program.unknownExercise');
+  const nameOf = (id: ID) => (byId.get(id) ? exerciseDisplayName(byId.get(id)) : tr('program.unknownExercise'));
   /** Stored reasons use the stored (English canonical) names; see versionReasonText for display. */
   const storedNameOf = (id: ID) => byId.get(id)?.name ?? enText('program.unknownExercise');
 
@@ -435,7 +436,7 @@ export function SessionCard(props: SessionCardProps) {
 export function PrescriptionSheet({ open, rx, ex, onClose, onSave }: { open: boolean; rx: Prescription | null; ex?: Exercise; onClose: () => void; onSave: (rx: Prescription) => void }) {
   const { t: tr } = useT();
   return (
-    <Sheet open={open} onClose={onClose} title={ex ? ex.name : tr('program.editExercise')}>
+    <Sheet open={open} onClose={onClose} title={ex ? exerciseDisplayName(ex) : tr('program.editExercise')}>
       {rx && <PrescriptionForm key={rx.id + rx.exerciseId} rx={rx} ex={ex} onCancel={onClose} onSave={onSave} />}
     </Sheet>
   );

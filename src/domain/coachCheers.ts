@@ -18,6 +18,7 @@ import type { CoachStyle, Exercise, ID, LoggedSet, SessionExercise, WeightUnit, 
 import { detectRecords } from './stats';
 import { displayWeight, fromKg, trimNum } from './units';
 import { EN, getLanguage, hasKey, loadText, t, tp, type Language, type PluralKey } from '../i18n';
+import { exerciseDisplayName } from '@/data/catalogText';
 
 export type CheerSituation = 'pr' | 'top_of_range' | 'last_set_exercise' | 'last_set_workout' | 'below_target' | 'general' | 'discomfort' | 'rest_over' | 'rest_over_discomfort';
 
@@ -192,7 +193,8 @@ export function cheerForSet(i: SetCheerInput): Cheer | null {
 
   if (working(se).every((x) => x.completed)) {
     const next = i.session.exercises.slice(idx + 1).concat(i.session.exercises.slice(0, idx)).find((e) => working(e).some((x) => !x.completed));
-    const name = next ? i.byId.get(next.exerciseId)?.name : undefined;
+    const nextEx = next ? i.byId.get(next.exerciseId) : undefined;
+    const name = nextEx ? exerciseDisplayName(nextEx, undefined, language) : undefined;
     if (name) return say('last_set_exercise', { next: name });
   }
   return say('general');
@@ -219,7 +221,8 @@ export function nextSet(session: WorkoutSession, byId: Map<ID, Exercise>, unit: 
     const n = working.findIndex((x) => !x.completed);
     if (n < 0) continue;
     const s = working[n];
-    const name = byId.get(se.exerciseId)?.name ?? t('workout.cheer.nextExercise', undefined, language);
+    const exNext = byId.get(se.exerciseId);
+    const name = exNext ? exerciseDisplayName(exNext, undefined, language) : t('workout.cheer.nextExercise', undefined, language);
     const rx = se.prescription;
     const load = s.weightKg != null && s.weightKg > 0 ? weightText(s.weightKg, unit, s.entered, language) : null;
     const reps = s.reps ?? (rx && !rx.durationSec ? rx.repMin === rx.repMax ? rx.repMin : null : null);

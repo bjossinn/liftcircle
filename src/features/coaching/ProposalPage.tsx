@@ -21,6 +21,7 @@ import { coachingError } from '@/coaching/errors';
 import { acceptProposalLocally, findAppliedProgram, setPendingNotify, type AcceptLocalResult } from '@/coaching/acceptProposal';
 import { BackButton, CoachingAccessNotice, ProposalStatusBadge, fmtDateTime, useCoachingAccess, useLoad } from './tools/common';
 import { ProgramPreview } from './tools/ProgramPreview';
+import { exerciseDisplayName } from '@/data/catalogText';
 
 export default function ProposalPage() {
   const { id = '' } = useParams();
@@ -51,7 +52,7 @@ export default function ProposalPage() {
   const base = p?.baseProgramId ? live.find((x) => x.id === p.baseProgramId) : undefined;
   const baseVersion = base && p?.baseVersion != null ? base.versions.find((v) => v.version === p.baseVersion) : undefined;
   const stale = !!base && p?.baseVersion != null && base.currentVersion !== p.baseVersion && !applied;
-  const nameOf = (x: string) => byId.get(x)?.name ?? 'Unknown exercise';
+  const nameOf = (x: string) => exerciseDisplayName(x, byId);
   const changes = useMemo(() => (p ? describeChanges(baseVersion ?? null, p.program, nameOf) : []), [p, baseVersion, byId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const askRevision = () => {

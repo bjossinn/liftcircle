@@ -12,6 +12,7 @@ import { activityLabel } from '@/domain/activities';
 import { formatDistance } from '@/domain/units';
 import { exercisesDone, sessionDurationSec } from '@/domain/stats';
 import { NoWorkoutsArt } from '@/components/illustrations';
+import { exerciseDisplayName } from '@/data/catalogText';
 
 type Kind = 'all' | 'workouts' | 'activities';
 interface Item {
@@ -43,7 +44,7 @@ export default function HistoryPage() {
     const out: Item[] = [];
     for (const s of sessions ?? []) {
       if (s.status !== 'completed') continue;
-      const names = s.exercises.map((e) => byId.get(e.exerciseId)?.name ?? '').filter(Boolean);
+      const names = s.exercises.map((e) => (byId.get(e.exerciseId) ? exerciseDisplayName(byId.get(e.exerciseId)) : '')).filter(Boolean);
       out.push({
         id: s.id,
         kind: 'workout',

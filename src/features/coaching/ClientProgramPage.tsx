@@ -28,6 +28,7 @@ import {
 import { BackButton, CoachingAccessNotice, ProposalStatusBadge, fmtDateTime, useCoachingAccess, useLoad } from './tools/common';
 import { CoachGate, useCoachStatus } from './tools/coach';
 import { ProgramEditor } from './tools/ProgramEditor';
+import { exerciseDisplayName } from '@/data/catalogText';
 
 const BUNDLED_IDS = new Set(EXERCISES.map((e) => e.id));
 
@@ -177,7 +178,7 @@ function Builder({ rel, overview, proposals, reloadProposals }: { rel: CoachingR
     return e;
   }, [program]);
   const unknownCustom = errors.some((e) => e.startsWith('Unknown exercise') || e.startsWith('Unknown substitution'));
-  const nameOf = (id: string) => byId.get(id)?.name ?? 'Unknown exercise';
+  const nameOf = (id: string) => exerciseDisplayName(id, byId);
   const useBase = !!draft?.revise && !!base;
   const changes = useMemo(() => {
     if (!program) return [];

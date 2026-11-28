@@ -19,6 +19,7 @@ import { dateTimeText, useT } from '@/i18n';
 import { AI_DRAFT_KEY, liveActive, PROPOSAL_VIEW_LABEL, proposalShareText, proposalView } from './model';
 import { applyAiProposal, respondOrQueue, switchToSelfManaged } from './apply';
 import { AiBadge, ShareWithCoachDialog } from './parts';
+import { exerciseDisplayName } from '@/data/catalogText';
 
 export function ProposalDetail({
   proposal: p, programs, coach, onChanged,
@@ -47,7 +48,7 @@ export function ProposalDetail({
   const coachName = active?.managedBy?.coachName || coach?.coach.displayName || null;
   const base = p.baseProgramId ? live.find((x) => x.id === p.baseProgramId) : undefined;
   const baseVersion = base ? (base.versions.find((v) => v.version === p.baseVersion) ?? currentVersion(base)) : null;
-  const nameOf = (id: string) => byId.get(id)?.name ?? t('aiCard.proposal.unknownExercise');
+  const nameOf = (id: string) => (byId.get(id) ? exerciseDisplayName(byId.get(id)) : t('aiCard.proposal.unknownExercise'));
   const changes = describeChanges(baseVersion, p.program, nameOf);
   const errors = useMemo(() => {
     const server = p.validationErrors ?? [];

@@ -42,6 +42,7 @@ import { kvSet, saveRecord } from '@/db/repo';
 import { ToastProvider } from '@/components/toast';
 import { defaultAccountState } from '@/state/defaults';
 import { EXERCISES } from '@/data/exercises';
+import { exerciseDisplayName } from '@/data/catalogText';
 import { RECIPES } from '@/data/recipes';
 import { createProgram, withNewVersion } from '@/domain/program/program';
 import {
@@ -376,7 +377,7 @@ describe('Icelandic AI cards: ProposalDetail', () => {
     expect(text).toContain(`Tillaga frá 27. okt. 2026 · uppfærir „My plan“ (útgáfu 1)`);
     expect(text).toContain('Af hverju leggur gervigreindin þetta til?');
     expect(text).toContain('Breytingar frá útgáfu 1');
-    expect(text).toContain(`Full body A: ${EX[0].name} 3×8–12 → 4×8–12.`);
+    expect(text).toContain(`Full body A: ${exerciseDisplayName(EX[0])} 3×8–12 → 4×8–12.`);
     expect(text).toContain('Samantekt gervigreindarinnar');
     expect(button('Hafna', c)).toBeTruthy();
     click(button('Nota tillögu', c));
