@@ -65,6 +65,7 @@ describe('exercise illustrations (v2)', () => {
       }
     }
     // No orphan or out-of-range cue keys.
+    expect(Object.keys(EN).filter((k) => k.startsWith('exercise.cues.'))).toHaveLength(EXERCISES.length * MAX_EXERCISE_CUES);
     const ids = new Set(EXERCISES.map((e) => e.id));
     for (const k of Object.keys(EN).filter((k) => k.startsWith('exercise.cues.'))) {
       const m = /^exercise\.cues\.(.+)\.([1-9])$/.exec(k);
@@ -72,6 +73,24 @@ describe('exercise illustrations (v2)', () => {
       expect(ids.has(m![1]), k).toBe(true);
       expect(Number(m![2]), k).toBeLessThanOrEqual(MAX_EXERCISE_CUES);
     }
+  });
+
+  it('every exercise has 4 non-empty Icelandic cues, each actually translated (never the English text verbatim)', () => {
+    const untranslated: string[] = [];
+    for (const ex of EXERCISES) {
+      const keys = exerciseCueKeys(ex.id);
+      expect(keys, ex.id).toHaveLength(4);
+      for (const k of keys) {
+        expect(IS[k].trim(), k).not.toBe('');
+        if (IS[k].trim() === EN[k].trim()) untranslated.push(k);
+      }
+    }
+    expect(untranslated).toEqual([]);
+  });
+
+  it('the Icelandic locale has no TODO-IS placeholders left', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../../src/i18n/locales/is.ts'), 'utf8');
+    expect(src).not.toContain('TODO-IS');
   });
 
   it('custom and unknown exercises have no illustration or cues', () => {

@@ -10,8 +10,9 @@ Supabase project **LiftCircle** (display name, unchanged: renaming it is an owne
   next to the exercise name), and 256×256 thumbnails in exercise lists and the picker. Custom exercises keep the
   movement-pattern glyph; a failed load falls back to it (or hides the image and keeps the cues). A failure is
   remembered per image, so a swapped-in exercise is always tried.
-- 3–4 short technique cues per exercise under the image, as i18n strings `exercise.cues.<id>.<n>`. **Icelandic cues are
-  English placeholders marked `// TODO-IS` in `src/i18n/locales/is.ts`** until the translations are pasted in.
+- 4 short technique cues per exercise under the image, as i18n strings `exercise.cues.<id>.<n>`, in English and
+  Icelandic (Icelandic made with ChatGPT from `cues-is.json` on branch `ai-exercise-media-v2`, pasted verbatim; a
+  native-speaker review is still worthwhile).
 - Files: `public/exercise-media/v2/<id>/{full,thumb}.webp` (~3.1 MB), from `hard-earned-exercise-media-v2.tar.gz`
   (branch `ai-exercise-media-v2`). Not precached; one Workbox runtime route (same-origin `/exercise-media/`,
   CacheFirst, cache `exercise-media-v2`, 220 entries / 90 days). `public/_headers` serves them immutable (versioned path).

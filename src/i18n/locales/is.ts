@@ -519,426 +519,426 @@ export const CLIENT_IS: { readonly [K in keyof typeof CLIENT_EN]: string } = {
   "common.screenError": "Eitthvað fór úrskeiðis",
   "common.screenOffline": "Þessi skjár er ekki enn tiltækur án nettengingar",
   "common.start": "Byrja",
-  "exercise.cues.assisted-pull-up.1": "Set the assistance: more weight means more help", // TODO-IS
-  "exercise.cues.assisted-pull-up.2": "Pull your shoulders down first", // TODO-IS
-  "exercise.cues.assisted-pull-up.3": "Drive your elbows down to your sides", // TODO-IS
-  "exercise.cues.assisted-pull-up.4": "Lower slowly to straight arms", // TODO-IS
-  "exercise.cues.back-extension.1": "Pad just below your hip crease, heels locked", // TODO-IS
-  "exercise.cues.back-extension.2": "Hinge forward from the hips", // TODO-IS
-  "exercise.cues.back-extension.3": "Lift until your body is in a straight line", // TODO-IS
-  "exercise.cues.back-extension.4": "Don’t arch past straight", // TODO-IS
-  "exercise.cues.band-assisted-pull-up.1": "Loop the band over the bar", // TODO-IS
-  "exercise.cues.band-assisted-pull-up.2": "Knee or feet in the loop", // TODO-IS
-  "exercise.cues.band-assisted-pull-up.3": "Pull your chin over the bar", // TODO-IS
-  "exercise.cues.band-assisted-pull-up.4": "Lower slowly, controlling the band", // TODO-IS
-  "exercise.cues.band-chest-press.1": "Anchor the band behind you at chest height", // TODO-IS
-  "exercise.cues.band-chest-press.2": "Staggered stance for balance", // TODO-IS
-  "exercise.cues.band-chest-press.3": "Press your hands straight forward", // TODO-IS
-  "exercise.cues.band-chest-press.4": "Return slowly, elbows at about 45°", // TODO-IS
-  "exercise.cues.band-curl.1": "Stand on the band, palms forward", // TODO-IS
-  "exercise.cues.band-curl.2": "Keep your elbows fixed", // TODO-IS
-  "exercise.cues.band-curl.3": "Curl your hands toward your shoulders", // TODO-IS
-  "exercise.cues.band-curl.4": "Lower slowly", // TODO-IS
-  "exercise.cues.band-face-pull.1": "Anchor the band at face height", // TODO-IS
-  "exercise.cues.band-face-pull.2": "Pull your hands toward your face", // TODO-IS
-  "exercise.cues.band-face-pull.3": "Spread them apart, elbows high", // TODO-IS
-  "exercise.cues.band-face-pull.4": "Return slowly", // TODO-IS
-  "exercise.cues.band-lateral-raise.1": "Stand on a light band", // TODO-IS
-  "exercise.cues.band-lateral-raise.2": "Hold an end in each hand", // TODO-IS
-  "exercise.cues.band-lateral-raise.3": "Raise your arms to shoulder height", // TODO-IS
-  "exercise.cues.band-lateral-raise.4": "Don’t shrug; lower slowly", // TODO-IS
-  "exercise.cues.band-lateral-walk.1": "Mini band above your knees or at your ankles", // TODO-IS
-  "exercise.cues.band-lateral-walk.2": "Stay low in a quarter squat", // TODO-IS
-  "exercise.cues.band-lateral-walk.3": "Step sideways, toes forward", // TODO-IS
-  "exercise.cues.band-lateral-walk.4": "Keep the band tight", // TODO-IS
-  "exercise.cues.band-overhead-press.1": "Stand on the band, ends at your shoulders", // TODO-IS
-  "exercise.cues.band-overhead-press.2": "Brace your core", // TODO-IS
-  "exercise.cues.band-overhead-press.3": "Press straight overhead", // TODO-IS
-  "exercise.cues.band-overhead-press.4": "Lower slowly", // TODO-IS
-  "exercise.cues.band-pallof-press.1": "Stand side-on to the band anchor", // TODO-IS
-  "exercise.cues.band-pallof-press.2": "Press your hands straight out", // TODO-IS
-  "exercise.cues.band-pallof-press.3": "Hold and resist the pull", // TODO-IS
-  "exercise.cues.band-pallof-press.4": "Return to your chest", // TODO-IS
-  "exercise.cues.band-pull-apart.1": "Light band, arms straight in front", // TODO-IS
-  "exercise.cues.band-pull-apart.2": "Pull the band apart to your chest", // TODO-IS
-  "exercise.cues.band-pull-apart.3": "Squeeze your shoulder blades", // TODO-IS
-  "exercise.cues.band-pull-apart.4": "Keep your shoulders down", // TODO-IS
-  "exercise.cues.band-pulldown.1": "Anchor the band high", // TODO-IS
-  "exercise.cues.band-pulldown.2": "Start with your arms reaching up", // TODO-IS
-  "exercise.cues.band-pulldown.3": "Pull your elbows down into your sides", // TODO-IS
-  "exercise.cues.band-pulldown.4": "Return slowly", // TODO-IS
-  "exercise.cues.band-romanian-deadlift.1": "Stand on the band, ends in front of your thighs", // TODO-IS
-  "exercise.cues.band-romanian-deadlift.2": "Push your hips back with a flat back", // TODO-IS
-  "exercise.cues.band-romanian-deadlift.3": "Stop at a hamstring stretch", // TODO-IS
-  "exercise.cues.band-romanian-deadlift.4": "Drive your hips forward and squeeze", // TODO-IS
-  "exercise.cues.band-row.1": "Anchor the band at chest height", // TODO-IS
-  "exercise.cues.band-row.2": "Sit or stand tall", // TODO-IS
-  "exercise.cues.band-row.3": "Row your hands to your lower ribs", // TODO-IS
-  "exercise.cues.band-row.4": "Squeeze, then return slowly", // TODO-IS
-  "exercise.cues.band-shoulder-dislocate.1": "Wide grip on a light band", // TODO-IS
-  "exercise.cues.band-shoulder-dislocate.2": "Keep your arms straight", // TODO-IS
-  "exercise.cues.band-shoulder-dislocate.3": "Raise the band overhead and behind you", // TODO-IS
-  "exercise.cues.band-shoulder-dislocate.4": "Only go as far as is comfortable", // TODO-IS
-  "exercise.cues.band-triceps-pushdown.1": "Anchor the band high", // TODO-IS
-  "exercise.cues.band-triceps-pushdown.2": "Elbows tucked at your sides", // TODO-IS
-  "exercise.cues.band-triceps-pushdown.3": "Push down until your arms are straight", // TODO-IS
-  "exercise.cues.band-triceps-pushdown.4": "Return slowly", // TODO-IS
-  "exercise.cues.barbell-back-squat.1": "Rest the bar across your upper back, feet shoulder width", // TODO-IS
-  "exercise.cues.barbell-back-squat.2": "Brace your core before each rep", // TODO-IS
-  "exercise.cues.barbell-back-squat.3": "Sit down between your heels to at least parallel", // TODO-IS
-  "exercise.cues.barbell-back-squat.4": "Drive up with chest and hips rising together", // TODO-IS
-  "exercise.cues.barbell-bench-press.1": "Eyes under the bar, feet planted", // TODO-IS
-  "exercise.cues.barbell-bench-press.2": "Pull your shoulder blades back and down", // TODO-IS
-  "exercise.cues.barbell-bench-press.3": "Lower the bar to your lower chest", // TODO-IS
-  "exercise.cues.barbell-bench-press.4": "Press up and slightly back over your shoulders", // TODO-IS
-  "exercise.cues.barbell-curl.1": "Underhand grip at shoulder width", // TODO-IS
-  "exercise.cues.barbell-curl.2": "Keep your elbows by your sides", // TODO-IS
-  "exercise.cues.barbell-curl.3": "Curl the bar toward your shoulders", // TODO-IS
-  "exercise.cues.barbell-curl.4": "Lower slower than you lift", // TODO-IS
-  "exercise.cues.barbell-front-squat.1": "Rest the bar on the front of your shoulders", // TODO-IS
-  "exercise.cues.barbell-front-squat.2": "Keep your elbows high throughout", // TODO-IS
-  "exercise.cues.barbell-front-squat.3": "Squat straight down with a tall torso", // TODO-IS
-  "exercise.cues.barbell-front-squat.4": "Push up through your whole foot", // TODO-IS
-  "exercise.cues.barbell-hip-thrust.1": "Upper back on a bench, padded bar over your hips", // TODO-IS
-  "exercise.cues.barbell-hip-thrust.2": "Feet flat so shins are vertical at the top", // TODO-IS
-  "exercise.cues.barbell-hip-thrust.3": "Tuck your chin and drive through your heels", // TODO-IS
-  "exercise.cues.barbell-hip-thrust.4": "Squeeze your glutes at the top", // TODO-IS
-  "exercise.cues.barbell-row.1": "Hinge forward with soft knees and a flat back", // TODO-IS
-  "exercise.cues.barbell-row.2": "Grip just wider than shoulder width", // TODO-IS
-  "exercise.cues.barbell-row.3": "Pull the bar to your lower ribs", // TODO-IS
-  "exercise.cues.barbell-row.4": "Lower slowly without changing your angle", // TODO-IS
-  "exercise.cues.bird-dog.1": "Hands under shoulders, knees under hips", // TODO-IS
-  "exercise.cues.bird-dog.2": "Reach one arm forward and the opposite leg back", // TODO-IS
-  "exercise.cues.bird-dog.3": "Keep your hips level", // TODO-IS
-  "exercise.cues.bird-dog.4": "Pause, return and switch", // TODO-IS
-  "exercise.cues.bodyweight-split-squat.1": "Long split stance, back heel lifted", // TODO-IS
-  "exercise.cues.bodyweight-split-squat.2": "Lower straight down until the back knee nearly touches", // TODO-IS
-  "exercise.cues.bodyweight-split-squat.3": "Keep the front heel down", // TODO-IS
-  "exercise.cues.bodyweight-split-squat.4": "Press up through the front foot", // TODO-IS
-  "exercise.cues.bodyweight-squat.1": "Feet shoulder width, toes slightly out", // TODO-IS
-  "exercise.cues.bodyweight-squat.2": "Sit down between your heels, chest up", // TODO-IS
-  "exercise.cues.bodyweight-squat.3": "Knees track over your toes", // TODO-IS
-  "exercise.cues.bodyweight-squat.4": "Stand tall and squeeze your glutes", // TODO-IS
-  "exercise.cues.bulgarian-split-squat.1": "Rear foot on the bench, front foot a stride ahead", // TODO-IS
-  "exercise.cues.bulgarian-split-squat.2": "Keep most of your weight on the front foot", // TODO-IS
-  "exercise.cues.bulgarian-split-squat.3": "Drop the back knee straight down", // TODO-IS
-  "exercise.cues.bulgarian-split-squat.4": "Push through the front foot to stand", // TODO-IS
-  "exercise.cues.burpee.1": "Squat and place your hands on the floor", // TODO-IS
-  "exercise.cues.burpee.2": "Jump or step back to a plank", // TODO-IS
-  "exercise.cues.burpee.3": "Bring your feet back in", // TODO-IS
-  "exercise.cues.burpee.4": "Stand or jump up", // TODO-IS
-  "exercise.cues.cable-fly.1": "Pulleys at shoulder height, staggered stance", // TODO-IS
-  "exercise.cues.cable-fly.2": "Keep a soft, fixed elbow bend", // TODO-IS
-  "exercise.cues.cable-fly.3": "Sweep your hands together in a wide arc", // TODO-IS
-  "exercise.cues.cable-fly.4": "Return slowly to a chest stretch", // TODO-IS
-  "exercise.cues.cable-lateral-raise.1": "Stand side-on to a low pulley", // TODO-IS
-  "exercise.cues.cable-lateral-raise.2": "Hold the handle in your far hand", // TODO-IS
-  "exercise.cues.cable-lateral-raise.3": "Raise your arm to shoulder height", // TODO-IS
-  "exercise.cues.cable-lateral-raise.4": "Lower slowly, torso still", // TODO-IS
-  "exercise.cues.cable-pallof-press.1": "Stand side-on to the cable, handle at your chest", // TODO-IS
-  "exercise.cues.cable-pallof-press.2": "Press straight out", // TODO-IS
-  "exercise.cues.cable-pallof-press.3": "Resist the twist", // TODO-IS
-  "exercise.cues.cable-pallof-press.4": "Return to your chest", // TODO-IS
-  "exercise.cues.cable-pull-through.1": "Face away from a low pulley, rope between your legs", // TODO-IS
-  "exercise.cues.cable-pull-through.2": "Push your hips back, arms long", // TODO-IS
-  "exercise.cues.cable-pull-through.3": "Feel the stretch in your hamstrings", // TODO-IS
-  "exercise.cues.cable-pull-through.4": "Drive your hips forward and squeeze your glutes", // TODO-IS
-  "exercise.cues.cat-cow.1": "Hands under shoulders, knees under hips", // TODO-IS
-  "exercise.cues.cat-cow.2": "Round your spine and tuck your chin", // TODO-IS
-  "exercise.cues.cat-cow.3": "Drop your belly and lift your chest", // TODO-IS
-  "exercise.cues.cat-cow.4": "Move slowly with your breath", // TODO-IS
-  "exercise.cues.chest-supported-dumbbell-row.1": "Lie face down on a low incline bench", // TODO-IS
-  "exercise.cues.chest-supported-dumbbell-row.2": "Arms hanging straight down", // TODO-IS
-  "exercise.cues.chest-supported-dumbbell-row.3": "Row until your elbows pass your torso", // TODO-IS
-  "exercise.cues.chest-supported-dumbbell-row.4": "Pause, then lower", // TODO-IS
-  "exercise.cues.chin-up.1": "Hang with an underhand, shoulder-width grip", // TODO-IS
-  "exercise.cues.chin-up.2": "Pull until your chin clears the bar", // TODO-IS
-  "exercise.cues.chin-up.3": "Keep your chest up", // TODO-IS
-  "exercise.cues.chin-up.4": "Lower slowly to a full hang", // TODO-IS
-  "exercise.cues.conventional-deadlift.1": "Mid-foot under the bar, shins to the bar", // TODO-IS
-  "exercise.cues.conventional-deadlift.2": "Flat back; pull the slack out first", // TODO-IS
-  "exercise.cues.conventional-deadlift.3": "Push the floor away, bar close to your legs", // TODO-IS
-  "exercise.cues.conventional-deadlift.4": "Stand tall with glutes; don’t lean back", // TODO-IS
-  "exercise.cues.dead-bug.1": "Arms up, hips and knees at 90°", // TODO-IS
-  "exercise.cues.dead-bug.2": "Press your lower back into the floor", // TODO-IS
-  "exercise.cues.dead-bug.3": "Extend the opposite arm and leg slowly", // TODO-IS
-  "exercise.cues.dead-bug.4": "Return and switch sides", // TODO-IS
-  "exercise.cues.diamond-push-up.1": "Hands close together under your chest", // TODO-IS
-  "exercise.cues.diamond-push-up.2": "Hold a rigid plank", // TODO-IS
-  "exercise.cues.diamond-push-up.3": "Keep your elbows close to your ribs", // TODO-IS
-  "exercise.cues.diamond-push-up.4": "Press to full lockout", // TODO-IS
-  "exercise.cues.dip.1": "Support yourself on straight arms", // TODO-IS
-  "exercise.cues.dip.2": "Keep your shoulders down", // TODO-IS
-  "exercise.cues.dip.3": "Lean slightly forward as you lower", // TODO-IS
-  "exercise.cues.dip.4": "Stop at a comfortable depth, press up", // TODO-IS
-  "exercise.cues.doorway-row.1": "Grip the door frame at chest height", // TODO-IS
-  "exercise.cues.doorway-row.2": "Lean back with straight arms", // TODO-IS
-  "exercise.cues.doorway-row.3": "Pull your chest toward the doorway", // TODO-IS
-  "exercise.cues.doorway-row.4": "Lower back slowly", // TODO-IS
-  "exercise.cues.dumbbell-bench-press.1": "Shoulder blades back and down", // TODO-IS
-  "exercise.cues.dumbbell-bench-press.2": "Lower the dumbbells to the sides of your chest", // TODO-IS
-  "exercise.cues.dumbbell-bench-press.3": "Keep your forearms vertical", // TODO-IS
-  "exercise.cues.dumbbell-bench-press.4": "Press up and slightly together", // TODO-IS
-  "exercise.cues.dumbbell-bent-over-row.1": "Hinge forward with a flat back", // TODO-IS
-  "exercise.cues.dumbbell-bent-over-row.2": "Row both dumbbells to your lower ribs", // TODO-IS
-  "exercise.cues.dumbbell-bent-over-row.3": "Squeeze your shoulder blades", // TODO-IS
-  "exercise.cues.dumbbell-bent-over-row.4": "Hold the hinge as you lower", // TODO-IS
-  "exercise.cues.dumbbell-curl.1": "Stand tall, palms forward", // TODO-IS
-  "exercise.cues.dumbbell-curl.2": "Keep your elbows at your sides", // TODO-IS
-  "exercise.cues.dumbbell-curl.3": "Curl until your forearms are vertical", // TODO-IS
-  "exercise.cues.dumbbell-curl.4": "Lower slowly to straight arms", // TODO-IS
-  "exercise.cues.dumbbell-floor-press.1": "Lie on the floor, knees bent", // TODO-IS
-  "exercise.cues.dumbbell-floor-press.2": "Press the dumbbells over your chest", // TODO-IS
-  "exercise.cues.dumbbell-floor-press.3": "Lower until your upper arms touch the floor", // TODO-IS
-  "exercise.cues.dumbbell-floor-press.4": "Pause, then press again", // TODO-IS
-  "exercise.cues.dumbbell-fly.1": "Dumbbells over your chest, palms facing", // TODO-IS
-  "exercise.cues.dumbbell-fly.2": "Keep a slight, fixed elbow bend", // TODO-IS
-  "exercise.cues.dumbbell-fly.3": "Open your arms to a comfortable stretch", // TODO-IS
-  "exercise.cues.dumbbell-fly.4": "Squeeze your chest to bring them back", // TODO-IS
-  "exercise.cues.dumbbell-lateral-raise.1": "Light dumbbells at your sides", // TODO-IS
-  "exercise.cues.dumbbell-lateral-raise.2": "Slight bend in your elbows", // TODO-IS
-  "exercise.cues.dumbbell-lateral-raise.3": "Raise to shoulder height, leading with the elbows", // TODO-IS
-  "exercise.cues.dumbbell-lateral-raise.4": "Lower slowly", // TODO-IS
-  "exercise.cues.dumbbell-overhead-press.1": "Dumbbells at your shoulders, feet hip width", // TODO-IS
-  "exercise.cues.dumbbell-overhead-press.2": "Brace your core, squeeze your glutes", // TODO-IS
-  "exercise.cues.dumbbell-overhead-press.3": "Press straight up, biceps by your ears", // TODO-IS
-  "exercise.cues.dumbbell-overhead-press.4": "Lower without leaning back", // TODO-IS
-  "exercise.cues.dumbbell-reverse-lunge.1": "Stand tall, a dumbbell at each side", // TODO-IS
-  "exercise.cues.dumbbell-reverse-lunge.2": "Take a long step back", // TODO-IS
-  "exercise.cues.dumbbell-reverse-lunge.3": "Lower until the back knee nearly touches the floor", // TODO-IS
-  "exercise.cues.dumbbell-reverse-lunge.4": "Push through the front heel to return", // TODO-IS
-  "exercise.cues.dumbbell-romanian-deadlift.1": "Dumbbells in front of your thighs", // TODO-IS
-  "exercise.cues.dumbbell-romanian-deadlift.2": "Push your hips back with soft knees", // TODO-IS
-  "exercise.cues.dumbbell-romanian-deadlift.3": "Let the dumbbells brush down your legs", // TODO-IS
-  "exercise.cues.dumbbell-romanian-deadlift.4": "Squeeze your glutes to stand up", // TODO-IS
-  "exercise.cues.dumbbell-step-up.1": "Place your whole foot on a knee-high box", // TODO-IS
-  "exercise.cues.dumbbell-step-up.2": "Drive through the top heel to stand up", // TODO-IS
-  "exercise.cues.dumbbell-step-up.3": "Use the bottom foot as little as possible", // TODO-IS
-  "exercise.cues.dumbbell-step-up.4": "Step down slowly", // TODO-IS
-  "exercise.cues.face-pull.1": "Rope at face height, thumbs pointing back", // TODO-IS
-  "exercise.cues.face-pull.2": "Pull toward your face", // TODO-IS
-  "exercise.cues.face-pull.3": "Split the rope and keep your elbows high", // TODO-IS
-  "exercise.cues.face-pull.4": "Return slowly", // TODO-IS
-  "exercise.cues.farmer-carry.1": "Pick up the weights with a flat back", // TODO-IS
-  "exercise.cues.farmer-carry.2": "Stand tall, shoulders down", // TODO-IS
-  "exercise.cues.farmer-carry.3": "Grip the handles hard", // TODO-IS
-  "exercise.cues.farmer-carry.4": "Walk with short, controlled steps", // TODO-IS
-  "exercise.cues.glute-bridge.1": "Lie on your back, knees bent, feet flat", // TODO-IS
-  "exercise.cues.glute-bridge.2": "Push through your heels to lift your hips", // TODO-IS
-  "exercise.cues.glute-bridge.3": "Make a straight line from knees to shoulders", // TODO-IS
-  "exercise.cues.glute-bridge.4": "Squeeze, pause, lower slowly", // TODO-IS
-  "exercise.cues.goblet-squat.1": "Hold the dumbbell vertically against your chest", // TODO-IS
-  "exercise.cues.goblet-squat.2": "Squat down between your heels", // TODO-IS
-  "exercise.cues.goblet-squat.3": "Let your elbows pass inside your knees", // TODO-IS
-  "exercise.cues.goblet-squat.4": "Stand up keeping the weight close", // TODO-IS
-  "exercise.cues.hack-squat.1": "Back on the pad, shoulders under the pads", // TODO-IS
-  "exercise.cues.hack-squat.2": "Feet shoulder width, mid-platform", // TODO-IS
-  "exercise.cues.hack-squat.3": "Lower until thighs are at least parallel", // TODO-IS
-  "exercise.cues.hack-squat.4": "Drive up with your back flat on the pad", // TODO-IS
-  "exercise.cues.half-kneeling-hip-flexor-stretch.1": "Kneel on one knee, front foot flat", // TODO-IS
-  "exercise.cues.half-kneeling-hip-flexor-stretch.2": "Squeeze the glute of the kneeling leg", // TODO-IS
-  "exercise.cues.half-kneeling-hip-flexor-stretch.3": "Shift gently forward", // TODO-IS
-  "exercise.cues.half-kneeling-hip-flexor-stretch.4": "Keep your torso tall", // TODO-IS
-  "exercise.cues.hammer-curl.1": "Palms facing your body", // TODO-IS
-  "exercise.cues.hammer-curl.2": "Keep your upper arms still", // TODO-IS
-  "exercise.cues.hammer-curl.3": "Curl with your thumbs up", // TODO-IS
-  "exercise.cues.hammer-curl.4": "Lower slowly", // TODO-IS
-  "exercise.cues.hanging-knee-raise.1": "Hang with your shoulders pulled down", // TODO-IS
-  "exercise.cues.hanging-knee-raise.2": "Curl your knees toward your chest", // TODO-IS
-  "exercise.cues.hanging-knee-raise.3": "Tilt your pelvis up", // TODO-IS
-  "exercise.cues.hanging-knee-raise.4": "Lower slowly without swinging", // TODO-IS
-  "exercise.cues.incline-barbell-press.1": "Bench at about 30°, eyes under the bar", // TODO-IS
-  "exercise.cues.incline-barbell-press.2": "Set your shoulder blades", // TODO-IS
-  "exercise.cues.incline-barbell-press.3": "Lower the bar to just below your collarbones", // TODO-IS
-  "exercise.cues.incline-barbell-press.4": "Press until your arms are straight", // TODO-IS
-  "exercise.cues.incline-dumbbell-press.1": "Set the bench to about 30°", // TODO-IS
-  "exercise.cues.incline-dumbbell-press.2": "Lower the dumbbells to your upper chest", // TODO-IS
-  "exercise.cues.incline-dumbbell-press.3": "Keep your elbows slightly tucked", // TODO-IS
-  "exercise.cues.incline-dumbbell-press.4": "Press toward the ceiling", // TODO-IS
-  "exercise.cues.incline-push-up.1": "Hands on a bench or counter", // TODO-IS
-  "exercise.cues.incline-push-up.2": "Keep your body straight", // TODO-IS
-  "exercise.cues.incline-push-up.3": "Lower your chest to the edge", // TODO-IS
-  "exercise.cues.incline-push-up.4": "Press back to straight arms", // TODO-IS
-  "exercise.cues.incline-treadmill-walk.1": "Start slow, then raise the incline", // TODO-IS
-  "exercise.cues.incline-treadmill-walk.2": "Walk briskly without holding the rails", // TODO-IS
-  "exercise.cues.incline-treadmill-walk.3": "Stay upright", // TODO-IS
-  "exercise.cues.incline-treadmill-walk.4": "Breathe steadily", // TODO-IS
-  "exercise.cues.inverted-row.1": "Bar at hip height, heels on the floor", // TODO-IS
-  "exercise.cues.inverted-row.2": "Keep your body straight like a plank", // TODO-IS
-  "exercise.cues.inverted-row.3": "Pull your chest to the bar", // TODO-IS
-  "exercise.cues.inverted-row.4": "Lower to straight arms", // TODO-IS
-  "exercise.cues.jumping-jack.1": "Stand tall, feet together", // TODO-IS
-  "exercise.cues.jumping-jack.2": "Jump your feet out as your arms go up", // TODO-IS
-  "exercise.cues.jumping-jack.3": "Jump back to the start", // TODO-IS
-  "exercise.cues.jumping-jack.4": "Land softly", // TODO-IS
-  "exercise.cues.kettlebell-swing.1": "Hinge and hike the bell back between your legs", // TODO-IS
-  "exercise.cues.kettlebell-swing.2": "Snap your hips forward", // TODO-IS
-  "exercise.cues.kettlebell-swing.3": "Let your arms float the bell to chest height", // TODO-IS
-  "exercise.cues.kettlebell-swing.4": "Hinge, don’t squat", // TODO-IS
-  "exercise.cues.lat-pulldown.1": "Thighs locked under the pad", // TODO-IS
-  "exercise.cues.lat-pulldown.2": "Grip slightly wider than shoulder width", // TODO-IS
-  "exercise.cues.lat-pulldown.3": "Pull the bar to your upper chest", // TODO-IS
-  "exercise.cues.lat-pulldown.4": "Return slowly to a full stretch", // TODO-IS
-  "exercise.cues.leg-extension.1": "Knees in line with the machine’s pivot", // TODO-IS
-  "exercise.cues.leg-extension.2": "Pad just above your ankles", // TODO-IS
-  "exercise.cues.leg-extension.3": "Straighten your legs and squeeze", // TODO-IS
-  "exercise.cues.leg-extension.4": "Lower slowly", // TODO-IS
-  "exercise.cues.leg-press.1": "Back and hips flat on the pad", // TODO-IS
-  "exercise.cues.leg-press.2": "Feet shoulder width, mid-platform", // TODO-IS
-  "exercise.cues.leg-press.3": "Lower until your hips are about to lift", // TODO-IS
-  "exercise.cues.leg-press.4": "Press through your whole foot; don’t lock out hard", // TODO-IS
-  "exercise.cues.lying-leg-curl.1": "Lie face down, roller above your heels", // TODO-IS
-  "exercise.cues.lying-leg-curl.2": "Keep your hips pressed down", // TODO-IS
-  "exercise.cues.lying-leg-curl.3": "Curl your heels toward your glutes", // TODO-IS
-  "exercise.cues.lying-leg-curl.4": "Lower slowly", // TODO-IS
-  "exercise.cues.machine-chest-press.1": "Handles level with your mid-chest", // TODO-IS
-  "exercise.cues.machine-chest-press.2": "Back flat against the pad", // TODO-IS
-  "exercise.cues.machine-chest-press.3": "Press until your arms are straight, not locked", // TODO-IS
-  "exercise.cues.machine-chest-press.4": "Return slowly to a chest stretch", // TODO-IS
-  "exercise.cues.machine-row.1": "Chest against the pad", // TODO-IS
-  "exercise.cues.machine-row.2": "Handles at mid-chest height", // TODO-IS
-  "exercise.cues.machine-row.3": "Drive your elbows back", // TODO-IS
-  "exercise.cues.machine-row.4": "Return slowly to straight arms", // TODO-IS
-  "exercise.cues.machine-shoulder-press.1": "Handles start at shoulder height", // TODO-IS
-  "exercise.cues.machine-shoulder-press.2": "Back flat against the pad", // TODO-IS
-  "exercise.cues.machine-shoulder-press.3": "Press until your arms are straight, not locked", // TODO-IS
-  "exercise.cues.machine-shoulder-press.4": "Lower slowly", // TODO-IS
-  "exercise.cues.mountain-climber.1": "High plank, hands under your shoulders", // TODO-IS
-  "exercise.cues.mountain-climber.2": "Drive one knee toward your chest", // TODO-IS
-  "exercise.cues.mountain-climber.3": "Switch legs quickly", // TODO-IS
-  "exercise.cues.mountain-climber.4": "Keep your hips level", // TODO-IS
-  "exercise.cues.one-arm-dumbbell-row.1": "Knee and hand on the bench, back flat", // TODO-IS
-  "exercise.cues.one-arm-dumbbell-row.2": "Pull the dumbbell toward your hip", // TODO-IS
-  "exercise.cues.one-arm-dumbbell-row.3": "Keep your shoulders square", // TODO-IS
-  "exercise.cues.one-arm-dumbbell-row.4": "Lower to a full stretch", // TODO-IS
-  "exercise.cues.overhead-dumbbell-triceps-extension.1": "Hold one dumbbell overhead with both hands", // TODO-IS
-  "exercise.cues.overhead-dumbbell-triceps-extension.2": "Keep your elbows pointing forward", // TODO-IS
-  "exercise.cues.overhead-dumbbell-triceps-extension.3": "Lower behind your head to a stretch", // TODO-IS
-  "exercise.cues.overhead-dumbbell-triceps-extension.4": "Extend back to straight arms", // TODO-IS
-  "exercise.cues.overhead-press.1": "Bar on the front of your shoulders", // TODO-IS
-  "exercise.cues.overhead-press.2": "Squeeze your glutes and brace", // TODO-IS
-  "exercise.cues.overhead-press.3": "Press straight up, head back slightly", // TODO-IS
-  "exercise.cues.overhead-press.4": "Push your head through at the top", // TODO-IS
-  "exercise.cues.pike-push-up.1": "Hips high in an upside-down V", // TODO-IS
-  "exercise.cues.pike-push-up.2": "Hands about shoulder width", // TODO-IS
-  "exercise.cues.pike-push-up.3": "Lower the top of your head in front of your hands", // TODO-IS
-  "exercise.cues.pike-push-up.4": "Press back up", // TODO-IS
-  "exercise.cues.plank.1": "Elbows under your shoulders", // TODO-IS
-  "exercise.cues.plank.2": "Straight line from head to heels", // TODO-IS
-  "exercise.cues.plank.3": "Squeeze your glutes and brace", // TODO-IS
-  "exercise.cues.plank.4": "Breathe steadily", // TODO-IS
-  "exercise.cues.prone-lat-pulldown.1": "Lie face down, arms overhead", // TODO-IS
-  "exercise.cues.prone-lat-pulldown.2": "Lift your arms and chest slightly", // TODO-IS
-  "exercise.cues.prone-lat-pulldown.3": "Pull your elbows down to your ribs", // TODO-IS
-  "exercise.cues.prone-lat-pulldown.4": "Squeeze your back, then reach again", // TODO-IS
-  "exercise.cues.pull-up.1": "Hang with an overhand grip, slightly wider than shoulders", // TODO-IS
-  "exercise.cues.pull-up.2": "Pull your shoulders down first", // TODO-IS
-  "exercise.cues.pull-up.3": "Drive your elbows toward your ribs", // TODO-IS
-  "exercise.cues.pull-up.4": "Lower to a full hang", // TODO-IS
-  "exercise.cues.push-up.1": "Hands slightly wider than your shoulders", // TODO-IS
-  "exercise.cues.push-up.2": "Hold a straight line from head to heels", // TODO-IS
-  "exercise.cues.push-up.3": "Lower with elbows at about 45°", // TODO-IS
-  "exercise.cues.push-up.4": "Push the floor away", // TODO-IS
-  "exercise.cues.rear-delt-fly.1": "Hinge forward until nearly parallel", // TODO-IS
-  "exercise.cues.rear-delt-fly.2": "Soft elbows, dumbbells under your shoulders", // TODO-IS
-  "exercise.cues.rear-delt-fly.3": "Raise your arms out to the sides", // TODO-IS
-  "exercise.cues.rear-delt-fly.4": "Lower slowly, no swinging", // TODO-IS
-  "exercise.cues.reverse-crunch.1": "Lie on your back, hips and knees at 90°", // TODO-IS
-  "exercise.cues.reverse-crunch.2": "Curl your hips off the floor", // TODO-IS
-  "exercise.cues.reverse-crunch.3": "Use your abs, not momentum", // TODO-IS
-  "exercise.cues.reverse-crunch.4": "Lower slowly", // TODO-IS
-  "exercise.cues.romanian-deadlift.1": "Start standing, bar at your hips", // TODO-IS
-  "exercise.cues.romanian-deadlift.2": "Soften the knees and push your hips back", // TODO-IS
-  "exercise.cues.romanian-deadlift.3": "Slide the bar down your thighs, back flat", // TODO-IS
-  "exercise.cues.romanian-deadlift.4": "Stop at a hamstring stretch, then drive the hips forward", // TODO-IS
-  "exercise.cues.rowing-machine.1": "Strap your feet in, knees bent", // TODO-IS
-  "exercise.cues.rowing-machine.2": "Drive with your legs first", // TODO-IS
-  "exercise.cues.rowing-machine.3": "Then lean back and pull the handle to your ribs", // TODO-IS
-  "exercise.cues.rowing-machine.4": "Return: arms, body, then legs", // TODO-IS
-  "exercise.cues.seated-cable-row.1": "Sit tall, knees slightly bent", // TODO-IS
-  "exercise.cues.seated-cable-row.2": "Pull the handle to your lower ribs", // TODO-IS
-  "exercise.cues.seated-cable-row.3": "Squeeze your shoulder blades together", // TODO-IS
-  "exercise.cues.seated-cable-row.4": "Return slowly to straight arms", // TODO-IS
-  "exercise.cues.seated-calf-raise.1": "Pad snug on your lower thighs", // TODO-IS
-  "exercise.cues.seated-calf-raise.2": "Lower your heels for a deep stretch", // TODO-IS
-  "exercise.cues.seated-calf-raise.3": "Push up onto your toes", // TODO-IS
-  "exercise.cues.seated-calf-raise.4": "Pause at both ends", // TODO-IS
-  "exercise.cues.seated-dumbbell-shoulder-press.1": "Sit upright with your back on the pad", // TODO-IS
-  "exercise.cues.seated-dumbbell-shoulder-press.2": "Dumbbells at shoulder height", // TODO-IS
-  "exercise.cues.seated-dumbbell-shoulder-press.3": "Press up until your arms are straight", // TODO-IS
-  "exercise.cues.seated-dumbbell-shoulder-press.4": "Lower to about ear level", // TODO-IS
-  "exercise.cues.seated-leg-curl.1": "Knees in line with the pivot", // TODO-IS
-  "exercise.cues.seated-leg-curl.2": "Thigh pad snug on your legs", // TODO-IS
-  "exercise.cues.seated-leg-curl.3": "Curl your heels down and back", // TODO-IS
-  "exercise.cues.seated-leg-curl.4": "Return slowly", // TODO-IS
-  "exercise.cues.side-lying-hip-abduction.1": "Lie on your side, legs stacked", // TODO-IS
-  "exercise.cues.side-lying-hip-abduction.2": "Roll your hips slightly forward", // TODO-IS
-  "exercise.cues.side-lying-hip-abduction.3": "Lift your top leg, heel leading", // TODO-IS
-  "exercise.cues.side-lying-hip-abduction.4": "Lower slowly", // TODO-IS
-  "exercise.cues.side-plank.1": "Elbow directly under your shoulder", // TODO-IS
-  "exercise.cues.side-plank.2": "Lift your hips into a straight line", // TODO-IS
-  "exercise.cues.side-plank.3": "Keep your hips high", // TODO-IS
-  "exercise.cues.side-plank.4": "Hold, then switch sides", // TODO-IS
-  "exercise.cues.single-leg-calf-raise.1": "One foot on a step, heel hanging off", // TODO-IS
-  "exercise.cues.single-leg-calf-raise.2": "Hold a wall for balance only", // TODO-IS
-  "exercise.cues.single-leg-calf-raise.3": "Lower your heel below the step", // TODO-IS
-  "exercise.cues.single-leg-calf-raise.4": "Rise as high as you can", // TODO-IS
-  "exercise.cues.single-leg-glute-bridge.1": "One foot planted, other leg lifted", // TODO-IS
-  "exercise.cues.single-leg-glute-bridge.2": "Drive through the planted heel", // TODO-IS
-  "exercise.cues.single-leg-glute-bridge.3": "Keep your hips level", // TODO-IS
-  "exercise.cues.single-leg-glute-bridge.4": "Pause at the top, lower slowly", // TODO-IS
-  "exercise.cues.single-leg-rdl.1": "Stand on one leg, dumbbell in the opposite hand", // TODO-IS
-  "exercise.cues.single-leg-rdl.2": "Hinge forward as the free leg reaches back", // TODO-IS
-  "exercise.cues.single-leg-rdl.3": "Keep your hips level", // TODO-IS
-  "exercise.cues.single-leg-rdl.4": "Drive the hip forward to stand", // TODO-IS
-  "exercise.cues.skull-crusher.1": "Lie on a bench, arms over your shoulders", // TODO-IS
-  "exercise.cues.skull-crusher.2": "Narrow overhand grip on the EZ bar", // TODO-IS
-  "exercise.cues.skull-crusher.3": "Bend only at the elbows to lower", // TODO-IS
-  "exercise.cues.skull-crusher.4": "Extend back to the start", // TODO-IS
-  "exercise.cues.slider-leg-curl.1": "Heels on sliders, hips up in a bridge", // TODO-IS
-  "exercise.cues.slider-leg-curl.2": "Slide your heels out slowly", // TODO-IS
-  "exercise.cues.slider-leg-curl.3": "Keep your hips high", // TODO-IS
-  "exercise.cues.slider-leg-curl.4": "Pull your heels back toward your glutes", // TODO-IS
-  "exercise.cues.standing-calf-raise.1": "Balls of your feet on the edge", // TODO-IS
-  "exercise.cues.standing-calf-raise.2": "Lower your heels for a full stretch", // TODO-IS
-  "exercise.cues.standing-calf-raise.3": "Rise as high as you can", // TODO-IS
-  "exercise.cues.standing-calf-raise.4": "Pause at the top and bottom", // TODO-IS
-  "exercise.cues.stationary-bike.1": "Saddle so your knee is slightly bent at the bottom", // TODO-IS
-  "exercise.cues.stationary-bike.2": "Relax your upper body", // TODO-IS
-  "exercise.cues.stationary-bike.3": "Pedal in smooth circles", // TODO-IS
-  "exercise.cues.stationary-bike.4": "Adjust the resistance to your plan", // TODO-IS
-  "exercise.cues.straight-arm-pulldown.1": "High pulley, slight forward lean", // TODO-IS
-  "exercise.cues.straight-arm-pulldown.2": "Keep your arms long, elbows soft", // TODO-IS
-  "exercise.cues.straight-arm-pulldown.3": "Sweep the bar down to your thighs", // TODO-IS
-  "exercise.cues.straight-arm-pulldown.4": "Return slowly to eye level", // TODO-IS
-  "exercise.cues.suitcase-carry.1": "One heavy weight in one hand", // TODO-IS
-  "exercise.cues.suitcase-carry.2": "Stay upright; don’t lean", // TODO-IS
-  "exercise.cues.suitcase-carry.3": "Keep your shoulders level", // TODO-IS
-  "exercise.cues.suitcase-carry.4": "Switch hands halfway", // TODO-IS
-  "exercise.cues.thoracic-rotation.1": "On all fours, hips slightly back", // TODO-IS
-  "exercise.cues.thoracic-rotation.2": "Hand behind your head", // TODO-IS
-  "exercise.cues.thoracic-rotation.3": "Rotate your elbow down, then up to the ceiling", // TODO-IS
-  "exercise.cues.thoracic-rotation.4": "Keep your hips still", // TODO-IS
-  "exercise.cues.triceps-pushdown.1": "High pulley, elbows pinned to your sides", // TODO-IS
-  "exercise.cues.triceps-pushdown.2": "Push down until your arms are straight", // TODO-IS
-  "exercise.cues.triceps-pushdown.3": "Squeeze your triceps", // TODO-IS
-  "exercise.cues.triceps-pushdown.4": "Return slowly without moving your elbows", // TODO-IS
-  "exercise.cues.walking-lunge.1": "Hold a dumbbell at each side", // TODO-IS
-  "exercise.cues.walking-lunge.2": "Step forward and lower the back knee toward the floor", // TODO-IS
-  "exercise.cues.walking-lunge.3": "Drive through the front foot into the next step", // TODO-IS
-  "exercise.cues.walking-lunge.4": "Keep steps controlled and hip-width apart", // TODO-IS
-  "exercise.cues.weighted-dip.1": "Add weight with a dip belt", // TODO-IS
-  "exercise.cues.weighted-dip.2": "Lower until upper arms are about parallel", // TODO-IS
-  "exercise.cues.weighted-dip.3": "Keep the weight from swinging", // TODO-IS
-  "exercise.cues.weighted-dip.4": "Press back to straight arms", // TODO-IS
-  "exercise.cues.weighted-pull-up.1": "Add weight with a dip belt", // TODO-IS
-  "exercise.cues.weighted-pull-up.2": "Use strict bodyweight form", // TODO-IS
-  "exercise.cues.weighted-pull-up.3": "Brace to stop swinging", // TODO-IS
-  "exercise.cues.weighted-pull-up.4": "Lower to a full hang every rep", // TODO-IS
-  "exercise.cues.worlds-greatest-stretch.1": "Step into a long lunge, hands inside the front foot", // TODO-IS
-  "exercise.cues.worlds-greatest-stretch.2": "Sink your hips", // TODO-IS
-  "exercise.cues.worlds-greatest-stretch.3": "Rotate and reach your inside arm up", // TODO-IS
-  "exercise.cues.worlds-greatest-stretch.4": "Return and straighten the front leg", // TODO-IS
+  "exercise.cues.assisted-pull-up.1": "Stilltu mótvægið: meiri þyngd veitir meiri aðstoð",
+  "exercise.cues.assisted-pull-up.2": "Dragðu axlirnar niður fyrst",
+  "exercise.cues.assisted-pull-up.3": "Dragðu olnbogana niður að síðunum",
+  "exercise.cues.assisted-pull-up.4": "Lækkaðu rólega þar til handleggirnir eru beinir",
+  "exercise.cues.back-extension.1": "Stilltu púðann rétt neðan við mjaðmabótina og skorðaðu hælana",
+  "exercise.cues.back-extension.2": "Beygðu þig fram um mjaðmir",
+  "exercise.cues.back-extension.3": "Lyftu búknum þar til líkaminn myndar beina línu",
+  "exercise.cues.back-extension.4": "Ekki fetta bakið umfram beina stöðu",
+  "exercise.cues.band-assisted-pull-up.1": "Festu teygjubandið í lykkju yfir stöngina",
+  "exercise.cues.band-assisted-pull-up.2": "Settu hné eða fætur í lykkjuna",
+  "exercise.cues.band-assisted-pull-up.3": "Togaðu þig upp þar til hakan fer yfir stöngina",
+  "exercise.cues.band-assisted-pull-up.4": "Lækkaðu rólega og hafðu stjórn á teygjubandinu",
+  "exercise.cues.band-chest-press.1": "Festu teygjubandið fyrir aftan þig í brjósthæð",
+  "exercise.cues.band-chest-press.2": "Hafðu annan fótinn framar til að halda jafnvægi",
+  "exercise.cues.band-chest-press.3": "Pressaðu hendurnar beint fram",
+  "exercise.cues.band-chest-press.4": "Farðu rólega til baka með olnbogana í um 45° horni frá búknum",
+  "exercise.cues.band-curl.1": "Stattu á teygjubandinu með lófana fram",
+  "exercise.cues.band-curl.2": "Haltu olnbogunum kyrrum",
+  "exercise.cues.band-curl.3": "Beygðu olnbogana og færðu hendurnar í átt að öxlunum",
+  "exercise.cues.band-curl.4": "Lækkaðu rólega",
+  "exercise.cues.band-face-pull.1": "Festu teygjubandið í andlitshæð",
+  "exercise.cues.band-face-pull.2": "Dragðu hendurnar að andlitinu",
+  "exercise.cues.band-face-pull.3": "Færðu hendurnar í sundur með olnbogana hátt",
+  "exercise.cues.band-face-pull.4": "Farðu rólega til baka",
+  "exercise.cues.band-lateral-raise.1": "Stattu á léttu teygjubandi",
+  "exercise.cues.band-lateral-raise.2": "Haltu öðrum enda í hvorri hendi",
+  "exercise.cues.band-lateral-raise.3": "Lyftu handleggjunum út til hliðar í axlarhæð",
+  "exercise.cues.band-lateral-raise.4": "Haltu öxlunum niðri og lækkaðu rólega",
+  "exercise.cues.band-lateral-walk.1": "Settu litla teygju fyrir ofan hnén eða um ökklana",
+  "exercise.cues.band-lateral-walk.2": "Haltu þér niðri í grunnri hnébeygju",
+  "exercise.cues.band-lateral-walk.3": "Stígðu til hliðar með tærnar vísandi fram",
+  "exercise.cues.band-lateral-walk.4": "Haltu spennu á teygjunni",
+  "exercise.cues.band-overhead-press.1": "Stattu á teygjubandinu með endana við axlirnar",
+  "exercise.cues.band-overhead-press.2": "Spenntu kviðinn",
+  "exercise.cues.band-overhead-press.3": "Pressaðu beint upp fyrir höfuð",
+  "exercise.cues.band-overhead-press.4": "Lækkaðu rólega",
+  "exercise.cues.band-pallof-press.1": "Stattu með hliðina að festingu teygjubandsins",
+  "exercise.cues.band-pallof-press.2": "Pressaðu hendurnar beint fram",
+  "exercise.cues.band-pallof-press.3": "Haltu stöðunni og stattu á móti toginu",
+  "exercise.cues.band-pallof-press.4": "Færðu hendurnar aftur að brjóstinu",
+  "exercise.cues.band-pull-apart.1": "Haltu léttu teygjubandi með beina handleggi fyrir framan þig",
+  "exercise.cues.band-pull-apart.2": "Dragðu teygjubandið í sundur að brjóstinu",
+  "exercise.cues.band-pull-apart.3": "Dragðu herðablöðin saman",
+  "exercise.cues.band-pull-apart.4": "Haltu öxlunum niðri",
+  "exercise.cues.band-pulldown.1": "Festu teygjubandið hátt uppi",
+  "exercise.cues.band-pulldown.2": "Byrjaðu með handleggina upp fyrir höfuð",
+  "exercise.cues.band-pulldown.3": "Dragðu olnbogana niður að síðunum",
+  "exercise.cues.band-pulldown.4": "Farðu rólega til baka",
+  "exercise.cues.band-romanian-deadlift.1": "Stattu á teygjubandinu með endana framan við lærin",
+  "exercise.cues.band-romanian-deadlift.2": "Ýttu mjöðmunum aftur með beint bak",
+  "exercise.cues.band-romanian-deadlift.3": "Stoppaðu þegar teygist á aftanverðum lærunum",
+  "exercise.cues.band-romanian-deadlift.4": "Ýttu mjöðmunum fram og spenntu rassinn",
+  "exercise.cues.band-row.1": "Festu teygjubandið í brjósthæð",
+  "exercise.cues.band-row.2": "Sittu eða stattu uppréttur",
+  "exercise.cues.band-row.3": "Dragðu hendurnar að neðri rifbeinunum",
+  "exercise.cues.band-row.4": "Dragðu herðablöðin saman og farðu rólega til baka",
+  "exercise.cues.band-shoulder-dislocate.1": "Gríptu breitt um létt teygjuband",
+  "exercise.cues.band-shoulder-dislocate.2": "Haltu handleggjunum beinum",
+  "exercise.cues.band-shoulder-dislocate.3": "Færðu teygjubandið upp yfir höfuðið og aftur fyrir þig",
+  "exercise.cues.band-shoulder-dislocate.4": "Farðu aðeins eins langt og þér finnst þægilegt",
+  "exercise.cues.band-triceps-pushdown.1": "Festu teygjubandið hátt uppi",
+  "exercise.cues.band-triceps-pushdown.2": "Haltu olnbogunum þétt við síðurnar",
+  "exercise.cues.band-triceps-pushdown.3": "Ýttu niður þar til handleggirnir eru beinir",
+  "exercise.cues.band-triceps-pushdown.4": "Farðu rólega til baka",
+  "exercise.cues.barbell-back-squat.1": "Leggðu stöngina á efri hluta baksins, hafðu fætur í axlarbreidd",
+  "exercise.cues.barbell-back-squat.2": "Spenntu kviðinn fyrir hverja endurtekningu",
+  "exercise.cues.barbell-back-squat.3": "Settu þig niður á milli hælanna þar til læri eru að minnsta kosti lárétt",
+  "exercise.cues.barbell-back-squat.4": "Ýttu þér upp þannig að brjóst og mjaðmir rísi samtímis",
+  "exercise.cues.barbell-bench-press.1": "Hafðu augun undir stönginni og fæturna fasta í gólfinu",
+  "exercise.cues.barbell-bench-press.2": "Dragðu herðablöðin saman og niður",
+  "exercise.cues.barbell-bench-press.3": "Lækkaðu stöngina að neðri hluta brjóstsins",
+  "exercise.cues.barbell-bench-press.4": "Pressaðu upp og örlítið aftur yfir axlirnar",
+  "exercise.cues.barbell-curl.1": "Gríptu um stöngina með undirgripi í axlarbreidd",
+  "exercise.cues.barbell-curl.2": "Haltu olnbogunum við síðurnar",
+  "exercise.cues.barbell-curl.3": "Beygðu olnbogana og lyftu stönginni í átt að öxlunum",
+  "exercise.cues.barbell-curl.4": "Lækkaðu hægar en þú lyftir",
+  "exercise.cues.barbell-front-squat.1": "Leggðu stöngina framan á axlirnar",
+  "exercise.cues.barbell-front-squat.2": "Haltu olnbogunum hátt allan tímann",
+  "exercise.cues.barbell-front-squat.3": "Farðu beint niður með búkinn uppréttan",
+  "exercise.cues.barbell-front-squat.4": "Ýttu þér upp með öllum fætinum",
+  "exercise.cues.barbell-hip-thrust.1": "Hafðu efri hluta baksins á bekk og bólstraða stöng yfir mjöðmunum",
+  "exercise.cues.barbell-hip-thrust.2": "Hafðu iljarnar flatar þannig að sköflungar séu lóðréttir í efstu stöðu",
+  "exercise.cues.barbell-hip-thrust.3": "Dragðu hökuna inn og ýttu í gegnum hælana",
+  "exercise.cues.barbell-hip-thrust.4": "Spenntu rassinn í efstu stöðu",
+  "exercise.cues.barbell-row.1": "Beygðu þig fram um mjaðmir með hnén örlítið bogin og bakið beint",
+  "exercise.cues.barbell-row.2": "Gríptu um stöngina aðeins breiðar en axlarbreidd",
+  "exercise.cues.barbell-row.3": "Dragðu stöngina að neðri rifbeinunum",
+  "exercise.cues.barbell-row.4": "Lækkaðu rólega án þess að breyta halla búksins",
+  "exercise.cues.bird-dog.1": "Hafðu hendur undir öxlum og hné undir mjöðmum",
+  "exercise.cues.bird-dog.2": "Teygðu annan handlegg fram og gagnstæðan fót aftur",
+  "exercise.cues.bird-dog.3": "Haltu mjöðmunum í sömu hæð",
+  "exercise.cues.bird-dog.4": "Haltu stutt, farðu til baka og skiptu um hlið",
+  "exercise.cues.bodyweight-split-squat.1": "Hafðu langt bil milli fótanna og aftari hælinn á lofti",
+  "exercise.cues.bodyweight-split-squat.2": "Farðu beint niður þar til aftara hnéð snertir næstum gólfið",
+  "exercise.cues.bodyweight-split-squat.3": "Haltu fremri hælnum niðri",
+  "exercise.cues.bodyweight-split-squat.4": "Ýttu þér upp með fremri fætinum",
+  "exercise.cues.bodyweight-squat.1": "Hafðu fætur í axlarbreidd og tær örlítið út",
+  "exercise.cues.bodyweight-squat.2": "Settu þig niður á milli hælanna með brjóstið hátt",
+  "exercise.cues.bodyweight-squat.3": "Láttu hnén fylgja stefnu tánna",
+  "exercise.cues.bodyweight-squat.4": "Stattu uppréttur og spenntu rassinn",
+  "exercise.cues.bulgarian-split-squat.1": "Settu aftari fótinn á bekkinn og fremri fótinn einu skrefi framar",
+  "exercise.cues.bulgarian-split-squat.2": "Hafðu mestan þungann á fremri fætinum",
+  "exercise.cues.bulgarian-split-squat.3": "Lækkaðu aftara hnéð beint niður",
+  "exercise.cues.bulgarian-split-squat.4": "Ýttu þér upp með fremri fætinum",
+  "exercise.cues.burpee.1": "Farðu í hnébeygju og settu hendurnar á gólfið",
+  "exercise.cues.burpee.2": "Hoppaðu eða stígðu aftur í planka",
+  "exercise.cues.burpee.3": "Færðu fæturna aftur að höndunum",
+  "exercise.cues.burpee.4": "Stattu upp eða hoppaðu upp",
+  "exercise.cues.cable-fly.1": "Stilltu trissurnar í axlarhæð og hafðu annan fótinn framar",
+  "exercise.cues.cable-fly.2": "Haltu olnbogunum örlítið bognum í föstu horni",
+  "exercise.cues.cable-fly.3": "Færðu hendurnar saman í víðum boga",
+  "exercise.cues.cable-fly.4": "Farðu rólega til baka þar til teygist á brjóstvöðvunum",
+  "exercise.cues.cable-lateral-raise.1": "Stattu með hliðina að lágri trissu",
+  "exercise.cues.cable-lateral-raise.2": "Haltu í handfangið með hendinni sem er fjær trissunni",
+  "exercise.cues.cable-lateral-raise.3": "Lyftu handleggnum út til hliðar í axlarhæð",
+  "exercise.cues.cable-lateral-raise.4": "Lækkaðu rólega og haltu búknum kyrrum",
+  "exercise.cues.cable-pallof-press.1": "Stattu með hliðina að kapalnum og handfangið við brjóstið",
+  "exercise.cues.cable-pallof-press.2": "Pressaðu hendurnar beint fram",
+  "exercise.cues.cable-pallof-press.3": "Stattu á móti snúningnum",
+  "exercise.cues.cable-pallof-press.4": "Færðu handfangið aftur að brjóstinu",
+  "exercise.cues.cable-pull-through.1": "Snúðu baki í lága trissu og hafðu reipið milli fótanna",
+  "exercise.cues.cable-pull-through.2": "Ýttu mjöðmunum aftur með handleggina beina",
+  "exercise.cues.cable-pull-through.3": "Finndu teygjuna aftan í lærunum",
+  "exercise.cues.cable-pull-through.4": "Ýttu mjöðmunum fram og spenntu rassinn",
+  "exercise.cues.cat-cow.1": "Hafðu hendur undir öxlum og hné undir mjöðmum",
+  "exercise.cues.cat-cow.2": "Krypptu bakið og dragðu hökuna inn",
+  "exercise.cues.cat-cow.3": "Láttu kviðinn síga og lyftu brjóstinu",
+  "exercise.cues.cat-cow.4": "Hreyfðu þig rólega í takt við öndunina",
+  "exercise.cues.chest-supported-dumbbell-row.1": "Leggstu á magann á bekk með litlum halla",
+  "exercise.cues.chest-supported-dumbbell-row.2": "Láttu handleggina hanga beint niður",
+  "exercise.cues.chest-supported-dumbbell-row.3": "Dragðu handlóðin upp þar til olnbogarnir fara aftur fyrir búkinn",
+  "exercise.cues.chest-supported-dumbbell-row.4": "Haltu stutt og lækkaðu svo",
+  "exercise.cues.chin-up.1": "Hengdu þig í stöngina með undirgripi í axlarbreidd",
+  "exercise.cues.chin-up.2": "Togaðu þig upp þar til hakan fer yfir stöngina",
+  "exercise.cues.chin-up.3": "Haltu brjóstinu hátt",
+  "exercise.cues.chin-up.4": "Lækkaðu rólega þar til þú hangir með beina handleggi",
+  "exercise.cues.conventional-deadlift.1": "Hafðu miðjan fót undir stönginni og sköflungana við stöngina",
+  "exercise.cues.conventional-deadlift.2": "Haltu bakinu beinu og taktu slakann úr stönginni fyrst",
+  "exercise.cues.conventional-deadlift.3": "Ýttu gólfinu frá þér og haltu stönginni nálægt fótunum",
+  "exercise.cues.conventional-deadlift.4": "Réttu úr þér og spenntu rassinn án þess að halla þér aftur",
+  "exercise.cues.dead-bug.1": "Hafðu handleggina upp og mjaðmir og hné í 90° horni",
+  "exercise.cues.dead-bug.2": "Þrýstu mjóbakinu niður í gólfið",
+  "exercise.cues.dead-bug.3": "Réttu rólega úr gagnstæðum handlegg og fæti",
+  "exercise.cues.dead-bug.4": "Farðu til baka og skiptu um hlið",
+  "exercise.cues.diamond-push-up.1": "Hafðu hendurnar þétt saman undir brjóstinu",
+  "exercise.cues.diamond-push-up.2": "Haltu líkamanum stífum eins og í planka",
+  "exercise.cues.diamond-push-up.3": "Haltu olnbogunum þétt við rifbeinin",
+  "exercise.cues.diamond-push-up.4": "Pressaðu upp og réttu alveg úr handleggjunum",
+  "exercise.cues.dip.1": "Haltu þér uppi á beinum handleggjum",
+  "exercise.cues.dip.2": "Haltu öxlunum niðri",
+  "exercise.cues.dip.3": "Hallaðu þér örlítið fram þegar þú ferð niður",
+  "exercise.cues.dip.4": "Stoppaðu á þægilegu dýpi og pressaðu upp",
+  "exercise.cues.doorway-row.1": "Gríptu um dyrakarminn í brjósthæð",
+  "exercise.cues.doorway-row.2": "Hallaðu þér aftur með beina handleggi",
+  "exercise.cues.doorway-row.3": "Dragðu brjóstið í átt að dyrunum",
+  "exercise.cues.doorway-row.4": "Farðu rólega aftur til baka",
+  "exercise.cues.dumbbell-bench-press.1": "Dragðu herðablöðin saman og niður",
+  "exercise.cues.dumbbell-bench-press.2": "Lækkaðu handlóðin að hliðum brjóstsins",
+  "exercise.cues.dumbbell-bench-press.3": "Haltu framhandleggjunum lóðréttum",
+  "exercise.cues.dumbbell-bench-press.4": "Pressaðu upp og örlítið saman",
+  "exercise.cues.dumbbell-bent-over-row.1": "Beygðu þig fram um mjaðmir með beint bak",
+  "exercise.cues.dumbbell-bent-over-row.2": "Dragðu bæði handlóðin að neðri rifbeinunum",
+  "exercise.cues.dumbbell-bent-over-row.3": "Dragðu herðablöðin saman",
+  "exercise.cues.dumbbell-bent-over-row.4": "Haltu sama halla á búknum þegar þú lækkar lóðin",
+  "exercise.cues.dumbbell-curl.1": "Stattu uppréttur með lófana fram",
+  "exercise.cues.dumbbell-curl.2": "Haltu olnbogunum við síðurnar",
+  "exercise.cues.dumbbell-curl.3": "Beygðu olnbogana þar til framhandleggirnir eru lóðréttir",
+  "exercise.cues.dumbbell-curl.4": "Lækkaðu rólega þar til handleggirnir eru beinir",
+  "exercise.cues.dumbbell-floor-press.1": "Leggstu á gólfið með bogin hné",
+  "exercise.cues.dumbbell-floor-press.2": "Pressaðu handlóðin upp yfir brjóstið",
+  "exercise.cues.dumbbell-floor-press.3": "Lækkaðu þar til upphandleggirnir snerta gólfið",
+  "exercise.cues.dumbbell-floor-press.4": "Haltu stutt og pressaðu aftur",
+  "exercise.cues.dumbbell-fly.1": "Haltu handlóðunum yfir brjóstinu með lófana hvorn á móti öðrum",
+  "exercise.cues.dumbbell-fly.2": "Haltu olnbogunum örlítið bognum í föstu horni",
+  "exercise.cues.dumbbell-fly.3": "Opnaðu handleggina þar til þú finnur þægilega teygju",
+  "exercise.cues.dumbbell-fly.4": "Spenntu brjóstvöðvana til að færa handleggina saman aftur",
+  "exercise.cues.dumbbell-lateral-raise.1": "Hafðu létt handlóð við síðurnar",
+  "exercise.cues.dumbbell-lateral-raise.2": "Hafðu olnbogana örlítið bogna",
+  "exercise.cues.dumbbell-lateral-raise.3": "Lyftu upp í axlarhæð og láttu olnbogana leiða hreyfinguna",
+  "exercise.cues.dumbbell-lateral-raise.4": "Lækkaðu rólega",
+  "exercise.cues.dumbbell-overhead-press.1": "Hafðu handlóðin við axlirnar og fætur í mjaðmabreidd",
+  "exercise.cues.dumbbell-overhead-press.2": "Spenntu kviðinn og rassinn",
+  "exercise.cues.dumbbell-overhead-press.3": "Pressaðu beint upp með upphandleggina við eyrun",
+  "exercise.cues.dumbbell-overhead-press.4": "Lækkaðu án þess að halla þér aftur",
+  "exercise.cues.dumbbell-reverse-lunge.1": "Stattu uppréttur með handlóð í hvorri hendi",
+  "exercise.cues.dumbbell-reverse-lunge.2": "Taktu langt skref aftur",
+  "exercise.cues.dumbbell-reverse-lunge.3": "Farðu niður þar til aftara hnéð snertir næstum gólfið",
+  "exercise.cues.dumbbell-reverse-lunge.4": "Ýttu í gegnum fremri hælinn til að komast aftur í upphafsstöðu",
+  "exercise.cues.dumbbell-romanian-deadlift.1": "Haltu handlóðunum framan við lærin",
+  "exercise.cues.dumbbell-romanian-deadlift.2": "Ýttu mjöðmunum aftur með hnén örlítið bogin",
+  "exercise.cues.dumbbell-romanian-deadlift.3": "Láttu handlóðin renna þétt niður með fótunum",
+  "exercise.cues.dumbbell-romanian-deadlift.4": "Spenntu rassinn til að rétta úr þér",
+  "exercise.cues.dumbbell-step-up.1": "Settu allan fótinn á kassa í hnéhæð",
+  "exercise.cues.dumbbell-step-up.2": "Ýttu í gegnum hælinn á kassanum til að standa upp",
+  "exercise.cues.dumbbell-step-up.3": "Notaðu fótinn á gólfinu sem minnst",
+  "exercise.cues.dumbbell-step-up.4": "Stígðu rólega niður",
+  "exercise.cues.face-pull.1": "Stilltu reipið í andlitshæð með þumlana vísandi aftur",
+  "exercise.cues.face-pull.2": "Dragðu reipið að andlitinu",
+  "exercise.cues.face-pull.3": "Dragðu enda reipisins í sundur og haltu olnbogunum hátt",
+  "exercise.cues.face-pull.4": "Farðu rólega til baka",
+  "exercise.cues.farmer-carry.1": "Taktu lóðin upp með beint bak",
+  "exercise.cues.farmer-carry.2": "Stattu uppréttur með axlirnar niðri",
+  "exercise.cues.farmer-carry.3": "Gríptu þétt um handföngin",
+  "exercise.cues.farmer-carry.4": "Gakktu með stuttum, stýrðum skrefum",
+  "exercise.cues.glute-bridge.1": "Leggstu á bakið með bogin hné og iljar flatar",
+  "exercise.cues.glute-bridge.2": "Ýttu í gegnum hælana til að lyfta mjöðmunum",
+  "exercise.cues.glute-bridge.3": "Myndaðu beina línu frá hnjám að öxlum",
+  "exercise.cues.glute-bridge.4": "Spenntu rassinn, haltu stutt og lækkaðu rólega",
+  "exercise.cues.goblet-squat.1": "Haltu handlóðinu lóðréttu við bringuna",
+  "exercise.cues.goblet-squat.2": "Settu þig niður á milli hælanna",
+  "exercise.cues.goblet-squat.3": "Láttu olnbogana fara innan við hnén",
+  "exercise.cues.goblet-squat.4": "Stattu upp með lóðið þétt við bringuna",
+  "exercise.cues.hack-squat.1": "Haltu bakinu við púðann og öxlunum undir axlapúðunum",
+  "exercise.cues.hack-squat.2": "Hafðu fætur í axlarbreidd á miðjum pallinum",
+  "exercise.cues.hack-squat.3": "Farðu niður þar til læri eru að minnsta kosti lárétt",
+  "exercise.cues.hack-squat.4": "Ýttu þér upp með bakið þétt við púðann",
+  "exercise.cues.half-kneeling-hip-flexor-stretch.1": "Krjúptu á öðru hné með il fremri fótar flata á gólfinu",
+  "exercise.cues.half-kneeling-hip-flexor-stretch.2": "Spenntu rassvöðvann þeim megin sem þú krýpur",
+  "exercise.cues.half-kneeling-hip-flexor-stretch.3": "Færðu mjaðmirnar varlega fram",
+  "exercise.cues.half-kneeling-hip-flexor-stretch.4": "Haltu búknum uppréttum",
+  "exercise.cues.hammer-curl.1": "Láttu lófana snúa að líkamanum",
+  "exercise.cues.hammer-curl.2": "Haltu upphandleggjunum kyrrum",
+  "exercise.cues.hammer-curl.3": "Beygðu olnbogana með þumlana upp",
+  "exercise.cues.hammer-curl.4": "Lækkaðu rólega",
+  "exercise.cues.hanging-knee-raise.1": "Hengdu þig í stöngina með axlirnar dregnar niður",
+  "exercise.cues.hanging-knee-raise.2": "Dragðu hnén í átt að brjóstinu",
+  "exercise.cues.hanging-knee-raise.3": "Veltu mjaðmagrindinni upp",
+  "exercise.cues.hanging-knee-raise.4": "Lækkaðu rólega án þess að sveiflast",
+  "exercise.cues.incline-barbell-press.1": "Stilltu bekkinn á um 30° og hafðu augun undir stönginni",
+  "exercise.cues.incline-barbell-press.2": "Dragðu herðablöðin saman og niður",
+  "exercise.cues.incline-barbell-press.3": "Lækkaðu stöngina rétt neðan við viðbeinin",
+  "exercise.cues.incline-barbell-press.4": "Pressaðu þar til handleggirnir eru beinir",
+  "exercise.cues.incline-dumbbell-press.1": "Stilltu bekkinn á um 30° halla",
+  "exercise.cues.incline-dumbbell-press.2": "Lækkaðu handlóðin að efri hluta brjóstsins",
+  "exercise.cues.incline-dumbbell-press.3": "Hafðu olnbogana örlítið inn að líkamanum",
+  "exercise.cues.incline-dumbbell-press.4": "Pressaðu upp í átt að loftinu",
+  "exercise.cues.incline-push-up.1": "Settu hendurnar á bekk eða borðbrún",
+  "exercise.cues.incline-push-up.2": "Haltu líkamanum beinum",
+  "exercise.cues.incline-push-up.3": "Lækkaðu brjóstið að brúninni",
+  "exercise.cues.incline-push-up.4": "Ýttu þér aftur upp þar til handleggirnir eru beinir",
+  "exercise.cues.incline-treadmill-walk.1": "Byrjaðu rólega og auktu svo hallann",
+  "exercise.cues.incline-treadmill-walk.2": "Gakktu rösklega án þess að halda í handriðin",
+  "exercise.cues.incline-treadmill-walk.3": "Haltu þér uppréttum",
+  "exercise.cues.incline-treadmill-walk.4": "Andaðu jafnt",
+  "exercise.cues.inverted-row.1": "Hafðu stöngina í mjaðmahæð og hælana á gólfinu",
+  "exercise.cues.inverted-row.2": "Haltu líkamanum beinum eins og í planka",
+  "exercise.cues.inverted-row.3": "Dragðu brjóstið að stönginni",
+  "exercise.cues.inverted-row.4": "Lækkaðu þar til handleggirnir eru beinir",
+  "exercise.cues.jumping-jack.1": "Stattu uppréttur með fætur saman",
+  "exercise.cues.jumping-jack.2": "Hoppaðu með fæturna í sundur á meðan handleggirnir fara upp",
+  "exercise.cues.jumping-jack.3": "Hoppaðu aftur í upphafsstöðu",
+  "exercise.cues.jumping-jack.4": "Lentu mjúklega",
+  "exercise.cues.kettlebell-swing.1": "Beygðu þig um mjaðmir og sveiflaðu ketilbjöllunni aftur milli fótanna",
+  "exercise.cues.kettlebell-swing.2": "Ýttu mjöðmunum kröftuglega fram",
+  "exercise.cues.kettlebell-swing.3": "Láttu handleggina fylgja ketilbjöllunni upp í brjósthæð",
+  "exercise.cues.kettlebell-swing.4": "Beygðu um mjaðmir, ekki fara í hnébeygju",
+  "exercise.cues.lat-pulldown.1": "Skorðaðu lærin undir púðanum",
+  "exercise.cues.lat-pulldown.2": "Gríptu aðeins breiðar en axlarbreidd",
+  "exercise.cues.lat-pulldown.3": "Dragðu stöngina að efri hluta brjóstsins",
+  "exercise.cues.lat-pulldown.4": "Farðu rólega til baka þar til teygist vel á bakinu",
+  "exercise.cues.leg-extension.1": "Stilltu hnén í línu við snúningsás tækisins",
+  "exercise.cues.leg-extension.2": "Hafðu púðann rétt ofan við ökklana",
+  "exercise.cues.leg-extension.3": "Réttu úr fótunum og spenntu lærvöðvana",
+  "exercise.cues.leg-extension.4": "Lækkaðu rólega",
+  "exercise.cues.leg-press.1": "Haltu baki og mjöðmum þétt við púðann",
+  "exercise.cues.leg-press.2": "Hafðu fætur í axlarbreidd á miðjum pallinum",
+  "exercise.cues.leg-press.3": "Lækkaðu þar til mjaðmirnar eru við það að lyftast",
+  "exercise.cues.leg-press.4": "Ýttu með öllum fætinum án þess að læsa hnjánum harkalega",
+  "exercise.cues.lying-leg-curl.1": "Leggstu á magann með rúllupúðann rétt ofan við hælana",
+  "exercise.cues.lying-leg-curl.2": "Haltu mjöðmunum þétt við bekkinn",
+  "exercise.cues.lying-leg-curl.3": "Beygðu hnén og dragðu hælana í átt að rassinum",
+  "exercise.cues.lying-leg-curl.4": "Lækkaðu rólega",
+  "exercise.cues.machine-chest-press.1": "Stilltu handföngin í hæð við miðju brjóstsins",
+  "exercise.cues.machine-chest-press.2": "Haltu bakinu þétt við púðann",
+  "exercise.cues.machine-chest-press.3": "Pressaðu þar til handleggirnir eru beinir án þess að læsa olnbogunum",
+  "exercise.cues.machine-chest-press.4": "Farðu rólega til baka þar til teygist á brjóstvöðvunum",
+  "exercise.cues.machine-row.1": "Hafðu brjóstið þétt við púðann",
+  "exercise.cues.machine-row.2": "Stilltu handföngin í hæð við miðju brjóstsins",
+  "exercise.cues.machine-row.3": "Dragðu olnbogana aftur",
+  "exercise.cues.machine-row.4": "Farðu rólega til baka þar til handleggirnir eru beinir",
+  "exercise.cues.machine-shoulder-press.1": "Hafðu handföngin í axlarhæð í upphafsstöðu",
+  "exercise.cues.machine-shoulder-press.2": "Haltu bakinu þétt við púðann",
+  "exercise.cues.machine-shoulder-press.3": "Pressaðu þar til handleggirnir eru beinir án þess að læsa olnbogunum",
+  "exercise.cues.machine-shoulder-press.4": "Lækkaðu rólega",
+  "exercise.cues.mountain-climber.1": "Byrjaðu í háum planka með hendur undir öxlunum",
+  "exercise.cues.mountain-climber.2": "Dragðu annað hnéð í átt að brjóstinu",
+  "exercise.cues.mountain-climber.3": "Skiptu hratt um fót",
+  "exercise.cues.mountain-climber.4": "Haltu mjöðmunum í sömu hæð",
+  "exercise.cues.one-arm-dumbbell-row.1": "Settu hné og hönd á bekkinn og haltu bakinu beinu",
+  "exercise.cues.one-arm-dumbbell-row.2": "Dragðu handlóðið í átt að mjöðminni",
+  "exercise.cues.one-arm-dumbbell-row.3": "Haltu öxlunum í sömu hæð án þess að snúa búknum",
+  "exercise.cues.one-arm-dumbbell-row.4": "Lækkaðu þar til teygist vel á bakinu",
+  "exercise.cues.overhead-dumbbell-triceps-extension.1": "Haltu einu handlóði yfir höfðinu með báðum höndum",
+  "exercise.cues.overhead-dumbbell-triceps-extension.2": "Láttu olnbogana vísa fram",
+  "exercise.cues.overhead-dumbbell-triceps-extension.3": "Lækkaðu lóðið aftur fyrir höfuðið þar til teygist á þríhöfðanum",
+  "exercise.cues.overhead-dumbbell-triceps-extension.4": "Réttu aftur úr handleggjunum",
+  "exercise.cues.overhead-press.1": "Hafðu stöngina framan á öxlunum",
+  "exercise.cues.overhead-press.2": "Spenntu rassinn og kviðinn",
+  "exercise.cues.overhead-press.3": "Pressaðu beint upp og færðu höfuðið örlítið aftur",
+  "exercise.cues.overhead-press.4": "Færðu höfuðið fram á milli handleggja í efstu stöðu",
+  "exercise.cues.pike-push-up.1": "Hafðu mjaðmirnar hátt þannig að líkaminn myndi öfugt V",
+  "exercise.cues.pike-push-up.2": "Hafðu hendur í um axlarbreidd",
+  "exercise.cues.pike-push-up.3": "Lækkaðu hvirfilinn að gólfinu fyrir framan hendurnar",
+  "exercise.cues.pike-push-up.4": "Pressaðu þér aftur upp",
+  "exercise.cues.plank.1": "Hafðu olnbogana beint undir öxlunum",
+  "exercise.cues.plank.2": "Haltu beinni línu frá höfði að hælum",
+  "exercise.cues.plank.3": "Spenntu rassinn og kviðinn",
+  "exercise.cues.plank.4": "Andaðu jafnt",
+  "exercise.cues.prone-lat-pulldown.1": "Leggstu á magann með handleggina fram fyrir höfuðið",
+  "exercise.cues.prone-lat-pulldown.2": "Lyftu handleggjum og brjósti örlítið",
+  "exercise.cues.prone-lat-pulldown.3": "Dragðu olnbogana niður að rifbeinunum",
+  "exercise.cues.prone-lat-pulldown.4": "Spenntu bakvöðvana og teygðu handleggina fram aftur",
+  "exercise.cues.pull-up.1": "Hengdu þig í stöngina með yfirgripi aðeins breiðara en axlarbreidd",
+  "exercise.cues.pull-up.2": "Dragðu axlirnar niður fyrst",
+  "exercise.cues.pull-up.3": "Dragðu olnbogana niður í átt að rifbeinunum",
+  "exercise.cues.pull-up.4": "Lækkaðu þar til þú hangir með beina handleggi",
+  "exercise.cues.push-up.1": "Hafðu hendur aðeins breiðar en axlarbreidd",
+  "exercise.cues.push-up.2": "Haltu beinni línu frá höfði að hælum",
+  "exercise.cues.push-up.3": "Farðu niður með olnbogana í um 45° horni frá búknum",
+  "exercise.cues.push-up.4": "Ýttu gólfinu frá þér",
+  "exercise.cues.rear-delt-fly.1": "Beygðu þig fram um mjaðmir þar til búkurinn er næstum láréttur",
+  "exercise.cues.rear-delt-fly.2": "Hafðu olnbogana örlítið bogna og handlóðin undir öxlunum",
+  "exercise.cues.rear-delt-fly.3": "Lyftu handleggjunum út til hliðanna",
+  "exercise.cues.rear-delt-fly.4": "Lækkaðu rólega án þess að sveifla lóðunum",
+  "exercise.cues.reverse-crunch.1": "Leggstu á bakið með mjaðmir og hné í 90° horni",
+  "exercise.cues.reverse-crunch.2": "Rúllaðu mjöðmunum upp frá gólfinu",
+  "exercise.cues.reverse-crunch.3": "Notaðu kviðvöðvana, ekki sveiflu",
+  "exercise.cues.reverse-crunch.4": "Lækkaðu rólega",
+  "exercise.cues.romanian-deadlift.1": "Byrjaðu standandi með stöngina við mjaðmirnar",
+  "exercise.cues.romanian-deadlift.2": "Beygðu hnén lítillega og ýttu mjöðmunum aftur",
+  "exercise.cues.romanian-deadlift.3": "Renndu stönginni niður lærin með beint bak",
+  "exercise.cues.romanian-deadlift.4": "Stoppaðu þegar teygist á aftanverðum lærunum og ýttu svo mjöðmunum fram",
+  "exercise.cues.rowing-machine.1": "Festu fæturna og hafðu hnén bogin",
+  "exercise.cues.rowing-machine.2": "Ýttu fyrst frá með fótunum",
+  "exercise.cues.rowing-machine.3": "Hallaðu þér svo aftur og dragðu handfangið að rifbeinunum",
+  "exercise.cues.rowing-machine.4": "Farðu til baka í þessari röð: handleggir, búkur, fætur",
+  "exercise.cues.seated-cable-row.1": "Sittu uppréttur með hnén örlítið bogin",
+  "exercise.cues.seated-cable-row.2": "Dragðu handfangið að neðri rifbeinunum",
+  "exercise.cues.seated-cable-row.3": "Dragðu herðablöðin saman",
+  "exercise.cues.seated-cable-row.4": "Farðu rólega til baka þar til handleggirnir eru beinir",
+  "exercise.cues.seated-calf-raise.1": "Stilltu púðann þétt að neðri hluta læranna",
+  "exercise.cues.seated-calf-raise.2": "Lækkaðu hælana þar til teygist vel á kálfunum",
+  "exercise.cues.seated-calf-raise.3": "Ýttu þér upp á tær",
+  "exercise.cues.seated-calf-raise.4": "Haltu stutt í efstu og neðstu stöðu",
+  "exercise.cues.seated-dumbbell-shoulder-press.1": "Sittu uppréttur með bakið við púðann",
+  "exercise.cues.seated-dumbbell-shoulder-press.2": "Hafðu handlóðin í axlarhæð",
+  "exercise.cues.seated-dumbbell-shoulder-press.3": "Pressaðu upp þar til handleggirnir eru beinir",
+  "exercise.cues.seated-dumbbell-shoulder-press.4": "Lækkaðu handlóðin niður í um eyrnahæð",
+  "exercise.cues.seated-leg-curl.1": "Stilltu hnén í línu við snúningsásinn",
+  "exercise.cues.seated-leg-curl.2": "Stilltu lærpúðann þétt að lærunum",
+  "exercise.cues.seated-leg-curl.3": "Beygðu hnén og dragðu hælana niður og aftur",
+  "exercise.cues.seated-leg-curl.4": "Farðu rólega til baka",
+  "exercise.cues.side-lying-hip-abduction.1": "Leggstu á hliðina með fæturna hvorn ofan á öðrum",
+  "exercise.cues.side-lying-hip-abduction.2": "Snúðu mjöðmunum örlítið fram",
+  "exercise.cues.side-lying-hip-abduction.3": "Lyftu efri fætinum og láttu hælinn leiða hreyfinguna",
+  "exercise.cues.side-lying-hip-abduction.4": "Lækkaðu rólega",
+  "exercise.cues.side-plank.1": "Hafðu olnbogann beint undir öxlinni",
+  "exercise.cues.side-plank.2": "Lyftu mjöðmunum þannig að líkaminn myndi beina línu",
+  "exercise.cues.side-plank.3": "Haltu mjöðmunum hátt",
+  "exercise.cues.side-plank.4": "Haltu stöðunni og skiptu svo um hlið",
+  "exercise.cues.single-leg-calf-raise.1": "Settu annan fótinn á þrep með hælinn út fyrir brúnina",
+  "exercise.cues.single-leg-calf-raise.2": "Haltu aðeins í vegginn til að halda jafnvægi",
+  "exercise.cues.single-leg-calf-raise.3": "Lækkaðu hælinn niður fyrir þrepið",
+  "exercise.cues.single-leg-calf-raise.4": "Lyftu hælnum eins hátt og þú getur",
+  "exercise.cues.single-leg-glute-bridge.1": "Hafðu annan fótinn á gólfinu og hinn á lofti",
+  "exercise.cues.single-leg-glute-bridge.2": "Ýttu í gegnum hælinn á gólfinu",
+  "exercise.cues.single-leg-glute-bridge.3": "Haltu mjöðmunum í sömu hæð",
+  "exercise.cues.single-leg-glute-bridge.4": "Haltu stutt í efstu stöðu og lækkaðu rólega",
+  "exercise.cues.single-leg-rdl.1": "Stattu á öðrum fæti með handlóð í gagnstæðri hendi",
+  "exercise.cues.single-leg-rdl.2": "Beygðu þig fram um mjaðmir á meðan hinn fóturinn fer aftur",
+  "exercise.cues.single-leg-rdl.3": "Haltu mjöðmunum í sömu hæð",
+  "exercise.cues.single-leg-rdl.4": "Ýttu mjöðminni fram til að rétta úr þér",
+  "exercise.cues.skull-crusher.1": "Leggstu á bekk með handleggina upp yfir öxlunum",
+  "exercise.cues.skull-crusher.2": "Gríptu þröngu yfirgripi um EZ-stöngina",
+  "exercise.cues.skull-crusher.3": "Beygðu aðeins um olnboga til að lækka stöngina",
+  "exercise.cues.skull-crusher.4": "Réttu úr olnbogunum í upphafsstöðu",
+  "exercise.cues.slider-leg-curl.1": "Hafðu hælana á renniskífum og lyftu mjöðmunum í brú",
+  "exercise.cues.slider-leg-curl.2": "Renndu hælunum rólega frá þér",
+  "exercise.cues.slider-leg-curl.3": "Haltu mjöðmunum hátt",
+  "exercise.cues.slider-leg-curl.4": "Dragðu hælana aftur að rassinum",
+  "exercise.cues.standing-calf-raise.1": "Settu tábergið á brúnina",
+  "exercise.cues.standing-calf-raise.2": "Lækkaðu hælana þar til teygist vel á kálfunum",
+  "exercise.cues.standing-calf-raise.3": "Lyftu hælunum eins hátt og þú getur",
+  "exercise.cues.standing-calf-raise.4": "Haltu stutt í efstu og neðstu stöðu",
+  "exercise.cues.stationary-bike.1": "Stilltu hnakkinn þannig að hnéð sé örlítið bogið neðst í pedalahringnum",
+  "exercise.cues.stationary-bike.2": "Slakaðu á í efri hluta líkamans",
+  "exercise.cues.stationary-bike.3": "Stígðu pedalana í jöfnum hringjum",
+  "exercise.cues.stationary-bike.4": "Stilltu mótstöðuna eftir æfingaáætluninni",
+  "exercise.cues.straight-arm-pulldown.1": "Stilltu trissuna hátt og hallaðu þér örlítið fram",
+  "exercise.cues.straight-arm-pulldown.2": "Haltu handleggjunum löngum með olnbogana örlítið bogna",
+  "exercise.cues.straight-arm-pulldown.3": "Dragðu stöngina í boga niður að lærunum",
+  "exercise.cues.straight-arm-pulldown.4": "Færðu stöngina rólega aftur upp í augnhæð",
+  "exercise.cues.suitcase-carry.1": "Haltu einu þungu lóði í annarri hendi",
+  "exercise.cues.suitcase-carry.2": "Haltu þér uppréttum án þess að halla þér",
+  "exercise.cues.suitcase-carry.3": "Haltu öxlunum í sömu hæð",
+  "exercise.cues.suitcase-carry.4": "Skiptu um hönd þegar þú ert hálfnaður",
+  "exercise.cues.thoracic-rotation.1": "Farðu á fjóra fætur með mjaðmirnar örlítið aftur",
+  "exercise.cues.thoracic-rotation.2": "Settu aðra höndina aftur fyrir höfuðið",
+  "exercise.cues.thoracic-rotation.3": "Snúðu olnboganum niður og síðan upp í átt að loftinu",
+  "exercise.cues.thoracic-rotation.4": "Haltu mjöðmunum kyrrum",
+  "exercise.cues.triceps-pushdown.1": "Stilltu trissuna hátt og haltu olnbogunum þétt við síðurnar",
+  "exercise.cues.triceps-pushdown.2": "Ýttu niður þar til handleggirnir eru beinir",
+  "exercise.cues.triceps-pushdown.3": "Spenntu þríhöfðann",
+  "exercise.cues.triceps-pushdown.4": "Farðu rólega til baka án þess að færa olnbogana",
+  "exercise.cues.walking-lunge.1": "Haltu handlóð í hvorri hendi við síðurnar",
+  "exercise.cues.walking-lunge.2": "Stígðu fram og lækkaðu aftara hnéð í átt að gólfinu",
+  "exercise.cues.walking-lunge.3": "Ýttu frá með fremri fætinum inn í næsta skref",
+  "exercise.cues.walking-lunge.4": "Taktu stýrð skref og haltu mjaðmabreidd milli fótanna",
+  "exercise.cues.weighted-dip.1": "Festu aukaþyngd við þyngdarbelti",
+  "exercise.cues.weighted-dip.2": "Farðu niður þar til upphandleggirnir eru um það bil láréttir",
+  "exercise.cues.weighted-dip.3": "Komdu í veg fyrir að lóðið sveiflist",
+  "exercise.cues.weighted-dip.4": "Pressaðu upp þar til handleggirnir eru beinir",
+  "exercise.cues.weighted-pull-up.1": "Festu aukaþyngd við þyngdarbelti",
+  "exercise.cues.weighted-pull-up.2": "Haltu sömu ströngu tækni og í upphífingum án aukaþyngdar",
+  "exercise.cues.weighted-pull-up.3": "Spenntu kviðinn til að koma í veg fyrir sveiflu",
+  "exercise.cues.weighted-pull-up.4": "Lækkaðu alveg niður í hangandi stöðu í hverri endurtekningu",
+  "exercise.cues.worlds-greatest-stretch.1": "Taktu langt framstig og settu hendurnar innan við fremri fótinn",
+  "exercise.cues.worlds-greatest-stretch.2": "Láttu mjaðmirnar síga",
+  "exercise.cues.worlds-greatest-stretch.3": "Snúðu búknum og teygðu handlegginn innan við fótinn upp í loft",
+  "exercise.cues.worlds-greatest-stretch.4": "Farðu til baka og réttu úr fremri fætinum",
   "exercise.visual.alt": "{{exercise}} – upphafs- og lokastaða",
   "exercise.visual.cuesTitle": "Lykilatriði",
   "exercise.visual.hide": "Fela skýringarmyndir: {{exercise}}",

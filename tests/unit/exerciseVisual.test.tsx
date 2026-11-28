@@ -12,7 +12,7 @@ import { createRoot, type Root } from 'react-dom/client';
 
 import { ExerciseIllustration, ExerciseThumb, hasIllustration } from '@/components/ExerciseVisual';
 import { EXERCISES } from '@/data/exercises';
-import { EN, LanguageProvider, type Language } from '@/i18n';
+import { EN, IS, LanguageProvider, type Language } from '@/i18n';
 import type { CustomExercise, Exercise } from '@/domain/types';
 
 let root: Root | null = null;
@@ -68,7 +68,8 @@ describe('ExerciseIllustration', () => {
     const el = mount(createElement(ExerciseIllustration, { ex: squat }), 'is');
     expect(el.querySelector('img')?.getAttribute('alt')).toBe('Barbell back squat – upphafs- og lokastaða');
     expect(el.textContent).toContain('Lykilatriði');
-    expect(cueTexts(el)).toHaveLength(4);
+    expect(cueTexts(el)).toEqual([1, 2, 3, 4].map((n) => `${n}${IS[`exercise.cues.barbell-back-squat.${n}` as keyof typeof IS]}`));
+    expect(cueTexts(el)[1]).toBe('2Spenntu kviðinn fyrir hverja endurtekningu');
   });
 
   it('renders nothing for custom exercises; after a load error the image goes and the cues stay', () => {
