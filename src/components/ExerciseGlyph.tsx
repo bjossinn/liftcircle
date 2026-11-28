@@ -45,13 +45,10 @@ export const GLYPHS: Record<GlyphKey, ReactNode> = {
   // Leg press: reclined on a backrest, feet pressing a diagonal platform.
   leg_press: (
     <>
-      <Head cx={4.6} cy={8.8} />
-      <path d="M5.8 10.6 9 16.2" />
-      <path d="M9 16.2l3.6-5.6 4.2 1.2" />
-      <path d="M15.7 9.5l2.4 4.2" />
-      <path d="M3.4 11.6 7.2 18.4h4.2M8.6 18.4v2.8" strokeOpacity={0.6} />
-      <Faint d="M17.4 11.4 21.4 9.2" />
-      <Ground />
+      <path d="M2.8 11.2 7 18.6h4.6" />
+      <Head cx={4.8} cy={7.6} />
+      <path d="M6 9.6 9 16l4.6-3.4 3.4-3.8" />
+      <path d="M15.2 6.6l4.4 4.4" />
     </>
   ),
   // Hack squat: back on an angled sled, shoulder pads, feet on the plate.
@@ -221,8 +218,9 @@ export const GLYPHS: Record<GlyphKey, ReactNode> = {
   slider_leg_curl: (
     <>
       <Head cx={3.4} cy={18.8} />
-      <path d="M5.4 19.8 11.6 15.6l4.4 .6 3.4 3.6" />
-      <path d="M17.6 20.6h3.4" strokeWidth={2.4} />
+      <path d="M5.4 19.8 11.4 16.8l4.6-.6 3.6 3" />
+      <path d="M6 20.4h4.4" />
+      <path d="M17.6 21.2a2.2 1.4 0 0 1 4.4 0z" fill="currentColor" />
       <Ground />
     </>
   ),
@@ -295,12 +293,11 @@ export const GLYPHS: Record<GlyphKey, ReactNode> = {
   // Dumbbell fly, end-on view: lying on a bench, arms opened wide, dumbbells at the ends.
   lying_fly: (
     <>
-      <Faint d="M5.4 9.6C8 5.4 16 5.4 18.6 9.6" dashed />
-      <path d="M7.8 17.4h8.4M12 17.4v3.8M9.6 21.2h4.8" strokeOpacity={0.6} />
-      <Head cx={12} cy={13.4} />
-      <path d="M8.2 15.6h7.6" />
-      <path d="M8.2 15.6 4.4 12.6M15.8 15.6l3.8-3" />
-      <path d="M3.2 11.2l2.4 2.8M18.4 14l2.4-2.8" />
+      <path d="M7.6 17.6h8.8M12 17.6v3.6" strokeOpacity={0.6} />
+      <Head cx={12} cy={13.6} />
+      <path d="M4.2 12.4 8.2 15.8h7.6l4-3.4" />
+      <circle cx={3.4} cy={11.6} r={1.3} fill="currentColor" stroke="none" />
+      <circle cx={20.6} cy={11.6} r={1.3} fill="currentColor" stroke="none" />
     </>
   ),
   // Floor press: lying on the floor, knees bent, dumbbell pressed straight up.
@@ -467,12 +464,10 @@ export const GLYPHS: Record<GlyphKey, ReactNode> = {
   // Prone floor pulldown, seen from above: face down on a mat, arms drawn back in a W.
   prone_pulldown: (
     <>
-      <rect x={2.6} y={2} width={18.8} height={20} rx={2.4} strokeOpacity={0.35} />
-      <Head cx={12} cy={6} />
-      <path d="M9.6 8.4h4.8" />
-      <path d="M9.6 8.4 6.6 11.4 5.4 5.6M14.4 8.4l3 3 1.2-5.8" />
-      <path d="M12 8.4v6.4" />
-      <path d="M12 14.8l-1.4 5.4M12 14.8l1.4 5.4" />
+      <Head cx={18} cy={15.8} />
+      <path d="M16 17.4 9.6 19.8H2.6" />
+      <path d="M15.4 17.8 11.8 15.4l2.8-3.2" />
+      <Ground />
     </>
   ),
   // Straight-arm pulldown: slight hinge, straight arms pulled down from a high anchor.
@@ -556,12 +551,12 @@ export const GLYPHS: Record<GlyphKey, ReactNode> = {
   // Overhead triceps extension, front view: elbows up beside the head, hands behind it.
   overhead_triceps_extension: (
     <>
-      <Head cx={12} cy={6.8} />
-      <path d="M9.4 9.4h5.2" />
-      <path d="M9.4 9.4 9 3.2M14.6 9.4 15 3.2" />
-      <Faint d="M9 3.2 11 5.6M15 3.2 13 5.6" />
-      <path d="M12 9.4v5.4" />
-      <path d="M12 14.8l-1.8 5.8M12 14.8l1.8 5.8" />
+      <Head cx={12} cy={8} />
+      <path d="M9.4 10.6h5.2" />
+      <path d="M9.4 10.6 8.8 3.6l2.2 2.6M14.6 10.6l.6-7-2.2 2.6" />
+      <path d="M10.6 6.2h2.8M10.6 5v2.4M13.4 5v2.4" />
+      <path d="M12 10.6v4.6" />
+      <path d="M12 15.2l-1.8 5.4M12 15.2l1.8 5.4" />
       <Ground />
     </>
   ),
@@ -612,24 +607,24 @@ export const GLYPHS: Record<GlyphKey, ReactNode> = {
   // Standing calf raise: on the balls of the feet on a step, heels up.
   standing_calf_raise: (
     <>
-      <path d="M12.4 21.2v-3h6.4v3" strokeOpacity={0.6} />
-      <Head cx={10.6} cy={2.8} />
-      <path d="M10.6 4.8v6.6" />
-      <path d="M10.6 11.4v5.2l2.6 1.6" />
-      <path d="M10.6 6.2l1 4.6" />
-      <Faint d="M10.2 16.8v4.4" dashed />
+      <rect x={13} y={18.2} width={7} height={3} rx={0.6} fill="currentColor" stroke="none" />
+      <Head cx={11.4} cy={3} />
+      <path d="M11.4 5v10.6" />
+      <path d="M10.4 15.6l3.6 2.6" />
+      <path d="M11.4 6.4l1.2 4.4" />
       <Ground />
     </>
   ),
   // Seated calf raise: knees bent under a pad, heels lifted off a block.
   seated_calf_raise: (
     <>
-      <path d="M3.4 15.4h6M13.6 21.2v-1.8h4.4v1.8" strokeOpacity={0.6} />
-      <Head cx={6.6} cy={5.6} />
-      <path d="M6.6 7.6v6.6" />
-      <path d="M6.6 14.2h6.2v4.4l2.2 1" />
-      <path d="M9.8 12.2h4.8" />
-      <path d="M6.6 9 10 12" />
+      <path d="M2.8 14.6h6" strokeOpacity={0.6} />
+      <rect x={14.2} y={18.4} width={6} height={2.8} rx={0.6} fill="currentColor" stroke="none" />
+      <Head cx={6.2} cy={4.8} />
+      <path d="M6.2 6.8v6.4h6.6v3.4" />
+      <path d="M11.8 16.6l3.6 1.8" />
+      <path d="M10.4 11.2h4.6" />
+      <path d="M6.2 8.4l3.6 2.8" />
       <Ground />
     </>
   ),
@@ -692,9 +687,9 @@ export const GLYPHS: Record<GlyphKey, ReactNode> = {
     <>
       <Head cx={17} cy={11.2} />
       <path d="M15 13.6H8.2" />
-      <path d="M15 13.6v7" />
+      <path d="M15 13.6v7h1.4" />
       <path d="M15.2 13.6 21.4 13" />
-      <path d="M8.2 13.6v6.8H4.8" strokeOpacity={0.35} />
+      <path d="M8.2 13.6v7H4.6" />
       <path d="M8.2 13.6 1.8 12.4" />
       <Ground />
     </>

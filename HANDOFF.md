@@ -3,6 +3,17 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 28 Nov 2026: Glyph polish for the real 24 px size — v1.0.10
+
+- Redrawn after checking every glyph at 24 px (1×) as well as 96 px: `prone_pulldown` (side view, face down on the
+  floor, chest up, elbow pulled back; no frame), `standing_calf_raise` / `seated_calf_raise` (solid step block, foot
+  angled up off it so the raised heel is obvious; no dashed line), `overhead_triceps_extension` (elbows up beside the
+  head, forearms folded behind it in solid strokes, small dumbbell — no longer reads as an overhead press),
+  `slider_leg_curl` (legs more extended, solid slider disc under the heels, standard 1.75 stroke), `bird_dog`
+  (supporting hand and knee solid and on the floor), `leg_press` and `lying_fly` (fewer parts).
+- Mapping unchanged. `npm run glyphs:sheet` is now cross-platform (`scripts/glyph-sheet.mjs` sets the env var);
+  contact sheet and PNG regenerated.
+
 ## 28 Nov 2026: Per-exercise glyphs (76 movement pictograms + fallbacks) — v1.0.9
 
 - Exercise tiles no longer pick their picture from the movement pattern alone (a push-up showed a bench press, a
