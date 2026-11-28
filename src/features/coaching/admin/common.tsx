@@ -2,15 +2,17 @@ import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { ShieldOff } from 'lucide-react';
 import { coachingApi } from '@/backend/coaching';
 import { EmptyState, ErrorState, Spinner, cx } from '@/components/ui';
+import { useT } from '@/i18n';
 import { useLoad } from '../directory/common';
 
 /** Renders children only for server-confirmed admins; otherwise a 403 state. */
 export function AdminGate({ children }: { children: ReactNode }) {
-  const roles = useLoad(() => coachingApi.myRoles(), [], { fallback: 'Couldn’t check your permissions.' });
-  if (roles.loading && !roles.data) return <Spinner label="Checking permissions" />;
-  if (roles.error) return <ErrorState title="Couldn’t check your permissions" message={roles.error} onRetry={roles.reload} />;
+  const { t } = useT();
+  const roles = useLoad(() => coachingApi.myRoles(), [], { fallback: t('coaching.admin.couldnt_check_your_permissions_retry') });
+  if (roles.loading && !roles.data) return <Spinner label={t('coaching.checking_permissions')} />;
+  if (roles.error) return <ErrorState title={t('coaching.couldnt_check_your_permissions')} message={roles.error} onRetry={roles.reload} />;
   if (!roles.data?.admin)
-    return <EmptyState icon={<ShieldOff className="size-6" aria-hidden />} title="Admins only" body="You don’t have permission to review coach applications." />;
+    return <EmptyState icon={<ShieldOff className="size-6" aria-hidden />} title={t('coaching.admins_only')} body={t('coaching.you_dont_have_permission_to_review')} />;
   return <>{children}</>;
 }
 

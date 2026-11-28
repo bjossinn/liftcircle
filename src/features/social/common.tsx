@@ -15,7 +15,7 @@ import { formatDate, formatMinutes } from '@/lib/dates';
 import { friendlyError } from '@/social/pendingPosts';
 import { authHref } from '@/features/auth/authReturn';
 import { ACTIVITY_LABELS } from '@/social/snapshot';
-import { localeFor, numberText, t, useT, type Language, type MessageKey } from '@/i18n';
+import { locale, numberText, t, useT, type Language, type MessageKey } from '@/i18n';
 
 /* ================================================================ access */
 export type SocialAccess = 'personal' | 'loading' | 'guest' | 'expired' | 'offline' | 'ok';
@@ -114,11 +114,11 @@ export function timeAgo(iso: string, now = Date.now(), language?: Language): str
   if (s < 3600) return t('social.time.minutes_ago', { count: Math.floor(s / 60) }, language);
   if (s < 86400) return t('social.time.hours_ago', { count: Math.floor(s / 3600) }, language);
   if (s < 7 * 86400) return t('social.time.days_ago', { count: Math.floor(s / 86400) }, language);
-  return new Intl.DateTimeFormat(localeFor(language ?? 'en'), { day: 'numeric', month: 'short', year: new Date(ms).getFullYear() === new Date(now).getFullYear() ? undefined : 'numeric' }).format(ms);
+  return new Intl.DateTimeFormat(locale(language), { day: 'numeric', month: 'short', year: new Date(ms).getFullYear() === new Date(now).getFullYear() ? undefined : 'numeric' }).format(ms);
 }
 export function fullDate(iso: string, language?: Language): string {
   const ms = Date.parse(iso);
-  return isFinite(ms) ? new Intl.DateTimeFormat(localeFor(language ?? 'en'), { dateStyle: 'medium', timeStyle: 'short' }).format(ms) : '';
+  return isFinite(ms) ? new Intl.DateTimeFormat(locale(language), { dateStyle: 'medium', timeStyle: 'short' }).format(ms) : '';
 }
 
 export function Time({ iso, className }: { iso: string; className?: string }) {
