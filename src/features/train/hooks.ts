@@ -16,6 +16,12 @@ export function useActiveProgram(): Program | null | undefined {
   return useLiveQuery(async () => alive(await db.programs.toArray()).find((p) => p.active) ?? null, [db]);
 }
 
+/** Every program on this device (active and past), for looking up the templates old workouts were started from. */
+export function useAllPrograms(): Program[] | undefined {
+  const { db } = useApp();
+  return useLiveQuery(async () => alive(await db.programs.toArray()), [db]);
+}
+
 export function useAllSessions(): WorkoutSession[] | undefined {
   const { db } = useApp();
   return useLiveQuery(async () => alive(await db.sessions.toArray()).sort((a, b) => b.startedAt - a.startedAt), [db]);

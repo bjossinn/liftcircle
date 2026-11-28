@@ -163,7 +163,7 @@ export function PublicCoachProfile({ coachId }: { coachId: string }) {
           {c.approvedSince && <p className="text-xs text-muted">{t('coaching.profile.approved_since_x', { date: dateText(c.approvedSince, false, language) })}</p>}
           {location && (
             <p className="text-sm text-muted inline-flex items-center gap-1.5">
-              <MapPin className="size-3.5 shrink-0" aria-hidden />
+              <MapPin className="size-4 shrink-0" aria-hidden />
               {location}
             </p>
           )}

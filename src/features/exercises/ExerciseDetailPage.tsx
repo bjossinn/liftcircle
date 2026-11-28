@@ -35,8 +35,8 @@ export default function ExerciseDetailPage() {
   const custom = useLiveQuery(async () => (bundled ? null : ((await db.customExercises.get(id)) ?? null)), [db, id, bundled]);
 
   const back = (
-    <IconButton label={t('common.back')} onClick={() => nav(-1)}>
-      <ChevronLeft className="size-6" />
+    <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
+      <ChevronLeft />
     </IconButton>
   );
 

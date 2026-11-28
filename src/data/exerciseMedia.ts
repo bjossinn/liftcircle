@@ -19,7 +19,7 @@ export const MAX_EXERCISE_CUES = 4;
 export interface ExerciseMedia {
   /** 800×800 two-panel image: start position on the left, end position on the right. */
   full: string;
-  /** 256×256 thumbnail for lists and the workout logger. */
+  /** 256×256 thumbnail. Kept on disk and in the manifest, but no longer shown: lists use the movement-pattern tile. */
   thumb: string;
 }
 

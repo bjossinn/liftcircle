@@ -122,6 +122,7 @@ export const CLIENT_IS: { readonly [K in keyof typeof CLIENT_EN]: string } = {
   "activities.timer.saved_interval_templates": "Vistuð lotusniðmát",
   "activities.timer.secondsRemaining.one": "{{count}} sekúnda eftir",
   "activities.timer.secondsRemaining.other": "{{count}} sekúndur eftir",
+  "activities.timer.set_to_0_to_skip": "Settu 0 til að sleppa.",
   "activities.timer.skip": "Sleppa",
   "activities.timer.sound": "Hljóð",
   "activities.timer.start": "Byrja · {{duration}}",

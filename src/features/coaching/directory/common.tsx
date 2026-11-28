@@ -211,7 +211,7 @@ export function ApprovedBadge() {
   const { t } = useT();
   return (
     <Badge tone="accent">
-      <BadgeCheck className="size-3.5" aria-hidden />
+      <BadgeCheck className="size-4" aria-hidden />
       {t('coaching.hub.listed_coach')}
     </Badge>
   );

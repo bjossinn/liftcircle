@@ -77,8 +77,8 @@ export default function SessionDetailPage() {
     <Page
       title={session.name}
       back={
-        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
+        <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
     >

@@ -33,7 +33,7 @@ export function QualificationsEditor({ rows, onChange, errors, disabled }: { row
         {t('coaching.directory.add_qualification')}
       </Button>
       <p className="text-xs text-muted px-1 inline-flex items-start gap-1.5">
-        <Lock className="size-3.5 shrink-0 mt-0.5" aria-hidden />
+        <Lock className="size-4 shrink-0 mt-0.5" aria-hidden />
         {t('coaching.directory.documents_are_private_only_you_and')}
       </p>
     </div>

@@ -342,6 +342,11 @@ export interface WorkoutSession extends SyncFields {
   sharedPostIds?: ID[];
   /** Present when the workout came from a CSV import (see src/features/import). */
   imported?: WorkoutImportInfo;
+  /**
+   * The name is the person's own text: copied from a renamed session template, or renamed during the workout. Such a
+   * name is always shown as stored, never auto-translated.
+   */
+  nameEdited?: true;
 }
 
 /* ------------------------------------------------------------- activities */

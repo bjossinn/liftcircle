@@ -180,6 +180,7 @@ const session = z.looseObject({
   notes: opt(text),
   rest: opt(z.looseObject({})),
   sharedPostIds: opt(ids()),
+  nameEdited: opt(z.literal(true)),
 });
 
 /* ---------------------------------------------------------------- other entities */

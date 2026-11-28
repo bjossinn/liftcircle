@@ -19,7 +19,7 @@ export function PlanOwnerBadge({ program, className }: { program: Pick<Program, 
   const Icon = program?.managedBy?.kind === 'coach' ? HeartHandshake : Bot;
   return (
     <Badge tone={program?.managedBy?.kind === 'coach' ? 'accent' : 'info'} className={className}>
-      <Icon className="size-3.5 mr-1 inline" aria-hidden />
+      <Icon className="size-4 mr-1 inline" aria-hidden />
       {text}
     </Badge>
   );

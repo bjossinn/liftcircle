@@ -322,12 +322,13 @@ export default function MessagesPage() {
             void send();
           }}
         >
+          {/* pt/pr keep the remove buttons' 44 px hit area (size-7 + after:-inset-2, offset -1.5) inside the scrollport, which clips overflow. */}
           {(photos.length > 0 || preparing > 0) && (
-            <ul className="flex gap-2 pb-2 overflow-x-auto" aria-label={t('coaching.messages.photos_to_send')}>
+            <ul className="flex gap-2 pt-3.5 pr-3.5 pb-2 overflow-x-auto" aria-label={t('coaching.messages.photos_to_send')}>
               {photos.map((p, i) => (
                 <li key={p.id} className="relative shrink-0">
                   <img src={p.url} alt={t('coaching.messages.photo_x_to_send', { n: i + 1 })} className="size-16 rounded-xl object-cover bg-surface-3" />
-                  <button type="button" onClick={() => removePhoto(p.id)} aria-label={t('coaching.messages.remove_photo_x', { n: i + 1 })} className="absolute -top-1.5 -right-1.5 size-7 rounded-full bg-surface-3 border border-line flex items-center justify-center">
+                  <button type="button" onClick={() => removePhoto(p.id)} aria-label={t('coaching.messages.remove_photo_x', { n: i + 1 })} className="absolute -top-1.5 -right-1.5 size-7 after:absolute after:-inset-2 rounded-full bg-surface-3 border border-line flex items-center justify-center">
                     <X className="size-4" />
                   </button>
                 </li>
@@ -509,11 +510,11 @@ function ServerBubble({ m, mine, tz, selected, onSelect, onReport }: { m: CoachM
         {mine &&
           (m.status === 'awaiting_media' ? (
             <>
-              · <Loader2 className="size-3 animate-spin" aria-hidden /> {t('coaching.messages.uploading_photos')}
+              · <Loader2 className="size-4 animate-spin" aria-hidden /> {t('coaching.messages.uploading_photos')}
             </>
           ) : (
             <>
-              · <Check className="size-3" aria-hidden /> {t('coaching.messages.sent')}
+              · <Check className="size-4" aria-hidden /> {t('coaching.messages.sent')}
             </>
           ))}
       </span>
@@ -575,7 +576,7 @@ function OutboxBubble({ item, tz, online, accountId }: { item: CoachOutboxItem; 
       </div>
       <span className={cx('mt-0.5 px-1 text-[11px] inline-flex items-center gap-1', failed ? 'text-danger' : 'text-faint')} role="status">
         <time dateTime={new Date(item.createdAt).toISOString()}>{timeText(new Date(item.createdAt).toISOString(), tz)}</time>·
-        {failed ? <AlertTriangle className="size-3" aria-hidden /> : online ? <Loader2 className="size-3 animate-spin" aria-hidden /> : <Clock className="size-3" aria-hidden />}
+        {failed ? <AlertTriangle className="size-4" aria-hidden /> : online ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Clock className="size-4" aria-hidden />}
         {outboxStatusLabel(item, online, sending)}
       </span>
       {failed && (

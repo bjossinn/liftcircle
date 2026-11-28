@@ -309,8 +309,8 @@ export default function IntervalTimerPage() {
   };
 
   const back = (
-    <IconButton label={t('common.back')} onClick={() => nav(-1)}>
-      <ChevronLeft className="size-6" />
+    <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
+      <ChevronLeft />
     </IconButton>
   );
 
@@ -434,7 +434,7 @@ export default function IntervalTimerPage() {
       <SectionTitle>{t('workout.setTypeWarmup')}</SectionTitle>
       <Card className="p-4">
         <MinSec label={t('workout.setTypeWarmup')} seconds={plan.warmupSec} onChange={(v) => setPlan((p) => ({ ...p, warmupSec: v }))} />
-        <p className="text-xs text-muted mt-1.5">Set to 0 to skip.</p>
+        <p className="text-xs text-muted mt-1.5">{t('activities.timer.set_to_0_to_skip')}</p>
       </Card>
 
       <SectionTitle>{t('activities.timer.each_round')}</SectionTitle>
@@ -469,7 +469,7 @@ export default function IntervalTimerPage() {
       <SectionTitle>{t('activities.timer.cool_down')}</SectionTitle>
       <Card className="p-4">
         <MinSec label={t('activities.timer.cool_down')} seconds={plan.cooldownSec} onChange={(v) => setPlan((p) => ({ ...p, cooldownSec: v }))} />
-        <p className="text-xs text-muted mt-1.5">Set to 0 to skip.</p>
+        <p className="text-xs text-muted mt-1.5">{t('activities.timer.set_to_0_to_skip')}</p>
       </Card>
 
       <div className="mt-4">

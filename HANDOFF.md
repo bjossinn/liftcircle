@@ -3,6 +3,43 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 28 Nov 2026: Fully Icelandic app when the language is Icelandic — v1.0.8
+
+- Dictionaries: 4,500 approved keys added to `en.ts` / `is.ts` (exercise names/aliases/setup/execution/mistakes, recipe
+  names/steps/notes, ingredient names, amount/prep phrases, piece/category/protein-example labels, UI), Icelandic verbatim;
+  concatenated UI sentences were merged into whole templates with named placeholders (fragment keys removed). 8,769 keys
+  total (client + shared), identical in both languages.
+- Catalog text stays canonical English in data and storage and is localized at display time through
+  `src/data/catalogText.ts` (`exerciseDisplayName`, `exerciseAliases/Setup/Execution/Mistakes`, `recipeDisplayName`,
+  `recipeSteps/Notes`, `ingredientDisplayName`, `foodDisplayText/PrepText`, `pieceLabel`, `ingredientCategoryLabel`,
+  `proteinExampleText`). Custom exercises/foods and other user content are never translated.
+- Exercise search indexes names and aliases in every app language plus English; sorting follows the UI language.
+- Every screen that bypassed `t()` is wired (coaching, nutrition, social, activities, exercise library/detail, auth,
+  install, session detail, templates, program page); push reminder/missed/rest texts use `push.*` keys; recipe/meal-plan
+  screens use `mealLabel`/`allergenLabel`/`dietTagLabel`/`proteinGroupLabel` with the current language; shared meal-plan
+  warnings/day status take an optional display language via `PlanContext` (server output unchanged, bundles regenerated).
+- Workouts carry `nameEdited` (renamed template or renamed during the workout) so user-named sessions are never
+  auto-translated; History search matches localized and stored titles; History shows each session's real mark.
+- Startup JS grew from ~873 KiB to ~2.0 MiB raw (230 → ~480 KiB gz) because both dictionaries ship in the entry chunk.
+  Follow-up worth doing: lazy-load the Icelandic dictionary (or the catalog half) before first render.
+
+## 28 Nov 2026: Direction B icons, pattern tiles in lists, distinct program-session marks — v1.0.7
+
+- Direction B icon system (owner-approved mockup `icon-draft-B.png`): Lucide outlines at stroke 1.75 app-wide (`LucideProvider`
+  in `src/main.tsx`), a strict 16 / 20 / 24 px grid, theme-token colours. New `src/components/Icon.tsx` (`Icon`, `IconTile`).
+  `IconButton` sizes its icon itself (20 px; `iconSize="lg"` = 24 px for every back chevron); `Button` icons 16 px (20 px on
+  `size="lg"` CTAs); tab bar icons 24 px (bottom tab bar kept). No `size-3`/`size-3.5`/`size-[22px]` left on Lucide icons.
+- The 13 movement-pattern glyphs (`ExerciseGlyph.tsx`) are redrawn on a 24×24 grid for a 24 px mark in a 44 px tile.
+- Exercise lists, the picker and the compact logger row always show the pattern tile (`ExerciseThumb`); `thumb.webp` is no
+  longer requested (files stay on disk). `full.webp` + cues still show on the exercise page and in the expanded logger row.
+- Program sessions get a deterministic mark (`src/domain/program/sessionMark.ts`, `SessionMarkTile` in `features/program/parts.tsx`):
+  a family icon (upper, lower, push, pull, legs, full body, strength, walk, cardio/long/steady, mobility, conditioning) plus an
+  A/B/C/D letter badge, derived from the generated id or the stored English name — so Upper A ≠ Upper B etc. Used on session
+  cards, Train, Today and History. Cardio no longer reuses the walk icon; conditioning has its own mark.
+- Today and Train show wizard session names in the display language (`displaySessionName`); stored data stays English.
+- Icon-only controls keep a ≥ 44×44 px hit area (e2e `tests/e2e/icons.spec.ts` checks the main screens and the logger).
+- No migration, no backend change.
+
 ## 28 Nov 2026: Exercise illustrations and technique cues (roadmap item 13, PR 2 of 3) — v1.0.5
 
 - All 105 library exercises show a first-party, AI-generated illustration (made with ChatGPT; ours, no attribution):

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Activity, BookOpen, CalendarDays, ChevronRight, ClipboardList, Dumbbell, History, Layers, Play, Plus, Repeat, Timer } from 'lucide-react';
+import { Activity, BookOpen, CalendarDays, ChevronRight, ClipboardList, History, Layers, Play, Plus, Repeat, Timer } from 'lucide-react';
 import { useApp } from '@/state/app';
 import { alive } from '@/db/repo';
 import { Button, Card, ListRow, Page, SectionTitle, Sheet, Spinner } from '@/components/ui';
@@ -10,6 +10,7 @@ import { TopActions } from '@/app/TopActions';
 import { useActiveProgram, useAllSessions, useStarters } from './hooks';
 import { currentVersion } from '@/domain/program/program';
 import { PlanOwnerBadge } from '@/features/program/PlanOwner';
+import { displaySessionName, SessionMarkTile } from '@/features/program/parts';
 import { nextPlannedSession } from '@/domain/program/schedule';
 import { formatDate, formatMinutes, todayISO, weekdayShort } from '@/lib/dates';
 import { useT } from '@/i18n';
@@ -38,7 +39,7 @@ export default function TrainPage() {
         <Card className="p-4 flex items-center gap-3 border-accent/40">
           <Play className="size-5 text-accent" aria-hidden />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold truncate">{active.name}</div>
+            <div className="font-semibold truncate">{displaySessionName({ id: active.templateId ?? '', name: active.name, nameEdited: active.nameEdited })}</div>
             <div className="text-xs text-muted">{tr('train.inProgress')}</div>
           </div>
           <Button variant="primary" onClick={() => nav(`/train/session/${active.id}`)}>
@@ -49,7 +50,7 @@ export default function TrainPage() {
         <Card className="p-4 space-y-2">
           {next && (
             <Button variant="primary" size="lg" block icon={<Play className="size-5" />} onClick={() => void startTemplate(next.template, { program: program!, plannedDate: next.date })}>
-              {tr(next.date === today ? 'train.startToday' : 'train.startNext', { name: next.template.name })}
+              {tr(next.date === today ? 'train.startToday' : 'train.startNext', { name: displaySessionName(next.template) })}
             </Button>
           )}
           <div className="grid grid-cols-2 gap-2">
@@ -78,11 +79,11 @@ export default function TrainPage() {
           {version.templates.map((t) => (
             <ListRow
               key={t.id}
-              left={<Dumbbell className="size-5 text-accent" />}
-              title={t.name}
+              left={<SessionMarkTile template={t} />}
+              title={displaySessionName(t)}
               subtitle={tr('train.templateMeta', { days: daysFor(t.id).join(', ') || tr('train.unscheduled'), minutes: t.estimatedMinutes, count: t.exercises.length })}
               right={
-                <Button size="sm" disabled={!!active} onClick={() => void startTemplate(t, { program })} aria-label={tr('train.startNamed', { name: t.name })}>
+                <Button size="sm" disabled={!!active} onClick={() => void startTemplate(t, { program })} aria-label={tr('train.startNamed', { name: displaySessionName(t) })}>
                   {tr('common.start')}
                 </Button>
               }
@@ -109,7 +110,7 @@ export default function TrainPage() {
               <ListRow
                 key={s.id}
                 left={<Layers className="size-5 text-muted" />}
-                title={s.template.name}
+                title={displaySessionName(s.template)}
                 subtitle={tr('train.savedMeta', { count: s.template.exercises.length, minutes: s.template.estimatedMinutes })}
                 right={
                   <Button size="sm" disabled={!!active} onClick={() => void startTemplate(s.template)}>

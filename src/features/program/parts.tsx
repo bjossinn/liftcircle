@@ -5,8 +5,12 @@
  */
 import { useState } from 'react';
 import {
-  ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronUp, Clock, Copy, Dumbbell, Footprints, Pencil, Plus, RefreshCw, Repeat, StretchHorizontal, Trash2,
+  Activity, ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronUp, Clock, Copy, Dumbbell, Footprints, Gauge, Pencil, PersonStanding, Plus, RefreshCw, Repeat, Route,
+  StretchHorizontal, Trash2, Weight, Zap, type LucideIcon,
 } from 'lucide-react';
+import { Icon, IconTile } from '@/components/Icon';
+import { ExerciseGlyph } from '@/components/ExerciseGlyph';
+import { sessionMark, type SessionFamily } from '@/domain/program/sessionMark';
 import { Badge, Button, Card, ChipGroup, ConfirmDialog, IconButton, Input, NumberInput, Segmented, Sheet, Textarea } from '@/components/ui';
 import { ExercisePicker } from '@/components/ExercisePicker';
 import { displayWeight } from '@/domain/units';
@@ -17,7 +21,7 @@ import { isBeginner } from '@/domain/progression';
 import { weekdayShort } from '@/lib/dates';
 import { rationaleLineText, versionReasonText as proposalReasonText } from '@/domain/program/proposals';
 import { EN, loadText, locale, t as translate, useT, type MessageKey, type Params } from '@/i18n';
-import type { Exercise, Experience, Goal, ID, Prescription, ProgramVersion, SessionTemplate, WeightUnit } from '@/domain/types';
+import type { Exercise, Experience, Goal, ID, MovementPattern, Prescription, ProgramVersion, SessionTemplate, WeightUnit } from '@/domain/types';
 import { exerciseDisplayName } from '@/data/catalogText';
 
 const KIND_KEYS: Record<SessionTemplate['kind'], MessageKey> = {
@@ -97,10 +101,58 @@ function reasonSessionName(name: string, templates: readonly SessionTemplate[]):
   return tpl ? displaySessionName(tpl) : name;
 }
 
-export function KindIcon({ kind, className = 'size-4' }: { kind: SessionTemplate['kind']; className?: string }) {
-  if (kind === 'walk' || kind === 'cardio') return <Footprints className={className} aria-hidden />;
-  if (kind === 'mobility') return <StretchHorizontal className={className} aria-hidden />;
-  return <Dumbbell className={className} aria-hidden />;
+const FAMILY_ICON: Partial<Record<SessionFamily, LucideIcon>> = {
+  full_body: PersonStanding,
+  strength: Weight,
+  lifting: Dumbbell,
+  walk: Footprints,
+  cardio: Activity,
+  cardio_long: Route,
+  cardio_steady: Gauge,
+  mobility: StretchHorizontal,
+  conditioning: Zap,
+};
+const FAMILY_PATTERN: Partial<Record<SessionFamily, MovementPattern>> = {
+  upper: 'vertical_push',
+  push: 'horizontal_push',
+  pull: 'vertical_pull',
+  lower: 'squat',
+  legs: 'lunge',
+};
+
+/**
+ * Session mark (Direction B): a family icon in a duotone tile plus the A/B/C variant letter in the corner, so every
+ * session of a generated plan looks different (see domain/program/sessionMark.ts). Decorative: the session name is
+ * always shown next to it.
+ */
+export function SessionMarkTile({ template, size = 'md', className }: { template: Pick<SessionTemplate, 'id' | 'kind' | 'name'> & Partial<Pick<SessionTemplate, 'focus' | 'nameEdited'>>; size?: 'sm' | 'md'; className?: string }) {
+  const mark = sessionMark(template);
+  const pattern = FAMILY_PATTERN[mark.family];
+  const LucideMark = FAMILY_ICON[mark.family] ?? Dumbbell;
+  return (
+    <IconTile
+      size={size}
+      className={className}
+      badge={
+        mark.letter ? (
+          <span
+            data-testid="session-mark-letter"
+            className="absolute -right-1 -bottom-1 min-w-4 h-4 px-0.5 rounded-md bg-accent-soft text-accent text-[11px] font-semibold leading-4 text-center ring-2 ring-surface"
+          >
+            {mark.letter}
+          </span>
+        ) : undefined
+      }
+    >
+      <span className="contents" data-testid="session-mark" data-session-mark={`${mark.family}:${mark.letter ?? ''}`}>
+        {pattern ? (
+          <ExerciseGlyph pattern={pattern} className={size === 'md' ? 'size-6' : 'size-5'} />
+        ) : (
+          <Icon icon={LucideMark} size={size === 'md' ? 'lg' : 'md'} />
+        )}
+      </span>
+    </IconTile>
+  );
 }
 
 /** Weekly schedule overview ordered from the user's week start. */
@@ -201,19 +253,17 @@ export function SessionCard(props: SessionCardProps) {
   return (
     <Card as="article" className="overflow-hidden" aria-label={shownName}>
       <div className="flex items-start gap-3 px-4 pt-3 pb-2">
-        <div className="size-9 shrink-0 rounded-xl bg-surface-2 flex items-center justify-center text-accent mt-0.5">
-          <KindIcon kind={t.kind} />
-        </div>
+        <SessionMarkTile template={t} className="mt-0.5" />
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold leading-tight">{shownName}</h3>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
             <Badge tone={t.kind === 'lifting' ? 'accent' : 'neutral'}>{KIND_LABEL[t.kind]}</Badge>
             <span className="inline-flex items-center gap-1">
-              <Clock className="size-3.5" aria-hidden /> {tr('program.estimatedTime', { minutes: t.estimatedMinutes })}
+              <Clock className="size-4" aria-hidden /> {tr('program.estimatedTime', { minutes: t.estimatedMinutes })}
             </span>
             {days && days.length > 0 && (
               <span className="inline-flex items-center gap-1">
-                <CalendarDays className="size-3.5" aria-hidden />
+                <CalendarDays className="size-4" aria-hidden />
                 {[...days].sort((a, b) => WEEK_ORDER.indexOf(a) - WEEK_ORDER.indexOf(b)).map((d) => weekdayShort(d)).join(', ')}
               </span>
             )}

@@ -2,9 +2,12 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import clsx from 'clsx';
 import { Activity, ChevronLeft, ChevronRight, Dumbbell, Search } from 'lucide-react';
+import { IconTile } from '@/components/Icon';
+import { SessionMarkTile } from '@/features/program/parts';
+import { workoutHistoryRow, type WorkoutHistoryRow } from './historyItems';
 import { useApp } from '@/state/app';
 import { Card, EmptyState, IconButton, Input, ListRow, Page, Segmented, Spinner, Button } from '@/components/ui';
-import { useAllActivities, useAllSessions } from './hooks';
+import { useAllActivities, useAllPrograms, useAllSessions } from './hooks';
 import { useExercises } from '@/data/catalog';
 import { addDays, formatDate, formatMinutes, startOfWeek, todayISO, weekdayShort } from '@/lib/dates';
 import { useT } from '@/i18n';
@@ -13,7 +16,6 @@ import { formatDistance } from '@/domain/units';
 import { exercisesDone, sessionDurationSec } from '@/domain/stats';
 import { NoWorkoutsArt } from '@/components/illustrations';
 import { exerciseDisplayName } from '@/data/catalogText';
-import { sessionDisplayName } from '@/domain/program/localize';
 
 type Kind = 'all' | 'workouts' | 'activities';
 interface Item {
@@ -25,6 +27,8 @@ interface Item {
   subtitle: string;
   search: string;
   href: string;
+  /** Session mark of the program template the workout was started from. */
+  mark?: WorkoutHistoryRow['mark'];
 }
 
 export default function HistoryPage() {
@@ -39,21 +43,24 @@ export default function HistoryPage() {
   const today = todayISO(settings.timeZone);
   const [month, setMonth] = useState(today.slice(0, 7));
   const [day, setDay] = useState<string | null>(null);
-  const { t, tp } = useT();
+  const { t, tp, language } = useT();
+  const programs = useAllPrograms();
 
   const items: Item[] = useMemo(() => {
     const out: Item[] = [];
     for (const s of sessions ?? []) {
       if (s.status !== 'completed') continue;
       const names = s.exercises.map((e) => (byId.get(e.exerciseId) ? exerciseDisplayName(byId.get(e.exerciseId)) : '')).filter(Boolean);
+      const row = workoutHistoryRow(s, names, programs ?? []);
       out.push({
         id: s.id,
         kind: 'workout',
         date: s.date,
         sort: s.startedAt,
-        title: sessionDisplayName({ name: s.name, id: s.templateId }),
+        title: row.title,
+        mark: row.mark,
         subtitle: tp('train.historyMeta', exercisesDone(s), { duration: formatMinutes(sessionDurationSec(s)) }),
-        search: [s.name, s.notes, ...names].join(' ').toLowerCase(),
+        search: row.search,
         href: `/train/history/${s.id}`,
       });
     }
@@ -70,12 +77,12 @@ export default function HistoryPage() {
       });
     }
     return out.sort((a, b) => (a.date === b.date ? b.sort - a.sort : b.date.localeCompare(a.date)));
-  }, [sessions, activities, byId, settings.units.distance, tp]);
+  }, [sessions, activities, programs, byId, settings.units.distance, tp, language]);
 
   if (!sessions || !activities) return <Spinner />;
 
   const filtered = items.filter(
-    (i) => (kind === 'all' || (kind === 'workouts' ? i.kind === 'workout' : i.kind === 'activity')) && (!q.trim() || i.search.includes(q.trim().toLowerCase())) && (!day || i.date === day),
+    (i) => (kind === 'all' || (kind === 'workouts' ? i.kind === 'workout' : i.kind === 'activity')) && (!q.trim() || i.search.includes(q.trim().toLocaleLowerCase())) && (!day || i.date === day),
   );
   const byDate = new Map<string, Item[]>();
   for (const i of items) byDate.set(i.date, [...(byDate.get(i.date) ?? []), i]);
@@ -96,8 +103,8 @@ export default function HistoryPage() {
     <Page
       title={t('train.historyTitle')}
       back={
-        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
+        <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
     >
@@ -188,7 +195,13 @@ export default function HistoryPage() {
           {filtered.slice(0, 300).map((i) => (
             <ListRow
               key={`${i.kind}-${i.id}`}
-              left={i.kind === 'workout' ? <Dumbbell className="size-5 text-accent" /> : <Activity className="size-5 text-info" />}
+              left={
+                i.kind === 'workout' ? (
+                  i.mark ? <SessionMarkTile template={i.mark} /> : <IconTile icon={Dumbbell} />
+                ) : (
+                  <IconTile icon={Activity} />
+                )
+              }
               title={i.title}
               subtitle={`${formatDate(i.date)} · ${i.subtitle}`}
               right={<ChevronRight className="size-4" />}

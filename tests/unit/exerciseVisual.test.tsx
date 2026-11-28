@@ -11,6 +11,7 @@ import { createRoot, type Root } from 'react-dom/client';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 import { ExerciseIllustration, ExerciseThumb, hasIllustration } from '@/components/ExerciseVisual';
+import { ExerciseGlyph } from '@/components/ExerciseGlyph';
 import { EXERCISES } from '@/data/exercises';
 import { EN, IS, LanguageProvider, type Language } from '@/i18n';
 import type { CustomExercise, Exercise } from '@/domain/types';
@@ -94,16 +95,23 @@ describe('ExerciseIllustration', () => {
 });
 
 describe('ExerciseThumb', () => {
-  it('shows a decorative thumbnail for library exercises and the glyph placeholder otherwise', () => {
+  it('always shows the Direction B movement-pattern tile (no thumb.webp in lists, the picker or compact logger rows)', () => {
     const el = mount(createElement(ExerciseThumb, { ex: squat }));
-    const img = el.querySelector('img')!;
-    expect(img.getAttribute('src')).toBe('/exercise-media/v2/barbell-back-squat/thumb.webp');
-    expect(img.getAttribute('alt')).toBe('');
-    expect(img.getAttribute('loading')).toBe('lazy');
-    expect(img.getAttribute('width')).toBe('256');
-    act(() => void img.dispatchEvent(new Event('error')));
     expect(el.querySelector('img')).toBeNull();
-    expect(el.querySelector('svg')).not.toBeNull();
+    expect(el.querySelector('[src*="thumb.webp"]')).toBeNull();
+    const tile = el.querySelector('[data-testid="exercise-glyph-tile"]')!;
+    expect(tile).not.toBeNull();
+    expect(tile.className).toContain('bg-surface-2');
+    expect(tile.className).toContain('text-accent');
+    expect(tile.className).toContain('size-11');
+    const svg = tile.querySelector('svg')!;
+    expect(svg.getAttribute('data-pattern')).toBe('squat');
+    expect(svg.getAttribute('stroke-width')).toBe('1.75');
+    expect(svg.getAttribute('viewBox')).toBe('0 0 24 24');
+
+    rerender(createElement(ExerciseThumb, { ex: bench }));
+    expect(el.querySelector('img')).toBeNull();
+    expect(el.querySelector('svg')?.getAttribute('data-pattern')).toBe('horizontal_push');
 
     const p = mount(createElement(ExerciseThumb, { ex: custom as Exercise }));
     expect(p.querySelector('img')).toBeNull();
@@ -111,6 +119,28 @@ describe('ExerciseThumb', () => {
     expect(hasIllustration(custom)).toBe(false);
     expect(hasIllustration(squat)).toBe(true);
     expect(hasIllustration(undefined)).toBe(false);
+  });
+});
+
+describe('ExerciseGlyph (Direction B)', () => {
+  it('draws 13 distinct 24×24 pattern marks with stroke 1.75 and currentColor', () => {
+    const patterns = ['squat', 'lunge', 'hinge', 'horizontal_push', 'vertical_push', 'horizontal_pull', 'vertical_pull', 'trunk', 'carry', 'isolation_upper', 'isolation_lower', 'conditioning', 'mobility'] as const;
+    const bodies = new Set<string>();
+    for (const pattern of patterns) {
+      const el = mount(createElement(ExerciseGlyph, { pattern }));
+      const svg = el.querySelector('svg')!;
+      expect(svg.getAttribute('viewBox'), pattern).toBe('0 0 24 24');
+      expect(svg.getAttribute('stroke'), pattern).toBe('currentColor');
+      expect(svg.getAttribute('stroke-width'), pattern).toBe('1.75');
+      expect(svg.getAttribute('fill'), pattern).toBe('none');
+      expect(svg.innerHTML).not.toMatch(/#[0-9a-f]{3,6}/i);
+      bodies.add(svg.innerHTML);
+      act(() => root?.unmount());
+      container?.remove();
+    }
+    root = null;
+    container = null;
+    expect(bodies.size).toBe(patterns.length);
   });
 });
 
@@ -125,13 +155,5 @@ describe('load failure is per image, not per row (logger swap)', () => {
     // Swapping back to the failed exercise doesn't retry a broken image.
     rerender(createElement(ExerciseIllustration, { ex: squat }));
     expect(el.querySelector('img')).toBeNull();
-  });
-
-  it('a thumbnail that failed does not block the next exercise swapped into the same row', () => {
-    const el = mount(createElement(ExerciseThumb, { ex: squat }));
-    act(() => void el.querySelector('img')!.dispatchEvent(new Event('error')));
-    expect(el.querySelector('img')).toBeNull();
-    rerender(createElement(ExerciseThumb, { ex: bench }));
-    expect(el.querySelector('img')?.getAttribute('src')).toBe('/exercise-media/v2/barbell-bench-press/thumb.webp');
   });
 });

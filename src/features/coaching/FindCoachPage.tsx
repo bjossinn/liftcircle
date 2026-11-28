@@ -31,8 +31,8 @@ export default function FindCoachPage() {
     <Page
       title={t('nav.findCoach')}
       back={
-        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
+        <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
     >
@@ -232,7 +232,7 @@ export function FindContent() {
 
         {form.place && (
           <p className="text-xs text-muted inline-flex items-center gap-1.5">
-            <MapPin className="size-3.5 text-accent" aria-hidden /> {t('coaching.directory.using_x', { place: form.place.label })}
+            <MapPin className="size-4 text-accent" aria-hidden /> {t('coaching.directory.using_x', { place: form.place.label })}
           </p>
         )}
 

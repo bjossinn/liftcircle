@@ -346,7 +346,7 @@ export function interestLabel(interest: string, language?: Language): string {
 export function PendingBadge({ children }: { children: ReactNode }) {
   return (
     <span className="inline-flex items-center gap-1 text-xs text-warn">
-      <Clock className="size-3.5" aria-hidden />
+      <Clock className="size-4" aria-hidden />
       {children}
     </span>
   );

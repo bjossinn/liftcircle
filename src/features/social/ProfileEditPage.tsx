@@ -27,8 +27,8 @@ export default function ProfileEditPage() {
     <Page
       title={me.profile ? t('profile.edit') : t('profile.create')}
       back={
-        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
+        <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
     >
@@ -211,11 +211,11 @@ function ProfileForm({ meId }: { meId: string }) {
           hint={
             availability === 'checking' ? (
               <span className="inline-flex items-center gap-1">
-                <Loader2 className="size-3 animate-spin" aria-hidden /> {t('settings.checking')}
+                <Loader2 className="size-4 animate-spin" aria-hidden /> {t('settings.checking')}
               </span>
             ) : availability === 'available' ? (
               <span className="inline-flex items-center gap-1 text-accent">
-                <Check className="size-3" aria-hidden /> {t('social.available')}
+                <Check className="size-4" aria-hidden /> {t('social.available')}
               </span>
             ) : availability === 'error' ? (
               t('social.couldnt_check_right_now_well_check')

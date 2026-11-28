@@ -83,7 +83,7 @@ export function TrainingSummary({ training, who }: { training: ClientOverview['t
   if (training === null)
     return (
       <p className="text-xs text-muted inline-flex items-center gap-1">
-        <EyeOff className="size-3.5" aria-hidden /> {t('coaching.editor.training_not_shared_by', { name: who })}
+        <EyeOff className="size-4" aria-hidden /> {t('coaching.editor.training_not_shared_by', { name: who })}
       </p>
     );
   const { plannedLast28: planned, completedLast28: done } = training;

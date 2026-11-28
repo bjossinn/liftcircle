@@ -47,8 +47,8 @@ export default function InstallPage() {
     <Page
       title={t('settings.installPage.install_the_app')}
       back={
-        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
+        <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
     >

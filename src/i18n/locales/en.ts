@@ -120,6 +120,7 @@ export const CLIENT_EN = {
   "activities.timer.saved_interval_templates": "Saved interval templates",
   "activities.timer.secondsRemaining.one": "{{count}} second remaining",
   "activities.timer.secondsRemaining.other": "{{count}} seconds remaining",
+  "activities.timer.set_to_0_to_skip": "Set to 0 to skip.",
   "activities.timer.skip": "Skip",
   "activities.timer.sound": "Sound",
   "activities.timer.start": "Start · {{duration}}",

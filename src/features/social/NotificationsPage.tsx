@@ -124,8 +124,8 @@ export default function NotificationsPage() {
     <Page
       title={t('nav.notifications')}
       back={
-        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
+        <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
     >
@@ -212,8 +212,8 @@ function NotificationList() {
                   <Link to={linkFor(n, me)} className={cx('flex items-center gap-3 rounded-xl px-3 py-2.5 min-h-16 hover:bg-surface-2', unread && 'bg-surface')}>
                     <span className="relative shrink-0">
                       <Avatar profile={n.actor} />
-                      <span className="absolute -bottom-1 -right-1 size-5 rounded-full bg-surface-3 border border-line flex items-center justify-center">
-                        <Icon className="size-3 text-accent" aria-hidden />
+                      <span className="absolute -bottom-1.5 -right-1.5 size-6 rounded-full bg-surface-3 border border-line flex items-center justify-center">
+                        <Icon className="size-4 text-accent" aria-hidden />
                       </span>
                     </span>
                     <span className="min-w-0 flex-1">

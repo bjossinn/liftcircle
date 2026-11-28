@@ -47,8 +47,8 @@ export default function RequestCoachingPage() {
     <Page
       title={t('coaching.profile.request_coaching')}
       back={
-        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
+        <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
     >
@@ -337,7 +337,7 @@ function IntakeRow({
           {children}
           {help && (
             <p className="text-xs text-muted inline-flex items-start gap-1.5">
-              <Info className="size-3.5 shrink-0 mt-0.5" aria-hidden />
+              <Info className="size-4 shrink-0 mt-0.5" aria-hidden />
               {help}
             </p>
           )}

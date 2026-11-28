@@ -51,8 +51,8 @@ export default function RecipeDetailPage() {
   const { t } = useT();
   const recipe = RECIPES_BY_ID.get(id);
   const back = (
-    <IconButton label={t('common.back')} onClick={() => nav(-1)}>
-      <ChevronLeft className="size-6" />
+    <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
+      <ChevronLeft />
     </IconButton>
   );
   if (!recipe)

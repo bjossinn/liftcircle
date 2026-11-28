@@ -86,8 +86,8 @@ export function BackButton({ to }: { to?: string }) {
   const nav = useNavigate();
   const { t } = useT();
   return (
-    <IconButton label={t('common.back')} onClick={() => (to ? nav(to) : nav(-1))}>
-      <ChevronLeft className="size-6" />
+    <IconButton label={t('common.back')} onClick={() => (to ? nav(to) : nav(-1))} iconSize="lg">
+      <ChevronLeft />
     </IconButton>
   );
 }

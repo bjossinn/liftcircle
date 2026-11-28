@@ -226,7 +226,7 @@ export function PostCard({ post, meId, onChange, onRemove, onBlocked, standalone
         )}
         {mine && p.audience === 'only_me' && (
           <Badge>
-            <Lock className="size-3" aria-hidden /> {t('settings.onlyMe')}
+            <Lock className="size-4" aria-hidden /> {t('settings.onlyMe')}
           </Badge>
         )}
         <IconButton label={t('social.post_options')} onClick={() => setDialog('menu')}>
