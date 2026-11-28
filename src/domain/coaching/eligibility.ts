@@ -1,5 +1,6 @@
 /** Whether the viewer can send a coaching request to a coach, with the reason when not. Pure; the server re-checks. */
 import type { CoachingRelationship } from '@/backend/coachingContract';
+import { t, type MessageKey } from '@/i18n';
 
 export const MAX_OPEN_REQUESTS = 3;
 
@@ -20,13 +21,21 @@ export function requestBlock(input: {
   return null;
 }
 
-export const REQUEST_BLOCK_TEXT: Record<RequestBlock, string> = {
-  self: 'This is your own coach profile.',
-  not_accepting: 'This coach isn’t taking new clients right now.',
-  already_coach: 'This is already your coach.',
-  pending: 'You’ve already sent this coach a request. You’ll be notified when they reply.',
-  too_many_pending: `You have ${MAX_OPEN_REQUESTS} requests waiting for a reply. Cancel one in My coach to send another.`,
+const REQUEST_BLOCK_KEYS: Record<RequestBlock, MessageKey> = {
+  self: 'coaching.request.block_self',
+  not_accepting: 'coaching.request.block_not_accepting',
+  already_coach: 'coaching.request.block_already_coach',
+  pending: 'coaching.request.block_pending',
+  too_many_pending: 'coaching.request.block_too_many_pending',
 };
+export const requestBlockText = (b: RequestBlock) => t(REQUEST_BLOCK_KEYS[b], { count: MAX_OPEN_REQUESTS });
+/** Why a request can't be sent, read in the current language. */
+export const REQUEST_BLOCK_TEXT: Record<RequestBlock, string> = Object.freeze(
+  Object.defineProperties(
+    {} as Record<RequestBlock, string>,
+    Object.fromEntries((Object.keys(REQUEST_BLOCK_KEYS) as RequestBlock[]).map((b) => [b, { enumerable: true, get: () => requestBlockText(b) }])),
+  ),
+);
 
 /** The client's current active human coach, if any (for the switching explanation). */
 export function activeCoach(relationships: CoachingRelationship[] | null | undefined): CoachingRelationship | null {

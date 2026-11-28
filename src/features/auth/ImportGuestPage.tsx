@@ -6,10 +6,12 @@ import { useApp } from '@/state/app';
 import { useToast } from '@/components/toast';
 import { clearGuestData, dismissGuestImport, importGuestData, previewGuestImport, type ImportRow } from './guestImport';
 import type { SyncedEntity } from '@/db/db';
+import { useT } from '@/i18n';
 
 export default function ImportGuestPage() {
   const nav = useNavigate();
   const toast = useToast();
+  const { t, tp } = useT();
   const { db, auth } = useApp();
   const [rows, setRows] = useState<ImportRow[] | null>(null);
   const [selected, setSelected] = useState<Set<SyncedEntity>>(new Set());
@@ -29,34 +31,34 @@ export default function ImportGuestPage() {
   }, [db, signedIn]);
 
   const back = (
-    <IconButton label="Back" onClick={() => nav(-1)}>
+    <IconButton label={t('common.back')} onClick={() => nav(-1)}>
       <ChevronLeft className="size-6" />
     </IconButton>
   );
   if (!signedIn)
     return (
-      <Page title="Import" back={back}>
-        <EmptyState title="Sign in first" body="Sign in to the account you want to import into." action={<Button onClick={() => nav('/auth')}>Sign in</Button>} />
+      <Page title={t('auth.import')} back={back}>
+        <EmptyState title={t('auth.sign_in_first')} body={t('auth.sign_in_to_the_account_you')} action={<Button onClick={() => nav('/auth')}>{t('settings.signIn')}</Button>} />
       </Page>
     );
-  if (error) return <Page title="Import" back={back}><Notice tone="danger">{error}</Notice></Page>;
+  if (error) return <Page title={t('auth.import')} back={back}><Notice tone="danger">{error}</Notice></Page>;
   if (!rows) return <Spinner />;
   const total = rows.filter((r) => selected.has(r.entity)).reduce((n, r) => n + r.toImport, 0);
 
   return (
-    <Page title="Import guest records" back={back}>
+    <Page title={t('auth.import_guest_records')} back={back}>
       <p className="text-sm text-muted mb-4">
-        These were logged on this device before you signed in{auth.email ? ` as ${auth.email}` : ''}. Choose what to add to this account. Records already in your account are kept as they are and won’t be duplicated.
+        {auth.email ? t('auth.loggedBeforeSignInAs', { email: auth.email }) : t('auth.these_were_logged_on_this_device')}
       </p>
       {rows.length === 0 ? (
-        <EmptyState title="Nothing to import" />
+        <EmptyState title={t('auth.nothing_to_import')} />
       ) : (
         <Card className="divide-y divide-line">
           {rows.map((r) => (
             <div key={r.entity} className="px-4">
               <Toggle
                 label={r.label}
-                description={`${r.toImport} new${r.alreadyThere ? ` · ${r.alreadyThere} already in your account` : ''}`}
+                description={r.alreadyThere ? t('auth.newAndExisting', { count: r.toImport, existing: r.alreadyThere }) : t('auth.x_newx', { count: r.toImport })}
                 checked={selected.has(r.entity)}
                 disabled={r.toImport === 0}
                 onChange={(v) => {
@@ -71,7 +73,7 @@ export default function ImportGuestPage() {
         </Card>
       )}
       <Card className="px-4 mt-4">
-        <Toggle label="Remove guest copy after importing" description="Keeps this device tidy. Imported records stay in your account." checked={clearAfter} onChange={setClearAfter} />
+        <Toggle label={t('auth.remove_guest_copy_after_importing')} description={t('auth.keeps_this_device_tidy_imported_records')} checked={clearAfter} onChange={setClearAfter} />
       </Card>
       <div className="flex flex-col gap-2 mt-6">
         <Button
@@ -85,7 +87,7 @@ export default function ImportGuestPage() {
             try {
               const n = await importGuestData(db, auth.userId!, [...selected]);
               if (clearAfter) await clearGuestData();
-              toast.show(`Imported ${n} record${n === 1 ? '' : 's'}`, { tone: 'success' });
+              toast.show(tp('auth.importedRecords', n), { tone: 'success' });
               nav('/', { replace: true });
             } catch (e) {
               setError((e as Error).message);
@@ -94,7 +96,7 @@ export default function ImportGuestPage() {
             }
           }}
         >
-          Import {total} record{total === 1 ? '' : 's'}
+          {tp('auth.importRecords', total)}
         </Button>
         <Button
           variant="ghost"
@@ -103,7 +105,7 @@ export default function ImportGuestPage() {
             nav('/', { replace: true });
           }}
         >
-          Not now
+          {t('workout.share.notNow')}
         </Button>
       </div>
     </Page>

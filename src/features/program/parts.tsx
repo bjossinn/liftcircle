@@ -75,11 +75,12 @@ export function displaySessionName(t: Pick<SessionTemplate, 'id' | 'name' | 'nam
 export function planTextForDisplay(text: string): string {
   if (text === enText('onboarding.manualRationale')) return translate('onboarding.manualRationale');
   if (text === enText('onboarding.manualReason')) return translate('onboarding.manualReason');
+  if (text === enText('program.manualBuiltRationale')) return translate('program.manualBuiltRationale');
   return localizeGeneratedText(text);
 }
 
-/** Edit reasons SessionCard stores on new versions (English), localized for display (e.g. in version history). */
-const REASON_KEYS: MessageKey[] = ['program.reordered', 'program.removed', 'program.editedExercise', 'program.swapped', 'program.added', 'program.renamed', 'program.edited'];
+/** Edit reasons SessionCard / ProgramPage store on new versions (English), localized for display (e.g. in version history). */
+const REASON_KEYS: MessageKey[] = ['program.reordered', 'program.removed', 'program.editedExercise', 'program.swapped', 'program.added', 'program.renamed', 'program.edited', 'program.changedDays', 'program.deletedSession', 'program.addedSession'];
 export function versionReasonText(reason: string, templates: readonly SessionTemplate[] = []): string {
   for (const key of REASON_KEYS) {
     const params = matchTemplate(key, reason);
@@ -92,8 +93,8 @@ export function versionReasonText(reason: string, templates: readonly SessionTem
 
 /** A session name inside a stored reason: localized only when a generated, unrenamed session of the version has it. */
 function reasonSessionName(name: string, templates: readonly SessionTemplate[]): string {
-  const tpl = templates.find((x) => x.name === name && !x.nameEdited && isGeneratedTemplateId(x.id));
-  return tpl ? sessionDisplayName(tpl) : name;
+  const tpl = templates.find((x) => x.name === name && !x.nameEdited && (isGeneratedTemplateId(x.id) || x.id.startsWith('custom:')));
+  return tpl ? displaySessionName(tpl) : name;
 }
 
 export function KindIcon({ kind, className = 'size-4' }: { kind: SessionTemplate['kind']; className?: string }) {
@@ -400,7 +401,7 @@ export function SessionCard(props: SessionCardProps) {
       />
       <RenameSheet
         open={renaming}
-        value={t.name}
+        value={displaySessionName(t)}
         title={tr('program.renameTitle')}
         onClose={() => setRenaming(false)}
         onSave={(name) => {

@@ -54,8 +54,7 @@ export function ExerciseFilterBar({ value, onChange, className }: { value: Exerc
       <ChipSelect label={t('workout.picker.movement')} anyLabel={t('workout.picker.anyMovement')} value={value.pattern} options={PATTERN_LABELS} onChange={(pattern) => onChange({ ...value, pattern })} />
       {hasFilters(value) && (
         <Button size="sm" variant="ghost" className="shrink-0 min-h-11" onClick={() => onChange({})}>
-          {/* i18n: no approved Icelandic copy */}
-          Clear
+          {t('common.clear')}
         </Button>
       )}
     </div>
@@ -72,8 +71,7 @@ export function ExerciseRowContent({ ex, favorite, right }: { ex: Exercise; favo
         <span className="flex items-center gap-1.5">
           <span className="min-w-0 text-[15px] font-medium line-clamp-2 break-words">{exerciseDisplayName(ex)}</span>
           {favorite && <Star className="size-3.5 shrink-0 fill-current text-accent" aria-label={t('workout.picker.favourite')} />}
-          {/* i18n: no approved Icelandic copy */}
-          {ex.custom && <span className="shrink-0 rounded-full bg-surface-3 px-1.5 text-[11px] text-muted">Custom</span>}
+          {ex.custom && <span className="shrink-0 rounded-full bg-surface-3 px-1.5 text-[11px] text-muted">{t('exercise.customBadge')}</span>}
         </span>
         <span className="block text-xs text-muted truncate mt-0.5">{exerciseSubtitle(ex, language)}</span>
       </span>

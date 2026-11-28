@@ -4,6 +4,7 @@
  */
 import { z } from 'zod';
 import type { ApplicationStatus, CoachFormat, CoachProfile, CoachProfileInput, Qualification, ServiceArea } from '@/backend/coachingContract';
+import { t as tr } from '@/i18n';
 import { isCountryCode } from './options';
 
 export const LIMITS = {
@@ -138,12 +139,12 @@ export function formFromProfile(p: CoachProfile | null, defaults: { displayName?
   };
 }
 
-const t = (s: string) => s.replace(/\s+/g, ' ').trim();
-const nn = (s: string) => (t(s) ? t(s) : null);
+const squash = (s: string) => s.replace(/\s+/g, ' ').trim();
+const nn = (s: string) => (squash(s) ? squash(s) : null);
 
 export function formToInput(f: ApplicationForm): CoachProfileInput {
   return {
-    displayName: t(f.displayName),
+    displayName: squash(f.displayName),
     photoPath: f.photoPath,
     bio: f.bio.trim(),
     experienceYears: f.experienceYears,
@@ -173,7 +174,7 @@ export function formToInput(f: ApplicationForm): CoachProfileInput {
     }),
     qualifications: f.qualifications.map((q) => ({
       id: q.id,
-      title: t(q.title),
+      title: squash(q.title),
       issuer: nn(q.issuer),
       year: q.year,
       documentPath: q.documentPath,
@@ -184,61 +185,84 @@ export function formToInput(f: ApplicationForm): CoachProfileInput {
 
 /* -------------------------------------------------------------- validation */
 const thisYear = () => new Date().getFullYear();
-const countryOrEmpty = z.string().refine((c) => c === '' || isCountryCode(c), 'Choose a country from the list.');
+const atMostChars = (max: number) => tr('coaching.validation.at_most_chars', { max });
 
-const areaSchema = z
-  .object({
-    kind: z.enum(['city', 'region', 'country']),
-    city: z.string().max(LIMITS.place, `At most ${LIMITS.place} characters.`),
-    region: z.string().max(LIMITS.place, `At most ${LIMITS.place} characters.`),
-    country: z.string().refine((c) => isCountryCode(c), 'Choose a country.'),
-    lat: z.number().min(-90).max(90).nullable(),
-    lng: z.number().min(-180).max(180).nullable(),
-    radiusKm: z.number().int('Use whole kilometres.').min(1, 'At least 1 km.').max(LIMITS.radiusKmMax, `At most ${LIMITS.radiusKmMax} km.`).nullable(),
-  })
-  .superRefine((a, ctx) => {
-    if (a.kind === 'city' && !t(a.city)) ctx.addIssue({ code: 'custom', path: ['city'], message: 'Add the city or town.' });
-    if (a.kind === 'region' && !t(a.region)) ctx.addIssue({ code: 'custom', path: ['region'], message: 'Add the region.' });
-    if ((a.lat == null) !== (a.lng == null)) ctx.addIssue({ code: 'custom', path: ['lat'], message: 'Map position is incomplete. Look the place up again.' });
+/** Built per call so messages are in the current language. */
+function areaSchema() {
+  return z
+    .object({
+      kind: z.enum(['city', 'region', 'country']),
+      city: z.string().max(LIMITS.place, atMostChars(LIMITS.place)),
+      region: z.string().max(LIMITS.place, atMostChars(LIMITS.place)),
+      country: z.string().refine((c) => isCountryCode(c), tr('coaching.validation.choose_a_country')),
+      lat: z.number().min(-90).max(90).nullable(),
+      lng: z.number().min(-180).max(180).nullable(),
+      radiusKm: z
+        .number()
+        .int(tr('coaching.validation.use_whole_kilometres'))
+        .min(1, tr('coaching.validation.at_least_1_km'))
+        .max(LIMITS.radiusKmMax, tr('coaching.validation.at_most_km', { max: LIMITS.radiusKmMax }))
+        .nullable(),
+    })
+    .superRefine((a, ctx) => {
+      if (a.kind === 'city' && !squash(a.city)) ctx.addIssue({ code: 'custom', path: ['city'], message: tr('ui.add_the_city_or_town') });
+      if (a.kind === 'region' && !squash(a.region)) ctx.addIssue({ code: 'custom', path: ['region'], message: tr('ui.add_the_region') });
+      if ((a.lat == null) !== (a.lng == null)) ctx.addIssue({ code: 'custom', path: ['lat'], message: tr('ui.map_position_is_incomplete_look_the') });
+    });
+}
+
+function qualSchema() {
+  const year = tr('coaching.validation.use_a_four_digit_year');
+  return z.object({
+    title: z
+      .string()
+      .refine((s) => squash(s).length >= 2, tr('coaching.validation.add_the_qualifications_title'))
+      .refine((s) => squash(s).length <= LIMITS.qualTitle, tr('coaching.validation.at_most_chars', { max: LIMITS.qualTitle })),
+    issuer: z.string().max(LIMITS.qualIssuer, atMostChars(LIMITS.qualIssuer)),
+    year: z
+      .number()
+      .int(year)
+      .min(1950, year)
+      .refine((y) => y <= thisYear() + 1, tr('coaching.validation.that_year_is_in_the_future'))
+      .nullable(),
   });
-
-const qualSchema = z.object({
-  title: z.string().refine((s) => t(s).length >= 2, 'Add the qualification’s title.').refine((s) => t(s).length <= LIMITS.qualTitle, `At most ${LIMITS.qualTitle} characters.`),
-  issuer: z.string().max(LIMITS.qualIssuer, `At most ${LIMITS.qualIssuer} characters.`),
-  year: z
-    .number()
-    .int('Use a four-digit year.')
-    .min(1950, 'Use a four-digit year.')
-    .refine((y) => y <= thisYear() + 1, 'That year is in the future.')
-    .nullable(),
-});
+}
 
 const tag = z.string().min(1).max(LIMITS.tag);
 
-export const draftSchema = z.object({
-  displayName: z.string().refine((s) => t(s).length <= LIMITS.displayName, `At most ${LIMITS.displayName} characters.`),
-  bio: z.string().max(LIMITS.bio, `At most ${LIMITS.bio} characters.`),
-  experienceYears: z.number().int('Use whole years.').min(0, 'Can’t be negative.').max(LIMITS.experienceYears, `At most ${LIMITS.experienceYears}.`).nullable(),
-  experience: z.string().max(LIMITS.experience, `At most ${LIMITS.experience} characters.`),
-  specialties: z.array(tag).max(LIMITS.specialties, `Pick up to ${LIMITS.specialties}.`),
-  goals: z.array(tag).max(LIMITS.goals, `Pick up to ${LIMITS.goals}.`),
-  languages: z.array(z.string().regex(/^[a-z]{2}$/)).max(LIMITS.languages, `Pick up to ${LIMITS.languages}.`),
-  city: z.string().max(LIMITS.place, `At most ${LIMITS.place} characters.`),
-  region: z.string().max(LIMITS.place, `At most ${LIMITS.place} characters.`),
-  country: countryOrEmpty,
-  formats: z.array(z.enum(['in_person', 'online'])).refine((a) => new Set(a).size === a.length, 'Duplicate format.'),
-  acceptingClients: z.boolean(),
-  listed: z.boolean(),
-  photoPath: z.string().nullable(),
-  serviceAreas: z.array(areaSchema).max(LIMITS.serviceAreas, `Add up to ${LIMITS.serviceAreas} areas.`),
-  qualifications: z.array(qualSchema).max(LIMITS.qualifications, `Add up to ${LIMITS.qualifications}.`),
-});
+/** Draft (format/length) schema; built per call so its messages follow the current language. */
+export function draftSchema() {
+  const pickUpTo = (max: number) => tr('coaching.validation.pick_up_to', { max });
+  return z.object({
+    displayName: z.string().refine((s) => squash(s).length <= LIMITS.displayName, tr('coaching.validation.at_most_chars', { max: LIMITS.displayName })),
+    bio: z.string().max(LIMITS.bio, atMostChars(LIMITS.bio)),
+    experienceYears: z
+      .number()
+      .int(tr('coaching.validation.use_whole_years'))
+      .min(0, tr('coaching.validation.cant_be_negative'))
+      .max(LIMITS.experienceYears, tr('coaching.validation.at_most', { max: LIMITS.experienceYears }))
+      .nullable(),
+    experience: z.string().max(LIMITS.experience, atMostChars(LIMITS.experience)),
+    specialties: z.array(tag).max(LIMITS.specialties, pickUpTo(LIMITS.specialties)),
+    goals: z.array(tag).max(LIMITS.goals, pickUpTo(LIMITS.goals)),
+    languages: z.array(z.string().regex(/^[a-z]{2}$/)).max(LIMITS.languages, pickUpTo(LIMITS.languages)),
+    city: z.string().max(LIMITS.place, atMostChars(LIMITS.place)),
+    region: z.string().max(LIMITS.place, atMostChars(LIMITS.place)),
+    country: z.string().refine((c) => c === '' || isCountryCode(c), tr('coaching.validation.choose_a_country_from_the_list')),
+    formats: z.array(z.enum(['in_person', 'online'])).refine((a) => new Set(a).size === a.length, tr('coaching.validation.duplicate_format')),
+    acceptingClients: z.boolean(),
+    listed: z.boolean(),
+    photoPath: z.string().nullable(),
+    serviceAreas: z.array(areaSchema()).max(LIMITS.serviceAreas, tr('coaching.validation.add_up_to_areas', { max: LIMITS.serviceAreas })),
+    qualifications: z.array(qualSchema()).max(LIMITS.qualifications, tr('coaching.validation.add_up_to', { max: LIMITS.qualifications })),
+  });
+}
 
 export type FormErrors = Record<string, string>;
 
 /** Format/length checks that apply to every save (drafts may be incomplete). Keys are dotted paths. */
 export function validateDraft(f: ApplicationForm): FormErrors {
-  const r = draftSchema.safeParse(f);
+  const r = draftSchema().safeParse(f);
   if (r.success) return {};
   const errs: FormErrors = {};
   for (const issue of r.error.issues) {
@@ -254,13 +278,13 @@ export function validateDraft(f: ApplicationForm): FormErrors {
 export function submitProblems(f: ApplicationForm): FormErrors {
   const errs: FormErrors = { ...validateDraft(f) };
   const add = (k: string, m: string) => void (errs[k] ??= m);
-  if (t(f.displayName).length < 2) add('displayName', 'Add the name clients will see.');
-  if (f.bio.trim().length < LIMITS.bioMinToSubmit) add('bio', `Write at least ${LIMITS.bioMinToSubmit} characters about how you coach.`);
-  if (f.specialties.length === 0) add('specialties', 'Pick at least one specialty.');
-  if (f.languages.length === 0) add('languages', 'Pick at least one language you coach in.');
-  if (!f.country) add('country', 'Choose the country you coach from.');
-  if (f.formats.length === 0) add('formats', 'Choose in person, online, or both.');
-  if (f.formats.includes('in_person') && f.serviceAreas.length === 0) add('serviceAreas', 'Add at least one area where you coach in person.');
+  if (squash(f.displayName).length < 2) add('displayName', tr('coaching.validation.add_the_name_clients_will_see'));
+  if (f.bio.trim().length < LIMITS.bioMinToSubmit) add('bio', tr('coaching.validation.write_at_least_about_how_you_coach', { min: LIMITS.bioMinToSubmit }));
+  if (f.specialties.length === 0) add('specialties', tr('coaching.validation.pick_at_least_one_specialty'));
+  if (f.languages.length === 0) add('languages', tr('coaching.validation.pick_at_least_one_language'));
+  if (!f.country) add('country', tr('coaching.validation.choose_the_country_you_coach_from'));
+  if (f.formats.length === 0) add('formats', tr('coaching.validation.choose_in_person_online_or_both'));
+  if (f.formats.includes('in_person') && f.serviceAreas.length === 0) add('serviceAreas', tr('coaching.validation.add_at_least_one_in_person_area'));
   return errs;
 }
 
@@ -274,7 +298,7 @@ export function changedApprovedQualifications(f: ApplicationForm, original: Coac
   for (const row of f.qualifications) {
     const q = byId.get(row.id);
     if (!q || q.reviewStatus !== 'approved') continue;
-    if (t(row.title) !== t(q.title) || (nn(row.issuer) ?? null) !== (q.issuer ? t(q.issuer) : null) || (row.year ?? null) !== (q.year ?? null) || (row.documentPath ?? null) !== (q.documentPath ?? null)) changed.push(row.id);
+    if (squash(row.title) !== squash(q.title) || (nn(row.issuer) ?? null) !== (q.issuer ? squash(q.issuer) : null) || (row.year ?? null) !== (q.year ?? null) || (row.documentPath ?? null) !== (q.documentPath ?? null)) changed.push(row.id);
   }
   return changed;
 }
@@ -291,9 +315,9 @@ export function sniffDocument(head: Uint8Array): DocKind | null {
 
 /** Checks a qualification document before upload. Returns a message or null when acceptable. */
 export function documentProblem(file: { size: number; name: string }, head: Uint8Array): string | null {
-  if (file.size === 0) return 'That file is empty.';
-  if (file.size > LIMITS.documentBytes) return 'That file is larger than 10 MB.';
-  if (!sniffDocument(head)) return 'Use a PDF, JPG or PNG file.';
+  if (file.size === 0) return tr('coaching.validation.file_empty');
+  if (file.size > LIMITS.documentBytes) return tr('coaching.validation.file_too_large');
+  if (!sniffDocument(head)) return tr('coaching.validation.file_type');
   return null;
 }
 

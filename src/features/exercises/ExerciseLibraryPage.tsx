@@ -6,6 +6,7 @@ import { Button, EmptyState, IconButton, Input, Page, Segmented, Spinner } from 
 import { ExerciseFilterBar, ExerciseRowContent, exerciseRowClass, hasFilters, type ExerciseFilterValue } from '@/components/ExercisePicker';
 import { EQUIPMENT_LABELS, MUSCLE_LABELS, PATTERN_LABELS, searchExercises } from '@/data/exerciseMeta';
 import { useExercises } from '@/data/catalog';
+import { useT } from '@/i18n';
 import { useFavoriteExercises, useRecentExerciseIds } from './useExerciseData';
 import { CustomExerciseForm } from './CustomExerciseForm';
 
@@ -18,6 +19,7 @@ function pickParam<T extends string>(v: string | null, allowed: Record<T, unknow
 
 export default function ExerciseLibraryPage() {
   const nav = useNavigate();
+  const { t, tp } = useT();
   const [params, setParams] = useSearchParams();
   const { list, byId } = useExercises();
   const fav = useFavoriteExercises();
@@ -68,14 +70,14 @@ export default function ExerciseLibraryPage() {
 
   return (
     <Page
-      title="Exercises"
+      title={t('summary.exercises')}
       back={
-        <IconButton label="Back" onClick={() => nav(-1)}>
+        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
           <ChevronLeft className="size-6" />
         </IconButton>
       }
       actions={
-        <IconButton label="New custom exercise" onClick={() => setCreating(true)}>
+        <IconButton label={t('workout.custom.new')} onClick={() => setCreating(true)}>
           <Plus className="size-6" />
         </IconButton>
       }
@@ -84,8 +86,8 @@ export default function ExerciseLibraryPage() {
         <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted" aria-hidden />
         <Input
           type="search"
-          aria-label="Search exercises"
-          placeholder="Search name, muscle or equipment"
+          aria-label={t('workout.picker.search')}
+          placeholder={t('workout.picker.searchHint')}
           value={query}
           onChange={(e) => update({ q: e.target.value || undefined })}
           enterKeyHint="search"
@@ -101,26 +103,26 @@ export default function ExerciseLibraryPage() {
 
       <Segmented
         className="mt-3"
-        label="Exercise list"
+        label={t('exercise.library.exercise_list')}
         value={tab}
-        onChange={(t) => update({ tab: t === 'all' ? undefined : t })}
+        onChange={(v) => update({ tab: v === 'all' ? undefined : v })}
         options={[
-          { value: 'all', label: 'All' },
-          { value: 'favorites', label: 'Favourites' },
-          { value: 'recent', label: 'Recent' },
-          { value: 'custom', label: 'Custom' },
+          { value: 'all', label: t('common.all') },
+          { value: 'favorites', label: t('workout.picker.favourites') },
+          { value: 'recent', label: t('foodLog.tab.recent') },
+          { value: 'custom', label: t('exercise.library.tab_custom') },
         ]}
       />
 
       <div className="mt-3" aria-live="polite">
         {results === undefined ? (
-          <Spinner label="Loading exercises" />
+          <Spinner label={t('exercise.library.loading_exercises')} />
         ) : results.length === 0 ? (
           <LibraryEmpty tab={tab} searching={searching} onCreate={() => setCreating(true)} onClear={() => update({ q: undefined, muscle: undefined, equipment: undefined, pattern: undefined })} />
         ) : (
           <>
             <p className="px-1 pb-2 text-xs text-muted">
-              {results.length} exercise{results.length === 1 ? '' : 's'}
+              {tp('exercise.library.count', results.length)}
             </p>
             <ul className="rounded-2xl bg-surface border border-line divide-y divide-line overflow-hidden">
               {results.map((ex) => (
@@ -138,7 +140,7 @@ export default function ExerciseLibraryPage() {
       {tab !== 'custom' && (
         <div className="mt-4">
           <Button block variant="outline" icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>
-            New custom exercise
+            {t('workout.custom.new')}
           </Button>
         </div>
       )}
@@ -154,38 +156,39 @@ export default function ExerciseLibraryPage() {
 }
 
 function LibraryEmpty({ tab, searching, onCreate, onClear }: { tab: Tab; searching: boolean; onCreate: () => void; onClear: () => void }) {
+  const { t } = useT();
   if (searching)
     return (
       <EmptyState
         icon={<Search className="size-5" />}
-        title="No matching exercises"
-        body="Try another word or clear the filters. You can also add the exercise yourself."
+        title={t('workout.picker.noMatches')}
+        body={t('exercise.library.try_another_word_or_clear_the')}
         action={
           <div className="flex flex-wrap justify-center gap-2">
-            <Button onClick={onClear}>Clear search</Button>
+            <Button onClick={onClear}>{t('exercise.library.clear_search')}</Button>
             <Button variant="primary" icon={<Plus className="size-4" />} onClick={onCreate}>
-              Create exercise
+              {t('workout.custom.create')}
             </Button>
           </div>
         }
       />
     );
   if (tab === 'favorites')
-    return <EmptyState icon={<Star className="size-5" />} title="No favourites yet" body="Open an exercise and tap the star to keep it here for quick access." />;
+    return <EmptyState icon={<Star className="size-5" />} title={t('exercise.library.no_favourites_yet')} body={t('exercise.library.open_an_exercise_and_tap_the')} />;
   if (tab === 'recent')
-    return <EmptyState icon={<Clock className="size-5" />} title="Nothing logged yet" body="Exercises from your finished workouts will show up here." />;
+    return <EmptyState icon={<Clock className="size-5" />} title={t('exercise.library.nothing_logged_yet')} body={t('exercise.library.exercises_from_your_finished_workouts_will')} />;
   if (tab === 'custom')
     return (
       <EmptyState
         icon={<Dumbbell className="size-5" />}
-        title="No custom exercises"
-        body="Add a movement that isn’t in the library. It works everywhere the built-in exercises do."
+        title={t('exercise.library.no_custom_exercises')}
+        body={t('exercise.library.add_a_movement_that_isnt_in')}
         action={
           <Button variant="primary" icon={<Plus className="size-4" />} onClick={onCreate}>
-            New custom exercise
+            {t('workout.custom.new')}
           </Button>
         }
       />
     );
-  return <EmptyState title="No exercises" />;
+  return <EmptyState title={t('exercise.library.no_exercises')} />;
 }

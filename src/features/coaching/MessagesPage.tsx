@@ -20,7 +20,8 @@ import {
   MAX_PHOTOS, MESSAGE_MAX, discardCoachMessage, outboxStatusLabel, processCoachOutbox, retryCoachMessage, useCoachOutbox, useCoachOutboxRunner,
   useOutboxInFlight,
 } from '@/coaching/outbox';
-import { RETENTION_TEXT, relationshipWritable } from '@/coaching/relationship';
+import { relationshipWritable, retentionText } from '@/coaching/relationship';
+import { clockText, useT, type UseT } from '@/i18n';
 import { coachingError } from '@/coaching/errors';
 import { Avatar } from '@/features/social/common';
 import { BackButton, CoachingAccessNotice, ReportCoachingSheet, fmtDay, useCoachingAccess } from './tools/common';
@@ -36,6 +37,7 @@ export default function MessagesPage() {
   const [search, setSearch] = useSearchParams();
   const nav = useNavigate();
   const toast = useToast();
+  const { t } = useT();
   const { db, auth, online, account } = useApp();
   const { access } = useCoachingAccess();
   const tz = account.settings.timeZone;
@@ -50,7 +52,7 @@ export default function MessagesPage() {
   const convo = useConversation(relationshipId, db, canUseApi && readable);
   const outbox = useCoachOutbox(relationshipId);
   const writable = relationshipWritable(rel);
-  const other = rel ? (rel.viewerIsCoach ? { id: rel.clientId, name: rel.client.displayName || 'Your client', avatarUrl: rel.client.avatarUrl } : { id: rel.coachId, name: rel.coach.displayName || 'Your coach', avatarUrl: rel.coach.photoUrl }) : null;
+  const other = rel ? (rel.viewerIsCoach ? { id: rel.clientId, name: rel.client.displayName || t('coaching.messages.your_client'), avatarUrl: rel.client.avatarUrl } : { id: rel.coachId, name: rel.coach.displayName || t('coaching.hub.your_coach'), avatarUrl: rel.coach.photoUrl }) : null;
 
   /* ------------------------------------------------ composer (draft saved on this device, per account + conversation) */
   const draft = useCoachDraft(relationshipId, db, search.get('draft'));
@@ -71,7 +73,7 @@ export default function MessagesPage() {
     if (!files?.length) return;
     const room = MAX_PHOTOS - photos.length - preparing;
     const list = [...files].slice(0, Math.max(0, room));
-    if (files.length > list.length) toast.show(`You can attach up to ${MAX_PHOTOS} photos.`, { tone: 'warn' });
+    if (files.length > list.length) toast.show(t('coaching.messages.you_can_attach_up_to_x', { max: MAX_PHOTOS }), { tone: 'warn' });
     for (const f of list) {
       setPreparing((n) => n + 1);
       try {
@@ -98,7 +100,7 @@ export default function MessagesPage() {
       await draft.send(uuid());
       void processCoachOutbox(db, { accountId });
     } catch (e) {
-      setSendError(e instanceof Error ? e.message : 'Couldn’t save your message on this device.');
+      setSendError(e instanceof Error ? e.message : t('coaching.messages.couldnt_save_message'));
     }
   };
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -162,10 +164,10 @@ export default function MessagesPage() {
       // The server treats a block as ending coaching; ending explicitly as well is harmless.
       await coachingApi.endCoaching(rel.id, 'Blocked').catch(() => {});
       setBlockOpen(false);
-      toast.show(`${other.name} is blocked and coaching has ended.`, { tone: 'success' });
+      toast.show(t('coaching.messages.x_is_blocked_and_coaching_has', { name: other.name }), { tone: 'success' });
       await reloadRel();
     } catch (e) {
-      toast.show(coachingError(e, 'Couldn’t block right now. Try again.'), { tone: 'error' });
+      toast.show(coachingError(e, t('coaching.messages.couldnt_block')), { tone: 'error' });
     } finally {
       setBlocking(false);
     }
@@ -177,11 +179,15 @@ export default function MessagesPage() {
       <BackButton />
       {other && <Avatar profile={{ displayName: other.name, username: '', avatarUrl: other.avatarUrl }} size={36} />}
       <div className="min-w-0 flex-1">
-        <h1 className="text-lg font-semibold truncate">{other?.name ?? 'Messages'}</h1>
-        {rel && <p className="text-xs text-muted truncate">{rel.viewerIsCoach ? 'Your client' : 'Your coach'} · private conversation</p>}
+        <h1 className="text-lg font-semibold truncate">{other?.name ?? t('coaching.messages.messages')}</h1>
+        {rel && (
+          <p className="text-xs text-muted truncate">
+            {t('coaching.messages.role_private_conversation', { role: rel.viewerIsCoach ? t('coaching.messages.your_client') : t('coaching.hub.your_coach') })}
+          </p>
+        )}
       </div>
       {rel && (
-        <IconButton label="Conversation options" onClick={() => setMenuOpen(true)}>
+        <IconButton label={t('coaching.messages.conversation_options')} onClick={() => setMenuOpen(true)}>
           <MoreVertical className="size-5" />
         </IconButton>
       )}
@@ -192,23 +198,29 @@ export default function MessagesPage() {
   if (access === 'personal' || access === 'guest' || access === 'loading') {
     content = <CoachingAccessNotice access={access} what="Messaging" />;
   } else if (rel === undefined && relError) {
-    content = <ErrorState title="Couldn’t open this conversation" message={relError} onRetry={reloadRel} />;
+    content = <ErrorState title={t('coaching.messages.couldnt_open_this_conversation')} message={relError} onRetry={reloadRel} />;
   } else if (rel === undefined) {
-    content = access === 'offline' || access === 'expired' ? <CoachingAccessNotice access={access} what="Messaging" /> : <Spinner label="Loading conversation" />;
+    content = access === 'offline' || access === 'expired' ? <CoachingAccessNotice access={access} what="Messaging" /> : <Spinner label={t('ai.chat.loadingConversation')} />;
   } else if (rel === null) {
     content = (
-      <EmptyState title="This conversation isn’t available" body="It may belong to another account, or you no longer have access to it." action={<Button onClick={() => nav('/coaching')}>Go to coaching</Button>} />
+      <EmptyState
+        title={t('coaching.messages.this_conversation_isnt_available')}
+        body={t('coaching.messages.it_may_belong_to_another_account')}
+        action={<Button onClick={() => nav('/coaching')}>{t('coaching.messages.go_to_coaching')}</Button>}
+      />
     );
   } else if (coachLocked) {
     content = (
       <Notice tone="warn" className="m-4">
-        Your coach account is currently suspended, so you can’t read or send coaching messages. Your clients keep their conversation history, workouts and plans.
+        {t('coaching.messages.your_coach_account_is_currently_suspended')}
       </Notice>
     );
   } else if (rel.status === 'requested') {
     content = (
       <div className="p-4 flex flex-col gap-3">
-        <Notice>{writable.ok ? '' : writable.reason} Until then, the coach sees only your intake and intro message.</Notice>
+        <Notice>
+          {writable.ok ? '' : writable.reason} {t('coaching.messages.until_then_the_coach_sees_only')}
+        </Notice>
         {rel.introMessage && <p className="rounded-2xl bg-surface-2 px-3.5 py-2.5 text-sm whitespace-pre-wrap break-words">{rel.introMessage}</p>}
       </div>
     );
@@ -219,28 +231,31 @@ export default function MessagesPage() {
           <Notice tone="warn" className="mx-4 mt-3">
             <span className="inline-flex items-center gap-1.5">
               <WifiOff className="size-4" aria-hidden />
-              {access === 'offline' ? 'You’re offline. Showing saved messages; new messages are queued and sent when you’re back online.' : 'Your session has expired. Sign in again to send queued messages.'}
+              {access === 'offline' ? t('coaching.messages.youre_offline_showing_saved_messages_new') : t('coaching.messages.your_session_has_expired_sign_in')}
             </span>
           </Notice>
         )}
         {!rel.viewerIsCoach && rel.coach.suspended && (
           <Notice tone="warn" className="mx-4 mt-3">
-            Your coach’s account is currently suspended. Your data and current plan stay yours; messaging is paused.
+            {t('coaching.messages.your_coachs_account_is_currently_suspended')}
           </Notice>
         )}
         {convo.error && convo.messages?.length ? (
           <p role="status" className="mx-4 mt-2 text-xs text-muted">
-            Couldn’t refresh messages: retrying automatically.
+            {t('coaching.messages.couldnt_refresh_messages_retrying_automatically')}
           </p>
         ) : null}
         {convo.messages === undefined ? (
-          <Spinner label="Loading messages" />
+          <Spinner label={t('coaching.messages.loading_messages')} />
         ) : convo.error && !convo.messages.length && !outbox.length ? (
-          <ErrorState title="Couldn’t load messages" message={convo.error} onRetry={convo.refresh} />
+          <ErrorState title={t('coaching.messages.couldnt_load_messages')} message={convo.error} onRetry={convo.refresh} />
         ) : rows.length === 0 ? (
-          <EmptyState title="No messages yet" body={rel.viewerIsCoach ? `Say hello to ${other?.name}.` : `Say hello to ${other?.name}. Share how training is going or ask a question.`} />
+          <EmptyState
+            title={t('coaching.messages.no_messages_yet')}
+            body={rel.viewerIsCoach ? t('coaching.messages.say_hello_to_x', { name: other?.name ?? '' }) : t('coaching.messages.say_hello_to_x_share_how', { name: other?.name ?? '' })}
+          />
         ) : (
-          <ol className="flex flex-col gap-1 px-3 py-3" aria-label="Messages">
+          <ol className="flex flex-col gap-1 px-3 py-3" aria-label={t('coaching.messages.messages')}>
             {rows.map((r, i) => {
               const created = r.kind === 'server' ? r.m.createdAt : new Date(r.o.createdAt).toISOString();
               const prev = rows[i - 1];
@@ -252,7 +267,7 @@ export default function MessagesPage() {
                   {showDay && (
                     <div className="flex items-center gap-2 my-3 text-xs text-faint" role="separator" aria-label={fmtDay(created, tz)}>
                       <span className="h-px flex-1 bg-line" />
-                      {dayLabel(created, tz)}
+                      {dayLabel(created, tz, t)}
                       <span className="h-px flex-1 bg-line" />
                     </div>
                   )}
@@ -287,7 +302,7 @@ export default function MessagesPage() {
       <div ref={listRef} className="flex-1 overflow-y-auto" aria-live="polite" aria-relevant="additions">
         {relFromCache && relError && (
           <p className="px-4 pt-2 text-xs text-muted" role="status">
-            Showing saved details: couldn’t check the latest status.
+            {t('coaching.messages.showing_saved_details_couldnt_check_the')}
           </p>
         )}
         {content}
@@ -295,7 +310,7 @@ export default function MessagesPage() {
       {readOnly && (
         <div className="border-t border-line px-4 py-3 pb-safe bg-surface">
           <p className="text-sm font-medium">{writable.ok ? '' : writable.reason}</p>
-          <p className="text-xs text-muted mt-1">{RETENTION_TEXT}</p>
+          <p className="text-xs text-muted mt-1">{retentionText()}</p>
           {draft.ready && (body.trim() || photos.length > 0) && <UnsentDraft body={body} photoCount={photos.length} onDiscard={() => { setBody(''); photos.forEach((p) => removePhoto(p.id)); }} />}
         </div>
       )}
@@ -308,17 +323,17 @@ export default function MessagesPage() {
           }}
         >
           {(photos.length > 0 || preparing > 0) && (
-            <ul className="flex gap-2 pb-2 overflow-x-auto" aria-label="Photos to send">
+            <ul className="flex gap-2 pb-2 overflow-x-auto" aria-label={t('coaching.messages.photos_to_send')}>
               {photos.map((p, i) => (
                 <li key={p.id} className="relative shrink-0">
-                  <img src={p.url} alt={`Photo ${i + 1} to send`} className="size-16 rounded-xl object-cover bg-surface-3" />
-                  <button type="button" onClick={() => removePhoto(p.id)} aria-label={`Remove photo ${i + 1}`} className="absolute -top-1.5 -right-1.5 size-7 rounded-full bg-surface-3 border border-line flex items-center justify-center">
+                  <img src={p.url} alt={t('coaching.messages.photo_x_to_send', { n: i + 1 })} className="size-16 rounded-xl object-cover bg-surface-3" />
+                  <button type="button" onClick={() => removePhoto(p.id)} aria-label={t('coaching.messages.remove_photo_x', { n: i + 1 })} className="absolute -top-1.5 -right-1.5 size-7 rounded-full bg-surface-3 border border-line flex items-center justify-center">
                     <X className="size-4" />
                   </button>
                 </li>
               ))}
               {preparing > 0 && (
-                <li className="size-16 rounded-xl bg-surface-2 flex items-center justify-center" role="status" aria-label="Preparing photo">
+                <li className="size-16 rounded-xl bg-surface-2 flex items-center justify-center" role="status" aria-label={t('social.preparing_photo')}>
                   <Loader2 className="size-5 animate-spin text-muted" aria-hidden />
                 </li>
               )}
@@ -331,11 +346,11 @@ export default function MessagesPage() {
           )}
           <div className="flex items-end gap-1.5 pb-2">
             <input ref={fileRef} type="file" accept="image/*" multiple className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => void addFiles(e.target.files)} />
-            <IconButton label="Add photos" onClick={() => fileRef.current?.click()} disabled={photos.length + preparing >= MAX_PHOTOS}>
+            <IconButton label={t('coaching.messages.add_photos')} onClick={() => fileRef.current?.click()} disabled={photos.length + preparing >= MAX_PHOTOS}>
               <ImagePlus className="size-5" />
             </IconButton>
             <label className="flex-1 min-w-0">
-              <span className="sr-only">Message {other?.name}</span>
+              <span className="sr-only">{t('coaching.messages.message_x', { name: other?.name ?? '' })}</span>
               <textarea
                 value={body}
                 readOnly={!draft.ready}
@@ -343,11 +358,11 @@ export default function MessagesPage() {
                 onKeyDown={onKeyDown}
                 maxLength={MESSAGE_MAX}
                 rows={1}
-                placeholder={online ? 'Message' : 'Message (sends when you’re back online)'}
+                placeholder={online ? t('coaching.messages.message') : t('coaching.messages.message_sends_when_youre_back_online')}
                 className="w-full min-h-11 max-h-40 resize-none rounded-xl bg-field border border-line-input px-3 py-2.5 text-[16px] text-ink placeholder:text-faint focus:border-accent [field-sizing:content]"
               />
             </label>
-            <IconButton label="Send message" type="submit" className="ember-fill" disabled={(!body.trim() && photos.length === 0) || preparing > 0}>
+            <IconButton label={t('coaching.messages.send_message')} type="submit" className="ember-fill" disabled={(!body.trim() && photos.length === 0) || preparing > 0}>
               <Send className="size-5" />
             </IconButton>
           </div>
@@ -357,21 +372,21 @@ export default function MessagesPage() {
 
       {rel && other && (
         <>
-          <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title="Conversation">
+          <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title={t('ai.history.title')}>
             <ul className="-mx-5 divide-y divide-line">
               <li>
                 <ListRow
                   left={<User className="size-5 text-muted" aria-hidden />}
-                  title={rel.viewerIsCoach ? `${other.name}’s details` : 'My coach'}
-                  subtitle={rel.viewerIsCoach ? 'Intake, shared records and program' : 'Sharing, programs, check-ins and ending coaching'}
+                  title={rel.viewerIsCoach ? t('coaching.messages.xs_details', { name: other.name }) : t('coaching.hub.my_coach')}
+                  subtitle={rel.viewerIsCoach ? t('coaching.messages.intake_shared_records_and_program') : t('coaching.messages.sharing_programs_check_ins_and_ending')}
                   onClick={() => nav(rel.viewerIsCoach ? `/coaching/client/${rel.id}` : '/coaching/my')}
                 />
               </li>
               <li>
                 <ListRow
                   left={<Flag className="size-5 text-muted" aria-hidden />}
-                  title="Report conversation"
-                  subtitle="Tell our moderators about a problem. To report one message, tap it."
+                  title={t('coaching.messages.report_conversation')}
+                  subtitle={t('coaching.messages.tell_our_moderators_about_a_problem')}
                   onClick={() => {
                     setMenuOpen(false);
                     setReport({});
@@ -381,8 +396,8 @@ export default function MessagesPage() {
               <li>
                 <ListRow
                   left={<Ban className="size-5 text-danger" aria-hidden />}
-                  title={<span className="text-danger">Block {other.name}</span>}
-                  subtitle="Ends coaching and stops all messages"
+                  title={<span className="text-danger">{t('coaching.messages.block_x', { name: other.name })}</span>}
+                  subtitle={t('coaching.messages.ends_coaching_and_stops_all_messages')}
                   onClick={() => {
                     setMenuOpen(false);
                     setBlockOpen(true);
@@ -394,21 +409,21 @@ export default function MessagesPage() {
           <ReportCoachingSheet open={!!report} onClose={() => setReport(null)} relationshipId={rel.id} messageId={report?.messageId} what={report?.messageId ? 'message' : 'conversation'} />
           <ConfirmDialog
             open={blockOpen}
-            title={`Block ${other.name}?`}
+            title={t('coaching.messages.block_x_confirm', { name: other.name })}
             danger
-            confirmLabel="Block and end coaching"
+            confirmLabel={t('coaching.messages.block_and_end_coaching')}
             busy={blocking}
             onCancel={() => setBlockOpen(false)}
             onConfirm={block}
             body={
               <div className="flex flex-col gap-2">
-                <p>Blocking ends coaching right away. Neither of you can message the other, and messages still waiting on this device won’t be sent.</p>
+                <p>{t('coaching.messages.blocking_ends_coaching_right_away_neither')}</p>
                 <p>
                   {rel.viewerIsCoach
-                    ? 'You lose access to this client’s shared records. Their workouts and accepted programs stay theirs.'
-                    : 'Your coach loses access to everything you shared. Your workouts and accepted programs stay yours, and this conversation stays readable to you.'}
+                    ? t('coaching.messages.you_lose_access_to_this_clients')
+                    : t('coaching.messages.your_coach_loses_access_to_everything')}
                 </p>
-                <p>You can unblock later from your social settings, but coaching won’t restart automatically.</p>
+                <p>{t('coaching.messages.you_can_unblock_later_from_your')}</p>
               </div>
             }
           />
@@ -421,9 +436,10 @@ export default function MessagesPage() {
 /** A draft that can no longer be sent (coaching ended / paused): kept so the text isn't lost. */
 function UnsentDraft({ body, photoCount, onDiscard }: { body: string; photoCount: number; onDiscard: () => void }) {
   const toast = useToast();
+  const { t, tp } = useT();
   return (
     <div className="mt-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
-      <p className="text-xs text-muted">Your unsent draft{photoCount ? ` (${photoCount} photo${photoCount === 1 ? '' : 's'})` : ''} is kept on this device. It won’t be sent.</p>
+      <p className="text-xs text-muted">{photoCount ? tp('coaching.messages.unsent_draft_kept_photos', photoCount) : t('coaching.messages.unsent_draft_kept')}</p>
       {body.trim() && <p className="mt-1 text-sm whitespace-pre-wrap break-words select-text line-clamp-4">{body}</p>}
       <div className="flex gap-1 mt-1">
         {body.trim() && (
@@ -434,17 +450,17 @@ function UnsentDraft({ body, photoCount, onDiscard }: { body: string; photoCount
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(body);
-                toast.show('Draft copied', { tone: 'success' });
+                toast.show(t('coaching.messages.draft_copied'), { tone: 'success' });
               } catch {
-                toast.show('Couldn’t copy automatically: select the text and copy it.', { tone: 'warn' });
+                toast.show(t('coaching.messages.couldnt_copy_automatically_select_the_text'), { tone: 'warn' });
               }
             }}
           >
-            Copy text
+            {t('coaching.messages.copy_text')}
           </Button>
         )}
         <Button size="sm" variant="ghost" className="text-danger" icon={<Trash2 className="size-4" />} onClick={onDiscard}>
-          Discard draft
+          {t('coaching.messages.discard_draft')}
         </Button>
       </div>
     </div>
@@ -453,26 +469,27 @@ function UnsentDraft({ body, photoCount, onDiscard }: { body: string; photoCount
 
 /* ================================================================ bubbles */
 function timeText(iso: string, tz: string) {
-  const t = Date.parse(iso);
-  return isFinite(t) ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz }).format(t) : '';
+  const ms = Date.parse(iso);
+  return isFinite(ms) ? clockText(ms, tz) : '';
 }
 function dayKey(iso: string, tz: string) {
-  const t = Date.parse(iso);
-  return isFinite(t) ? localDate(t, tz) : '';
+  const ms = Date.parse(iso);
+  return isFinite(ms) ? localDate(ms, tz) : '';
 }
-function dayLabel(iso: string, tz: string) {
+function dayLabel(iso: string, tz: string, t: UseT['t']) {
   const k = dayKey(iso, tz);
   const today = localDate(Date.now(), tz);
   const yesterday = localDate(Date.now() - 86_400_000, tz);
-  if (k === today) return 'Today';
-  if (k === yesterday) return 'Yesterday';
+  if (k === today) return t('format.relative.today');
+  if (k === yesterday) return t('format.relative.yesterday');
   return fmtDay(iso, tz);
 }
 
 function ServerBubble({ m, mine, tz, selected, onSelect, onReport }: { m: CoachMessage; mine: boolean; tz: string; selected: boolean; onSelect: () => void; onReport: () => void }) {
+  const { t } = useT();
   const inner = (
     <>
-      {m.sharedFromAi && <span className="block text-[11px] font-medium text-info mb-1">Shared from the training assistant</span>}
+      {m.sharedFromAi && <span className="block text-[11px] font-medium text-info mb-1">{t('coaching.messages.shared_from_the_training_assistant')}</span>}
       {m.media.length > 0 && <MediaGrid media={m.media} />}
       {m.body && <span className="block whitespace-pre-wrap break-words text-[15px]">{m.body}</span>}
     </>
@@ -492,17 +509,17 @@ function ServerBubble({ m, mine, tz, selected, onSelect, onReport }: { m: CoachM
         {mine &&
           (m.status === 'awaiting_media' ? (
             <>
-              · <Loader2 className="size-3 animate-spin" aria-hidden /> Uploading photos…
+              · <Loader2 className="size-3 animate-spin" aria-hidden /> {t('coaching.messages.uploading_photos')}
             </>
           ) : (
             <>
-              · <Check className="size-3" aria-hidden /> Sent
+              · <Check className="size-3" aria-hidden /> {t('coaching.messages.sent')}
             </>
           ))}
       </span>
       {!mine && selected && (
         <Button size="sm" variant="ghost" className="text-muted" icon={<Flag className="size-4" />} onClick={onReport}>
-          Report this message
+          {t('coaching.messages.report_this_message')}
         </Button>
       )}
     </div>
@@ -510,16 +527,17 @@ function ServerBubble({ m, mine, tz, selected, onSelect, onReport }: { m: CoachM
 }
 
 function MediaGrid({ media }: { media: CoachMessage['media'] }) {
+  const { t } = useT();
   return (
     <div className={cx('grid gap-1 mb-1.5', media.length > 1 ? 'grid-cols-2' : 'grid-cols-1')}>
       {media.map((x, i) =>
         x.thumbUrl || x.url ? (
-          <a key={x.id} href={x.url ?? x.thumbUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} aria-label={`Open photo ${i + 1}`}>
+          <a key={x.id} href={x.url ?? x.thumbUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} aria-label={t('coaching.messages.open_photo_x', { n: i + 1 })}>
             <img src={x.thumbUrl ?? x.url} alt="" width={x.width} height={x.height} loading="lazy" className="w-full max-h-64 rounded-xl object-cover bg-surface-3" />
           </a>
         ) : (
           <span key={x.id} className="h-24 rounded-xl bg-surface-3 flex items-center justify-center text-xs text-muted">
-            Photo processing…
+            {t('coaching.messages.photo_processing')}
           </span>
         ),
       )}
@@ -530,6 +548,7 @@ function MediaGrid({ media }: { media: CoachMessage['media'] }) {
 function OutboxBubble({ item, tz, online, accountId }: { item: CoachOutboxItem; tz: string; online: boolean; accountId: string | null }) {
   const { db } = useApp();
   const toast = useToast();
+  const { t } = useT();
   const sending = useOutboxInFlight(item.id);
   const urls = useMemo(() => (item.photos ?? []).map((p) => URL.createObjectURL(p.thumb)), [item.photos]);
   useEffect(() => () => urls.forEach((u) => URL.revokeObjectURL(u)), [urls]);
@@ -537,9 +556,9 @@ function OutboxBubble({ item, tz, online, accountId }: { item: CoachOutboxItem; 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(item.body);
-      toast.show('Message copied', { tone: 'success' });
+      toast.show(t('coaching.messages.message_copied'), { tone: 'success' });
     } catch {
-      toast.show('Couldn’t copy automatically: select the text and copy it.', { tone: 'warn' });
+      toast.show(t('coaching.messages.couldnt_copy_automatically_select_the_text'), { tone: 'warn' });
     }
   };
   return (
@@ -548,7 +567,7 @@ function OutboxBubble({ item, tz, online, accountId }: { item: CoachOutboxItem; 
         {urls.length > 0 && (
           <div className={cx('grid gap-1 mb-1.5', urls.length > 1 ? 'grid-cols-2' : 'grid-cols-1')}>
             {urls.map((u, i) => (
-              <img key={u} src={u} alt={`Photo ${i + 1}`} className="w-full max-h-48 rounded-xl object-cover bg-surface-3" />
+              <img key={u} src={u} alt={t('coaching.messages.photo_x', { n: i + 1 })} className="w-full max-h-48 rounded-xl object-cover bg-surface-3" />
             ))}
           </div>
         )}
@@ -564,15 +583,15 @@ function OutboxBubble({ item, tz, online, accountId }: { item: CoachOutboxItem; 
           {item.error && <p className="text-xs text-muted text-right">{item.error}</p>}
           <div className="flex flex-wrap justify-end gap-1">
             <Button size="sm" variant="ghost" icon={<RefreshCw className="size-4" />} onClick={() => void retryCoachMessage(item.id, db, accountId)} disabled={!online}>
-              Retry
+              {t('workout.retry')}
             </Button>
             {item.body && (
               <Button size="sm" variant="ghost" icon={<Copy className="size-4" />} onClick={copy}>
-                Copy text
+                {t('coaching.messages.copy_text')}
               </Button>
             )}
             <Button size="sm" variant="ghost" className="text-danger" icon={<Trash2 className="size-4" />} onClick={() => void discardCoachMessage(item.id, db)}>
-              Delete
+              {t('common.delete')}
             </Button>
           </div>
         </div>

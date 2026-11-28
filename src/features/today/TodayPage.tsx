@@ -9,6 +9,7 @@ import { addDays, formatDate, formatMinutes, startOfWeek, todayISO, weekday, wee
 import { t as translate, useT } from '@/i18n';
 import { useActiveProgram, useAllActivities, useAllSessions, useStarters } from '@/features/train/hooks';
 import { nextPlannedSession, plannedSessionsInRange, rescheduleMissed, skipPlanned, type PlannedSession } from '@/domain/program/schedule';
+import { sessionDisplayName } from '@/domain/program/localize';
 import { saveRecord } from '@/db/repo';
 import { NutritionTodayCard } from '@/features/nutrition/NutritionTodayCard';
 import { useToast } from '@/components/toast';
@@ -86,7 +87,7 @@ export default function TodayPage() {
             {active
               ? t('today.midWorkout')
               : next?.date === today
-                ? t('today.focus', { name: next.template.name })
+                ? t('today.focus', { name: sessionDisplayName(next.template) })
                 : program
                   ? t('today.restDay')
                   : isNew
@@ -141,7 +142,7 @@ export default function TodayPage() {
                   {next.template.kind === 'lifting' ? <Dumbbell className="size-5" /> : <Activity className="size-5" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-lg font-semibold leading-tight">{next.template.name}</div>
+                  <div className="text-lg font-semibold leading-tight">{sessionDisplayName(next.template)}</div>
                   <div className="text-sm text-muted mt-0.5">
                     {t('today.sessionMeta', {
                       date: next.date === today ? t('format.relative.today') : next.date === addDays(today, 1) ? t('today.tomorrow') : formatDate(next.date),
@@ -205,7 +206,7 @@ export default function TodayPage() {
             {plan.missed.map((m) => (
               <li key={`${m.date}-${m.template.id}`} className="flex items-center gap-2 text-sm">
                 <span className="flex-1 min-w-0 truncate">
-                  {m.template.name} · {formatDate(m.date)}
+                  {sessionDisplayName(m.template)} · {formatDate(m.date)}
                 </span>
                 <Button size="sm" onClick={() => setMissedAction(m)}>
                   {t('today.options')}
@@ -266,7 +267,7 @@ export default function TodayPage() {
 
       <ConfirmDialog
         open={!!missedAction}
-        title={missedAction ? t('today.missedTitle', { name: missedAction.template.name }) : ''}
+        title={missedAction ? t('today.missedTitle', { name: sessionDisplayName(missedAction.template) }) : ''}
         body={t('today.missedBody')}
         confirmLabel={t('today.reschedule')}
         onCancel={() => setMissedAction(null)}

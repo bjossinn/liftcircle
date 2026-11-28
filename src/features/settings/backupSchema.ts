@@ -46,8 +46,11 @@ export class BackupValidationError extends Error {
     readonly code: BackupErrorCode = 'other',
   ) {
     // The issue lines are technical validation details (record paths, schema messages) and are shown as they are.
-    // i18n: no approved Icelandic copy for the "…and N more" overflow line.
-    super(issues.length ? `${message}\n${issues.slice(0, MAX_ISSUES_SHOWN).map((i) => `• ${i}`).join('\n')}${issues.length > MAX_ISSUES_SHOWN ? `\n…and ${issues.length - MAX_ISSUES_SHOWN} more` : ''}` : message);
+    super(
+      issues.length
+        ? `${message}\n${issues.slice(0, MAX_ISSUES_SHOWN).map((i) => `• ${i}`).join('\n')}${issues.length > MAX_ISSUES_SHOWN ? `\n${t('settings.backupMoreIssues', { count: issues.length - MAX_ISSUES_SHOWN })}` : ''}`
+        : message,
+    );
   }
   /** True when the message itself already tells the person that nothing was changed or imported. */
   get statesNothingChanged(): boolean {

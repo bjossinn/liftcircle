@@ -3,6 +3,7 @@
  * Pure — no React, no network. The browser Geolocation object is injected so the denied path is testable.
  */
 import type { CoachCard, CoachSearch } from '@/backend/coachingContract';
+import { t, type MessageKey } from '@/i18n';
 import { isCountryCode } from './options';
 
 export const PAGE_SIZE = 20;
@@ -148,9 +149,9 @@ export function radiusUsable(point: SearchPoint | null, distanceAvailable: boole
 /** "about 12 km" — or null when the server could not calculate a distance. Never invented. */
 export function distanceText(km: number | null | undefined): string | null {
   if (km == null || !isFinite(km) || km < 0) return null;
-  if (km < 1) return 'less than 1 km away';
+  if (km < 1) return t('coaching.directory.less_than_1_km_away');
   const r = km < 10 ? Math.round(km) : km < 100 ? Math.round(km / 5) * 5 : Math.round(km / 10) * 10;
-  return `about ${r} km away`;
+  return t('coaching.directory.about_x_km_away', { km: r });
 }
 
 export function splitResults(items: CoachCard[]): { local: CoachCard[]; remote: CoachCard[] } {
@@ -167,7 +168,7 @@ export function mergePages(prev: CoachCard[], next: CoachCard[]): CoachCard[] {
 }
 
 export function placeLabel(s: DirectorySearchState, point: SearchPoint | null, countryName: (c: string) => string): string {
-  if (point?.source === 'device') return 'your location';
+  if (point?.source === 'device') return t('coaching.directory.your_location');
   if (s.place?.label) return s.place.label;
   const parts = [clip(s.city), clip(s.region), s.country ? countryName(s.country) : ''].filter(Boolean);
   return parts.join(', ');
@@ -178,15 +179,15 @@ export type GeoOutcome =
   | { ok: true; point: SearchPoint }
   | { ok: false; reason: 'denied' | 'unavailable' | 'timeout' | 'unsupported'; message: string };
 
-const GEO_MESSAGES: Record<Exclude<GeoOutcome, { ok: true }>['reason'], string> = {
-  denied: 'Location permission was declined. You can still search by typing a city or region.',
-  unavailable: 'Your location isn’t available right now. Type a city or region instead.',
-  timeout: 'Finding your location took too long. Try again, or type a city or region.',
-  unsupported: 'This browser can’t share your location. Type a city or region instead.',
+const GEO_MESSAGES: Record<Exclude<GeoOutcome, { ok: true }>['reason'], MessageKey> = {
+  denied: 'coaching.directory.geo_denied',
+  unavailable: 'coaching.directory.geo_unavailable',
+  timeout: 'coaching.directory.geo_timeout',
+  unsupported: 'coaching.directory.geo_unsupported',
 };
 
 export function geoFailure(reason: Exclude<GeoOutcome, { ok: true }>['reason']): GeoOutcome {
-  return { ok: false, reason, message: GEO_MESSAGES[reason] };
+  return { ok: false, reason, message: t(GEO_MESSAGES[reason]) };
 }
 
 /** Map a GeolocationPositionError code (1 denied, 2 unavailable, 3 timeout). */

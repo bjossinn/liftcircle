@@ -9,6 +9,7 @@ import { TopActions } from '@/app/TopActions';
 import { STATUS_LABELS, STATUS_TONE, dateText } from '@/domain/coaching/display';
 import { CoachPhoto, CoachingAccessNotice, GuestCoachingIntro, useCoachingAccess, useLoad, type Loaded } from './directory/common';
 import { CoachSwitcher, useHumanCoaching } from './coachChannels';
+import { useT, type MessageKey } from '@/i18n';
 
 const linkBtn = 'inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl text-[15px] transition-colors';
 const primaryLink = `${linkBtn} ember-fill font-semibold`;
@@ -21,8 +22,9 @@ const secondaryLink = `${linkBtn} bg-surface-2 text-ink hover:bg-surface-3 borde
 export default function CoachingHubPage() {
   const { access } = useCoachingAccess();
   const human = useHumanCoaching();
+  const { t } = useT();
   return (
-    <Page title="Coaching" actions={<TopActions />}>
+    <Page title={t('ai.channels.human')} actions={<TopActions />}>
       <div className="mb-3">
         <CoachSwitcher current="human" unread={human.unread} onRetry={human.uncertain ? human.retry : undefined} />
       </div>
@@ -32,8 +34,9 @@ export default function CoachingHubPage() {
 }
 
 function HubContent() {
-  const rels = useLoad(() => coachingApi.myRelationships(), [], { fallback: 'Couldn’t load your coaching.' });
-  const profile = useLoad(() => coachingApi.getMyCoachProfile(), [], { fallback: 'Couldn’t load your coach profile.' });
+  const { t } = useT();
+  const rels = useLoad(() => coachingApi.myRelationships(), [], { fallback: t('coaching.hub.couldnt_load_your_coaching') });
+  const profile = useLoad(() => coachingApi.getMyCoachProfile(), [], { fallback: t('coaching.hub.couldnt_load_your_coach_profile') });
   const roles = useLoad(() => coachingApi.myRoles(), []);
   // Marketplace off: AI-first. The training assistant leads, and "My coach" only appears for someone who has (or had)
   // a human coach or a pending request, without any "Look for a coach" links.
@@ -54,13 +57,13 @@ function HubContent() {
       <ForCoachesSection profile={profile} rels={rels.data} />
       {roles.data?.admin && (
         <>
-          <SectionTitle>Admin</SectionTitle>
+          <SectionTitle>{t('coaching.hub.admin')}</SectionTitle>
           <Card>
             <Link to="/coaching/admin" className="flex items-center gap-3 px-4 py-3 min-h-14 hover:bg-surface-2 rounded-2xl">
               <ShieldCheck className="size-5 text-accent" aria-hidden />
               <span className="flex-1">
-                <span className="block font-medium">Coach applications</span>
-                <span className="block text-xs text-muted">Review applications, qualifications and suspensions</span>
+                <span className="block font-medium">{t('coaching.admin.coach_applications')}</span>
+                <span className="block text-xs text-muted">{t('coaching.hub.review_applications_qualifications_and_suspensions')}</span>
               </span>
               <ChevronRight className="size-5 text-muted" aria-hidden />
             </Link>
@@ -73,6 +76,7 @@ function HubContent() {
 
 /* ---------------------------------------------------------------- my coach */
 function MyCoachSection({ rels, marketplace }: { rels: Loaded<CoachingRelationship[]>; marketplace: boolean }) {
+  const { t } = useT();
   const mine = (rels.data ?? []).filter((r) => !r.viewerIsCoach);
   const active = mine.find((r) => r.status === 'active');
   const pending = mine.filter((r) => r.status === 'requested');
@@ -82,9 +86,9 @@ function MyCoachSection({ rels, marketplace }: { rels: Loaded<CoachingRelationsh
     if (rels.error && !rels.data)
       return (
         <section aria-labelledby="hub-my-coach">
-          <SectionTitle id="hub-my-coach">My coach</SectionTitle>
+          <SectionTitle id="hub-my-coach">{t('coaching.hub.my_coach')}</SectionTitle>
           <Card className="pb-4 flex flex-col items-center">
-            <ErrorState title="Couldn’t load your coaching" message={rels.error} onRetry={rels.reload} />
+            <ErrorState title={t('coaching.hub.couldnt_load_your_coaching')} message={rels.error} onRetry={rels.reload} />
           </Card>
         </section>
       );
@@ -92,17 +96,17 @@ function MyCoachSection({ rels, marketplace }: { rels: Loaded<CoachingRelationsh
   }
   return (
     <section aria-labelledby="hub-my-coach">
-      <SectionTitle id="hub-my-coach">My coach</SectionTitle>
+      <SectionTitle id="hub-my-coach">{t('coaching.hub.my_coach')}</SectionTitle>
       {rels.loading && !rels.data ? (
         <Card className="p-2">
-          <Spinner label="Loading your coaching" />
+          <Spinner label={t('coaching.hub.loading_your_coaching')} />
         </Card>
       ) : rels.error && !rels.data ? (
         <Card className="pb-4 flex flex-col items-center">
-          <ErrorState title="Couldn’t load your coaching" message={rels.error} onRetry={rels.reload} />
+          <ErrorState title={t('coaching.hub.couldnt_load_your_coaching')} message={rels.error} onRetry={rels.reload} />
           {marketplace && (
             <Link to="/coaching/find" className="text-sm text-accent font-medium min-h-11 inline-flex items-center">
-              Look for a coach
+              {t('coaching.hub.look_for_a_coach')}
             </Link>
           )}
         </Card>
@@ -118,8 +122,8 @@ function MyCoachSection({ rels, marketplace }: { rels: Loaded<CoachingRelationsh
               <Link to="/coaching/my" className="flex items-center gap-3 p-4 hover:bg-surface-2 rounded-2xl">
                 <History className="size-5 text-muted" aria-hidden />
                 <span className="flex-1">
-                  <span className="block font-medium">Past coaching</span>
-                  <span className="block text-xs text-muted">Your earlier coaches, feedback and check-ins</span>
+                  <span className="block font-medium">{t('coaching.hub.past_coaching')}</span>
+                  <span className="block text-xs text-muted">{t('coaching.hub.your_earlier_coaches_feedback_and_check')}</span>
                 </span>
                 <ChevronRight className="size-5 text-muted" aria-hidden />
               </Link>
@@ -132,23 +136,23 @@ function MyCoachSection({ rels, marketplace }: { rels: Loaded<CoachingRelationsh
                   <GraduationCap className="size-5" aria-hidden />
                 </span>
                 <div>
-                  <p className="font-semibold">{pending.length ? 'Waiting for a reply' : 'Work with a coach'}</p>
+                  <p className="font-semibold">{pending.length ? t('coaching.hub.waiting_for_a_reply') : t('coaching.hub.work_with_a_coach')}</p>
                   <p className="text-sm text-muted">
                     {pending.length
-                      ? 'You’ll get a notification when the coach answers. You can look at other coaches meanwhile.'
-                      : 'Find an approved coach near you or online. You choose exactly what they can see.'}
+                      ? t('coaching.hub.youll_get_a_notification_when_the')
+                      : t('coaching.hub.find_an_approved_coach_near_you')}
                   </p>
                 </div>
               </div>
               <Link to="/coaching/find" className={pending.length ? secondaryLink : primaryLink}>
                 <Search className="size-4" aria-hidden />
-                Look for a coach
+                {t('coaching.hub.look_for_a_coach')}
               </Link>
             </Card>
           )}
           {active && marketplace && (
             <Link to="/coaching/find" className="text-sm text-accent font-medium min-h-11 inline-flex items-center px-1">
-              Look for a different coach
+              {t('coaching.hub.look_for_a_different_coach')}
             </Link>
           )}
         </div>
@@ -158,6 +162,7 @@ function MyCoachSection({ rels, marketplace }: { rels: Loaded<CoachingRelationsh
 }
 
 function RelationshipCard({ rel }: { rel: CoachingRelationship }) {
+  const { t, tp } = useT();
   const pending = rel.status === 'requested';
   return (
     <Card>
@@ -166,9 +171,15 @@ function RelationshipCard({ rel }: { rel: CoachingRelationship }) {
         <span className="min-w-0 flex-1">
           <span className="block font-semibold truncate">{rel.coach.displayName}</span>
           <span className="flex flex-wrap items-center gap-1.5 mt-1">
-            {pending ? <Badge tone="warn">Request pending</Badge> : rel.coach.suspended ? <Badge tone="danger">Coaching paused</Badge> : <Badge tone="accent">Your coach</Badge>}
-            {pending && <span className="text-xs text-muted">sent {dateText(rel.requestedAt)}</span>}
-            {!pending && rel.unread > 0 && <Badge tone="info">{rel.unread} unread</Badge>}
+            {pending ? (
+              <Badge tone="warn">{t('coaching.hub.request_pending')}</Badge>
+            ) : rel.coach.suspended ? (
+              <Badge tone="danger">{t('coaching.hub.coaching_paused')}</Badge>
+            ) : (
+              <Badge tone="accent">{t('coaching.hub.your_coach')}</Badge>
+            )}
+            {pending && <span className="text-xs text-muted">{t('coaching.hub.sent_on', { date: dateText(rel.requestedAt) })}</span>}
+            {!pending && rel.unread > 0 && <Badge tone="info">{tp('coaching.hub.unreadCount', rel.unread)}</Badge>}
           </span>
         </span>
         <ChevronRight className="size-5 text-muted" aria-hidden />
@@ -178,21 +189,22 @@ function RelationshipCard({ rel }: { rel: CoachingRelationship }) {
 }
 
 /* ---------------------------------------------------------------- training assistant */
-function aiUnavailableText(a: Extract<AiAvailability, { available: false }>['reason']): string {
+function aiUnavailableKey(a: Extract<AiAvailability, { available: false }>['reason']): MessageKey {
   switch (a) {
     case 'not_configured':
     case 'backend_missing':
-      return 'The training assistant isn’t switched on in this version of Hard Earned yet.';
+      return 'coaching.hub.ai_not_switched_on';
     case 'provider_down':
-      return 'The training assistant is temporarily unavailable. Please try again later.';
+      return 'coaching.hub.ai_temporarily_unavailable';
     case 'offline':
-      return 'The training assistant needs a connection.';
+      return 'coaching.hub.ai_needs_connection';
     case 'disabled':
-      return 'The training assistant is turned off.';
+      return 'ai.error.disabled';
   }
 }
 
 function AiSection() {
+  const { t } = useT();
   const status = useLoad(async () => {
     const st = await aiApi.status();
     const settings = await aiApi.getSettings().catch(() => null);
@@ -203,39 +215,37 @@ function AiSection() {
   const st = status.data?.st;
   return (
     <section aria-labelledby="hub-ai">
-      <SectionTitle id="hub-ai">Training assistant</SectionTitle>
+      <SectionTitle id="hub-ai">{t('ai.title')}</SectionTitle>
       <Card className="p-4 flex flex-col gap-3">
         <div className="flex items-start gap-3">
           <span className="size-10 rounded-xl bg-surface-3 text-info flex items-center justify-center shrink-0">
             <Bot className="size-5" aria-hidden />
           </span>
           <div className="min-w-0">
-            <p className="font-semibold">{enabled ? (paused ? 'The training assistant is paused' : 'Your training assistant') : 'Start with the training assistant'}</p>
-            <p className="text-sm text-muted">
-              Get suggestions and answers based on the records you choose to share. AI messages are always labelled, and nothing changes in your plan unless you accept it.
-            </p>
+            <p className="font-semibold">{enabled ? (paused ? t('coaching.hub.the_training_assistant_is_paused') : t('aiConsent.title')) : t('coaching.hub.start_with_the_training_assistant')}</p>
+            <p className="text-sm text-muted">{t('coaching.hub.get_suggestions_and_answers_based_on')}</p>
           </div>
         </div>
         {status.loading ? (
-          <Spinner label="Checking the training assistant" />
+          <Spinner label={t('coaching.hub.checking_the_training_assistant')} />
         ) : status.error || !st ? (
           <Notice>
-            The training assistant isn’t available right now.{' '}
+            {t('coaching.hub.the_training_assistant_isnt_available_right')}{' '}
             <button type="button" className="text-accent font-medium min-h-11 px-1" onClick={status.reload}>
-              Check again
+              {t('ai.chat.checkAgain')}
             </button>
           </Notice>
         ) : st.available ? (
           <Link to={enabled ? '/coach' : '/coaching/ai/setup'} className={enabled ? secondaryLink : primaryLink}>
             <Bot className="size-4" aria-hidden />
-            {enabled ? 'Open training assistant' : 'Start with the training assistant'}
+            {enabled ? t('ai.proposals.openAssistant') : t('coaching.hub.start_with_the_training_assistant')}
           </Link>
         ) : (
           <>
-            <Notice>{aiUnavailableText(st.reason)}</Notice>
+            <Notice>{t(aiUnavailableKey(st.reason))}</Notice>
             {enabled && (
               <Link to="/coaching/ai/settings" className={secondaryLink}>
-                training assistant settings
+                {t('coaching.hub.training_assistant_settings')}
               </Link>
             )}
           </>
@@ -254,6 +264,7 @@ function AiSection() {
  * someone known to coach (relationships as the coach) gets the full "For coaches" error card instead.
  */
 function ForCoachesSection({ profile, rels }: { profile: Loaded<CoachProfile | null>; rels: CoachingRelationship[] | undefined }) {
+  const { t } = useT();
   const p = profile.data;
   const asCoach = (rels ?? []).filter((r) => r.viewerIsCoach);
   const requests = asCoach.filter((r) => r.status === 'requested').length;
@@ -262,45 +273,47 @@ function ForCoachesSection({ profile, rels }: { profile: Loaded<CoachProfile | n
   if (!p && loadFailed && asCoach.length === 0)
     return (
       <Notice className="mt-4">
-        Some of your coaching details couldn’t load.{' '}
+        {t('coaching.hub.some_of_your_coaching_details_couldnt')}{' '}
         <button type="button" className="text-accent font-medium min-h-11 px-1" onClick={profile.reload}>
-          Retry
+          {t('workout.retry')}
         </button>
       </Notice>
     );
   if (!p && !loadFailed) return null;
   return (
     <section aria-labelledby="hub-coaches">
-      <SectionTitle id="hub-coaches">For coaches</SectionTitle>
+      <SectionTitle id="hub-coaches">{t('coaching.hub.for_coaches')}</SectionTitle>
       <Card className="p-4 flex flex-col gap-3">
         {!p ? (
-          <ErrorState title="Couldn’t load your coach profile" message={profile.error ?? undefined} onRetry={profile.reload} />
+          <ErrorState title={t('coaching.hub.couldnt_load_your_coach_profile')} message={profile.error ?? undefined} onRetry={profile.reload} />
         ) : p.status === 'approved' ? (
           <>
             <div className="flex items-center justify-between gap-2">
               <p className="font-semibold">{p.displayName}</p>
-              {p.suspended ? <Badge tone="danger">Suspended</Badge> : <Badge tone="accent">Listed coach</Badge>}
+              {p.suspended ? <Badge tone="danger">{t('coaching.admin.suspended')}</Badge> : <Badge tone="accent">{t('coaching.hub.listed_coach')}</Badge>}
             </div>
             {p.suspended ? (
-              <Notice tone="danger">Your coach account is suspended{p.suspendedReason ? `: ${p.suspendedReason}` : '.'} Your listing is hidden and coaching tools are unavailable.</Notice>
+              <Notice tone="danger">
+                {p.suspendedReason ? t('coaching.hub.suspended_with_reason', { reason: p.suspendedReason }) : t('coaching.hub.suspended_no_reason')}
+              </Notice>
             ) : (
               <dl className="grid grid-cols-2 gap-2 text-sm">
                 <div>
-                  <dt className="text-xs text-muted">Directory listing</dt>
-                  <dd className="font-medium">{p.listed ? 'Listed' : 'Hidden'}</dd>
+                  <dt className="text-xs text-muted">{t('coaching.hub.directory_listing')}</dt>
+                  <dd className="font-medium">{p.listed ? t('coaching.hub.listed') : t('coaching.hub.hidden')}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-muted">New clients</dt>
-                  <dd className="font-medium">{p.acceptingClients ? 'Accepting' : 'Not accepting'}</dd>
+                  <dt className="text-xs text-muted">{t('coaching.hub.new_clients')}</dt>
+                  <dd className="font-medium">{p.acceptingClients ? t('coaching.hub.accepting') : t('coaching.admin.not_accepting')}</dd>
                 </div>
                 {rels && (
                   <>
                     <div>
-                      <dt className="text-xs text-muted">Active clients</dt>
+                      <dt className="text-xs text-muted">{t('coaching.hub.active_clients')}</dt>
                       <dd className="font-medium tabular">{clients}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs text-muted">Pending requests</dt>
+                      <dt className="text-xs text-muted">{t('coaching.hub.pending_requests')}</dt>
                       <dd className="font-medium tabular">{requests}</dd>
                     </div>
                   </>
@@ -311,37 +324,37 @@ function ForCoachesSection({ profile, rels }: { profile: Loaded<CoachProfile | n
               {!p.suspended && (
                 <Link to="/coaching/dashboard" className={`${primaryLink} flex-1`}>
                   <ClipboardList className="size-4" aria-hidden />
-                  Your coaching workspace
+                  {t('coaching.dashboard.your_coaching_workspace')}
                 </Link>
               )}
               <Link to="/coaching/apply" className={`${secondaryLink} flex-1`}>
-                Edit coach profile
+                {t('coaching.hub.edit_coach_profile')}
               </Link>
             </div>
           </>
         ) : (
           <>
             <div className="flex items-center justify-between gap-2">
-              <p className="font-semibold">Your coach application</p>
+              <p className="font-semibold">{t('coaching.hub.your_coach_application')}</p>
               <Badge tone={STATUS_TONE[p.status]}>{STATUS_LABELS[p.status]}</Badge>
             </div>
             <p className="text-sm text-muted">
               {p.status === 'draft'
-                ? 'Finish your profile and submit it for review when you’re ready.'
+                ? t('coaching.hub.finish_your_profile_and_submit_it')
                 : p.status === 'submitted'
-                  ? 'Application received. You’ll see its status here, and get a notification when it’s reviewed.'
+                  ? t('coaching.hub.application_received_youll_see_its_status')
                   : p.status === 'changes_requested'
-                    ? 'Reviewers asked for a few changes. Update your application and resubmit.'
-                    : 'Your application wasn’t approved. You can read the reason, update it and apply again.'}
+                    ? t('coaching.hub.reviewers_asked_for_a_few_changes')
+                    : t('coaching.hub.your_application_wasnt_approved_you_can')}
             </p>
             <Link to="/coaching/apply" className={p.status === 'submitted' ? secondaryLink : primaryLink}>
-              {p.status === 'submitted' ? 'View application' : 'Continue application'}
+              {p.status === 'submitted' ? t('coaching.hub.view_application') : t('coaching.hub.continue_application')}
             </Link>
           </>
         )}
       </Card>
       {p && p.status !== 'approved' && (
-        <p className="text-xs text-muted px-1 mt-2">Applicants can prepare a profile, but don’t appear in search or work with clients until approved.</p>
+        <p className="text-xs text-muted px-1 mt-2">{t('coaching.hub.applicants_can_prepare_a_profile_but')}</p>
       )}
     </section>
   );

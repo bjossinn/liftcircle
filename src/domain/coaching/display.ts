@@ -1,6 +1,14 @@
 /** Display text for coaching records (pure). */
 import type { ApplicationStatus, CoachFormat, ReviewEvent, ServiceArea } from '@/backend/coachingContract';
-import { countryName, FORMAT_LABELS } from './options';
+import { getLanguage, localeFor, t, type Language, type MessageKey } from '@/i18n';
+import { countryName, formatLabel } from './options';
+
+/** Record whose values are message lookups, read in the current language on every access. */
+function liveRecord<K extends string>(keys: Record<K, MessageKey>): Record<K, string> {
+  const o = {} as Record<K, string>;
+  for (const k of Object.keys(keys) as K[]) Object.defineProperty(o, k, { enumerable: true, get: () => t(keys[k]) });
+  return Object.freeze(o);
+}
 
 export function areaText(a: Pick<ServiceArea, 'kind' | 'city' | 'region' | 'country'>): string {
   const parts = a.kind === 'country' ? [] : a.kind === 'region' ? [a.region] : [a.city, a.region];
@@ -10,26 +18,26 @@ export function areaText(a: Pick<ServiceArea, 'kind' | 'city' | 'region' | 'coun
 /** Service area with the coach's published in-person travel radius, when they set one. */
 export function areaWithRadius(a: ServiceArea): string {
   const base = areaText(a);
-  return a.radiusKm && a.lat != null && a.lng != null ? `${base} (travels up to ${Math.round(a.radiusKm)} km)` : base;
+  return a.radiusKm && a.lat != null && a.lng != null ? `${base} ${t('coaching.directory.travels_up_to_x_km', { km: Math.round(a.radiusKm) })}` : base;
 }
 
 export function locationText(c: { city?: string | null; region?: string | null; country?: string | null }): string {
   return [c.city, c.region, c.country ? countryName(c.country) : null].filter((p): p is string => !!p && !!p.trim()).join(', ');
 }
 
-export function formatsText(f: CoachFormat[]): string {
-  if (f.includes('in_person') && f.includes('online')) return 'In person and online';
-  if (f.length === 0) return 'Format not set';
-  return f.map((x) => FORMAT_LABELS[x]).join(', ');
+export function formatsText(f: CoachFormat[], language: Language = getLanguage()): string {
+  if (f.includes('in_person') && f.includes('online')) return t('coaching.directory.in_person_and_online', undefined, language);
+  if (f.length === 0) return t('coaching.directory.format_not_set', undefined, language);
+  return f.map((x) => formatLabel(x, language)).join(', ');
 }
 
-export const STATUS_LABELS: Record<ApplicationStatus, string> = {
-  draft: 'Draft',
-  submitted: 'Submitted for review',
-  changes_requested: 'Changes requested',
-  approved: 'Approved coach',
-  rejected: 'Not approved',
-};
+export const STATUS_LABELS: Record<ApplicationStatus, string> = liveRecord<ApplicationStatus>({
+  draft: 'coaching.status.draft',
+  submitted: 'coaching.status.submitted',
+  changes_requested: 'coaching.status.changes_requested',
+  approved: 'coaching.status.approved',
+  rejected: 'coaching.status.rejected',
+});
 
 export const STATUS_TONE: Record<ApplicationStatus, 'neutral' | 'accent' | 'warn' | 'danger' | 'info'> = {
   draft: 'neutral',
@@ -39,18 +47,18 @@ export const STATUS_TONE: Record<ApplicationStatus, 'neutral' | 'accent' | 'warn
   rejected: 'danger',
 };
 
-export const EVENT_LABELS: Record<ReviewEvent['action'], string> = {
-  submitted: 'Submitted',
-  resubmitted: 'Resubmitted',
-  qualifications_changed: 'Qualification details changed',
-  approve: 'Approved',
-  request_changes: 'Changes requested',
-  reject: 'Not approved',
-  suspend: 'Suspended',
-  reinstate: 'Reinstated',
-  approve_qualification: 'Qualification reviewed',
-  reject_qualification: 'Qualification not accepted',
-};
+export const EVENT_LABELS: Record<ReviewEvent['action'], string> = liveRecord<ReviewEvent['action']>({
+  submitted: 'coaching.event.submitted',
+  resubmitted: 'coaching.event.resubmitted',
+  qualifications_changed: 'coaching.event.qualifications_changed',
+  approve: 'coaching.event.approve',
+  request_changes: 'coaching.event.request_changes',
+  reject: 'coaching.event.reject',
+  suspend: 'coaching.event.suspend',
+  reinstate: 'coaching.event.reinstate',
+  approve_qualification: 'coaching.event.approve_qualification',
+  reject_qualification: 'coaching.event.reject_qualification',
+});
 
 export function initials(name: string): string {
   return (
@@ -63,9 +71,9 @@ export function initials(name: string): string {
   );
 }
 
-export function dateText(iso: string | null | undefined, withTime = false): string {
+export function dateText(iso: string | null | undefined, withTime = false, language: Language = getLanguage()): string {
   if (!iso) return '';
   const ms = Date.parse(iso);
   if (!isFinite(ms)) return '';
-  return new Intl.DateTimeFormat('en-GB', withTime ? { dateStyle: 'medium', timeStyle: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' }).format(ms);
+  return new Intl.DateTimeFormat(localeFor(language), withTime ? { dateStyle: 'medium', timeStyle: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' }).format(ms);
 }

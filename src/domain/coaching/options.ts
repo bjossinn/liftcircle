@@ -4,44 +4,59 @@
  */
 import type { CoachFormat } from '@/backend/coachingContract';
 import type { Goal } from '@/domain/types';
+import { getLanguage, localeFor, t, type Language, type MessageKey } from '@/i18n';
 
 export interface Option<T extends string = string> {
   value: T;
   label: string;
 }
 
+/** Option whose label is looked up in the current language each time it is read (the stored value never changes). */
+const live = <T extends string>(value: T, key: MessageKey): Option<T> =>
+  Object.freeze({
+    value,
+    get label() {
+      return t(key);
+    },
+  });
+
 export const SPECIALTIES: Option[] = [
-  { value: 'strength', label: 'Strength' },
-  { value: 'muscle_building', label: 'Muscle building' },
-  { value: 'powerlifting', label: 'Powerlifting' },
-  { value: 'weightlifting', label: 'Olympic weightlifting' },
-  { value: 'fat_loss', label: 'Fat loss' },
-  { value: 'general_fitness', label: 'General fitness' },
-  { value: 'beginners', label: 'Beginners' },
-  { value: 'running', label: 'Running' },
-  { value: 'endurance', label: 'Endurance' },
-  { value: 'conditioning', label: 'Conditioning' },
-  { value: 'calisthenics', label: 'Calisthenics' },
-  { value: 'mobility', label: 'Mobility' },
-  { value: 'sports_performance', label: 'Sports performance' },
-  { value: 'older_adults', label: 'Older adults' },
-  { value: 'pre_postnatal', label: 'Pre- and postnatal' },
-  { value: 'nutrition', label: 'Nutrition habits' },
+  live('strength', 'program.kind.strength'),
+  live('muscle_building', 'ui.muscle_building'),
+  live('powerlifting', 'ui.powerlifting'),
+  live('weightlifting', 'ui.olympic_weightlifting'),
+  live('fat_loss', 'ui.fat_loss'),
+  live('general_fitness', 'onboarding.goal.fitness'),
+  live('beginners', 'ui.beginners'),
+  live('running', 'onboarding.activity.run'),
+  live('endurance', 'ui.endurance'),
+  live('conditioning', 'workout.meta.pattern.conditioning'),
+  live('calisthenics', 'ui.calisthenics'),
+  live('mobility', 'workout.meta.pattern.mobility'),
+  live('sports_performance', 'ui.sports_performance'),
+  live('older_adults', 'ui.older_adults'),
+  live('pre_postnatal', 'ui.pre_and_postnatal'),
+  live('nutrition', 'ui.nutrition_habits'),
 ];
 
 /** Coach-declared goals use the same codes as a client's training goal, so filters line up with intakes. */
 export const COACH_GOALS: Option<Goal>[] = [
-  { value: 'build_muscle', label: 'Build muscle' },
-  { value: 'strength', label: 'Get stronger' },
-  { value: 'lose_fat', label: 'Lose fat' },
-  { value: 'general_fitness', label: 'General fitness' },
-  { value: 'endurance', label: 'Endurance' },
+  live<Goal>('build_muscle', 'onboarding.goal.buildMuscle'),
+  live<Goal>('strength', 'ui.get_stronger'),
+  live<Goal>('lose_fat', 'onboarding.goal.loseFat'),
+  live<Goal>('general_fitness', 'onboarding.goal.fitness'),
+  live<Goal>('endurance', 'ui.endurance'),
 ];
 
-export const FORMAT_LABELS: Record<CoachFormat, string> = {
-  in_person: 'In person',
-  online: 'Online',
-};
+const FORMAT_KEYS: Record<CoachFormat, MessageKey> = { in_person: 'coaching.directory.in_person', online: 'coaching.directory.online' };
+export const formatLabel = (f: CoachFormat, language: Language = getLanguage()) => t(FORMAT_KEYS[f], undefined, language);
+/** Display labels by format, read in the current language. */
+export const FORMAT_LABELS: Record<CoachFormat, string> = Object.freeze(
+  Object.defineProperties({} as Record<CoachFormat, string>, {
+    in_person: { enumerable: true, get: () => formatLabel('in_person') },
+    online: { enumerable: true, get: () => formatLabel('online') },
+  }),
+);
 
 /** ISO 639-1 codes offered in the language pickers. */
 export const LANGUAGE_CODES = [
@@ -67,53 +82,58 @@ export const COUNTRY_CODES = [
 const COUNTRY_SET = new Set<string>(COUNTRY_CODES);
 export const isCountryCode = (c: string | null | undefined): c is string => !!c && COUNTRY_SET.has(c.toUpperCase());
 
-let regionNames: Intl.DisplayNames | null | undefined;
-let languageNames: Intl.DisplayNames | null | undefined;
-function displayNames(type: 'region' | 'language'): Intl.DisplayNames | null {
+const displayNameCache = new Map<string, Intl.DisplayNames | null>();
+function displayNames(type: 'region' | 'language', language: Language): Intl.DisplayNames | null {
+  const k = `${type}|${language}`;
+  if (displayNameCache.has(k)) return displayNameCache.get(k)!;
+  let dn: Intl.DisplayNames | null;
   try {
-    if (type === 'region') return (regionNames ??= new Intl.DisplayNames(['en'], { type: 'region' }));
-    return (languageNames ??= new Intl.DisplayNames(['en'], { type: 'language' }));
+    dn = new Intl.DisplayNames([localeFor(language), 'en'], { type });
   } catch {
-    return null;
+    dn = null;
   }
+  displayNameCache.set(k, dn);
+  return dn;
 }
 
-export function countryName(code: string | null | undefined): string {
+/** Country name in the current (or given) language; the stored value stays the ISO code. */
+export function countryName(code: string | null | undefined, language: Language = getLanguage()): string {
   if (!code) return '';
   const c = code.toUpperCase();
   try {
-    return displayNames('region')?.of(c) ?? c;
+    return displayNames('region', language)?.of(c) ?? c;
   } catch {
     return c;
   }
 }
 
-export function languageName(code: string | null | undefined): string {
+export function languageName(code: string | null | undefined, language: Language = getLanguage()): string {
   if (!code) return '';
   try {
-    return displayNames('language')?.of(code.toLowerCase()) ?? code;
+    return displayNames('language', language)?.of(code.toLowerCase()) ?? code;
   } catch {
     return code;
   }
 }
 
-/** Countries sorted by English name. */
-export function countryOptions(): Option[] {
-  return COUNTRY_CODES.map((c) => ({ value: c, label: countryName(c) })).sort((a, b) => a.label.localeCompare(b.label, 'en'));
+/** Countries sorted by name in the display language. */
+export function countryOptions(language: Language = getLanguage()): Option[] {
+  return COUNTRY_CODES.map((c) => ({ value: c, label: countryName(c, language) })).sort((a, b) => a.label.localeCompare(b.label, localeFor(language)));
 }
 
-export function languageOptions(): Option[] {
-  return LANGUAGE_CODES.map((c) => ({ value: c, label: languageName(c) })).sort((a, b) => a.label.localeCompare(b.label, 'en'));
+export function languageOptions(language: Language = getLanguage()): Option[] {
+  return LANGUAGE_CODES.map((c) => ({ value: c, label: languageName(c, language) })).sort((a, b) => a.label.localeCompare(b.label, localeFor(language)));
 }
 
-const SPECIALTY_MAP = new Map(SPECIALTIES.map((o) => [o.value, o.label]));
-const GOAL_MAP = new Map<string, string>(COACH_GOALS.map((o) => [o.value, o.label]));
+const SPECIALTY_MAP = new Map(SPECIALTIES.map((o) => [o.value, o]));
+const GOAL_MAP = new Map<string, Option>(COACH_GOALS.map((o) => [o.value, o]));
 const prettify = (s: string) => {
-  const t = s.replace(/[_-]+/g, ' ').trim();
-  return t ? t[0]!.toUpperCase() + t.slice(1) : s;
+  const x = s.replace(/[_-]+/g, ' ').trim();
+  return x ? x[0]!.toUpperCase() + x.slice(1) : s;
 };
-export const specialtyLabel = (s: string) => SPECIALTY_MAP.get(s) ?? prettify(s);
-export const coachGoalLabel = (g: string) => GOAL_MAP.get(g) ?? prettify(g);
+/** Display label for a stored specialty slug (unknown slugs from other clients are prettified, not translated). */
+export const specialtyLabel = (s: string) => SPECIALTY_MAP.get(s)?.label ?? prettify(s);
+export const coachGoalLabel = (g: string) => GOAL_MAP.get(g)?.label ?? prettify(g);
 
 /**
  * Best-effort default country from the device time zone. Only a starting value for a select the user

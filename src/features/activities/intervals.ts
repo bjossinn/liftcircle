@@ -28,7 +28,7 @@ export function expandIntervals(items: IntervalItem[]): Phase[] {
     while (j < items.length && Math.max(1, Math.round(items[j].repeat || 1)) === rep) j++;
     const block = items.slice(i, j).filter((x) => x.seconds > 0);
     for (let r = 1; r <= rep; r++)
-      for (const b of block) out.push(rep > 1 ? { label: b.label || 'Interval', seconds: b.seconds, round: r, rounds: rep } : { label: b.label || 'Interval', seconds: b.seconds });
+      for (const b of block) out.push(rep > 1 ? { label: b.label || INTERVAL_LABEL, seconds: b.seconds, round: r, rounds: rep } : { label: b.label || INTERVAL_LABEL, seconds: b.seconds });
     i = j;
   }
   return out;
@@ -43,11 +43,13 @@ export interface RoundsPlan {
 
 export const WARMUP_LABEL = 'Warm-up';
 export const COOLDOWN_LABEL = 'Cool-down';
+/** Canonical (stored) label of an unnamed step; translated only for display. */
+export const INTERVAL_LABEL = 'Interval';
 
 export function intervalsFromRounds(p: RoundsPlan): IntervalItem[] {
   const out: IntervalItem[] = [];
   if (p.warmupSec > 0) out.push({ label: WARMUP_LABEL, seconds: p.warmupSec, repeat: 1 });
-  for (const s of p.steps) out.push({ label: s.label.trim() || 'Interval', seconds: s.seconds, repeat: Math.max(1, p.rounds) });
+  for (const s of p.steps) out.push({ label: s.label.trim() || INTERVAL_LABEL, seconds: s.seconds, repeat: Math.max(1, p.rounds) });
   if (p.cooldownSec > 0) out.push({ label: COOLDOWN_LABEL, seconds: p.cooldownSec, repeat: 1 });
   return out;
 }

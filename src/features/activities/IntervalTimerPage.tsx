@@ -8,12 +8,13 @@ import {
 } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { useApp } from '@/state/app';
+import { t as tNow, useT } from '@/i18n';
 import { alive, kvGet, kvSet, newRecord, saveRecord, StorageWriteError } from '@/db/repo';
 import type { ActivityTemplate, ActivityType } from '@/domain/types';
 import { ACTIVITY_TYPES, activityLabel } from '@/domain/activities';
 import { formatDuration } from '@/lib/dates';
 import {
-  advanceTimer, elapsedSec, expandIntervals, intervalsFromRounds, pauseTimer, remainingMs, resumeTimer, roundsFromIntervals, skipPhase,
+  COOLDOWN_LABEL, INTERVAL_LABEL, WARMUP_LABEL, advanceTimer, elapsedSec, expandIntervals, intervalsFromRounds, pauseTimer, remainingMs, resumeTimer, roundsFromIntervals, skipPhase,
   startTimer, totalSeconds, type RoundsPlan, type TimerState,
 } from './intervals';
 
@@ -23,7 +24,26 @@ interface Persisted {
   type: ActivityType;
   timer: TimerState | null;
 }
-const DEFAULT_PLAN: RoundsPlan = { warmupSec: 120, steps: [{ label: 'Work', seconds: 30 }, { label: 'Rest', seconds: 30 }], rounds: 8, cooldownSec: 120 };
+/** Default plan; its step names are editable user content, prefilled in the current language. */
+const defaultPlan = (): RoundsPlan => ({ warmupSec: 120, steps: [{ label: tNow('activities.timer.work'), seconds: 30 }, { label: tNow('workout.rest'), seconds: 30 }], rounds: 8, cooldownSec: 120 });
+
+/** Display text of a phase label: canonical generated labels (and the old English default step names) are translated. */
+function phaseLabelText(label: string): string {
+  switch (label) {
+    case WARMUP_LABEL:
+      return tNow('workout.setTypeWarmup');
+    case COOLDOWN_LABEL:
+      return tNow('activities.timer.cool_down');
+    case INTERVAL_LABEL:
+      return tNow('activities.timer.intervalLabel');
+    case 'Work':
+      return tNow('activities.timer.work');
+    case 'Rest':
+      return tNow('workout.rest');
+    default:
+      return label;
+  }
+}
 
 /* ----------------------------------------------------- device capabilities */
 function useBeeper() {
@@ -101,14 +121,15 @@ function useWakeLock(active: boolean) {
 
 /* ----------------------------------------------------------- m:s input */
 function MinSec({ label, seconds, onChange, min = 0 }: { label: string; seconds: number; onChange: (s: number) => void; min?: number }) {
+  const { t } = useT();
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return (
     <fieldset className="min-w-0">
       <legend className="sr-only">{label}</legend>
       <div className="grid grid-cols-2 gap-1.5">
-        <NumberInput ariaLabel={`${label} minutes`} value={m} onChange={(v) => onChange(Math.max(min, (v ?? 0) * 60 + s))} decimals={false} min={0} max={180} suffix="m" />
-        <NumberInput ariaLabel={`${label} seconds`} value={s} onChange={(v) => onChange(Math.max(min, m * 60 + (v ?? 0)))} decimals={false} min={0} max={59} suffix="s" />
+        <NumberInput ariaLabel={t('activities.timer.x_minutes', { label })} value={m} onChange={(v) => onChange(Math.max(min, (v ?? 0) * 60 + s))} decimals={false} min={0} max={180} suffix="m" />
+        <NumberInput ariaLabel={t('activities.timer.x_seconds', { label })} value={s} onChange={(v) => onChange(Math.max(min, m * 60 + (v ?? 0)))} decimals={false} min={0} max={59} suffix="s" />
       </div>
     </fieldset>
   );
@@ -118,12 +139,13 @@ export default function IntervalTimerPage() {
   const nav = useNavigate();
   const [params] = useSearchParams();
   const toast = useToast();
+  const { t, tp } = useT();
   const { db, account } = useApp();
   const rest = account.settings.rest;
   const templates = alive(useLiveQuery(() => db.activityTemplates.toArray(), [db]) ?? []).filter((t) => t.intervals?.length);
 
   const [loaded, setLoaded] = useState(false);
-  const [plan, setPlan] = useState<RoundsPlan>(DEFAULT_PLAN);
+  const [plan, setPlan] = useState<RoundsPlan>(defaultPlan);
   const [type, setType] = useState<ActivityType>('run');
   const [timer, setTimer] = useState<TimerState | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -183,22 +205,28 @@ export default function IntervalTimerPage() {
   useEffect(() => {
     if (!running) return;
     const tick = () => {
-      const t = Date.now();
-      setNow(t);
+      const ts = Date.now();
+      setNow(ts);
       const cur = timerRef.current;
       if (!cur) return;
-      const r = advanceTimer(cur, t);
+      const r = advanceTimer(cur, ts);
       if (r.changed) {
         const done = r.state.status === 'done';
         if (sound) beep(done ? 660 : 990, done ? 600 : 350);
         if (buzz) vibrate(done ? [300, 120, 300] : 250);
         const p = r.state.phases[r.state.index];
-        setAnnounce(done ? 'Intervals finished' : `${p.label}${p.round ? `, round ${p.round} of ${p.rounds}` : ''}`);
+        setAnnounce(
+          done
+            ? tNow('activities.timer.intervalsFinished')
+            : p.round
+              ? tNow('activities.timer.phaseRound', { label: phaseLabelText(p.label), round: p.round, rounds: p.rounds ?? 1 })
+              : phaseLabelText(p.label),
+        );
         lastCountdown.current = null;
         timerRef.current = r.state;
         setTimer(r.state);
       } else if (sound) {
-        const secLeft = Math.ceil(remainingMs(cur, t) / 1000);
+        const secLeft = Math.ceil(remainingMs(cur, ts) / 1000);
         if (secLeft <= 3 && secLeft >= 1 && lastCountdown.current !== secLeft) {
           lastCountdown.current = secLeft;
           beep(660, 90);
@@ -219,15 +247,15 @@ export default function IntervalTimerPage() {
 
   const start = () => {
     if (!phases.length) {
-      toast.show('Add at least one interval longer than 0 seconds', { tone: 'warn' });
+      toast.show(t('activities.timer.add_at_least_one_interval_longer'), { tone: 'warn' });
       return;
     }
     unlock();
-    const t = Date.now();
-    setNow(t);
-    setTimer(startTimer(phases, t));
+    const ts = Date.now();
+    setNow(ts);
+    setTimer(startTimer(phases, ts));
     const p = phases[0];
-    setAnnounce(`${p.label} started`);
+    setAnnounce(t('activities.timer.phaseStarted', { label: phaseLabelText(p.label) }));
     if (sound) beep(990, 250);
     if (buzz) vibrate(150);
   };
@@ -248,8 +276,13 @@ export default function IntervalTimerPage() {
     setConfirmReset(false);
   };
 
+  // Prefills the new activity's notes (editable) and the save sheet, in the current language.
   const describe = (p: RoundsPlan) =>
-    `Intervals: ${p.rounds} × (${p.steps.map((s) => `${s.label} ${formatDuration(s.seconds)}`).join(', ')})${p.warmupSec ? `, warm-up ${formatDuration(p.warmupSec)}` : ''}${p.cooldownSec ? `, cool-down ${formatDuration(p.cooldownSec)}` : ''}`;
+    [
+      t('activities.timer.describe', { rounds: p.rounds, steps: p.steps.map((s) => `${phaseLabelText(s.label)} ${formatDuration(s.seconds)}`).join(', ') }),
+      p.warmupSec ? t('activities.timer.describeWarmup', { duration: formatDuration(p.warmupSec) }) : null,
+      p.cooldownSec ? t('activities.timer.describeCooldown', { duration: formatDuration(p.cooldownSec) }) : null,
+    ].filter(Boolean).join(', ');
 
   const logActivity = () => {
     if (!timer) return;
@@ -269,14 +302,14 @@ export default function IntervalTimerPage() {
         db,
       );
       setSaveOpen(false);
-      toast.show('Interval template saved', { tone: 'success' });
+      toast.show(t('activities.timer.interval_template_saved'), { tone: 'success' });
     } catch (e) {
-      toast.show(e instanceof StorageWriteError ? e.message : 'Couldn’t save the template', { tone: 'error' });
+      toast.show(e instanceof StorageWriteError ? e.message : t('activities.form.couldnt_save_the_template'), { tone: 'error' });
     }
   };
 
   const back = (
-    <IconButton label="Back" onClick={() => nav(-1)}>
+    <IconButton label={t('common.back')} onClick={() => nav(-1)}>
       <ChevronLeft className="size-6" />
     </IconButton>
   );
@@ -290,34 +323,34 @@ export default function IntervalTimerPage() {
     const doneSec = timer.phases.slice(0, timer.index).reduce((s, p) => s + p.seconds, 0) + (done ? phase?.seconds ?? 0 : (phase?.seconds ?? 0) - rem / 1000);
     const allSec = totalSeconds(timer.phases);
     return (
-      <Page title="Interval timer" back={back}>
+      <Page title={t('today.intervalTimer')} back={back}>
         <div aria-live="assertive" className="sr-only">{announce}</div>
         <Card className="p-6 flex flex-col items-center text-center gap-2">
           {done ? (
             <>
-              <p className="text-sm text-muted">Finished</p>
+              <p className="text-sm text-muted">{t('activities.timer.finished')}</p>
               <p className="text-5xl font-bold tabular">{formatDuration(elapsedSec(timer, now))}</p>
-              <p className="text-sm text-muted">Total active time</p>
+              <p className="text-sm text-muted">{t('activities.timer.total_active_time')}</p>
             </>
           ) : (
             <>
-              <p className="text-lg font-semibold text-accent">{phase?.label}</p>
+              <p className="text-lg font-semibold text-accent">{phase ? phaseLabelText(phase.label) : null}</p>
               {phase?.round && (
                 <p className="text-sm text-muted">
-                  Round {phase.round} of {phase.rounds}
+                  {t('activities.timer.roundOf', { round: phase.round, rounds: phase.rounds ?? 1 })}
                 </p>
               )}
-              <p className="text-7xl font-bold tabular leading-none my-2" aria-label={`${Math.ceil(rem / 1000)} seconds remaining`}>
+              <p className="text-7xl font-bold tabular leading-none my-2" aria-label={tp('activities.timer.secondsRemaining', Math.ceil(rem / 1000))}>
                 {formatDuration(Math.ceil(rem / 1000))}
               </p>
-              <p className="text-sm text-muted">{next ? `Next: ${next.label} · ${formatDuration(next.seconds)}` : 'Last interval'}</p>
-              {timer.status === 'paused' && <p className="text-sm font-medium text-warn">Paused</p>}
+              <p className="text-sm text-muted">{next ? t('activities.timer.next_x_x', { label: phaseLabelText(next.label), duration: formatDuration(next.seconds) }) : t('activities.timer.last_interval')}</p>
+              {timer.status === 'paused' && <p className="text-sm font-medium text-warn">{t('workout.paused')}</p>}
             </>
           )}
           <div className="w-full mt-3">
-            <ProgressBar value={Math.round(doneSec)} max={allSec} label="Overall progress" />
+            <ProgressBar value={Math.round(doneSec)} max={allSec} label={t('activities.timer.overall_progress')} />
             <p className="text-xs text-muted mt-1 tabular">
-              {formatDuration(Math.round(doneSec))} of {formatDuration(allSec)}
+              {t('activities.timer.progressOf', { done: formatDuration(Math.round(doneSec)), total: formatDuration(allSec) })}
             </p>
           </div>
         </Card>
@@ -325,43 +358,43 @@ export default function IntervalTimerPage() {
         {done ? (
           <div className="flex flex-col gap-2 mt-4">
             <Button variant="primary" size="lg" block onClick={logActivity}>
-              Log as {activityLabel({ type }).toLowerCase()} activity
+              {t('activities.timer.log_as', { type: activityLabel({ type }).toLowerCase() })}
             </Button>
-            <Select aria-label="Activity type to log" value={type} onChange={(e) => setType(e.target.value as ActivityType)}>
-              {ACTIVITY_TYPES.map((t) => (
-                <option key={t.type} value={t.type}>{t.label}</option>
+            <Select aria-label={t('activities.timer.activity_type_to_log')} value={type} onChange={(e) => setType(e.target.value as ActivityType)}>
+              {ACTIVITY_TYPES.map((at) => (
+                <option key={at.type} value={at.type}>{at.label}</option>
               ))}
             </Select>
-            <Button block onClick={() => setTimer(null)}>Done without logging</Button>
+            <Button block onClick={() => setTimer(null)}>{t('activities.timer.done_without_logging')}</Button>
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-2 mt-4">
             <Button size="lg" onClick={() => setConfirmReset(true)} icon={<RotateCcw className="size-5" />}>
-              Reset
+              {t('activities.timer.reset')}
             </Button>
             {timer.status === 'running' ? (
               <Button size="lg" variant="primary" onClick={pause} icon={<Pause className="size-5" />}>
-                Pause
+                {t('ai.pause')}
               </Button>
             ) : (
               <Button size="lg" variant="primary" onClick={resume} icon={<Play className="size-5" />}>
-                Resume
+                {t('workout.resume')}
               </Button>
             )}
             <Button size="lg" onClick={skip} icon={<SkipForward className="size-5" />}>
-              Skip
+              {t('activities.timer.skip')}
             </Button>
           </div>
         )}
 
         <Card className="px-4 py-2 mt-4">
-          <Toggle checked={sound} onChange={setSound} label="Sound" disabled={!audioOk} description={audioOk ? undefined : 'Not supported in this browser'} />
-          <Toggle checked={buzz} onChange={setBuzz} label="Vibration" disabled={!canVibrate()} description={canVibrate() ? undefined : 'Not supported on this device'} />
-          <Toggle checked={keepAwake} onChange={setKeepAwake} label="Keep screen on" disabled={!wakeOk} description={wakeOk ? undefined : 'Not supported in this browser'} />
+          <Toggle checked={sound} onChange={setSound} label={t('activities.timer.sound')} disabled={!audioOk} description={audioOk ? undefined : t('activities.timer.not_supported_in_this_browser')} />
+          <Toggle checked={buzz} onChange={setBuzz} label={t('activities.timer.vibration')} disabled={!canVibrate()} description={canVibrate() ? undefined : t('activities.timer.not_supported_on_this_device')} />
+          <Toggle checked={keepAwake} onChange={setKeepAwake} label={t('activities.timer.keep_screen_on')} disabled={!wakeOk} description={wakeOk ? undefined : t('activities.timer.not_supported_in_this_browser')} />
         </Card>
-        <Notice className="mt-3">Alerts while the screen is locked or the app is in the background depend on your browser and may be late or silent. The timer catches up as soon as you return.</Notice>
+        <Notice className="mt-3">{t('activities.timer.alerts_while_the_screen_is_locked')}</Notice>
 
-        <ConfirmDialog open={confirmReset} title="Reset the timer?" body="Your progress through these intervals will be cleared." confirmLabel="Reset" danger onConfirm={reset} onCancel={() => setConfirmReset(false)} />
+        <ConfirmDialog open={confirmReset} title={t('activities.timer.reset_the_timer')} body={t('activities.timer.your_progress_through_these_intervals_will')} confirmLabel={t('activities.timer.reset')} danger onConfirm={reset} onCancel={() => setConfirmReset(false)} />
       </Page>
     );
   }
@@ -378,112 +411,112 @@ export default function IntervalTimerPage() {
     });
 
   return (
-    <Page title="Interval timer" back={back}>
+    <Page title={t('today.intervalTimer')} back={back}>
       {templates.length > 0 && (
         <Select
-          label="Saved interval templates"
+          label={t('activities.timer.saved_interval_templates')}
           value=""
           onChange={(e) => {
-            const t = templates.find((x) => x.id === e.target.value);
-            if (t) {
-              applyTemplate(t);
-              toast.show(`Loaded “${t.name}”`, { tone: 'success' });
+            const tpl = templates.find((x) => x.id === e.target.value);
+            if (tpl) {
+              applyTemplate(tpl);
+              toast.show(t('activities.timer.loaded_x', { name: tpl.name }), { tone: 'success' });
             }
           }}
         >
-          <option value="">Choose a template…</option>
-          {templates.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
+          <option value="">{t('activities.timer.choose_a_template')}</option>
+          {templates.map((tpl) => (
+            <option key={tpl.id} value={tpl.id}>{tpl.name}</option>
           ))}
         </Select>
       )}
 
-      <SectionTitle>Warm-up</SectionTitle>
+      <SectionTitle>{t('workout.setTypeWarmup')}</SectionTitle>
       <Card className="p-4">
-        <MinSec label="Warm-up" seconds={plan.warmupSec} onChange={(v) => setPlan((p) => ({ ...p, warmupSec: v }))} />
+        <MinSec label={t('workout.setTypeWarmup')} seconds={plan.warmupSec} onChange={(v) => setPlan((p) => ({ ...p, warmupSec: v }))} />
         <p className="text-xs text-muted mt-1.5">Set to 0 to skip.</p>
       </Card>
 
-      <SectionTitle>Each round</SectionTitle>
+      <SectionTitle>{t('activities.timer.each_round')}</SectionTitle>
       <Card as="section" className="divide-y divide-line">
         {plan.steps.map((s, i) => (
           <div key={i} className="p-3 flex flex-col gap-2">
             <div className="flex items-center gap-1">
-              <Input aria-label={`Step ${i + 1} name`} value={s.label} onChange={(e) => setStep(i, { label: e.target.value })} maxLength={30} className="flex-1" />
-              <IconButton label={`Move step ${i + 1} up`} size="sm" disabled={i === 0} onClick={() => move(i, -1)}>
+              <Input aria-label={t('activities.timer.step_x_name', { number: i + 1 })} value={s.label} onChange={(e) => setStep(i, { label: e.target.value })} maxLength={30} className="flex-1" />
+              <IconButton label={t('activities.timer.move_step_x_up', { number: i + 1 })} size="sm" disabled={i === 0} onClick={() => move(i, -1)}>
                 <ChevronUp className="size-4" />
               </IconButton>
-              <IconButton label={`Move step ${i + 1} down`} size="sm" disabled={i === plan.steps.length - 1} onClick={() => move(i, 1)}>
+              <IconButton label={t('activities.timer.move_step_x_down', { number: i + 1 })} size="sm" disabled={i === plan.steps.length - 1} onClick={() => move(i, 1)}>
                 <ChevronDown className="size-4" />
               </IconButton>
-              <IconButton label={`Remove step ${i + 1}`} size="sm" disabled={plan.steps.length <= 1} onClick={() => setPlan((p) => ({ ...p, steps: p.steps.filter((_, j) => j !== i) }))}>
+              <IconButton label={t('activities.timer.remove_step_x', { number: i + 1 })} size="sm" disabled={plan.steps.length <= 1} onClick={() => setPlan((p) => ({ ...p, steps: p.steps.filter((_, j) => j !== i) }))}>
                 <Trash2 className="size-4 text-danger" />
               </IconButton>
             </div>
-            <MinSec label={`Step ${i + 1} (${s.label || 'interval'})`} seconds={s.seconds} onChange={(v) => setStep(i, { seconds: v })} />
+            <MinSec label={t('activities.timer.step_x_x', { number: i + 1, label: s.label || t('activities.timer.intervalFallback') })} seconds={s.seconds} onChange={(v) => setStep(i, { seconds: v })} />
           </div>
         ))}
         <div className="p-3">
-          <Button size="sm" variant="ghost" icon={<Plus className="size-4" />} onClick={() => setPlan((p) => ({ ...p, steps: [...p.steps, { label: p.steps.length % 2 ? 'Rest' : 'Work', seconds: 30 }] }))} disabled={plan.steps.length >= 10}>
-            Add step
+          <Button size="sm" variant="ghost" icon={<Plus className="size-4" />} onClick={() => setPlan((p) => ({ ...p, steps: [...p.steps, { label: p.steps.length % 2 ? t('workout.rest') : t('activities.timer.work'), seconds: 30 }] }))} disabled={plan.steps.length >= 10}>
+            {t('activities.timer.add_step')}
           </Button>
         </div>
       </Card>
       <div className="mt-3">
-        <NumberInput label="Rounds" value={plan.rounds} onChange={(v) => setPlan((p) => ({ ...p, rounds: Math.max(1, Math.min(99, v ?? 1)) }))} decimals={false} min={1} max={99} />
+        <NumberInput label={t('activities.timer.rounds')} value={plan.rounds} onChange={(v) => setPlan((p) => ({ ...p, rounds: Math.max(1, Math.min(99, v ?? 1)) }))} decimals={false} min={1} max={99} />
       </div>
 
-      <SectionTitle>Cool-down</SectionTitle>
+      <SectionTitle>{t('activities.timer.cool_down')}</SectionTitle>
       <Card className="p-4">
-        <MinSec label="Cool-down" seconds={plan.cooldownSec} onChange={(v) => setPlan((p) => ({ ...p, cooldownSec: v }))} />
+        <MinSec label={t('activities.timer.cool_down')} seconds={plan.cooldownSec} onChange={(v) => setPlan((p) => ({ ...p, cooldownSec: v }))} />
         <p className="text-xs text-muted mt-1.5">Set to 0 to skip.</p>
       </Card>
 
       <div className="mt-4">
-        <Select label="Activity type (for logging afterwards)" value={type} onChange={(e) => setType(e.target.value as ActivityType)}>
-          {ACTIVITY_TYPES.map((t) => (
-            <option key={t.type} value={t.type}>{t.label}</option>
+        <Select label={t('activities.timer.activity_type_for_logging_afterwards')} value={type} onChange={(e) => setType(e.target.value as ActivityType)}>
+          {ACTIVITY_TYPES.map((at) => (
+            <option key={at.type} value={at.type}>{at.label}</option>
           ))}
         </Select>
       </div>
 
       <Card className="px-4 py-2 mt-4">
-        <Toggle checked={sound} onChange={setSound} label="Sound" disabled={!audioOk} description={audioOk ? 'Beeps at each change and a 3-second countdown' : 'Not supported in this browser'} />
-        <Toggle checked={buzz} onChange={setBuzz} label="Vibration" disabled={!canVibrate()} description={canVibrate() ? undefined : 'Not supported on this device'} />
-        <Toggle checked={keepAwake} onChange={setKeepAwake} label="Keep screen on" disabled={!('wakeLock' in navigator)} description={'wakeLock' in navigator ? undefined : 'Not supported in this browser'} />
+        <Toggle checked={sound} onChange={setSound} label={t('activities.timer.sound')} disabled={!audioOk} description={audioOk ? t('activities.timer.beeps_at_each_change_and_a') : t('activities.timer.not_supported_in_this_browser')} />
+        <Toggle checked={buzz} onChange={setBuzz} label={t('activities.timer.vibration')} disabled={!canVibrate()} description={canVibrate() ? undefined : t('activities.timer.not_supported_on_this_device')} />
+        <Toggle checked={keepAwake} onChange={setKeepAwake} label={t('activities.timer.keep_screen_on')} disabled={!('wakeLock' in navigator)} description={'wakeLock' in navigator ? undefined : t('activities.timer.not_supported_in_this_browser')} />
       </Card>
 
       <div className="flex flex-col gap-2 mt-5">
         <Button variant="primary" size="lg" block icon={<Play className="size-5" />} onClick={start} disabled={!phases.length}>
-          Start · {formatDuration(total)}
+          {t('activities.timer.start', { duration: formatDuration(total) })}
         </Button>
         <Button
           variant="ghost"
           block
           icon={<BookmarkPlus className="size-4" />}
           onClick={() => {
-            setTplName(`${activityLabel({ type })} intervals ${plan.rounds}×`);
+            setTplName(t('activities.timer.defaultTemplateName', { activity: activityLabel({ type }), rounds: plan.rounds }));
             setSaveOpen(true);
           }}
         >
-          Save as template
+          {t('summary.saveTemplate')}
         </Button>
       </div>
-      <p className="text-xs text-muted mt-3">Alerts while the screen is locked or the app is in the background depend on your browser.</p>
+      <p className="text-xs text-muted mt-3">{t('activities.timer.alerts_while_the_screen_is_locked_2')}</p>
 
       <Sheet
         open={saveOpen}
         onClose={() => setSaveOpen(false)}
-        title="Save interval template"
+        title={t('activities.timer.save_interval_template')}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setSaveOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={saveTemplate} disabled={!tplName.trim()}>Save</Button>
+            <Button variant="ghost" onClick={() => setSaveOpen(false)}>{t('common.cancel')}</Button>
+            <Button variant="primary" onClick={saveTemplate} disabled={!tplName.trim()}>{t('common.save')}</Button>
           </>
         }
       >
         <p className="text-sm text-muted mb-3">{describe(plan)}</p>
-        <Input label="Template name" value={tplName} onChange={(e) => setTplName(e.target.value)} maxLength={60} autoFocus />
+        <Input label={t('activities.form.template_name')} value={tplName} onChange={(e) => setTplName(e.target.value)} maxLength={60} autoFocus />
       </Sheet>
     </Page>
   );
