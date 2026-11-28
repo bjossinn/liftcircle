@@ -20,7 +20,7 @@ import type {
 // @ts-ignore Deno requires the .ts extension; the app tsconfig does not enable allowImportingTsExtensions.
 import { catalog } from './catalog.ts';
 // @ts-ignore see above
-import { addMacros, allergenLabel, ingredientFitsProteinPrefs, likedBonus, normalizeProteinPrefs, proteinFitSwaps, proteinListText, recipeProteinGroups, dietTagLabel, displayMacro, formatFraction, formatGrams, friendlyAmount, ingredientAllowed, macrosForGrams, MEAL_LABELS, recipeAllergens, recipeCostTier, recipeDietTags, recipeMatches, recipeMinutes, recipeNutrition, resolveIngredients, roundMacros, satisfiesTag, ZERO_MACROS, type IngredientIndex, type Swap, } from './recipes.ts';
+import { addMacros, allergenLabel, ingredientFitsProteinPrefs, likedBonus, normalizeProteinPrefs, proteinFitSwaps, proteinListText, recipeProteinGroups, dietTagLabel, displayMacro, formatFraction, formatGrams, friendlyAmount, ingredientAllowed, macrosForGrams, recipeAllergens, recipeCostTier, recipeDietTags, recipeMatches, recipeMinutes, recipeNutrition, resolveIngredients, roundMacros, satisfiesTag, ZERO_MACROS, type IngredientIndex, type Swap, } from './recipes.ts';
 // @ts-ignore see above
 import { listText, localeFor, numberText, sharedT, type Language, type SharedKey } from '../i18n/core.ts';
 
