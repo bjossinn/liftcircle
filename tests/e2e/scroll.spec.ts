@@ -51,3 +51,59 @@ test('/settings?section=app still lands on its heading, directly and from the in
   await expect(page.locator('#settings-group-app')).toBeInViewport();
   await expect(page.locator('#settings-group-app')).toBeFocused();
 });
+
+test('an unscrolled list: Back from a scrolled detail page returns to the top of the list', async ({ page }) => {
+  await page.goto('/train/exercises?tab=all');
+  await expect(page.locator('a[href^="/train/exercises/"]')).toHaveCount(105);
+  expect(await scrollY(page)).toBe(0);
+  const first = page.locator('a[href^="/train/exercises/"]').first();
+  await expect(first).toBeInViewport({ ratio: 1 }); // tapped without scrolling the list
+  await first.click();
+  await expect(page.getByTestId('exercise-visual')).toBeAttached();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => scrollY(page)).toBeGreaterThan(200);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/train\/exercises\?tab=all$/);
+  await expect(page.locator('a[href^="/train/exercises/"]')).toHaveCount(105);
+  await expect.poll(() => scrollY(page)).toBeLessThanOrEqual(1);
+});
+
+test('search → detail → Back returns to the searched list at the same position', async ({ page }) => {
+  await page.goto('/train/exercises?tab=all');
+  await expect(page.locator('a[href^="/train/exercises/"]')).toHaveCount(105);
+  await page.evaluate(() => window.scrollTo(0, 40));
+  await expect.poll(() => scrollY(page)).toBe(40);
+  await page.getByRole('searchbox').evaluate((el) => (el as HTMLInputElement).focus({ preventScroll: true }));
+  await page.keyboard.type('a'); // replaces the history entry (?q=a); no scroll event follows
+  await expect(page).toHaveURL(/[?&]q=a\b/);
+  const row = page.locator('a[href^="/train/exercises/"]').first();
+  await expect(row).toBeInViewport({ ratio: 1 });
+  await row.click();
+  await expect(page.getByTestId('exercise-visual')).toBeAttached();
+  expect(await scrollY(page)).toBeLessThanOrEqual(1);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => scrollY(page)).toBeGreaterThan(200);
+  await page.goBack();
+  await expect(page).toHaveURL(/[?&]q=a\b/);
+  await expect.poll(() => scrollY(page)).toBe(40);
+});
+
+test('a scroll whose event has not fired yet when the row is tapped is still remembered', async ({ page }) => {
+  await page.goto('/train/exercises?tab=all');
+  await expect(page.locator('a[href^="/train/exercises/"]')).toHaveCount(105);
+  // Load the detail page's chunk first, so the next navigation commits before the next frame.
+  await page.locator('a[href^="/train/exercises/"]').first().click();
+  await expect(page.getByTestId('exercise-visual')).toBeAttached();
+  await page.goBack();
+  await expect(page.locator('a[href^="/train/exercises/"]')).toHaveCount(105);
+  // Scroll and tap in the same task: no scroll event reaches the page before the navigation starts.
+  await page.evaluate(() => {
+    window.scrollTo(0, 700);
+    (document.querySelector('a[href="/train/exercises/push-up"]') as HTMLAnchorElement).click();
+  });
+  await expect(page.getByTestId('exercise-visual')).toBeAttached();
+  expect(await scrollY(page)).toBeLessThanOrEqual(1);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/train\/exercises\?tab=all$/);
+  await expect.poll(() => scrollY(page)).toBe(700);
+});
