@@ -13,7 +13,8 @@ Import paths use the `@/` alias (= `src/`).
 - `src/components/ExercisePicker.tsx` →
   `export function ExercisePicker(props: { open: boolean; onClose: () => void; onPick: (ex: Exercise) => void; title?: string; suggestIds?: ID[]; excludeIds?: ID[] }): JSX.Element`
   (sheet with search, filters, favourites/recent, "suggested substitutions" first when `suggestIds` given, "create custom exercise").
-- `src/components/ExerciseGlyph.tsx` → `export function ExerciseGlyph(props: { pattern: MovementPattern; className?: string })` — intentional visual placeholder.
+- `src/components/ExerciseGlyph.tsx` → `export function ExerciseGlyph(props: { glyph?: GlyphKey; pattern?: MovementPattern; className?: string })` — Direction B 24×24 exercise pictogram by glyph key (falls back to the pattern glyph, then `neutral`).
+- `src/data/exerciseGlyphs.ts` → `GLYPH_KEYS`, `type GlyphKey`, `EXERCISE_GLYPHS` (library id → key), `PATTERN_GLYPHS`, `exerciseGlyphKey(ex)`, `patternGlyphKey(pattern)`; contact sheet `docs/exercise-glyphs.html`.
 - Existing helper `src/data/catalog.ts` (`useExercises()`, `bundledExercise(id)`, `exerciseName(id, byId)`) stays as is.
 
 Required exercise ids:

@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import type { Exercise } from '@/domain/types';
 import { EXERCISE_MEDIA_FULL_SIZE, exerciseCueKeys, exerciseMedia } from '@/data/exerciseMedia';
 import { ExerciseGlyphTile } from '@/components/ExerciseGlyph';
+import { exerciseGlyphKey } from '@/data/exerciseGlyphs';
 import { useT } from '@/i18n';
 import { exerciseDisplayName } from '@/data/catalogText';
 
@@ -62,12 +63,13 @@ export function ExerciseIllustration({ ex, compact, className }: { ex: Exercise;
 }
 
 /**
- * Small square mark for lists, the picker and the compact logger row (44 px, fixed size): always the Direction B
- * movement-pattern tile. The 256 px photo thumbnails are not loaded here (unreadable at 44 px and not theme-aware);
+ * Small square mark for lists, the picker and the compact logger row (44 px, fixed size): always a Direction B glyph
+ * tile — the exercise's own glyph key for library exercises, the movement-pattern glyph for custom ones
+ * (src/data/exerciseGlyphs.ts). The 256 px photo thumbnails are not loaded here (unreadable at 44 px and not theme-aware);
  * the full start/end illustration is shown on the exercise page and in the expanded logger row (ExerciseIllustration).
  */
 export function ExerciseThumb({ ex, className }: { ex: Exercise; className?: string }) {
-  return <ExerciseGlyphTile pattern={ex.pattern} className={className} />;
+  return <ExerciseGlyphTile glyph={exerciseGlyphKey(ex)} pattern={ex.pattern} className={className} />;
 }
 
 /** Whether an exercise has an illustration (library exercises; for showing the logger's expand control). */

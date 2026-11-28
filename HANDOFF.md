@@ -3,6 +3,29 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 28 Nov 2026: Per-exercise glyphs (76 movement pictograms + fallbacks) — v1.0.9
+
+- Exercise tiles no longer pick their picture from the movement pattern alone (a push-up showed a bench press, a
+  lateral raise / triceps pushdown / fly showed a curl, a leg curl or calf raise showed a leg extension, a
+  chest-supported row showed a seated cable row, …). Every library exercise now has an explicit glyph key:
+  `EXERCISE_GLYPHS` in `src/data/exerciseGlyphs.ts` (105 ids → 76 keys, from the ChatGPT audit on the temporary branch
+  `temp-exercise-glyph-spec`; ids checked against the catalog, none needed fixing; that branch's spec/CSV are not merged).
+- 79 hand-drawn 24×24 Direction B glyphs in `src/components/ExerciseGlyph.tsx` (stroke 1.75, `currentColor`, filled
+  head, 0.35/0.6-opacity floors, cables and equipment): the 76 movement keys plus three kept on purpose —
+  `conditioning_pulse` and `seated_forward_fold` (the old conditioning/mobility marks, now pattern fallbacks for custom
+  exercises) and `neutral` (a dumbbell, last resort).
+- Resolution (`exerciseGlyphKey`): library id → explicit key; custom exercises and unknown ids → `PATTERN_GLYPHS[pattern]`;
+  anything else → `neutral`. Used by `ExerciseThumb` (lists, picker, compact logger row) and the exercise page header.
+  Program-session marks still pass a pattern. `full.webp` + cues remain only on the exercise page and the expanded
+  logger row. SVGs carry `data-glyph` (and `data-pattern` when known).
+- Review: `docs/exercise-glyphs.html` (every key at 96 px and as the real 44 px tile in light and dark, with the
+  exercises that use it) and `docs/screenshots/exercise-glyphs.png`. The sheet is generated from the live code; a unit
+  test fails when it is stale — regenerate with `npm run glyphs:sheet`, then `npm run glyphs:png`.
+- Tests: `tests/unit/exerciseGlyphs.test.tsx` (every catalog exercise resolves to a drawn key; no unknown ids; every key
+  used or a reachable fallback; all glyphs distinct, 24×24, stroke 1.75, currentColor, in-bounds); e2e checks push-up,
+  chest-supported row and lateral raise rows show their own glyphs.
+- No migration, no backend change.
+
 ## 28 Nov 2026: Fully Icelandic app when the language is Icelandic — v1.0.8
 
 - Dictionaries: 4,500 approved keys added to `en.ts` / `is.ts` (exercise names/aliases/setup/execution/mistakes, recipe

@@ -12,6 +12,7 @@ import { createRoot, type Root } from 'react-dom/client';
 
 import { ExerciseIllustration, ExerciseThumb, hasIllustration } from '@/components/ExerciseVisual';
 import { ExerciseGlyph } from '@/components/ExerciseGlyph';
+import { PATTERN_GLYPHS } from '@/data/exerciseGlyphs';
 import { EXERCISES } from '@/data/exercises';
 import { EN, IS, LanguageProvider, type Language } from '@/i18n';
 import type { CustomExercise, Exercise } from '@/domain/types';
@@ -106,24 +107,41 @@ describe('ExerciseThumb', () => {
     expect(tile.className).toContain('size-11');
     const svg = tile.querySelector('svg')!;
     expect(svg.getAttribute('data-pattern')).toBe('squat');
+    expect(svg.getAttribute('data-glyph')).toBe('barbell_squat');
     expect(svg.getAttribute('stroke-width')).toBe('1.75');
     expect(svg.getAttribute('viewBox')).toBe('0 0 24 24');
 
     rerender(createElement(ExerciseThumb, { ex: bench }));
     expect(el.querySelector('img')).toBeNull();
     expect(el.querySelector('svg')?.getAttribute('data-pattern')).toBe('horizontal_push');
+    expect(el.querySelector('svg')?.getAttribute('data-glyph')).toBe('bench_press');
 
     const p = mount(createElement(ExerciseThumb, { ex: custom as Exercise }));
     expect(p.querySelector('img')).toBeNull();
     expect(p.querySelector('svg')).not.toBeNull();
+    // Custom exercises use their movement-pattern glyph.
+    expect(p.querySelector('svg')?.getAttribute('data-glyph')).toBe(PATTERN_GLYPHS[(custom as Exercise).pattern]);
     expect(hasIllustration(custom)).toBe(false);
     expect(hasIllustration(squat)).toBe(true);
     expect(hasIllustration(undefined)).toBe(false);
   });
 });
 
+describe('ExerciseThumb glyph choice', () => {
+  it('library exercises use their own glyph key; a custom copy falls back to the pattern glyph', () => {
+    const pushUp = EXERCISES.find((e) => e.id === 'push-up')!;
+    const lateral = EXERCISES.find((e) => e.id === 'dumbbell-lateral-raise')!;
+    const el = mount(createElement(ExerciseThumb, { ex: pushUp }));
+    expect(el.querySelector('svg')?.getAttribute('data-glyph')).toBe('push_up');
+    rerender(createElement(ExerciseThumb, { ex: lateral }));
+    expect(el.querySelector('svg')?.getAttribute('data-glyph')).toBe('lateral_raise');
+    rerender(createElement(ExerciseThumb, { ex: { ...pushUp, id: 'custom-2', custom: true } as CustomExercise }));
+    expect(el.querySelector('svg')?.getAttribute('data-glyph')).toBe('bench_press');
+  });
+});
+
 describe('ExerciseGlyph (Direction B)', () => {
-  it('draws 13 distinct 24×24 pattern marks with stroke 1.75 and currentColor', () => {
+  it('draws 13 distinct 24×24 pattern fallback marks with stroke 1.75 and currentColor', () => {
     const patterns = ['squat', 'lunge', 'hinge', 'horizontal_push', 'vertical_push', 'horizontal_pull', 'vertical_pull', 'trunk', 'carry', 'isolation_upper', 'isolation_lower', 'conditioning', 'mobility'] as const;
     const bodies = new Set<string>();
     for (const pattern of patterns) {

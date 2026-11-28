@@ -6,6 +6,7 @@ import type { CustomExercise, Exercise } from '@/domain/types';
 import { Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, Page, SectionTitle, Spinner } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { ExerciseGlyphTile } from '@/components/ExerciseGlyph';
+import { exerciseGlyphKey } from '@/data/exerciseGlyphs';
 import { ExerciseIllustration } from '@/components/ExerciseVisual';
 import { ExerciseRowContent, exerciseRowClass } from '@/components/ExercisePicker';
 import {
@@ -145,7 +146,7 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
       }
     >
       <Card className="p-4 flex items-start gap-4">
-        <ExerciseGlyphTile pattern={ex.pattern} size="lg" />
+        <ExerciseGlyphTile glyph={exerciseGlyphKey(ex)} pattern={ex.pattern} size="lg" />
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold tracking-tight leading-tight">{name}</h1>
           {aliases.length > 0 && <p className="mt-1 text-sm text-muted">{t('exercise.detail.also_called', { names: listText(aliases, language) })}</p>}
