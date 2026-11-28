@@ -4,7 +4,6 @@ import { ChevronLeft, ChevronRight, Clock, Dumbbell, Plus, Search, Star } from '
 import type { Equipment, Exercise, MovementPattern, MuscleGroup } from '@/domain/types';
 import { Button, EmptyState, IconButton, Input, Page, Segmented, Spinner } from '@/components/ui';
 import { ExerciseFilterBar, ExerciseRowContent, exerciseRowClass, hasFilters, type ExerciseFilterValue } from '@/components/ExercisePicker';
-import { IllustrationCreditsLink } from '@/components/ExerciseVisual';
 import { EQUIPMENT_LABELS, MUSCLE_LABELS, PATTERN_LABELS, searchExercises } from '@/data/exerciseMeta';
 import { useExercises } from '@/data/catalog';
 import { useFavoriteExercises, useRecentExerciseIds } from './useExerciseData';
@@ -143,8 +142,6 @@ export default function ExerciseLibraryPage() {
           </Button>
         </div>
       )}
-
-      <IllustrationCreditsLink className="mt-4" />
 
       <CustomExerciseForm
         open={creating}

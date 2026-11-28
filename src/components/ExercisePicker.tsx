@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronDown, Plus, Search, Star } from 'lucide-react';
 import type { Equipment, Exercise, ID, MovementPattern, MuscleGroup } from '@/domain/types';
 import { Button, EmptyState, Input, Sheet, Spinner, cx } from '@/components/ui';
-import { ExerciseThumb, IllustrationCreditsLink } from '@/components/ExerciseVisual';
+import { ExerciseThumb } from '@/components/ExerciseVisual';
 import { EQUIPMENT_LABELS, exerciseSubtitle, MUSCLE_LABELS, PATTERN_LABELS, searchExercises } from '@/data/exerciseMeta';
 import { useExercises } from '@/data/catalog';
 import { useFavoriteExercises, useRecentExerciseIds } from '@/features/exercises/useExerciseData';
@@ -235,7 +235,6 @@ function PickerBody({ onClose, onPick, suggestIds, excludeIds, fits, fitsNote, o
       ) : (
         onlyNote && <p className="mt-4 text-xs text-muted">{onlyNote}</p>
       )}
-      <IllustrationCreditsLink className="mt-4" />
 
       <CustomExerciseForm open={creating} onClose={() => setCreating(false)} defaultName={query.trim() || undefined} onSaved={(ex) => pick(ex)} />
     </div>

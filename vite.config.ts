@@ -75,7 +75,7 @@ export default defineConfig({
       workbox: {
         // Precache the app shell and bundled exercise/recipe data (they're JS chunks).
         globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2}'],
-        // Exercise illustrations are NOT precached (~1.9 MB): they're cached on first view by the runtime rule below.
+        // Exercise illustrations are NOT precached (~3.1 MB): they're cached on first view by the runtime rule below.
         globIgnores: ['exercise-media/**'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/auth\/v1/, /^\/rest\/v1/, /^\/storage\/v1/, /^\/functions\/v1/],
@@ -88,8 +88,9 @@ export default defineConfig({
             urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith('/exercise-media/'),
             handler: 'CacheFirst',
             options: {
-              cacheName: 'exercise-media-v1',
-              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 90, purgeOnQuotaError: true },
+              cacheName: 'exercise-media-v2',
+              // 105 exercises × (full + thumb) = 210 files: enough to keep every viewed image.
+              expiration: { maxEntries: 220, maxAgeSeconds: 60 * 60 * 24 * 90, purgeOnQuotaError: true },
               cacheableResponse: { statuses: [200] },
             },
           },

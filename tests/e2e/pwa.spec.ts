@@ -93,8 +93,8 @@ test('generated service worker: precache, navigation fallback and the exercise-i
   for (const p of ['auth', 'rest', 'storage', 'functions']) expect(sw).toContain(`/^\\/${p}\\/v1/`);
   expect([...sw.matchAll(/CacheFirst\(/g)].length).toBe(1);
   expect(sw).toMatch(/sameOrigin:(\w+)\}\)=>\1&&\w+\.pathname\.startsWith\("\/exercise-media\/"\)/);
-  expect(sw).toContain('exercise-media-v1');
-  expect(sw).toMatch(/maxEntries:200/);
+  expect(sw).toContain('exercise-media-v2');
+  expect(sw).toMatch(/maxEntries:220/);
   expect(sw).not.toMatch(/StaleWhileRevalidate|NetworkFirst/);
   // Illustrations are never precached (they're fetched on first view).
   expect(sw).not.toMatch(/url:"exercise-media\//);

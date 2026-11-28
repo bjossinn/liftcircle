@@ -144,7 +144,7 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
         </div>
       </Card>
 
-      {/* Renders nothing for custom/unmapped exercises or if a frame fails to load (the glyph above stays). */}
+      {/* Image + technique cues; renders nothing for custom exercises (the glyph above stays). */}
       <ExerciseIllustration ex={ex} className="mt-3 rounded-2xl bg-surface border border-line card-shadow p-4" />
 
       <Card className="mt-3 p-4">
@@ -167,13 +167,14 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
         </div>
       )}
 
-      {(ex.setup || ex.execution || ex.cues.length > 0 || ex.mistakes.length > 0) && (
+      {/* Library exercises show their (translated) cues under the illustration above; custom ones keep their own here. */}
+      {(ex.setup || ex.execution || (isCustom && ex.cues.length > 0) || ex.mistakes.length > 0) && (
         <>
           <SectionTitle>{isCustom ? 'Notes' : 'How to do it'}</SectionTitle>
           <Card className="p-4 flex flex-col gap-4 text-[15px] leading-relaxed">
             {ex.setup && <TextBlock title={isCustom ? undefined : 'Setup'} body={ex.setup} />}
             {ex.execution && <TextBlock title="Execution" body={ex.execution} />}
-            {ex.cues.length > 0 && <BulletBlock title="Cues" items={ex.cues} />}
+            {isCustom && ex.cues.length > 0 && <BulletBlock title="Cues" items={ex.cues} />}
             {ex.mistakes.length > 0 && <BulletBlock title="Common mistakes" items={ex.mistakes} tone="warn" />}
           </Card>
         </>

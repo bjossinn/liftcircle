@@ -3,24 +3,21 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
-## 28 Nov 2026: Exercise illustrations (roadmap item 13, PR 2 of 3) — v1.0.5
+## 28 Nov 2026: Exercise illustrations and technique cues (roadmap item 13, PR 2 of 3) — v1.0.5
 
-- 45 of 105 library exercises show start/end line drawings: a 44 px thumbnail in the workout logger (tap to expand,
-  frames alternate with a pause button; reduced motion shows both side by side), the full illustration on the exercise
-  page, and thumbnails in exercise lists/picker. Custom and unmapped exercises keep the movement-pattern glyph; a failed
-  image load falls back to it too.
-- **Source: Everkinetic, CC BY-SA 4.0** (credited next to each illustration). The brief's preferred
-  yuhonas/free-exercise-db photos were **not used**: their Unlicense is unverifiable and at least one photo shows
-  Bodybuilding.com branding (details and evidence: docs/THIRD_PARTY_MEDIA.md). Owner decision if that should change.
-- Mapping: `src/data/exerciseMedia.json` (reviewed by eye; `tests/unit/exerciseMedia.test.ts` checks paths, sizes and
-  movement/equipment sanity). Files: `public/exercise-media/v1/` (~1.9 MB, 86 frames ≤ 30 KB + thumbs), built by
-  `scripts/build-exercise-media.mjs`. Not precached; one Workbox runtime route (same-origin `/exercise-media/`,
-  CacheFirst, 200 entries / 90 days). `public/_headers` serves them immutable (versioned path).
-- Attribution: each illustration's "Everkinetic" credit links to the in-app Credits & licences page (`/credits`:
-  creator, source, licence, changes notice); the exercise library and picker end with a shared credits link, and
-  Settings → Account has a Credits & licences row. Settings → About no longer says no third-party images are used.
-- New EN/IS strings under `exercise.visual.*` and `credits.*` (Icelandic awaits native review). Also fixed the Icelandic
-  `import.error.dateOrder` wording. No migration, no backend change.
+- All 105 library exercises show a first-party, AI-generated illustration (made with ChatGPT; ours, no attribution):
+  one 800×800 two-panel image (start | end position) on the exercise page and in the logger (tap the 44 px thumbnail
+  next to the exercise name), and 256×256 thumbnails in exercise lists and the picker. Custom exercises keep the
+  movement-pattern glyph; a failed load falls back to it (or hides the image and keeps the cues). A failure is
+  remembered per image, so a swapped-in exercise is always tried.
+- 3–4 short technique cues per exercise under the image, as i18n strings `exercise.cues.<id>.<n>`. **Icelandic cues are
+  English placeholders marked `// TODO-IS` in `src/i18n/locales/is.ts`** until the translations are pasted in.
+- Files: `public/exercise-media/v2/<id>/{full,thumb}.webp` (~3.1 MB), from `hard-earned-exercise-media-v2.tar.gz`
+  (branch `ai-exercise-media-v2`). Not precached; one Workbox runtime route (same-origin `/exercise-media/`,
+  CacheFirst, cache `exercise-media-v2`, 220 entries / 90 days). `public/_headers` serves them immutable (versioned path).
+- Owner task: check each AI image against its exercise for form/anatomy errors before release.
+- The earlier Everkinetic (CC BY-SA) drawings and their credits page were removed. docs/THIRD_PARTY_MEDIA.md records
+  the sources. Also fixed the Icelandic `import.error.dateOrder` wording. No migration, no backend change.
 
 ## 27 Nov 2026: CSV workout import from Strong and Hevy (roadmap item 13, PR 1 of 3) — v1.0.4
 

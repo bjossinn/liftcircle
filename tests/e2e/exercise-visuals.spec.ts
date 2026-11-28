@@ -8,35 +8,34 @@ async function expectImagesLoaded(page: Page, selector: string) {
     .toBe(true);
 }
 
-test('exercise detail shows the illustration with alternating frames, alt text and the licence credit', async ({ page }) => {
+test('exercise detail shows one start/end illustration with alt text and technique cues, no attribution', async ({ page }) => {
   await page.goto('/train/exercises/barbell-back-squat');
-  const fig = page.getByTestId('exercise-illustration');
-  await expect(fig).toBeVisible();
-  await expect(fig.getByRole('img', { name: 'Barbell back squat: start position' })).toBeVisible();
+  const visual = page.getByTestId('exercise-visual');
+  await expect(visual.getByRole('img', { name: 'Barbell back squat – start and end position' })).toBeVisible();
   await expectImagesLoaded(page, '[data-testid="exercise-illustration"] img');
-  await expect(fig.getByRole('img', { name: 'Barbell back squat: end position' })).toBeAttached({ timeout: 4000 });
-  await fig.getByRole('button', { name: 'Pause animation' }).click();
-  await expect(fig.getByRole('button', { name: 'Play animation' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(fig.getByRole('link', { name: 'CC BY-SA 4.0' })).toHaveAttribute('href', 'https://creativecommons.org/licenses/by-sa/4.0/');
+  await expect(visual.getByRole('img')).toHaveCount(1);
+  await expect(visual.getByRole('button')).toHaveCount(0);
+  await expect(visual.getByRole('link')).toHaveCount(0);
+  await expect(visual.getByRole('heading', { name: 'Key points' })).toBeVisible();
+  await expect(visual.getByTestId('exercise-cues').getByRole('listitem')).toHaveCount(4);
+  await expect(visual.getByTestId('exercise-cues')).toContainText('Brace your core before each rep');
+  // The old English-only "Cues" block isn't repeated below for library exercises.
+  await expect(page.getByRole('heading', { name: 'Cues', exact: true })).toHaveCount(0);
 });
 
-test('reduced motion shows the start and end frames side by side without animation', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/train/exercises/barbell-bench-press');
-  const fig = page.getByTestId('exercise-illustration');
-  await expect(fig.getByRole('img', { name: 'Barbell bench press: start position' })).toBeVisible();
-  await expect(fig.getByRole('img', { name: 'Barbell bench press: end position' })).toBeVisible();
-  await expect(fig.getByRole('button')).toHaveCount(0);
-});
-
-test('an exercise without an illustration shows the glyph placeholder and no image', async ({ page }) => {
-  await page.goto('/train/exercises/kettlebell-swing');
-  await expect(page.getByRole('heading', { name: 'Kettlebell swing' })).toBeVisible();
-  await expect(page.getByTestId('exercise-illustration')).toHaveCount(0);
-  // The header keeps the movement-pattern glyph; any images on the page (substitution thumbnails) load fine.
-  await expect(page.getByRole('heading', { name: 'Kettlebell swing' }).locator('xpath=ancestor::div[2]').locator('svg').first()).toBeVisible();
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await expectImagesLoaded(page, 'img');
+test('every library exercise’s full image and thumbnail are served as WebP', async ({ page, request }) => {
+  await page.goto('/train/exercises?tab=all');
+  // The ids come from the library list itself (one row link per exercise).
+  await expect(page.locator('a[href^="/train/exercises/"]')).toHaveCount(105);
+  const hrefs = await page.locator('a[href^="/train/exercises/"]').evaluateAll((as) => as.map((a) => a.getAttribute('href')!.split('/').pop()!));
+  expect(new Set(hrefs).size).toBe(105);
+  for (const id of new Set(hrefs)) {
+    for (const f of ['full.webp', 'thumb.webp']) {
+      const res = await request.get(`/exercise-media/v2/${decodeURIComponent(id)}/${f}`);
+      expect(res.status(), `${id}/${f}`).toBe(200);
+      expect(res.headers()['content-type'], `${id}/${f}`).toContain('image/webp');
+    }
+  }
 });
 
 test('the logger thumbnail expands the illustration and the viewed images work offline', async ({ page, context }) => {
@@ -56,11 +55,12 @@ test('the logger thumbnail expands the illustration and the viewed images work o
   await expect(page.getByRole('button', { name: 'Hide how to do Barbell bench press' })).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByTestId('exercise-illustration')).toBeVisible();
   await expectImagesLoaded(page, '[data-testid="exercise-illustration"] img');
+  await expect(page.getByTestId('exercise-cues').getByRole('listitem')).toHaveCount(4);
 
   // Viewed illustrations land in the bounded runtime cache (and nothing from /exercise-media/ was precached).
   await expect
-    .poll(() => page.evaluate(async () => (await (await caches.open('exercise-media-v1')).keys()).map((r) => new URL(r.url).pathname)))
-    .toEqual(expect.arrayContaining(['/exercise-media/v1/ek-0042/0.webp', '/exercise-media/v1/ek-0042/1.webp', '/exercise-media/v1/ek-0042/thumb.webp']));
+    .poll(() => page.evaluate(async () => (await (await caches.open('exercise-media-v2')).keys()).map((r) => new URL(r.url).pathname)))
+    .toEqual(expect.arrayContaining(['/exercise-media/v2/barbell-bench-press/full.webp', '/exercise-media/v2/barbell-bench-press/thumb.webp']));
   const precached = await page.evaluate(async () => {
     const urls: string[] = [];
     for (const name of await caches.keys()) if (name.includes('precache')) for (const r of await (await caches.open(name)).keys()) urls.push(r.url);
@@ -74,35 +74,4 @@ test('the logger thumbnail expands the illustration and the viewed images work o
   await page.getByRole('button', { name: 'Show how to do Barbell bench press' }).click();
   await expectImagesLoaded(page, '[data-testid="exercise-illustration"] img');
   await context.setOffline(false);
-});
-
-test('the illustration credit, the exercise library and Settings all reach the full credits page', async ({ page }) => {
-  const expectCreditsPage = async () => {
-    await expect(page).toHaveURL(/\/credits(#exercise-illustrations)?$/);
-    await expect(page.getByRole('heading', { name: 'Credits & licences' })).toBeVisible();
-    const section = page.getByTestId('credits-illustrations');
-    await expect(section).toContainText('Drawings by Everkinetic (everkinetic.com), created by Greg Priday');
-    await expect(section).toContainText('converted them to WebP with a transparent background');
-    await expect(section.getByRole('link', { name: /github\.com\/everkinetic\/data/ })).toHaveAttribute('href', 'https://github.com/everkinetic/data');
-    await expect(section.getByRole('link', { name: /CC BY-SA 4\.0/ })).toHaveAttribute('href', 'https://creativecommons.org/licenses/by-sa/4.0/');
-  };
-
-  // From the credit under an illustration.
-  await page.goto('/train/exercises/barbell-back-squat');
-  await page.getByRole('link', { name: 'Everkinetic: illustration credits' }).click();
-  await expectCreditsPage();
-
-  // From the thumbnail-only exercise library.
-  await page.goto('/train/exercises');
-  await page.getByTestId('illustration-credits').getByRole('link', { name: 'Credits & licences' }).click();
-  await expectCreditsPage();
-
-  // From Settings.
-  await page.goto('/settings?section=account');
-  await page.getByRole('button', { name: /Credits & licences/ }).click();
-  await expectCreditsPage();
-
-  // A direct load (and reload) of the route works too: it's an in-app page, not an external link.
-  await page.goto('/credits');
-  await expectCreditsPage();
 });

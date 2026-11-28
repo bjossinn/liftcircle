@@ -64,7 +64,6 @@ export const router = createBrowserRouter([
       { path: '/moderation', element: L(() => import('@/features/social/ModerationPage')) },
       { path: '/settings', element: L(() => import('@/features/settings/SettingsPage')) },
       { path: '/settings/data', element: L(() => import('@/features/settings/DataPage')) },
-      { path: '/credits', element: L(() => import('@/features/settings/CreditsPage')) },
       { path: '/install', element: L(() => import('@/features/settings/InstallPage')) },
       { path: '/auth', element: L(() => import('@/features/auth/AuthPage')) },
       { path: '/auth/callback', element: L(() => import('@/features/auth/AuthCallbackPage')) },
