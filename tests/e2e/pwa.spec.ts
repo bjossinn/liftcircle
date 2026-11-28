@@ -84,13 +84,20 @@ test('a browser that blocks IndexedDB gets a clear explanation instead of an end
   await expect(page).toHaveURL(/\/progress/);
 });
 
-test('generated service worker: precache + navigation fallback only; Supabase paths never routed or cached', async ({ request }) => {
+test('generated service worker: precache, navigation fallback and the exercise-illustration cache only; Supabase paths never routed or cached', async ({ request }) => {
   const sw = await (await request.get('/sw.js')).text();
   const routes = [...sw.matchAll(/registerRoute\(/g)].length;
-  expect(routes).toBe(1); // the NavigationRoute; no runtime caching routes at all
+  // The NavigationRoute plus exactly one runtime route: same-origin /exercise-media/ illustrations (CacheFirst, bounded).
+  expect(routes).toBe(2);
   expect(sw).toMatch(/NavigationRoute/);
   for (const p of ['auth', 'rest', 'storage', 'functions']) expect(sw).toContain(`/^\\/${p}\\/v1/`);
-  expect(sw).not.toMatch(/StaleWhileRevalidate|CacheFirst|NetworkFirst|ExpirationPlugin/);
+  expect([...sw.matchAll(/CacheFirst\(/g)].length).toBe(1);
+  expect(sw).toMatch(/sameOrigin:(\w+)\}\)=>\1&&\w+\.pathname\.startsWith\("\/exercise-media\/"\)/);
+  expect(sw).toContain('exercise-media-v1');
+  expect(sw).toMatch(/maxEntries:200/);
+  expect(sw).not.toMatch(/StaleWhileRevalidate|NetworkFirst/);
+  // Illustrations are never precached (they're fetched on first view).
+  expect(sw).not.toMatch(/url:"exercise-media\//);
   // Push handlers come in via importScripts and add no routes or caching of their own.
   expect(sw).toMatch(/importScripts\(["']push-sw\.js["']\)/);
   const push = await request.get('/push-sw.js');

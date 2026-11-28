@@ -111,8 +111,10 @@ foods (skyr, yogurt, cottage cheese, cheese); avoiding all milk is the dairy-fre
 ## Content licensing
 
 - All 105 exercise descriptions, cues and mistakes, and all 275 recipes (24 starters, 60 added in pack 2 and 191 in pack 3, November 2026), were written for this project (original text). Nothing was copied from websites or books.
-- No third-party exercise photos/videos are bundled or hot-linked; each exercise shows an original line glyph for its
-  movement pattern. Adding media later requires a licence that permits it and attribution in this file.
+- Exercise illustrations: 45 library exercises show start/end line drawings from Everkinetic (CC BY-SA 4.0,
+  self-hosted, credited next to each illustration); all other and custom exercises show an original line glyph for
+  their movement pattern. No photos or videos are bundled or hot-linked. Sources, licence compliance and the rejected
+  free-exercise-db photos: docs/THIRD_PARTY_MEDIA.md. New media needs an entry there first.
 - Icons: `lucide-react` (ISC licence). App mark and launcher icons: the approved Hard Earned assets from
   `brand/hard-earned/assets/` (see its asset-manifest.json), copied unchanged by `scripts/copy-brand-icons.mjs`.
 - Fonts (self-hosted Latin subsets, SIL Open Font License 1.1, licence texts in `src/assets/fonts/`): Inter

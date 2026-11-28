@@ -14,6 +14,7 @@ import { Badge, Button, ConfirmDialog, EmptyState, IconButton, Input, Segmented,
 import type { CoachStyle, Exercise, Experience, ID, LoggedSet, SessionExercise, SetType, Settings, WeightUnit, WorkoutSession } from '@/domain/types';
 import { useExercises } from '@/data/catalog';
 import { ExercisePicker } from '@/components/ExercisePicker';
+import { ExerciseIllustration, ExerciseThumb, hasIllustration } from '@/components/ExerciseVisual';
 import { loadConventionNote } from '@/data/exerciseMeta';
 import { displayWeight, fromKg, round, toKg } from '@/domain/units';
 import { formatDuration } from '@/lib/dates';
@@ -610,6 +611,7 @@ function ExerciseBlock(props: {
   const [notes, setNotes] = useState(false);
   const [setMenuFor, setSetMenuFor] = useState<LoggedSet | null>(null);
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [showVisual, setShowVisual] = useState(false);
   const [rowErrors, setRowErrors] = useState<Record<string, FieldErrors>>({});
   const sectionRef = useRef<HTMLElement>(null);
   const last = useMemo(() => lastPerformed(comparableHistory(history, se.exerciseId), ex), [history, se.exerciseId, ex]);
@@ -640,6 +642,24 @@ function ExerciseBlock(props: {
   return (
     <section ref={sectionRef} aria-labelledby={`ex-${se.id}`} className={clsx('rounded-2xl bg-surface border border-line', props.prevInSuperset && '-mt-1 rounded-t-md border-t-0', props.nextInSuperset && 'rounded-b-md')}>
       <div className="flex items-start gap-2 px-4 pt-3">
+        {ex &&
+          (hasIllustration(ex) ? (
+            <button
+              type="button"
+              className="pressable mt-0.5 flex shrink-0 rounded-xl"
+              aria-expanded={showVisual}
+              aria-controls={`vis-${se.id}`}
+              aria-label={t(showVisual ? 'exercise.visual.hide' : 'exercise.visual.show', { exercise: ex.name })}
+              onClick={() => setShowVisual((v) => !v)}
+              data-testid="exercise-thumb"
+            >
+              <ExerciseThumb ex={ex} className={showVisual ? 'ring-2 ring-accent' : undefined} />
+            </button>
+          ) : (
+            <span className="mt-0.5 flex shrink-0" aria-hidden>
+              <ExerciseThumb ex={ex} />
+            </span>
+          ))}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             {se.supersetGroup && (props.nextInSuperset || props.prevInSuperset) && (
@@ -675,6 +695,12 @@ function ExerciseBlock(props: {
           <MoreHorizontal className="size-5" />
         </IconButton>
       </div>
+
+      {showVisual && ex && (
+        <div id={`vis-${se.id}`} className="px-4 pt-3">
+          <ExerciseIllustration ex={ex} compact />
+        </div>
+      )}
 
       {lastWorking.length > 0 && ex && (
         <p className="px-4 mt-1 text-xs text-muted">{t('workout.lastTime', { sets: lastWorking.map((st) => compactSet(st, ex, unit)).join(', ') })}</p>

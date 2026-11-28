@@ -3,6 +3,22 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 28 Nov 2026: Exercise illustrations (roadmap item 13, PR 2 of 3) — v1.0.5
+
+- 45 of 105 library exercises show start/end line drawings: a 44 px thumbnail in the workout logger (tap to expand,
+  frames alternate with a pause button; reduced motion shows both side by side), the full illustration on the exercise
+  page, and thumbnails in exercise lists/picker. Custom and unmapped exercises keep the movement-pattern glyph; a failed
+  image load falls back to it too.
+- **Source: Everkinetic, CC BY-SA 4.0** (credited next to each illustration). The brief's preferred
+  yuhonas/free-exercise-db photos were **not used**: their Unlicense is unverifiable and at least one photo shows
+  Bodybuilding.com branding (details and evidence: docs/THIRD_PARTY_MEDIA.md). Owner decision if that should change.
+- Mapping: `src/data/exerciseMedia.json` (reviewed by eye; `tests/unit/exerciseMedia.test.ts` checks paths, sizes and
+  movement/equipment sanity). Files: `public/exercise-media/v1/` (~1.9 MB, 86 frames ≤ 30 KB + thumbs), built by
+  `scripts/build-exercise-media.mjs`. Not precached; one Workbox runtime route (same-origin `/exercise-media/`,
+  CacheFirst, 200 entries / 90 days). `public/_headers` serves them immutable (versioned path).
+- New EN/IS strings under `exercise.visual.*` (Icelandic awaits native review). Also fixed the Icelandic
+  `import.error.dateOrder` wording. No migration, no backend change.
+
 ## 27 Nov 2026: CSV workout import from Strong and Hevy (roadmap item 13, PR 1 of 3) — v1.0.4
 
 - Settings → Data → *Import from Strong or Hevy*: parsers for both CSV exports (auto-detected; comma/semicolon,

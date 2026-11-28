@@ -425,3 +425,14 @@ html.theme-fade *::after {
   pointer-events: none;
   z-index: 60;
 }
+
+/*
+ * Exercise illustrations (src/components/ExerciseVisual.tsx): black line art on a transparent background. The dark
+ * theme (the default) shows it as light lines; the light theme keeps it black.
+ */
+.exercise-art {
+  filter: invert(0.94);
+}
+[data-theme='light'] .exercise-art {
+  filter: none;
+}

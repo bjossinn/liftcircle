@@ -1,0 +1,10 @@
+Exercise illustrations in this folder
+
+Source: Everkinetic open data (https://github.com/everkinetic/data), from the everkinetic.com exercise database.
+Licence: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+         https://creativecommons.org/licenses/by-sa/4.0/
+
+Changes made by Hard Earned: trimmed, padded to a square, resized, and converted to WebP with the white background
+made transparent. These adapted images are licensed under CC BY-SA 4.0.
+
+Details: docs/THIRD_PARTY_MEDIA.md in the Hard Earned repository.

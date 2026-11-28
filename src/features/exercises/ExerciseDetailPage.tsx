@@ -6,6 +6,7 @@ import type { CustomExercise, Exercise } from '@/domain/types';
 import { Badge, Button, Card, ConfirmDialog, EmptyState, IconButton, Page, SectionTitle, Spinner } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { ExerciseGlyphTile } from '@/components/ExerciseGlyph';
+import { ExerciseIllustration } from '@/components/ExerciseVisual';
 import { ExerciseRowContent, exerciseRowClass } from '@/components/ExercisePicker';
 import {
   CATEGORY_LABELS, DIFFICULTY_LABELS, EQUIPMENT_LABELS, LIMITATION_LABELS, LOAD_LABELS, loadConventionNote, MUSCLE_LABELS,
@@ -142,6 +143,9 @@ function Detail({ ex, back }: { ex: Exercise; back: ReactNode }) {
           </div>
         </div>
       </Card>
+
+      {/* Renders nothing for custom/unmapped exercises or if a frame fails to load (the glyph above stays). */}
+      <ExerciseIllustration ex={ex} className="mt-3 rounded-2xl bg-surface border border-line card-shadow p-4" />
 
       <Card className="mt-3 p-4">
         <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">

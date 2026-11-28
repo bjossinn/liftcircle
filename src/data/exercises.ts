@@ -2,7 +2,8 @@ import type { Exercise } from '@/domain/types';
 
 /**
  * Curated starter catalog. Instructions are original Hard Earned text.
- * No media links: the app shows an intentional glyph per movement pattern instead.
+ * No media links here: illustrations are mapped separately (src/data/exerciseMedia.ts); exercises without one show
+ * an intentional glyph per movement pattern.
  *
  * Load conventions (see exerciseMeta.loadConventionNote):
  * - barbell / single implement held in both hands → 'total'
