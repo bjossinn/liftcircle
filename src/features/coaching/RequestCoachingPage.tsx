@@ -10,7 +10,7 @@ import { useApp } from '@/state/app';
 import { alive } from '@/db/repo';
 import { uuid } from '@/lib/id';
 import type { Equipment, Experience, Goal, LimitationArea } from '@/domain/types';
-import { GOAL_LABELS } from '@/domain/nutrition/targets';
+import { GOAL_LABELS, goalLabel } from '@/domain/nutrition/targets';
 import { EQUIPMENT_LABELS, LIMITATION_LABELS } from '@/data/exerciseMeta';
 import { INTRO_MAX, NOTES_MAX, buildIntake, defaultScopes, hasValue, introProblem, prefillIntake, scopeNeeds, type IntakeDraft, type IntakeKey, type ScopeKey, type ScopeNeed } from '@/domain/coaching/intake';
 import { REQUEST_BLOCK_TEXT, activeCoach, requestBlock } from '@/domain/coaching/eligibility';
@@ -121,7 +121,7 @@ function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; 
     }
   };
 
-  const goalOptions = (Object.keys(GOAL_LABELS) as Goal[]).map((g) => ({ value: g, label: GOAL_LABELS[g] }));
+  const goalOptions = (Object.keys(GOAL_LABELS) as Goal[]).map((g) => ({ value: g, label: goalLabel(g) }));
   const sent = buildIntake(draft);
   const [coachedBefore, coachedAfter] = currentCoachName ? t('coaching.request.currently_coached_by_x', { name: '\u0000' }).split('\u0000') : ['', ''];
 
@@ -166,7 +166,7 @@ function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; 
       <SectionTitle>{t('coaching.request.about_your_training')}</SectionTitle>
       <p className="text-sm text-muted px-1 mb-2">{t('coaching.request.filled_in_from_your_profile_and')}</p>
       <Card className="divide-y divide-line">
-        <IntakeRow label={t('onboarding.goal.group')} k="goal" draft={draft} keep={keep} summary={draft.goal ? GOAL_LABELS[draft.goal] : null}>
+        <IntakeRow label={t('onboarding.goal.group')} k="goal" draft={draft} keep={keep} summary={draft.goal ? goalLabel(draft.goal) : null}>
           <Select aria-label={t('onboarding.goal.group')} value={draft.goal ?? ''} onChange={(e) => set('goal', (e.target.value || undefined) as Goal | undefined)}>
             <option value="">{t('coaching.apply.choose')}</option>
             {goalOptions.map((o) => (
@@ -176,7 +176,7 @@ function RequestForm({ coach, inputs, currentCoachName }: { coach: CoachDetail; 
             ))}
           </Select>
         </IntakeRow>
-        <IntakeRow label={t('coaching.request.second_goal')} k="secondaryGoal" draft={draft} keep={keep} summary={draft.secondaryGoal ? GOAL_LABELS[draft.secondaryGoal] : null}>
+        <IntakeRow label={t('coaching.request.second_goal')} k="secondaryGoal" draft={draft} keep={keep} summary={draft.secondaryGoal ? goalLabel(draft.secondaryGoal) : null}>
           <Select aria-label={t('coaching.request.second_goal')} value={draft.secondaryGoal ?? ''} onChange={(e) => set('secondaryGoal', (e.target.value || undefined) as Goal | undefined)}>
             <option value="">{t('coaching.admin.none')}</option>
             {goalOptions

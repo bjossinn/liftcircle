@@ -32,7 +32,8 @@ describe('dictionaries', () => {
     for (const k of enKeys as MessageKey[]) {
       for (const v of [EN[k], IS[k]]) {
         expect(v, k).not.toMatch(/\{\{\s*\}\}/);
-        expect(v, k).not.toMatch(/^[,;]/);
+        // nav.unread.* is an aria-label suffix appended to a tab name (", 3 unread"), the only intended fragment.
+        if (!k.startsWith('nav.unread.')) expect(v, k).not.toMatch(/^[,;]/);
         expect(v.split('{{').length, k).toBe(v.split('}}').length);
       }
     }
