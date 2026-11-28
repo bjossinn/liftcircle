@@ -1,0 +1,474 @@
+---
+import Base from '../layouts/Base.astro';
+import Phone from '../components/Phone.astro';
+import { en as t } from '../content/en';
+import { APP_URL, CONTACT_URL } from '../config';
+import icon from '../assets/icon-192.png';
+import { Image } from 'astro:assets';
+
+import shotWorkout from '../assets/screens/dark-06-active-workout.png';
+import shotToday from '../assets/screens/dark-05-today.png';
+import shotProgress from '../assets/screens/dark-10-progress-chart.png';
+import shotProgressLight from '../assets/screens/light-10-progress-chart.png';
+import shotNutrition from '../assets/screens/dark-11-nutrition.png';
+import shotRecipe from '../assets/screens/light-12-recipe.png';
+import shotInstall from '../assets/screens/dark-04-install.png';
+
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const md = (s: string) => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+const days = [2, 3, 4, 5, 6] as const;
+const [h1a, h1b] = t.hero.title.split(', ');
+---
+<Base t={t}>
+  <a class="skip" href="#main">{t.skip}</a>
+
+  <header class="site-header" id="top">
+    <nav class="wrap" aria-label={t.nav.label}>
+      <a class="brand" href="#top" aria-label={t.nav.home}>
+        <Image src={icon} alt="" width={64} height={64} loading="eager" />
+        <span class="wordmark" aria-hidden="true">Hard Earned</span>
+      </a>
+      <ul class="nav-links">
+        {t.nav.links.map((l) => <li><a href={l.href}>{l.label}</a></li>)}
+      </ul>
+      <a class="btn btn--primary" href={APP_URL}>{t.nav.cta}</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <!-- Hero -->
+    <section class="hero grain" aria-labelledby="hero-title">
+      <div class="track" aria-hidden="true"></div>
+      <div class="ghost num" aria-hidden="true" data-text="102,5"></div>
+      <div class="wrap hero-grid">
+        <div>
+          <span class="sticker">{t.hero.badge}</span>
+          <h1 id="hero-title" class="display">
+            <span>{h1a},</span>
+            <span class="ember">{h1b}</span>
+          </h1>
+          <p class="lede">{t.hero.lede}</p>
+          <div class="hero-ctas">
+            <a class="btn btn--primary btn--big" href={APP_URL}>{t.hero.primary} <span class="arrow" aria-hidden="true">→</span></a>
+            <a class="btn btn--big" href="#logging">{t.hero.secondary}</a>
+          </div>
+          <p class="hero-note">{t.hero.note}</p>
+        </div>
+
+        <div class="demo-stage">
+          <Phone src={shotToday} alt={t.hero.shotAlt} class="hero-phone" eager parallax={-0.04} />
+          <figure class="logger" id="demo" aria-labelledby="demo-cap">
+            <figcaption id="demo-cap" class="sr-only">{t.hero.demo.caption}</figcaption>
+            <div class="logger-top">
+              <div>
+                <p class="demo-title">{t.hero.demo.exercise}</p>
+                <p class="meta">{t.hero.demo.meta}</p>
+              </div>
+              <span class="sticker">{t.hero.demo.label}</span>
+            </div>
+            <p class="sr-only">{t.hero.demo.sr}</p>
+            <div class="sets" aria-hidden="true">
+              <div class="set-head"><span>{t.hero.demo.colSet}</span><span>{t.hero.demo.colKg}</span><span>{t.hero.demo.colReps}</span><span>✓</span></div>
+              <div class="set-row done"><span class="n w">W</span><span class="cell num">60</span><span class="cell num">5</span><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></div>
+              <div class="set-row done"><span class="n">1</span><span class="cell num">102,5</span><span class="cell num">8</span><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></div>
+              <div class="set-row active done" data-demo-row><span class="n">2</span><span class="cell num" data-demo-kg>102,5</span><span class="cell num" data-demo-reps>8</span><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></div>
+            </div>
+            <div class="rest" aria-hidden="true">
+              <svg class="ring" viewBox="0 0 56 56"><circle class="bg" cx="28" cy="28" r="24" /><circle class="fg" cx="28" cy="28" r="24" data-demo-ring /></svg>
+              <div><div class="rest-time num" data-demo-time>2:30</div><div class="rest-label">{t.hero.demo.rest}</div></div>
+              <p class="rest-next">{t.hero.demo.next}</p>
+            </div>
+            <div class="logger-foot">
+              <p aria-hidden="true">{t.hero.demo.caption}</p>
+              <button type="button" class="mini-btn" data-demo-toggle data-label-pause={t.hero.demo.pause} data-label-play={t.hero.demo.play} hidden>{t.hero.demo.pause}</button>
+            </div>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker-track">
+        {[0, 1].map(() => (
+          <ul>{[...t.ticker, ...t.ticker].map((s) => <li>{s}</li>)}</ul>
+        ))}
+      </div>
+    </div>
+
+    <!-- 01 Logging -->
+    <section class="section logging" id="logging" aria-labelledby="logging-title">
+      <div class="ghost num" aria-hidden="true" data-text="01"></div>
+      <div class="wrap two-col">
+        <div>
+          <div class="section-head">
+            <p class="kicker" data-reveal>{t.logging.kicker}</p>
+            <h2 id="logging-title" class="display h2" data-reveal>{t.logging.title}</h2>
+            <p class="lede" data-reveal>{t.logging.lede}</p>
+          </div>
+          <ol class="log-table">
+            {t.logging.rows.map((r, i) => (
+              <li data-reveal data-i={i % 3}>
+                <b>{r.k}</b>
+                <span class="ok" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+                <p>{r.v}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+        <div class="shot-stage">
+          <span class="sticker" data-parallax="0.06">{t.logging.sticker}</span>
+          <Phone src={shotWorkout} alt={t.logging.shotAlt} class="tilt-r" parallax={-0.05} />
+          <p class="big-stat num" aria-hidden="true">{t.logging.stat.value}<small>{t.logging.stat.label}</small></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 Plan -->
+    <section class="section plan cut-top" id="plan" aria-labelledby="plan-title">
+      <div class="ghost num" aria-hidden="true" data-text="02"></div>
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker" data-reveal>{t.plan.kicker}</p>
+          <h2 id="plan-title" class="display h2" data-reveal>{t.plan.title}</h2>
+          <p class="lede" data-reveal>{t.plan.lede}</p>
+        </div>
+
+        <div class="builder" data-reveal>
+          <fieldset>
+            <legend>{t.plan.builder.legend}</legend>
+            <div class="days">
+              {days.map((d) => (
+                <label>
+                  <input type="radio" name="days" id={`d${d}`} value={d} checked={d === 4} />
+                  <span><span class="num">{d}</span><small>{t.plan.builder.days}</small></span>
+                </label>
+              ))}
+            </div>
+            <p class="fine">{t.plan.builder.note}</p>
+            <div class="tip-chip" aria-label={`${t.plan.points[0].k}: ${t.plan.tip.label}, ${t.plan.tip.value}`} role="img">
+              <span><b>{t.plan.tip.label} →</b> <span class="num">{t.plan.tip.value}</span></span>
+              {t.plan.tip.options.map((o, i) => <span class:list={["opt", { on: i === 0 }]}>{o}</span>)}
+            </div>
+          </fieldset>
+          <div aria-live="polite">
+            {days.map((d) => {
+              const [rec, ...alts] = t.plan.builder.splits[d];
+              return (
+                <div class="result" data-days={d}>
+                  <p class="result-days num">{d} {t.plan.builder.days}</p>
+                  <p class="label">{t.plan.builder.suggested}</p>
+                  <h3>{rec.name}</h3>
+                  <p class="why">{rec.why}</p>
+                  <p class="label">{t.plan.builder.week}</p>
+                  <ol class="week-strip">
+                    {rec.sessions.map((s, i) => <li><b class="num">{i + 1}</b>{s}</li>)}
+                  </ol>
+                  <p class="label">{t.plan.builder.also}</p>
+                  <ul class="alts">
+                    {alts.map((a) => <li><b>{a.name}.</b> {a.why}</li>)}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <ul class="rules">
+          {t.plan.points.map((p, i) => (
+            <li data-reveal data-i={i}><b>{p.k}</b><p>{p.v}</p></li>
+          ))}
+        </ul>
+      </div>
+    </section>
+
+    <!-- 03 Progress -->
+    <section class="section progress" id="progress" aria-labelledby="progress-title">
+      <div class="ghost num" aria-hidden="true" data-text="03"></div>
+      <div class="wrap two-col flip">
+        <div>
+          <div class="section-head">
+            <p class="kicker" data-reveal>{t.progress.kicker}</p>
+            <h2 id="progress-title" class="display h2" data-reveal>{t.progress.title}</h2>
+            <p class="lede" data-reveal>{t.progress.lede}</p>
+          </div>
+          <ul class="stats">
+            {t.progress.stats.map((s, i) => (
+              <li data-reveal data-i={i}>
+                <span class="v num">{s.value}{s.unit && <small>{s.unit}</small>}</span>
+                <p>{s.label}</p>
+              </li>
+            ))}
+          </ul>
+          <ul class="checks">
+            {t.progress.list.map((s) => <li>{s}</li>)}
+          </ul>
+        </div>
+        <div class="pair">
+          <Phone src={shotProgress} alt={t.progress.shotAlt} parallax={-0.04} />
+          <Phone src={shotProgressLight} alt={t.progress.shotAlt2} light parallax={0.04} />
+        </div>
+      </div>
+    </section>
+
+    <div class="lane" aria-hidden="true"></div>
+
+    <!-- 04 Nutrition -->
+    <section class="section nutrition" id="nutrition" aria-labelledby="nutrition-title">
+      <div class="wrap two-col">
+        <div>
+          <div class="section-head">
+            <p class="kicker" data-reveal>{t.nutrition.kicker}</p>
+            <h2 id="nutrition-title" class="display h2" data-reveal>{t.nutrition.title}</h2>
+            <p class="lede" data-reveal>{t.nutrition.lede}</p>
+          </div>
+          <div class="count-block" data-reveal>
+            <span class="count num">{t.nutrition.recipeCount}</span>
+            <p>{t.nutrition.recipeLabel}</p>
+          </div>
+          <ul class="rules">
+            {t.nutrition.points.map((p, i) => (
+              <li data-reveal data-i={i}><b>{p.k}</b><p>{p.v}</p></li>
+            ))}
+          </ul>
+          <div class="chips-demo" data-reveal>
+            <h3 id="chips-title">{t.nutrition.chips.legend}</h3>
+            <p class="hint">{t.nutrition.chips.hint}</p>
+            <ul class="chips" aria-labelledby="chips-title" data-chip-states={JSON.stringify(t.nutrition.chips.states)}>
+              {t.nutrition.chips.items.map((c) => (
+                <li><button type="button" class="chip" data-state="none" data-name={c} aria-label={`${c}: ${t.nutrition.chips.states.none}`}>{c}</button></li>
+              ))}
+            </ul>
+            <p class="fine">{t.nutrition.chips.footer}</p>
+          </div>
+        </div>
+        <div class="pair">
+          <Phone src={shotNutrition} alt={t.nutrition.shotAlt} parallax={-0.04} />
+          <Phone src={shotRecipe} alt={t.nutrition.shotAlt2} light parallax={0.04} />
+        </div>
+      </div>
+    </section>
+
+    <!-- 05 Training assistant -->
+    <section class="section assistant" id="assistant" aria-labelledby="assistant-title">
+      <div class="ghost num" aria-hidden="true" data-text="05"></div>
+      <div class="wrap two-col">
+        <div>
+          <div class="section-head">
+            <p class="kicker" data-reveal>{t.assistant.kicker}</p>
+            <h2 id="assistant-title" class="display h2" data-reveal>{t.assistant.title}</h2>
+            <p class="lede" data-reveal>{t.assistant.lede}</p>
+          </div>
+          <div class="styles" data-reveal>
+            <h3>{t.assistant.stylesTitle}</h3>
+            <ul>
+              {t.assistant.styles.map((s) => <li><b>{s.name}</b><p>{s.text}</p></li>)}
+            </ul>
+          </div>
+          <div class="disclaimer">
+            <span class="tag-ai">✦ {t.assistant.aiLabel}</span>
+            <strong>{t.assistant.disclaimer}</strong>
+          </div>
+          <p class="fine">{t.assistant.fine}</p>
+        </div>
+
+        <figure class="chat" aria-labelledby="chat-cap" data-chat>
+          <div class="chat-head">
+            <b>{t.assistant.name}</b>
+            <span class="tag-ai">✦ {t.assistant.aiLabel}</span>
+            <span class="sticker" id="chat-cap">{t.assistant.exampleLabel}</span>
+          </div>
+          <div class="bubbles">
+            {t.assistant.chat.map((m) =>
+              m.from === 'action' ? (
+                <span class="action">{m.text}</span>
+              ) : (
+                <div class:list={['bubble', m.from]}>
+                  <span class="who">{m.from === 'ai' ? <>{t.assistant.name} <span class="tag-ai">{t.assistant.aiLabel}</span></> : t.assistant.you}</span>
+                  <p set:html={md(m.text)} />
+                </div>
+              ),
+            )}
+            <div class="meal-card">
+              <p class="meal-title">{t.assistant.mealCard.title}</p>
+              <ul>
+                {t.assistant.mealCard.rows.map((r) => <li><b>{r.day}</b><span>{r.meals}</span><span class="p">{r.protein}</span></li>)}
+              </ul>
+              <div class="acts" aria-hidden="true"><span>{t.assistant.mealCard.action}</span><span>{t.assistant.mealCard.secondary}</span></div>
+            </div>
+          </div>
+        </figure>
+      </div>
+    </section>
+
+    <!-- 06 Coaches -->
+    <section class="section coaches" id="coaches" aria-labelledby="coaches-title">
+      <div class="wrap coaches-head"><div class="section-head">
+        <p class="kicker" data-reveal>{t.coaches.kicker}</p>
+        <h2 id="coaches-title" class="display h2" data-reveal>{t.coaches.title}</h2>
+      </div></div>
+      <div class="halves">
+        <div class="half find">
+          <div class="inner">
+            <p class="kicker">{t.coaches.find.kicker}</p>
+            <h3 class="big">{t.coaches.find.title}</h3>
+            <p>{t.coaches.find.text}</p>
+            <a class="btn btn--primary" href={APP_URL}>{t.coaches.find.title} <span class="arrow" aria-hidden="true">→</span></a>
+          </div>
+        </div>
+        <div class="half apply on-ember">
+          <div class="track" aria-hidden="true"></div>
+          <div class="inner">
+            <p class="kicker">{t.coaches.apply.kicker}</p>
+            <h3 class="big">{t.coaches.apply.title}</h3>
+            <p>{t.coaches.apply.text}</p>
+            <a class="btn btn--ink" href={APP_URL}>{t.coaches.apply.title} <span class="arrow" aria-hidden="true">→</span></a>
+          </div>
+        </div>
+      </div>
+      <div class="coach-fine"><p class="fine">{t.coaches.fine}</p></div>
+    </section>
+
+    <!-- 07 Friends -->
+    <section class="section friends" id="friends" aria-labelledby="friends-title">
+      <div class="wrap two-col flip">
+        <div>
+          <div class="section-head">
+            <p class="kicker" data-reveal>{t.friends.kicker}</p>
+            <h2 id="friends-title" class="display h2" data-reveal>{t.friends.title}</h2>
+            <p class="lede" data-reveal>{t.friends.lede}</p>
+          </div>
+          <ul class="checks">
+            {t.friends.points.map((p) => <li>{p}</li>)}
+          </ul>
+        </div>
+        <div class="share" role="group" data-reveal aria-labelledby="share-legend">
+          <div>
+            <fieldset class="fields">
+              <legend id="share-legend">{t.friends.preview.legend}</legend>
+              {t.friends.preview.fields.map((f, i) => (
+                <label class="check"><input type="checkbox" id={`sf-${i}`} checked={i !== 3} /> {f}</label>
+              ))}
+            </fieldset>
+            <fieldset class="aud">
+              <legend>{t.friends.preview.audience}</legend>
+              <label class="check"><input type="radio" name="aud" id="aud-friends" checked /> {t.friends.preview.friends}</label>
+              <label class="check"><input type="radio" name="aud" id="aud-me" /> {t.friends.preview.onlyMe}</label>
+            </fieldset>
+          </div>
+          <div class="post" aria-live="polite">
+            <div class="post-top">
+              <span class="avatar" aria-hidden="true">Y</span>
+              <div><b>{t.friends.preview.postBy.split(' · ')[0]}</b><small>{t.friends.preview.postBy.split(' · ')[1]}</small></div>
+            </div>
+            <p class="post-title">{t.friends.preview.postTitle}</p>
+            <dl>
+              {t.friends.preview.fields.map((f, i) => (
+                <div data-f={i}><dt>{f}</dt><dd>{t.friends.preview.sample[f as keyof typeof t.friends.preview.sample]}</dd></div>
+              ))}
+            </dl>
+            <p class="empty">{t.friends.preview.hidden}</p>
+            <p class="vis">{t.friends.preview.visibleTo}: <b class="aud-friends">{t.friends.preview.friends}</b><b class="aud-only">{t.friends.preview.onlyMe}</b></p>
+          </div>
+          <p class="share-note">{t.friends.preview.demoNote}</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 08 Privacy -->
+    <section class="section privacy light cut-top" id="privacy" aria-labelledby="privacy-title">
+      <div class="ghost num" aria-hidden="true" data-text="08"></div>
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker" data-reveal>{t.privacy.kicker}</p>
+          <h2 id="privacy-title" class="display h2" data-reveal>{t.privacy.title}</h2>
+          <p class="lede" data-reveal>{t.privacy.lede}</p>
+        </div>
+        <ul class="priv-grid">
+          {t.privacy.items.map((it, i) => <li data-reveal data-i={i % 2}><b>{it.k}</b><p>{it.v}</p></li>)}
+        </ul>
+        <p class="note">{t.privacy.note}</p>
+      </div>
+    </section>
+
+    <!-- 09 Install -->
+    <section class="section install" id="install" aria-labelledby="install-title">
+      <div class="wrap two-col">
+        <div>
+          <div class="section-head">
+            <p class="kicker" data-reveal>{t.install.kicker}</p>
+            <h2 id="install-title" class="display h2" data-reveal>{t.install.title}</h2>
+            <p class="lede" data-reveal>{t.install.lede}</p>
+          </div>
+          <div class="tabs" data-tabs>
+            <div class="tablist-wrap">
+              <div class="tablist" role="tablist" aria-label={t.install.tabsLabel}>
+                {t.install.platforms.map((p, i) => (
+                  <button type="button" role="tab" id={`tab-${p.id}`} aria-controls={`panel-${p.id}`} aria-selected={i === 0 ? 'true' : 'false'} tabindex={i === 0 ? 0 : -1}>{p.name}</button>
+                ))}
+              </div>
+            </div>
+            {t.install.platforms.map((p) => (
+              <div class="panel" role="tabpanel" id={`panel-${p.id}`} aria-labelledby={`tab-${p.id}`} tabindex="0">
+                <h3>{p.name}</h3>
+                <ol class="steps">{p.steps.map((s) => <li>{s}</li>)}</ol>
+                <p class="fine">{p.note}</p>
+              </div>
+            ))}
+          </div>
+          <p class="updates">{t.install.updates}</p>
+        </div>
+        <div class="shot-stage">
+          <Phone src={shotInstall} alt={t.install.shotAlt} class="tilt-l" parallax={-0.04} />
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section faq" id="faq" aria-labelledby="faq-title">
+      <div class="wrap faq-grid">
+        <div class="section-head">
+          <p class="kicker">{t.faq.kicker}</p>
+          <h2 id="faq-title" class="display h2">{t.faq.title}</h2>
+        </div>
+        <div>
+          {t.faq.items.map((f) => (
+            <details><summary>{f.q}</summary><p>{f.a}</p></details>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section class="cta grain on-ember" aria-labelledby="cta-title">
+      <div class="track" aria-hidden="true"></div>
+      <div class="wrap">
+        <h2 id="cta-title" class="display">{t.cta.title}</h2>
+        <p>{t.cta.text}</p>
+        <a class="btn btn--ink btn--big" href={APP_URL}>{t.cta.button} <span class="arrow" aria-hidden="true">→</span></a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="foot-top">
+        <div>
+          <a class="brand" href="#top" aria-label={t.nav.home}>
+            <Image src={icon} alt="" width={64} height={64} />
+            <span class="wordmark" aria-hidden="true">Hard Earned</span>
+          </a>
+          <p class="line">{t.footer.line}</p>
+        </div>
+        <nav aria-label={t.footer.nav}>
+          <ul class="foot-links">
+            <li><a href={APP_URL}>{t.footer.links.start}</a></li>
+            <li><a href="#install">{t.footer.links.install}</a></li>
+            <li><a href="#privacy">{t.footer.links.privacy}</a></li>
+            {CONTACT_URL && <li><a href={CONTACT_URL}>{t.footer.links.contact}</a></li>}
+          </ul>
+        </nav>
+      </div>
+      <div class="foot-mark" aria-hidden="true" data-text="Hard Earned"></div>
+      <p class="fine">{t.footer.small}</p>
+    </div>
+  </footer>
+</Base>

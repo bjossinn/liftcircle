@@ -1,0 +1,27 @@
+{
+  "name": "hard-earned-website",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Marketing site for Hard Earned. Static Astro build, deployed as its own Netlify site.",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check:js": "node scripts/js-budget.mjs",
+    "check:contrast": "node scripts/contrast.mjs",
+    "check:a11y": "node scripts/a11y.mjs",
+    "og": "node scripts/og.mjs",
+    "shots": "node scripts/shots.mjs",
+    "record:demo": "node scripts/record-demo.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "astro": "^7.4.4",
+    "playwright": "^1.63.0",
+    "sharp": "^0.35.5"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
