@@ -23,6 +23,33 @@ test('exercise detail shows one start/end illustration with alt text and techniq
   await expect(page.getByRole('heading', { name: 'Cues', exact: true })).toHaveCount(0);
 });
 
+test('lists and the picker show movement-pattern tiles, never the photo thumbnails', async ({ page }) => {
+  const thumbRequests: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().includes('thumb.webp')) thumbRequests.push(r.url());
+  });
+  await page.goto('/train/exercises?tab=all');
+  const row = page.locator('a[href="/train/exercises/barbell-back-squat"]');
+  await expect(row.getByTestId('exercise-glyph-tile').locator('svg[data-pattern="squat"]')).toBeVisible();
+  await expect(page.locator('a[href^="/train/exercises/"] img')).toHaveCount(0);
+  const box = await row.getByTestId('exercise-glyph-tile').boundingBox();
+  expect(Math.round(box!.width)).toBe(44);
+  // The picker in the logger uses the same rows.
+  await page.goto('/train');
+  await page.getByRole('button', { name: 'Empty workout' }).click();
+  await page.waitForURL(/\/train\/session\//);
+  await page.getByRole('button', { name: 'Add exercise' }).first().click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('searchbox').fill('pull-up');
+  await expect(dialog.getByTestId('exercise-glyph-tile').first()).toBeVisible();
+  await expect(dialog.locator('img')).toHaveCount(0);
+  expect(thumbRequests).toEqual([]);
+  // Opening an exercise still shows the full illustration.
+  await page.goto('/train/exercises/barbell-back-squat');
+  await expectImagesLoaded(page, '[data-testid="exercise-illustration"] img');
+  await expect(page.locator('[data-testid="exercise-illustration"] img')).toHaveAttribute('src', /full\.webp$/);
+});
+
 test('every library exercise’s full image and thumbnail are served as WebP', async ({ page, request }) => {
   await page.goto('/train/exercises?tab=all');
   // The ids come from the library list itself (one row link per exercise).
@@ -45,7 +72,9 @@ test('the logger thumbnail expands the illustration and the viewed images work o
   await startEmptyWithBench(page);
   const thumb = page.getByRole('button', { name: 'Show how to do Barbell bench press' });
   await expect(thumb).toBeVisible();
-  await expectImagesLoaded(page, '[data-testid="exercise-thumb"] img');
+  // Compact row: the Direction B pattern tile, not the photo thumbnail.
+  await expect(thumb.getByTestId('exercise-glyph-tile').locator('svg[data-pattern="horizontal_push"]')).toBeVisible();
+  await expect(thumb.locator('img')).toHaveCount(0);
   // Fixed-size thumbnail: no layout shift when it loads.
   const box = await thumb.boundingBox();
   expect(Math.round(box!.width)).toBe(44);
@@ -60,7 +89,11 @@ test('the logger thumbnail expands the illustration and the viewed images work o
   // Viewed illustrations land in the bounded runtime cache (and nothing from /exercise-media/ was precached).
   await expect
     .poll(() => page.evaluate(async () => (await (await caches.open('exercise-media-v2')).keys()).map((r) => new URL(r.url).pathname)))
-    .toEqual(expect.arrayContaining(['/exercise-media/v2/barbell-bench-press/full.webp', '/exercise-media/v2/barbell-bench-press/thumb.webp']));
+    .toEqual(expect.arrayContaining(['/exercise-media/v2/barbell-bench-press/full.webp']));
+  // Thumbnails are no longer requested anywhere in the app.
+  expect(
+    (await page.evaluate(async () => (await (await caches.open('exercise-media-v2')).keys()).map((r) => r.url))).filter((u) => u.includes('thumb.webp')),
+  ).toEqual([]);
   const precached = await page.evaluate(async () => {
     const urls: string[] = [];
     for (const name of await caches.keys()) if (name.includes('precache')) for (const r of await (await caches.open(name)).keys()) urls.push(r.url);

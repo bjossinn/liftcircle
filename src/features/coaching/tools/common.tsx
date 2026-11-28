@@ -82,8 +82,8 @@ export function CoachingAccessNotice({ access, what = 'Coaching' }: { access: Ex
 export function BackButton({ to }: { to?: string }) {
   const nav = useNavigate();
   return (
-    <IconButton label="Back" onClick={() => (to ? nav(to) : nav(-1))}>
-      <ChevronLeft className="size-6" />
+    <IconButton label="Back" onClick={() => (to ? nav(to) : nav(-1))} iconSize="lg">
+      <ChevronLeft />
     </IconButton>
   );
 }

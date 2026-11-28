@@ -29,8 +29,8 @@ export default function FindCoachPage() {
     <Page
       title="Find a coach"
       back={
-        <IconButton label="Back" onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
+        <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
     >
@@ -228,7 +228,7 @@ export function FindContent() {
 
         {form.place && (
           <p className="text-xs text-muted inline-flex items-center gap-1.5">
-            <MapPin className="size-3.5 text-accent" aria-hidden /> Using {form.place.label}
+            <MapPin className="size-4 text-accent" aria-hidden /> Using {form.place.label}
           </p>
         )}
 

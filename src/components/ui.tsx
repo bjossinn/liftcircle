@@ -44,9 +44,10 @@ const variants: Record<Variant, string> = {
   danger: 'danger-fill font-semibold',
 };
 const sizes: Record<Size, string> = {
-  sm: `min-h-9 px-3 text-sm rounded-lg gap-1.5 ${hit.y4}`,
-  md: 'min-h-11 px-4 text-[15px] rounded-xl gap-2',
-  lg: 'min-h-14 px-5 text-base rounded-xl gap-2',
+  // Direction B: the `icon` is 16 px on sm/md buttons and 20 px on the large primary CTA (sized here, not by callers).
+  sm: `min-h-9 px-3 text-sm rounded-lg gap-1.5 [&>svg]:size-4 [&>svg]:shrink-0 ${hit.y4}`,
+  md: 'min-h-11 px-4 text-[15px] rounded-xl gap-2 [&>svg]:size-4 [&>svg]:shrink-0',
+  lg: 'min-h-14 px-5 text-base rounded-xl gap-2 [&>svg]:size-5 [&>svg]:shrink-0',
 };
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = 'secondary', size = 'md', loading, icon, block, className, children, disabled, type = 'button', ...rest },
@@ -73,8 +74,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   );
 });
 
-export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { label: string; size?: 'sm' | 'md' }>(
-  function IconButton({ label, className, children, size = 'md', type = 'button', ...rest }, ref) {
+/**
+ * Icon-only button: always a ≥ 44×44 px hit area (`md` is 44 px; `sm` draws 36 px and extends its hit box to 44 px).
+ * The Lucide child is sized automatically (Direction B): `iconSize` md = 20 px (default), lg = 24 px (back chevrons).
+ */
+export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { label: string; size?: 'sm' | 'md'; iconSize?: 'md' | 'lg' }>(
+  function IconButton({ label, className, children, size = 'md', iconSize = 'md', type = 'button', ...rest }, ref) {
     return (
       <button
         ref={ref}
@@ -82,8 +87,10 @@ export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTM
         aria-label={label}
         title={label}
         className={clsx(
-          'pressable inline-flex items-center justify-center rounded-xl text-ink hover:bg-surface-2 disabled:text-disabled-ink disabled:hover:bg-transparent',
+          'pressable inline-flex shrink-0 items-center justify-center rounded-xl text-ink hover:bg-surface-2 disabled:text-disabled-ink disabled:hover:bg-transparent',
           size === 'md' ? 'size-11' : `size-9 ${hit.all4}`,
+          iconSize === 'lg' ? '[&>svg]:size-6' : '[&>svg]:size-5',
+          '[&>svg]:shrink-0',
           className,
         )}
         {...rest}
@@ -358,7 +365,7 @@ export function ChipGroup<T extends string | number>({ values, onChange, options
               on ? 'bg-accent-soft border-accent text-ink font-medium' : 'border-line-input text-ink hover:bg-surface-2',
             )}
           >
-            {on && <Check className="size-3.5 text-accent shrink-0" aria-hidden />}
+            {on && <Check className="size-4 text-accent shrink-0" aria-hidden />}
             {o.label}
           </button>
         );

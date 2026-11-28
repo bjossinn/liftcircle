@@ -36,8 +36,8 @@ export default function AuthPage() {
     if (next) rememberReturn(next);
   }, [next]);
   const back = (
-    <IconButton label="Back" onClick={() => nav(-1)}>
-      <ChevronLeft className="size-6" />
+    <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+      <ChevronLeft />
     </IconButton>
   );
 

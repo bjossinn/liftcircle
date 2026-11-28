@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import clsx from 'clsx';
 import { Activity, ChevronLeft, ChevronRight, Dumbbell, Search } from 'lucide-react';
+import { IconTile } from '@/components/Icon';
+import { displaySessionName, SessionMarkTile } from '@/features/program/parts';
 import { useApp } from '@/state/app';
 import { Card, EmptyState, IconButton, Input, ListRow, Page, Segmented, Spinner, Button } from '@/components/ui';
 import { useAllActivities, useAllSessions } from './hooks';
@@ -23,6 +25,9 @@ interface Item {
   subtitle: string;
   search: string;
   href: string;
+  /** Program template the workout was started from (for its session mark). */
+  templateId?: string;
+  name?: string;
 }
 
 export default function HistoryPage() {
@@ -49,7 +54,9 @@ export default function HistoryPage() {
         kind: 'workout',
         date: s.date,
         sort: s.startedAt,
-        title: s.name,
+        title: displaySessionName({ id: s.templateId ?? '', name: s.name }),
+        templateId: s.templateId,
+        name: s.name,
         subtitle: tp('train.historyMeta', exercisesDone(s), { duration: formatMinutes(sessionDurationSec(s)) }),
         search: [s.name, s.notes, ...names].join(' ').toLowerCase(),
         href: `/train/history/${s.id}`,
@@ -94,8 +101,8 @@ export default function HistoryPage() {
     <Page
       title={t('train.historyTitle')}
       back={
-        <IconButton label={t('common.back')} onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
+        <IconButton label={t('common.back')} onClick={() => nav(-1)} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
     >
@@ -186,7 +193,13 @@ export default function HistoryPage() {
           {filtered.slice(0, 300).map((i) => (
             <ListRow
               key={`${i.kind}-${i.id}`}
-              left={i.kind === 'workout' ? <Dumbbell className="size-5 text-accent" /> : <Activity className="size-5 text-info" />}
+              left={
+                i.kind === 'workout' ? (
+                  i.templateId ? <SessionMarkTile template={{ id: i.templateId, kind: 'lifting', name: i.name ?? '' }} /> : <IconTile icon={Dumbbell} />
+                ) : (
+                  <IconTile icon={Activity} />
+                )
+              }
               title={i.title}
               subtitle={`${formatDate(i.date)} · ${i.subtitle}`}
               right={<ChevronRight className="size-4" />}

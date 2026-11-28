@@ -19,8 +19,8 @@ export default function CoachProfilePage() {
     <Page
       title="Coach"
       back={
-        <IconButton label="Back" onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
+        <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
     >
@@ -75,7 +75,7 @@ function CoachProfile({ coachId, meId }: { coachId: string; meId: string | undef
           {c.approvedSince && <p className="text-xs text-muted">Approved since {dateText(c.approvedSince)}</p>}
           {location && (
             <p className="text-sm text-muted inline-flex items-center gap-1.5">
-              <MapPin className="size-3.5 shrink-0" aria-hidden />
+              <MapPin className="size-4 shrink-0" aria-hidden />
               {location}
               {dist ? ` · ${dist}` : ''}
             </p>

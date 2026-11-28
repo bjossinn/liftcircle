@@ -37,7 +37,7 @@ export function OptionCard({ selected, onClick, title, body, role = 'radio' }: {
       )}
     >
       <span className={cx('mt-0.5 size-5 shrink-0 rounded-full border flex items-center justify-center', selected ? 'bg-ember border-edge text-accent-ink' : 'border-line')}>
-        {selected && <Check className="size-3.5" aria-hidden />}
+        {selected && <Check className="size-4" aria-hidden />}
       </span>
       <span className="min-w-0">
         <span className="block font-medium">{title}</span>

@@ -103,8 +103,8 @@ export default function RecipesPage() {
         </IconButton>
       }
       back={
-        <IconButton label="Back" onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
+        <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
     >

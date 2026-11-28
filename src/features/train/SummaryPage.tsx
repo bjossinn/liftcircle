@@ -126,7 +126,7 @@ function WorkoutSummary({ id }: { id: string }) {
               {target && (
                 <div className="text-xs mt-1" data-testid="next-target">
                   <p className="flex items-center gap-1 flex-wrap">
-                    <ArrowRight className="size-3.5 text-accent shrink-0" aria-hidden />
+                    <ArrowRight className="size-4 text-accent shrink-0" aria-hidden />
                     <span className="font-medium tabular">{target.text}</span>
                     <span className="text-muted">· {target.label}</span>
                     {aiEntry && (
@@ -138,7 +138,7 @@ function WorkoutSummary({ id }: { id: string }) {
                           void openCoachWith(db, nav, { intent: 'explain', sessionId: session.id, focusId: se.id, shownTarget: `${target.text} (${target.label})`, userId: auth.userId })
                         }
                       >
-                        <CircleHelp className="size-3.5" aria-hidden /> {t('summary.explain')}
+                        <CircleHelp className="size-4" aria-hidden /> {t('summary.explain')}
                       </button>
                     )}
                   </p>

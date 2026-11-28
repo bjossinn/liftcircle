@@ -41,7 +41,7 @@ export default function ProgramPage() {
   const today = todayISO(account.settings.timeZone);
 
   const back = (
-    <IconButton label="Back" onClick={() => nav(-1)}>
+    <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
       <ChevronLeft />
     </IconButton>
   );

@@ -29,8 +29,8 @@ export default function TemplatesPage() {
     <Page
       title="Templates"
       back={
-        <IconButton label="Back" onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
+        <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
       actions={

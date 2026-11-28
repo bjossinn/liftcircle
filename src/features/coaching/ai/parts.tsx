@@ -23,8 +23,7 @@ export function BackButton({ to }: { to?: string }) {
         if (to) nav(to);
         else if (window.history.length > 1) nav(-1);
         else nav('/coach');
-      }}
-    >
+      }} iconSize="lg">
       <ChevronLeft />
     </IconButton>
   );
@@ -35,7 +34,7 @@ export function AiBadge({ children }: { children?: ReactNode }) {
   const { t } = useT();
   return (
     <Badge tone="info" className="uppercase tracking-wide">
-      <Sparkles className="size-3" aria-hidden />
+      <Sparkles className="size-4" aria-hidden />
       {children ?? t('ai.badge')}
     </Badge>
   );

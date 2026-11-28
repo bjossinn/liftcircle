@@ -874,7 +874,7 @@ function Chat({
               {live.stopNote ? ` ${t(live.stopNote)}` : live.slow && !live.stopping ? ` ${t('ai.chat.status.slow')}` : ''}
             </p>
             {stopAllowed && (
-              <Button size="sm" variant="outline" disabled={live.stopping} icon={<Square className="size-3.5" aria-hidden />} onClick={() => void stop()}>
+              <Button size="sm" variant="outline" disabled={live.stopping} icon={<Square className="size-4" aria-hidden />} onClick={() => void stop()}>
                 {live.stopping ? t('ai.chat.stoppingReply') : t('ai.chat.stopReply')}
               </Button>
             )}
@@ -899,7 +899,7 @@ function Chat({
                 }}
                 className="shrink-0 min-h-10 px-3.5 rounded-full border border-line text-sm hover:bg-surface-2 inline-flex items-center gap-1.5"
               >
-                <Lightbulb className="size-3.5 text-muted" aria-hidden /> {q}
+                <Lightbulb className="size-4 text-muted" aria-hidden /> {q}
               </button>
             ))}
           </div>
@@ -907,7 +907,7 @@ function Chat({
         {attachedActive && (
           <div className="flex items-center gap-2 pb-2">
             <span className="inline-flex items-center gap-1.5 min-h-8 rounded-full bg-surface-2 border border-line px-3 text-xs" data-testid="ai-attached-workout">
-              <Dumbbell className="size-3.5 text-accent" aria-hidden />
+              <Dumbbell className="size-4 text-accent" aria-hidden />
               {t(attachedActive.finished ? 'ai.chat.workoutAttached' : 'ai.chat.todayWorkoutAttached', { name: attachedActive.name })}
             </span>
             <IconButton size="sm" label={t('ai.chat.removeWorkout')} onClick={() => setAttachedReq(null)}>
@@ -1009,7 +1009,7 @@ function WelcomeMessage({
     <article aria-label={t('ai.chat.welcomeLabel')} className="max-w-[92%] mb-4">
       <div className="flex items-center gap-2 mb-1">
         <span className="size-6 rounded-full bg-surface-3 flex items-center justify-center text-info" aria-hidden>
-          <Bot className="size-3.5" />
+          <Bot className="size-4" />
         </span>
         <span className="text-sm font-semibold">{t('ai.title')}</span>
         <AiBadge />
@@ -1116,7 +1116,7 @@ function MessageItem({
       <article aria-label={t('ai.chat.messageLabel')} className="max-w-[92%]">
         <div className="flex items-center gap-2 mb-1">
           <span className="size-6 rounded-full bg-surface-3 flex items-center justify-center text-info" aria-hidden>
-            <Bot className="size-3.5" />
+            <Bot className="size-4" />
           </span>
           <span className="text-sm font-semibold">{t('ai.title')}</span>
           <AiBadge />

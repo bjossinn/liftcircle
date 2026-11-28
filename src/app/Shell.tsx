@@ -78,7 +78,7 @@ export function Shell() {
       <div className="pt-safe" />
       {!online && (
         <div role="status" className="flex items-center justify-center gap-2 bg-surface-2 text-muted text-xs py-1.5">
-          <WifiOff className="size-3.5" aria-hidden />
+          <WifiOff className="size-4" aria-hidden />
           {health.storage === 'unavailable' || health.storage === 'quota' ? t('nav.offline') : t('nav.offlineSaved')}
         </div>
       )}
@@ -134,7 +134,7 @@ function TabBar() {
               >
                 <span className={clsx('relative flex items-center justify-center h-7 w-12 rounded-full transition-colors', isActive && 'bg-accent-soft')}>
                   {/* Remounts when the tab becomes active, so the indicator fades in (styles.css → .tab-bounce). */}
-                  <t.icon key={isActive ? 'on' : 'off'} className={clsx('size-[22px]', isActive && 'tab-bounce')} aria-hidden />
+                  <t.icon key={isActive ? 'on' : 'off'} className={clsx('size-6', isActive && 'tab-bounce')} aria-hidden />
                   {t.to === '/coach' && coachingUnread > 0 && <span className="absolute top-0 right-2 size-2 rounded-full bg-ember" aria-hidden />}
                 </span>
                 {tr(t.labelKey)}

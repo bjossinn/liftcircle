@@ -209,7 +209,7 @@ export function CoachPhoto({ name, url, size = 56, className }: { name: string; 
 export function ApprovedBadge() {
   return (
     <Badge tone="accent">
-      <BadgeCheck className="size-3.5" aria-hidden />
+      <BadgeCheck className="size-4" aria-hidden />
       Listed coach
     </Badge>
   );

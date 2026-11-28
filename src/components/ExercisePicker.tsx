@@ -70,7 +70,7 @@ export function ExerciseRowContent({ ex, favorite, right }: { ex: Exercise; favo
       <span className="min-w-0 flex-1 text-left">
         <span className="flex items-center gap-1.5">
           <span className="min-w-0 text-[15px] font-medium line-clamp-2 break-words">{ex.name}</span>
-          {favorite && <Star className="size-3.5 shrink-0 fill-current text-accent" aria-label={t('workout.picker.favourite')} />}
+          {favorite && <Star strokeWidth={1.75} className="size-4 shrink-0 fill-current text-accent" aria-label={t('workout.picker.favourite')} />}
           {/* i18n: no approved Icelandic copy */}
           {ex.custom && <span className="shrink-0 rounded-full bg-surface-3 px-1.5 text-[11px] text-muted">Custom</span>}
         </span>

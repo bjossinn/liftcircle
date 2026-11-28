@@ -145,7 +145,7 @@ export default function MealPlanPage() {
           )}
           <div className="px-4 py-2.5 border-t border-line text-xs text-muted tabular">
             <span className={st.state === 'on_target' ? 'text-accent font-medium' : st.state === 'short' || st.state === 'over' ? 'text-warn font-medium' : ''}>
-              {st.state === 'on_target' && <CheckCircle2 className="inline size-3.5 mr-1 -mt-0.5" aria-hidden />}
+              {st.state === 'on_target' && <CheckCircle2 className="inline size-4 mr-1 -mt-0.5" aria-hidden />}
               Day total: {displayMacro(n.protein, 'protein')}
               {st.proteinTarget != null ? ` / ${st.proteinTarget}` : ''} g protein
             </span>
@@ -161,8 +161,8 @@ export default function MealPlanPage() {
   };
 
   const back = (
-    <IconButton label="Back" onClick={() => nav(-1)}>
-      <ChevronLeft className="size-6" />
+    <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+      <ChevronLeft />
     </IconButton>
   );
 
