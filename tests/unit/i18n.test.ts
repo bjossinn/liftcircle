@@ -28,6 +28,16 @@ describe('dictionaries', () => {
     }
   });
 
+  it('have no empty or unnamed placeholders and no sentence fragments', () => {
+    for (const k of enKeys as MessageKey[]) {
+      for (const v of [EN[k], IS[k]]) {
+        expect(v, k).not.toMatch(/\{\{\s*\}\}/);
+        expect(v, k).not.toMatch(/^[,;]/);
+        expect(v.split('{{').length, k).toBe(v.split('}}').length);
+      }
+    }
+  });
+
   it('pair every .one with an .other', () => {
     for (const k of enKeys) {
       if (k.endsWith('.one')) expect(enKeys, k).toContain(`${k.slice(0, -4)}.other`);
