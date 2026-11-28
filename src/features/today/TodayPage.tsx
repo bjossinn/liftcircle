@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import clsx from 'clsx';
-import { Activity, Apple, CalendarClock, Check, ChevronRight, Dumbbell, Flame, Play, Plus, Timer } from 'lucide-react';
+import { Activity, Apple, CalendarClock, Check, ChevronRight, Flame, Play, Plus, Timer } from 'lucide-react';
 import { useApp } from '@/state/app';
 import { Badge, Button, Card, ConfirmDialog, Page, ProgressBar, SectionTitle, Spinner } from '@/components/ui';
 import { TopActions } from '@/app/TopActions';
@@ -15,6 +15,7 @@ import { useToast } from '@/components/toast';
 import { BRAND } from '@/config/brand';
 import { BrandMoment } from '@/components/BrandMark';
 import { PlanOwnerBadge } from '@/features/program/PlanOwner';
+import { displaySessionName, SessionMarkTile } from '@/features/program/parts';
 import { useExercises } from '@/data/catalog';
 import { plannedWeekStreak } from '@/domain/program/streak';
 
@@ -85,7 +86,7 @@ export default function TodayPage() {
             {active
               ? t('today.midWorkout')
               : next?.date === today
-                ? t('today.focus', { name: next.template.name })
+                ? t('today.focus', { name: displaySessionName(next.template) })
                 : program
                   ? t('today.restDay')
                   : isNew
@@ -121,7 +122,7 @@ export default function TodayPage() {
         <Card className="p-4 flex items-center gap-3 border-accent/40">
           <Play className="size-5 text-accent" aria-hidden />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold truncate">{active.name}</div>
+            <div className="font-semibold truncate">{displaySessionName({ id: active.templateId ?? '', name: active.name })}</div>
             <div className="text-xs text-muted">{t('today.inProgress')}</div>
           </div>
           <Button variant="primary" onClick={() => nav(`/train/session/${active.id}`)}>
@@ -136,11 +137,9 @@ export default function TodayPage() {
           {next ? (
             <Card className="p-4" tint="accent">
               <div className="flex items-start gap-3">
-                <div className="size-11 rounded-xl bg-accent-soft text-accent flex items-center justify-center shrink-0">
-                  {next.template.kind === 'lifting' ? <Dumbbell className="size-5" /> : <Activity className="size-5" />}
-                </div>
+                <SessionMarkTile template={next.template} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-lg font-semibold leading-tight">{next.template.name}</div>
+                  <div className="text-lg font-semibold leading-tight">{displaySessionName(next.template)}</div>
                   <div className="text-sm text-muted mt-0.5">
                     {t('today.sessionMeta', {
                       date: next.date === today ? t('format.relative.today') : next.date === addDays(today, 1) ? t('today.tomorrow') : formatDate(next.date),
@@ -204,7 +203,7 @@ export default function TodayPage() {
             {plan.missed.map((m) => (
               <li key={`${m.date}-${m.template.id}`} className="flex items-center gap-2 text-sm">
                 <span className="flex-1 min-w-0 truncate">
-                  {m.template.name} · {formatDate(m.date)}
+                  {displaySessionName(m.template)} · {formatDate(m.date)}
                 </span>
                 <Button size="sm" onClick={() => setMissedAction(m)}>
                   {t('today.options')}
@@ -265,7 +264,7 @@ export default function TodayPage() {
 
       <ConfirmDialog
         open={!!missedAction}
-        title={missedAction ? t('today.missedTitle', { name: missedAction.template.name }) : ''}
+        title={missedAction ? t('today.missedTitle', { name: displaySessionName(missedAction.template) }) : ''}
         body={t('today.missedBody')}
         confirmLabel={t('today.reschedule')}
         onCancel={() => setMissedAction(null)}

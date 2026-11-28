@@ -432,7 +432,7 @@ export default function SessionPage() {
         {aiEntry && session.exercises.length > 0 && (
           <div role="group" aria-label={t('workout.askCoachAria')} className="flex items-center gap-2 overflow-x-auto -mx-1 px-1">
             <span className="shrink-0 text-xs text-muted inline-flex items-center gap-1">
-              <Bot className="size-3.5" aria-hidden /> {t('workout.askCoach')}
+              <Bot className="size-4" aria-hidden /> {t('workout.askCoach')}
             </span>
             <AskChip icon={<Timer className="size-4" aria-hidden />} label={t('workout.shortOnTime')} onClick={() => setAsk('time')} disabled={!withSetsLeft.length} />
             <AskChip icon={<Wrench className="size-4" aria-hidden />} label={t('workout.equipmentBusy')} onClick={() => setAsk('swap')} disabled={!withSetsLeft.length} />
@@ -664,12 +664,12 @@ function ExerciseBlock(props: {
           <div className="flex items-center gap-2 flex-wrap">
             {se.supersetGroup && (props.nextInSuperset || props.prevInSuperset) && (
               <Badge tone="info">
-                <Link2 className="size-3" aria-hidden /> {t('workout.superset')}
+                <Link2 className="size-4" aria-hidden /> {t('workout.superset')}
               </Badge>
             )}
             {se.discomfort && (
               <Badge tone="warn">
-                <AlertTriangle className="size-3" aria-hidden /> {t('workout.discomfortNoted')}
+                <AlertTriangle className="size-4" aria-hidden /> {t('workout.discomfortNoted')}
               </Badge>
             )}
           </div>
@@ -738,7 +738,7 @@ function ExerciseBlock(props: {
           {settings.workout.showRir && ex?.tracking !== 'duration' && <span role="columnheader" className="w-14 text-center">{t('workout.rir')}</span>}
           <span role="columnheader" className="w-12 text-center">
             <span className="sr-only">{t('workout.done')}</span>
-            <Check className="size-3.5 inline" aria-hidden />
+            <Check className="size-4 inline" aria-hidden />
           </span>
         </div>
         {se.sets.map((set) => {

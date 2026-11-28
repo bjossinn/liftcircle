@@ -45,8 +45,8 @@ export default function RequestCoachingPage() {
     <Page
       title="Request coaching"
       back={
-        <IconButton label="Back" onClick={() => nav(-1)}>
-          <ChevronLeft className="size-6" />
+        <IconButton label="Back" onClick={() => nav(-1)} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
     >
@@ -331,7 +331,7 @@ function IntakeRow({
           {children}
           {help && (
             <p className="text-xs text-muted inline-flex items-start gap-1.5">
-              <Info className="size-3.5 shrink-0 mt-0.5" aria-hidden />
+              <Info className="size-4 shrink-0 mt-0.5" aria-hidden />
               {help}
             </p>
           )}

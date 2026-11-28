@@ -218,7 +218,7 @@ export function PostCard({ post, meId, onChange, onRemove, onBlocked, standalone
         )}
         {mine && p.audience === 'only_me' && (
           <Badge>
-            <Lock className="size-3" aria-hidden /> Only me
+            <Lock className="size-4" aria-hidden /> Only me
           </Badge>
         )}
         <IconButton label="Post options" onClick={() => setDialog('menu')}>

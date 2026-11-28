@@ -103,8 +103,8 @@ export default function SettingsPage() {
     <Page
       title={t('settings.title')}
       back={
-        <IconButton label={t('common.back')} onClick={back}>
-          <ChevronLeft className="size-6" />
+        <IconButton label={t('common.back')} onClick={back} iconSize="lg">
+          <ChevronLeft />
         </IconButton>
       }
     >

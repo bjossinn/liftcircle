@@ -34,7 +34,7 @@ export function CoachCardView({ coach }: { coach: CoachCard }) {
             {where && (
               <div className="flex items-start gap-1.5">
                 <dt className="sr-only">Service area</dt>
-                <MapPin className="size-3.5 shrink-0 mt-0.5" aria-hidden />
+                <MapPin className="size-4 shrink-0 mt-0.5" aria-hidden />
                 <dd className="min-w-0">
                   {where}
                   {dist && <span className="text-ink"> · {dist}</span>}
@@ -43,13 +43,13 @@ export function CoachCardView({ coach }: { coach: CoachCard }) {
             )}
             <div className="flex items-start gap-1.5">
               <dt className="sr-only">Format</dt>
-              <Globe className="size-3.5 shrink-0 mt-0.5" aria-hidden />
+              <Globe className="size-4 shrink-0 mt-0.5" aria-hidden />
               <dd>{formatsText(coach.formats)}</dd>
             </div>
             {coach.languages.length > 0 && (
               <div className="flex items-start gap-1.5">
                 <dt className="sr-only">Languages</dt>
-                <MessageSquare className="size-3.5 shrink-0 mt-0.5" aria-hidden />
+                <MessageSquare className="size-4 shrink-0 mt-0.5" aria-hidden />
                 <dd>{coach.languages.map(languageName).join(', ')}</dd>
               </div>
             )}

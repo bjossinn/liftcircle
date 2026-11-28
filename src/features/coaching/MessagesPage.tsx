@@ -312,7 +312,7 @@ export default function MessagesPage() {
               {photos.map((p, i) => (
                 <li key={p.id} className="relative shrink-0">
                   <img src={p.url} alt={`Photo ${i + 1} to send`} className="size-16 rounded-xl object-cover bg-surface-3" />
-                  <button type="button" onClick={() => removePhoto(p.id)} aria-label={`Remove photo ${i + 1}`} className="absolute -top-1.5 -right-1.5 size-7 rounded-full bg-surface-3 border border-line flex items-center justify-center">
+                  <button type="button" onClick={() => removePhoto(p.id)} aria-label={`Remove photo ${i + 1}`} className="absolute -top-1.5 -right-1.5 size-7 after:absolute after:-inset-2 rounded-full bg-surface-3 border border-line flex items-center justify-center">
                     <X className="size-4" />
                   </button>
                 </li>
@@ -492,11 +492,11 @@ function ServerBubble({ m, mine, tz, selected, onSelect, onReport }: { m: CoachM
         {mine &&
           (m.status === 'awaiting_media' ? (
             <>
-              · <Loader2 className="size-3 animate-spin" aria-hidden /> Uploading photos…
+              · <Loader2 className="size-4 animate-spin" aria-hidden /> Uploading photos…
             </>
           ) : (
             <>
-              · <Check className="size-3" aria-hidden /> Sent
+              · <Check className="size-4" aria-hidden /> Sent
             </>
           ))}
       </span>
@@ -556,7 +556,7 @@ function OutboxBubble({ item, tz, online, accountId }: { item: CoachOutboxItem; 
       </div>
       <span className={cx('mt-0.5 px-1 text-[11px] inline-flex items-center gap-1', failed ? 'text-danger' : 'text-faint')} role="status">
         <time dateTime={new Date(item.createdAt).toISOString()}>{timeText(new Date(item.createdAt).toISOString(), tz)}</time>·
-        {failed ? <AlertTriangle className="size-3" aria-hidden /> : online ? <Loader2 className="size-3 animate-spin" aria-hidden /> : <Clock className="size-3" aria-hidden />}
+        {failed ? <AlertTriangle className="size-4" aria-hidden /> : online ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Clock className="size-4" aria-hidden />}
         {outboxStatusLabel(item, online, sending)}
       </span>
       {failed && (

@@ -31,7 +31,7 @@ export function QualificationsEditor({ rows, onChange, errors, disabled }: { row
         Add qualification
       </Button>
       <p className="text-xs text-muted px-1 inline-flex items-start gap-1.5">
-        <Lock className="size-3.5 shrink-0 mt-0.5" aria-hidden />
+        <Lock className="size-4 shrink-0 mt-0.5" aria-hidden />
         Documents are private: only you and Hard Earned reviewers can open them. Clients never see the files.
       </p>
     </div>

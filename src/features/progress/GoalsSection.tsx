@@ -55,7 +55,7 @@ export function GoalsSection({ d, proteinTargetG }: { d: ProgressData; proteinTa
                     {g.deadline ? ` · ${t('progress.goalDeadline', { date: formatDate(g.deadline, { day: 'numeric', month: 'short', year: 'numeric' }) })}` : ''}
                   </p>
                 </div>
-                {g.achievedAt && <Badge tone="accent"><CheckCircle2 className="size-3" aria-hidden /> {t('progress.achieved')}</Badge>}
+                {g.achievedAt && <Badge tone="accent"><CheckCircle2 className="size-4" aria-hidden /> {t('progress.achieved')}</Badge>}
                 <IconButton label={t('progress.editNamedGoal', { name: shown })} size="sm" onClick={() => setEdit(g)}>
                   <Pencil className="size-4" />
                 </IconButton>

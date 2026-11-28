@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import clsx from 'clsx';
 import type { Exercise } from '@/domain/types';
-import { EXERCISE_MEDIA_FULL_SIZE, EXERCISE_MEDIA_THUMB_SIZE, exerciseCueKeys, exerciseMedia } from '@/data/exerciseMedia';
+import { EXERCISE_MEDIA_FULL_SIZE, exerciseCueKeys, exerciseMedia } from '@/data/exerciseMedia';
 import { ExerciseGlyphTile } from '@/components/ExerciseGlyph';
 import { useT } from '@/i18n';
 
@@ -61,29 +61,12 @@ export function ExerciseIllustration({ ex, compact, className }: { ex: Exercise;
 }
 
 /**
- * Small square thumbnail for lists and the workout logger (44 px, fixed size). Library exercises show their
- * illustration; custom exercises and failed loads show the movement-pattern glyph, so there is never a broken image.
+ * Small square mark for lists, the picker and the compact logger row (44 px, fixed size): always the Direction B
+ * movement-pattern tile. The 256 px photo thumbnails are not loaded here (unreadable at 44 px and not theme-aware);
+ * the full start/end illustration is shown on the exercise page and in the expanded logger row (ExerciseIllustration).
  */
 export function ExerciseThumb({ ex, className }: { ex: Exercise; className?: string }) {
-  const media = ex.custom ? null : exerciseMedia(ex.id);
-  // Keyed by source (see ExerciseIllustration): a swapped-in exercise gets a fresh attempt.
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  if (!media || failedSrc === media.thumb) return <ExerciseGlyphTile pattern={ex.pattern} />;
-  return (
-    <span className={clsx('inline-flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-surface-2', className)}>
-      <img
-        src={media.thumb}
-        alt=""
-        width={EXERCISE_MEDIA_THUMB_SIZE}
-        height={EXERCISE_MEDIA_THUMB_SIZE}
-        loading="lazy"
-        decoding="async"
-        draggable={false}
-        onError={() => setFailedSrc(media.thumb)}
-        className="block size-full object-cover"
-      />
-    </span>
-  );
+  return <ExerciseGlyphTile pattern={ex.pattern} className={className} />;
 }
 
 /** Whether an exercise has an illustration (library exercises; for showing the logger's expand control). */

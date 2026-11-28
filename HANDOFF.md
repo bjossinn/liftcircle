@@ -3,6 +3,23 @@
 Supabase project **LiftCircle** (display name, unchanged: renaming it is an owner task, see docs/BRAND_AUDIT.md; ref `haryomdlsgrgrnsbdxui`, region eu-west-1, org "bjossinn's Org").
 
 
+## 28 Nov 2026: Direction B icons, pattern tiles in lists, distinct program-session marks — v1.0.7
+
+- Direction B icon system (owner-approved mockup `icon-draft-B.png`): Lucide outlines at stroke 1.75 app-wide (`LucideProvider`
+  in `src/main.tsx`), a strict 16 / 20 / 24 px grid, theme-token colours. New `src/components/Icon.tsx` (`Icon`, `IconTile`).
+  `IconButton` sizes its icon itself (20 px; `iconSize="lg"` = 24 px for every back chevron); `Button` icons 16 px (20 px on
+  `size="lg"` CTAs); tab bar icons 24 px (bottom tab bar kept). No `size-3`/`size-3.5`/`size-[22px]` left on Lucide icons.
+- The 13 movement-pattern glyphs (`ExerciseGlyph.tsx`) are redrawn on a 24×24 grid for a 24 px mark in a 44 px tile.
+- Exercise lists, the picker and the compact logger row always show the pattern tile (`ExerciseThumb`); `thumb.webp` is no
+  longer requested (files stay on disk). `full.webp` + cues still show on the exercise page and in the expanded logger row.
+- Program sessions get a deterministic mark (`src/domain/program/sessionMark.ts`, `SessionMarkTile` in `features/program/parts.tsx`):
+  a family icon (upper, lower, push, pull, legs, full body, strength, walk, cardio/long/steady, mobility, conditioning) plus an
+  A/B/C/D letter badge, derived from the generated id or the stored English name — so Upper A ≠ Upper B etc. Used on session
+  cards, Train, Today and History. Cardio no longer reuses the walk icon; conditioning has its own mark.
+- Today and Train show wizard session names in the display language (`displaySessionName`); stored data stays English.
+- Icon-only controls keep a ≥ 44×44 px hit area (e2e `tests/e2e/icons.spec.ts` checks the main screens and the logger).
+- No migration, no backend change.
+
 ## 28 Nov 2026: Exercise illustrations and technique cues (roadmap item 13, PR 2 of 3) — v1.0.5
 
 - All 105 library exercises show a first-party, AI-generated illustration (made with ChatGPT; ours, no attribution):
