@@ -16,7 +16,10 @@ Supabase project **LiftCircle** (display name, unchanged: renaming it is an owne
   movement/equipment sanity). Files: `public/exercise-media/v1/` (~1.9 MB, 86 frames ≤ 30 KB + thumbs), built by
   `scripts/build-exercise-media.mjs`. Not precached; one Workbox runtime route (same-origin `/exercise-media/`,
   CacheFirst, 200 entries / 90 days). `public/_headers` serves them immutable (versioned path).
-- New EN/IS strings under `exercise.visual.*` (Icelandic awaits native review). Also fixed the Icelandic
+- Attribution: each illustration's "Everkinetic" credit links to the in-app Credits & licences page (`/credits`:
+  creator, source, licence, changes notice); the exercise library and picker end with a shared credits link, and
+  Settings → Account has a Credits & licences row. Settings → About no longer says no third-party images are used.
+- New EN/IS strings under `exercise.visual.*` and `credits.*` (Icelandic awaits native review). Also fixed the Icelandic
   `import.error.dateOrder` wording. No migration, no backend change.
 
 ## 27 Nov 2026: CSV workout import from Strong and Hevy (roadmap item 13, PR 1 of 3) — v1.0.4

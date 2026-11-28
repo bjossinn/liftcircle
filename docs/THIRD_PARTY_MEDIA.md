@@ -23,10 +23,14 @@ CSS filter at display time. The adapted images are licensed under CC BY-SA 4.0, 
 
 **How we comply:**
 
-- *Attribution:* every illustration is shown with the credit "Illustration: Everkinetic, CC BY-SA 4.0", with the
-  licence name linking to the licence deed (`src/components/ExerciseVisual.tsx`). The small logger/list thumbnails sit
-  next to, or expand into, a credited illustration. This file and `public/exercise-media/LICENSE.txt` record the source,
-  licence and changes.
+- *Attribution:* every illustration is shown with the credit "Illustration: Everkinetic, CC BY-SA 4.0"
+  (`src/components/ExerciseVisual.tsx`). "Everkinetic" links to the in-app **Credits & licences** page (`/credits`,
+  `src/features/settings/CreditsPage.tsx`; same origin, works offline), which gives the full attribution: creator
+  (Everkinetic / everkinetic.com, created by Greg Priday), source repository link, licence name and link, and the notice
+  of our changes. "CC BY-SA 4.0" links to the licence deed. Surfaces that only show 44 px thumbnails (exercise library
+  and picker) end with a shared credit line linking to the same page, and Settings → Account lists it next to About. The
+  logger's thumbnails expand into a credited illustration. This file and `public/exercise-media/LICENSE.txt` record the
+  same source, licence and changes.
 - *Share-alike:* applies to the images and our adaptations of them only. They are published under the same licence;
   the app's code and other content are a separate work that merely displays them and are not affected.
 - *No additional restrictions:* the files are served as ordinary public images without DRM.

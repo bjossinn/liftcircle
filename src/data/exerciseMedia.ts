@@ -31,12 +31,22 @@ interface MappingEntry {
 
 export const EXERCISE_MEDIA_MAPPING: Readonly<Record<string, MappingEntry>> = mapping.exercises;
 
-/** Licence credit for the illustration set (shown with every illustration). */
+/**
+ * Licence credit for the illustration set. Every illustration shows the author and licence; the author links to the
+ * in-app credits page (CREDITS_PATH), which carries the full attribution: source, creator, licence and our changes.
+ */
 export const EXERCISE_MEDIA_CREDIT = {
   author: 'Everkinetic',
+  site: 'everkinetic.com',
+  creator: 'Greg Priday',
+  sourceUrl: 'https://github.com/everkinetic/data',
   license: 'CC BY-SA 4.0',
   licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/',
 } as const;
+
+/** In-app credits & licences page (works offline; linked from illustrations, exercise lists and Settings). */
+export const CREDITS_PATH = '/credits';
+export const CREDITS_ILLUSTRATIONS_ID = 'exercise-illustrations';
 
 export function mediaDir(entry: Pick<MappingEntry, 'source' | 'sourceId'>): string {
   return `${entry.source === 'everkinetic' ? 'ek' : entry.source}-${entry.sourceId}`;

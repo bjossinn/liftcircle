@@ -13,7 +13,7 @@
  */
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { Bot, ChevronLeft, ChevronRight, Database, Dumbbell, FlaskConical, Info, Languages, ShieldCheck, Smartphone, UserRound } from 'lucide-react';
+import { Bot, ChevronLeft, ChevronRight, Database, Dumbbell, FlaskConical, Info, Languages, Scale, ShieldCheck, Smartphone, UserRound } from 'lucide-react';
 import { useApp } from '@/state/app';
 import { isBeginner, progressionRuleText } from '@/domain/progression';
 import { Button, Card, IconButton, Input, ListRow, NumberInput, Page, SectionTitle, Segmented, Select, Sheet, Toggle } from '@/components/ui';
@@ -462,6 +462,7 @@ function AccountGroup() {
           <ListRow left={<FlaskConical className="size-5 text-muted" />} title={t('settings.demo')} subtitle={t('settings.demoHint')} right={<ChevronRight className="size-4" />} onClick={() => void enterDemo()} />
         )}
         <ListRow left={<Info className="size-5 text-muted" />} title={t('settings.about')} right={<ChevronRight className="size-4" />} onClick={() => setAbout(true)} />
+        <ListRow left={<Scale className="size-5 text-muted" />} title={t('credits.title')} subtitle={t('settings.creditsHint')} right={<ChevronRight className="size-4" />} onClick={() => nav('/credits')} />
       </Card>
       <p className="text-xs text-faint text-center mt-6">
         {BRAND.name} · v{__APP_VERSION__} · <Link to="/install" className="underline">{t('settings.install')}</Link>
@@ -480,7 +481,13 @@ function AccountGroup() {
             <li>{t('settings.aboutFood')}</li>
             <li>{t('settings.about1rm')}</li>
           </ul>
-          <p className="text-muted">{t('settings.aboutExercise')}</p>
+          <p className="text-muted">
+            {t('settings.aboutExercise')}{' '}
+            <Link to="/credits" className="underline" onClick={() => setAbout(false)}>
+              {t('credits.title')}
+            </Link>
+            .
+          </p>
         </div>
       </Sheet>
     </>

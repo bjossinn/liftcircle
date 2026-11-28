@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { Pause, Play } from 'lucide-react';
 import type { Exercise } from '@/domain/types';
-import { EXERCISE_MEDIA_CREDIT, exerciseMedia, type ExerciseMedia } from '@/data/exerciseMedia';
+import { Link } from 'react-router';
+import { CREDITS_ILLUSTRATIONS_ID, CREDITS_PATH, EXERCISE_MEDIA_CREDIT, exerciseMedia, type ExerciseMedia } from '@/data/exerciseMedia';
 import { ExerciseGlyphTile } from '@/components/ExerciseGlyph';
 import { useT } from '@/i18n';
 
@@ -58,13 +59,16 @@ function Frame({ src, alt, size, className, hidden, onError }: { src: string; al
 
 /**
  * The full illustration: frames alternate (with a pause button); with reduced motion both frames are shown side by
- * side, labelled. Returns null when the exercise has no illustration or a frame failed to load, unless `placeholder`.
+ * side, labelled. Renders nothing when the exercise has no illustration or a frame failed to load.
+ *
+ * A load failure is remembered per image source, not per component: when the same row switches to another exercise
+ * (a swap in the logger), the new exercise's images are tried even if the previous one failed offline.
  */
 export function ExerciseIllustration({ ex, compact, className }: { ex: Exercise; compact?: boolean; className?: string }) {
   const media = ex.custom ? null : exerciseMedia(ex.id);
-  const [failed, setFailed] = useState(false);
-  if (!media || failed) return null;
-  return <Illustration key={ex.id} ex={ex} media={media} compact={compact} className={className} onFail={() => setFailed(true)} />;
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  if (!media || failedSrc === media.frames[0]) return null;
+  return <Illustration key={ex.id} ex={ex} media={media} compact={compact} className={className} onFail={() => setFailedSrc(media.frames[0])} />;
 }
 
 function Illustration({ ex, media, compact, className, onFail }: { ex: Exercise; media: ExerciseMedia; compact?: boolean; className?: string; onFail: () => void }) {
@@ -126,7 +130,12 @@ function Illustration({ ex, media, compact, className, onFail }: { ex: Exercise;
       )}
       <figcaption className="mt-2 text-center text-[11px] leading-snug text-faint">
         {media.variant && <span className="block text-xs text-muted">{t(media.variant === 'withBarbell' ? 'exercise.visual.withBarbell' : 'exercise.visual.withoutLoad')}</span>}
-        {t('exercise.visual.credit', { author: EXERCISE_MEDIA_CREDIT.author })},{' '}
+        {/* Full attribution (source, creator, licence, our changes) is on the in-app credits page. */}
+        {t('exercise.visual.creditPrefix')}{' '}
+        <Link to={`${CREDITS_PATH}#${CREDITS_ILLUSTRATIONS_ID}`} className="underline" aria-label={t('exercise.visual.creditsLinkLabel', { author: EXERCISE_MEDIA_CREDIT.author })}>
+          {EXERCISE_MEDIA_CREDIT.author}
+        </Link>
+        ,{' '}
         <a href={EXERCISE_MEDIA_CREDIT.licenseUrl} target="_blank" rel="noopener noreferrer" className="underline">
           {EXERCISE_MEDIA_CREDIT.license}
         </a>
@@ -141,8 +150,9 @@ function Illustration({ ex, media, compact, className, onFail }: { ex: Exercise;
  */
 export function ExerciseThumb({ ex, className }: { ex: Exercise; className?: string }) {
   const media = ex.custom ? null : exerciseMedia(ex.id);
-  const [failed, setFailed] = useState(false);
-  if (!media || failed) return <ExerciseGlyphTile pattern={ex.pattern} />;
+  // Keyed by source (see ExerciseIllustration): a swapped-in exercise gets a fresh attempt.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  if (!media || failedSrc === media.thumb) return <ExerciseGlyphTile pattern={ex.pattern} />;
   return (
     <span className={clsx('inline-flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-surface-2 p-0.5', className)}>
       <img
@@ -153,7 +163,7 @@ export function ExerciseThumb({ ex, className }: { ex: Exercise; className?: str
         loading="lazy"
         decoding="async"
         draggable={false}
-        onError={() => setFailed(true)}
+        onError={() => setFailedSrc(media.thumb)}
         className="exercise-art block size-full object-contain"
       />
     </span>
@@ -163,4 +173,20 @@ export function ExerciseThumb({ ex, className }: { ex: Exercise; className?: str
 /** Whether a library exercise has an illustration (for showing the logger's expand control). */
 export function hasIllustration(ex: Exercise | undefined): boolean {
   return !!ex && !ex.custom && !!exerciseMedia(ex.id);
+}
+
+/**
+ * Shared credit line for surfaces that only show thumbnails (exercise library, picker): names the source and licence
+ * and links to the in-app credits page. Full attribution beside every 44 px thumbnail isn't needed.
+ */
+export function IllustrationCreditsLink({ className }: { className?: string }) {
+  const { t } = useT();
+  return (
+    <p className={clsx('text-center text-xs text-faint', className)} data-testid="illustration-credits">
+      {t('exercise.visual.listCredit', { author: EXERCISE_MEDIA_CREDIT.author, license: EXERCISE_MEDIA_CREDIT.license })}{' '}
+      <Link to={`${CREDITS_PATH}#${CREDITS_ILLUSTRATIONS_ID}`} className="font-medium text-muted underline">
+        {t('credits.title')}
+      </Link>
+    </p>
+  );
 }

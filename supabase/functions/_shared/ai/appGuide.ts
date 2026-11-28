@@ -113,8 +113,9 @@ export function guideEntries(features?: GuideFeatures): GuideEntry[] {
 }
 
 /**
- * Routes deliberately not in the guide: admin/internal screens, auth flows, and pages that need an id the coach
- * can't know (other people, posts, coaching threads, in-progress sessions).
+ * Routes deliberately not in the guide: admin/internal screens, auth flows, pages that need an id the coach
+ * can't know (other people, posts, coaching threads, in-progress sessions), and the credits/licences page (reached from
+ * Settings and every illustration; nothing for the assistant to send people to).
  */
 export const GUIDE_IGNORED: string[] = [
   '*', '/auth', '/auth/callback', '/import-guest', '/moderation',
@@ -122,7 +123,7 @@ export const GUIDE_IGNORED: string[] = [
   '/coaching/client/:relationshipId', '/coaching/client/:relationshipId/program',
   '/coaching/coach/:id', '/coaching/request/:coachId', '/coaching/messages/:relationshipId', '/coaching/proposal/:id',
   '/coaching/checkin/:relationshipId', '/u/:username', '/feed/post/:id',
-  '/train/session/:id', '/train/summary/:id', '/train/activity/:id',
+  '/train/session/:id', '/train/summary/:id', '/train/activity/:id', '/credits',
 ];
 
 export const MAX_OPEN_LINKS = 2;

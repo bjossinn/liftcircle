@@ -7,10 +7,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { MemoryRouter } from 'react-router';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import { ExerciseIllustration, ExerciseThumb, hasIllustration } from '@/components/ExerciseVisual';
+import { ExerciseIllustration, ExerciseThumb, hasIllustration, IllustrationCreditsLink } from '@/components/ExerciseVisual';
+import CreditsPage from '@/features/settings/CreditsPage';
+import { EXERCISE_MEDIA_MAPPING } from '@/data/exerciseMedia';
 import { EXERCISES } from '@/data/exercises';
 import { LanguageProvider, type Language } from '@/i18n';
 import type { CustomExercise, Exercise } from '@/domain/types';
@@ -31,8 +34,12 @@ function mount(node: ReactNode, language: Language = 'en') {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  act(() => root!.render(createElement(LanguageProvider, { language, children: node })));
+  act(() => root!.render(createElement(LanguageProvider, { language, children: createElement(MemoryRouter, null, node) })));
   return container;
+}
+/** Re-render the mounted tree with a new node (same component instances where the element type matches). */
+function rerender(node: ReactNode, language: Language = 'en') {
+  act(() => root!.render(createElement(LanguageProvider, { language, children: createElement(MemoryRouter, null, node) })));
 }
 
 afterEach(() => {
@@ -63,8 +70,12 @@ describe('ExerciseIllustration', () => {
     expect(imgs[0].getAttribute('alt')).toBe('Barbell back squat: start position');
     expect(imgs[1].getAttribute('alt')).toBe('');
     expect(el.querySelector('button[aria-label="Pause animation"]')).not.toBeNull();
-    expect(el.textContent).toContain('Illustration: Everkinetic');
+    expect(el.textContent).toContain('Illustration: Everkinetic, CC BY-SA 4.0');
     expect(el.querySelector('a[href="https://creativecommons.org/licenses/by-sa/4.0/"]')?.textContent).toBe('CC BY-SA 4.0');
+    // The author credit links to the in-app credits page with the full attribution.
+    const credits = el.querySelector<HTMLAnchorElement>('a[href="/credits#exercise-illustrations"]');
+    expect(credits?.textContent).toBe('Everkinetic');
+    expect(credits?.getAttribute('aria-label')).toBe('Everkinetic: illustration credits');
   });
 
   it('alternates frames and stops when paused', () => {
@@ -87,6 +98,7 @@ describe('ExerciseIllustration', () => {
     expect(el.querySelector('button')).toBeNull();
     expect(el.textContent).toContain('Upphaf');
     expect(el.textContent).toContain('Teikning: Everkinetic');
+    expect(el.querySelector('a[href="/credits#exercise-illustrations"]')?.getAttribute('aria-label')).toBe('Everkinetic: höfundar teikninga');
   });
 
   it('notes a load variant', () => {
@@ -123,5 +135,56 @@ describe('ExerciseThumb', () => {
       expect(hasIllustration(ex)).toBe(false);
     }
     expect(hasIllustration(squat)).toBe(true);
+  });
+});
+
+describe('load failure is per image, not per row (logger swap)', () => {
+  const bench = EXERCISES.find((e) => e.id === 'barbell-bench-press')!;
+
+  it('an illustration that failed (e.g. offline) does not block the next exercise swapped into the same row', () => {
+    setReducedMotion(false);
+    const el = mount(createElement(ExerciseIllustration, { ex: squat }));
+    act(() => void el.querySelector('img')!.dispatchEvent(new Event('error')));
+    expect(el.querySelector('img')).toBeNull();
+    // Same component instance, new exercise (what ExerciseBlock does on swap).
+    rerender(createElement(ExerciseIllustration, { ex: bench }));
+    expect([...el.querySelectorAll('img')].map((i) => i.getAttribute('src'))).toEqual(['/exercise-media/v1/ek-0042/0.webp', '/exercise-media/v1/ek-0042/1.webp']);
+    // Swapping back to the failed exercise keeps showing nothing rather than a broken image again.
+    rerender(createElement(ExerciseIllustration, { ex: squat }));
+    expect(el.querySelector('img')).toBeNull();
+  });
+
+  it('a thumbnail that failed does not block the next exercise swapped into the same row', () => {
+    const el = mount(createElement(ExerciseThumb, { ex: squat }));
+    act(() => void el.querySelector('img')!.dispatchEvent(new Event('error')));
+    expect(el.querySelector('img')).toBeNull();
+    rerender(createElement(ExerciseThumb, { ex: bench }));
+    expect(el.querySelector('img')?.getAttribute('src')).toBe('/exercise-media/v1/ek-0042/thumb.webp');
+  });
+});
+
+describe('credits', () => {
+  it('thumbnail-only surfaces get a shared credit line linking to the credits page', () => {
+    const el = mount(createElement(IllustrationCreditsLink));
+    expect(el.textContent).toBe('Exercise drawings: Everkinetic, CC BY-SA 4.0. Credits & licences');
+    expect(el.querySelector('a')?.getAttribute('href')).toBe('/credits#exercise-illustrations');
+    const is = mount(createElement(IllustrationCreditsLink), 'is');
+    expect(is.textContent).toBe('Æfingateikningar: Everkinetic, CC BY-SA 4.0. Höfundar og leyfi');
+  });
+
+  it('the credits page carries the complete attribution: source, creator, licence and the changes notice', () => {
+    const el = mount(createElement(CreditsPage));
+    const section = el.querySelector('#exercise-illustrations')!.closest('section')!;
+    const text = section.textContent!;
+    expect(text).toContain('Drawings by Everkinetic (everkinetic.com), created by Greg Priday');
+    expect(text).toContain(`Used for ${Object.keys(EXERCISE_MEDIA_MAPPING).length} exercises in the library.`);
+    expect(text).toContain('converted them to WebP with a transparent background');
+    expect(text).toContain('The adapted drawings are shared under the same licence.');
+    expect(section.querySelector('a[href="https://github.com/everkinetic/data"]')).not.toBeNull();
+    expect(section.querySelector('a[href="https://creativecommons.org/licenses/by-sa/4.0/"]')?.textContent).toContain('CC BY-SA 4.0');
+    const is = mount(createElement(CreditsPage), 'is');
+    expect(is.textContent).toContain('Höfundar og leyfi');
+    expect(is.textContent).toContain('gerðar af Greg Priday');
+    expect(is.textContent).toContain('Aðlöguðu teikningarnar eru birtar með sama leyfi.');
   });
 });

@@ -75,3 +75,34 @@ test('the logger thumbnail expands the illustration and the viewed images work o
   await expectImagesLoaded(page, '[data-testid="exercise-illustration"] img');
   await context.setOffline(false);
 });
+
+test('the illustration credit, the exercise library and Settings all reach the full credits page', async ({ page }) => {
+  const expectCreditsPage = async () => {
+    await expect(page).toHaveURL(/\/credits(#exercise-illustrations)?$/);
+    await expect(page.getByRole('heading', { name: 'Credits & licences' })).toBeVisible();
+    const section = page.getByTestId('credits-illustrations');
+    await expect(section).toContainText('Drawings by Everkinetic (everkinetic.com), created by Greg Priday');
+    await expect(section).toContainText('converted them to WebP with a transparent background');
+    await expect(section.getByRole('link', { name: /github\.com\/everkinetic\/data/ })).toHaveAttribute('href', 'https://github.com/everkinetic/data');
+    await expect(section.getByRole('link', { name: /CC BY-SA 4\.0/ })).toHaveAttribute('href', 'https://creativecommons.org/licenses/by-sa/4.0/');
+  };
+
+  // From the credit under an illustration.
+  await page.goto('/train/exercises/barbell-back-squat');
+  await page.getByRole('link', { name: 'Everkinetic: illustration credits' }).click();
+  await expectCreditsPage();
+
+  // From the thumbnail-only exercise library.
+  await page.goto('/train/exercises');
+  await page.getByTestId('illustration-credits').getByRole('link', { name: 'Credits & licences' }).click();
+  await expectCreditsPage();
+
+  // From Settings.
+  await page.goto('/settings?section=account');
+  await page.getByRole('button', { name: /Credits & licences/ }).click();
+  await expectCreditsPage();
+
+  // A direct load (and reload) of the route works too: it's an in-app page, not an external link.
+  await page.goto('/credits');
+  await expectCreditsPage();
+});

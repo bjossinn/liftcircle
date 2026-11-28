@@ -43,7 +43,8 @@ Workouts & rest timer → Celebrations**. With your phone's "reduce motion" sett
 - **See how it's done:** many library exercises show a small drawing next to the name. Tap it to open the start and
   end positions (they alternate; tap pause to stop, and with your device's *reduce motion* setting both are shown side
   by side). The exercise page shows the same drawing. Drawings you've opened stay available offline. Custom exercises
-  and exercises without a drawing show a simple movement icon instead.
+  and exercises without a drawing show a simple movement icon instead. The drawings are by Everkinetic (CC BY-SA 4.0);
+  sources and licences are under Settings → Account → *Credits & licences*.
 - **Swapping an exercise** offers alternatives that fit your equipment and limitations (**Show all exercises** to see
   every option). Switching between rep-based and timed moves rebuilds the sets; finished sets never change.
 - **Warm-ups** are always lighter than your working weight. Set your empty bar weight in Settings → Workout.
