@@ -249,8 +249,8 @@ export default function OnboardingPage() {
     <div className="mx-auto w-full max-w-2xl min-h-dvh flex flex-col">
       <header className="sticky top-0 z-10 bg-bg/95 backdrop-blur px-4 pt-3 pb-2">
         <div className="flex items-center gap-2 min-h-11">
-          <IconButton label={idx === 0 ? t('onboarding.close') : t('onboarding.back')} onClick={back}>
-            {idx === 0 ? <X className="size-5" /> : <ChevronLeft className="size-5" />}
+          <IconButton label={idx === 0 ? t('onboarding.close') : t('onboarding.back')} onClick={back} iconSize="lg">
+            {idx === 0 ? <X /> : <ChevronLeft />}
           </IconButton>
           <span className="flex-1 text-sm text-muted" aria-live="polite">
             {qn
