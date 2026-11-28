@@ -20,6 +20,7 @@ import {
   applyMealPlanSuggestion, isMealPlanApplied, previewMealPlan, undoMealPlanSuggestion, type MealPlanApplyMode, type MealPlanSuggestion,
 } from '@/domain/nutrition/aiActions';
 import { RECIPES_BY_ID } from '@/data/recipes';
+import { recipeDisplayName } from '@/data/catalogText';
 import type { MealPlan } from '@/domain/types';
 import { prefsFromAccount, useWeekPlan } from '@/features/nutrition/shared';
 
@@ -109,7 +110,7 @@ export function MealPlanCard({ plan: s }: { plan: MealPlanSuggestion }) {
               <ul className="text-xs text-muted">
                 {day.items.map((it) => (
                   <li key={it.id}>
-                    {mealLabel(it.slot, language)}: {RECIPES_BY_ID.get(it.recipeId)?.name ?? t('aiCard.mealPlan.recipeFallback')}
+                    {mealLabel(it.slot, language)}: {RECIPES_BY_ID.has(it.recipeId) ? recipeDisplayName(it.recipeId, language) : t('aiCard.mealPlan.recipeFallback')}
                     {it.servings !== 1 ? ` ×${numberText(it.servings)}` : ''}
                     {it.extras?.[0] ? ` + ${extraText(it.extras[0], undefined, language)}` : ''}
                   </li>
