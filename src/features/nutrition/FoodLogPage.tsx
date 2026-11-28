@@ -265,7 +265,7 @@ function QuickProtein({ onLog, pending, onOther }: { onLog: LogFn; pending: bool
 /* ------------------------------------------------------------------- recent */
 function RecentTab({ onLog, today, pending, onOther }: { onLog: LogFn; today: string; pending: boolean; onOther: () => void }) {
   const { db } = useApp();
-  const { t } = useT();
+  const { t, language } = useT();
   // The Recent window is independent of the selected log date: the last 30 days through today, inclusive.
   const res = useLiveQuery(
     () =>
